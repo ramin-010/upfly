@@ -9,13 +9,13 @@ Upload & on-the-fly image conversion for Express (Multer peer + Sharp).
 ## Install
 
 ```bash
-npm i upfly sharp multer
+npm i upfly multer
 # or
-yarn add upfly sharp multer
+yarn add upfly multer
 ```
 
 - Requires Node.js >= 18
-- `multer` is a peer dependency: you control its version (>=1.4 <3)
+- `multer` is a peer dependency (>=1.4 <3): you install your preferred version, so you retain full control and compatibility with your app.
 
 ## API
 
@@ -66,7 +66,7 @@ app.post(
 - fields: Record<string, FieldConfig>
   - format: "webp" | "jpeg" | "png" | "avif" (default: webp)
   - quality: number (1-100, default: 80)
-  - output: 'memory' | 'disk' (default: memory in uploadAndWebify)
+  - output: 'memory' | 'disk' (default: memory in upflyUpload)
 - outputDir: string path for disk saves (default: ./uploads)
 - limit: file size in bytes (default: 5MB)
 
