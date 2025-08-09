@@ -1,0 +1,11 @@
+tests/
+__tests__/
+coverage/
+.github/
+.vscode/
+.DS_Store
+*.log
+*.map
+examples/
+scripts/
+node_modules/

@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+dist/
+.nyc_output/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.vscode/
+.idea/
+*.tgz
+*.tar
+*.tar.gz
+package-lock.json
