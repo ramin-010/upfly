@@ -16,15 +16,15 @@
     "optimize"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "Rinkal Kumar <raminchoudhary737@gmail.com> (https://github.com/ramin-010)",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/ramin-010/upfly.git"
   },
   "bugs": {
-    "url": ""
+    "url": "https://github.com/ramin-010/upfly/issues"
   },
-  "homepage": "",
+  "homepage": "https://github.com/ramin-010/upfly",
   "type": "commonjs",
   "engines": { "node": ">=18" },
   "dependencies": {

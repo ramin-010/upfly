@@ -1,5 +1,9 @@
 # upfly
 
+[![npm version](https://img.shields.io/npm/v/upfly.svg)](https://www.npmjs.com/package/upfly)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/ramin-010/upfly/actions/workflows/ci.yml/badge.svg)](https://github.com/ramin-010/upfly/actions/workflows/ci.yml)
+
 Upload & on-the-fly image conversion for Express (Multer peer + Sharp).
 
 ## Install
