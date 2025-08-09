@@ -1,6 +1,6 @@
 {
   "name": "upfly",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Upfly: upload & on-the-fly image conversion for Express (Multer peer + Sharp)",
   "main": "src/index.js",
   "types": "index.d.ts",
@@ -26,7 +26,9 @@
   },
   "homepage": "https://github.com/ramin-010/upfly",
   "type": "commonjs",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "sharp": "^0.34.3"
   },
