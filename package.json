@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "types": "index.d.ts",
   "keywords": [
+    "upfly",
     "express",
     "middleware",
     "multer",

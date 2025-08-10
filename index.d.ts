@@ -1,5 +1,4 @@
 import { RequestHandler } from "express";
-import { PathLike } from "fs";
 
 export interface FieldConfig {
   format?: "webp" | "jpeg" | "png" | "avif";
@@ -9,7 +8,7 @@ export interface FieldConfig {
 
 export interface UploadAndWebifyOptions {
   fields: Record<string, FieldConfig>;
-  outputDir?: PathLike;
+  outputDir?: string;
   limit?: number;
 }
 

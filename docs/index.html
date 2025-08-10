@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upfly – npm package for Express image upload & conversion</title>
+  <meta name="description" content="Upfly npm package for Express: upload files and convert images with Multer and Sharp. WebP, JPEG, PNG, AVIF. Save to memory or disk.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://www.npmjs.com/package/upfly">
+  <meta property="og:title" content="Upfly – npm package for Express image upload & conversion">
+  <meta property="og:description" content="Upload files and convert images with Multer and Sharp. WebP, JPEG, PNG, AVIF. Save to memory or disk.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://ramin-010.github.io/upfly/">
+  <meta property="og:site_name" content="Upfly">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; margin: 0; color: #111; }
+    header { padding: 32px 16px; background: #f7f7f7; }
+    main { padding: 24px 16px; max-width: 900px; margin: 0 auto; }
+    code, pre { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+    pre { padding: 12px; overflow: auto; }
+    a { color: #0969da; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Upfly",
+    "applicationCategory": "DeveloperTool",
+    "operatingSystem": "Cross-platform",
+    "url": "https://github.com/ramin-010/upfly",
+    "downloadUrl": "https://www.npmjs.com/package/upfly",
+    "softwareVersion": "1.x",
+    "description": "Upfly is an npm package for Express to upload files and convert images with Sharp and Multer.",
+    "programmingLanguage": "JavaScript"
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <main>
+      <h1>Upfly – npm package for Express image upload & conversion</h1>
+      <p>Upfly is an Express middleware that uploads files and converts images with <strong>Multer</strong> and <strong>Sharp</strong>. Convert to <code>webp</code>, <code>jpeg</code>, <code>png</code>, or <code>avif</code>; keep buffers in memory or save to disk.</p>
+      <p>
+        <a href="https://www.npmjs.com/package/upfly">npm</a> ·
+        <a href="https://github.com/ramin-010/upfly">GitHub</a>
+      </p>
+
+      <h2>Install</h2>
+      <pre><code>npm i upfly multer
+# or
+yarn add upfly multer
+# or
+pnpm add upfly multer</code></pre>
+
+      <h2>Quick start</h2>
+      <pre><code>const express = require('express');
+const { upflyUpload } = require('upfly');
+
+const app = express();
+
+app.post(
+  '/upload',
+  upflyUpload({
+    fields: {
+      images: { output: 'memory', format: 'webp', quality: 80 },
+    },
+    outputDir: './uploads',
+  }),
+  (req, res) => {
+    res.json({ files: req.files, file: req.file });
+  }
+);</code></pre>
+
+      <h2>Path safety</h2>
+      <p>Paths like <code>/uploads</code> or <code>\uploads</code> resolve under your project root. Use explicit absolute paths to write outside the project (e.g., <code>C:\data\uploads</code> or <code>/var/data/uploads</code>).</p>
+
+      <p style="margin-top:32px; color:#555;">MIT License · &copy; Upfly contributors</p>
+    </main>
+  </header>
+</body>
+</html> 

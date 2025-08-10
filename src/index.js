@@ -82,7 +82,7 @@ const uploadAndWebify = (options = {}) => {
                   return {
                     ...file,
                     buffer,
-                    mimetype: `image/${format}`
+                    mimetype: `image/${format.toLowerCase()}`
                   };
                 }
               }catch(err){
@@ -136,37 +136,39 @@ const webify = (options = {}) =>{
             );          
           }
         }
-          for(const fieldname in req.files){
-            if(!req.files[fieldname] || Object.keys(req.files).length === 0) continue;
-            const config = fields[fieldname] || {};
-            const format = config.format || 'webp';
-            const quality = config.quality || 80;
-          
-              
-            req.files[fieldname] = await Promise.all(
-                req.files[fieldname].map(async(file, idx) => {
+          if (req.files && typeof req.files === 'object') {
+            for(const fieldname in req.files){
+              if(!req.files[fieldname] || Object.keys(req.files).length === 0) continue;
+              const config = fields[fieldname] || {};
+              const format = config.format || 'webp';
+              const quality = config.quality || 80;
+            
+                
+              req.files[fieldname] = await Promise.all(
+                  req.files[fieldname].map(async(file, idx) => {
 
-                    if(!file.mimetype || !file.mimetype.startsWith('image')){
-                        return file;
-                    }
-
-                    try{
-                      const buffer = await convertImage(file.buffer, format, quality);
-
-                      return {
-                        ...file,
-                        buffer : buffer,
-                        mimetype : `image/${format}`
+                      if(!file.mimetype || !file.mimetype.startsWith('image')){
+                          return file;
                       }
-                    }catch(err){
-                      console.error(
-                        `Sharp failed for ${file.originalname}: ${err.message || 'Unknown error'}`
-                      );
-                      return file;
-                    }
-                })
-            )
-        }
+
+                      try{
+                        const buffer = await convertImage(file.buffer, format, quality);
+
+                        return {
+                          ...file,
+                          buffer : buffer,
+                          mimetype : `image/${format.toLowerCase()}`
+                        }
+                      }catch(err){
+                        console.error(
+                          `Sharp failed for ${file.originalname}: ${err.message || 'Unknown error'}`
+                        );
+                        return file;
+                      }
+                  })
+              )
+            }
+          }
         next();
       }catch(err){
           next(err)
@@ -206,16 +208,46 @@ const ensureServerRootDir = (targetPath) =>{
     throw new TypeError('`outputDir` must be a non-empty string path.');
   }
 
-  // If absolute, respect it as-is (cross-platform). Otherwise resolve from CWD.
-  const fullPath = path.isAbsolute(targetPath)
-    ? targetPath
-    : path.resolve(process.cwd(), targetPath);
+  const input = targetPath.trim();
+  const isWindowsDriveAbs = /^[a-zA-Z]:[\\/]/.test(input);
+  const looksRootedBySlash = /^[\\/]/.test(input);
 
-  if(!fs.existsSync(fullPath)){
-    fs.mkdirSync(fullPath, {recursive : true});
+  let resolved;
+  if (isWindowsDriveAbs) {
+    resolved = input;
+    
+  } else if (looksRootedBySlash) {
+    // Treat '/uploads' or '\uploads' as project-root relative
+    const stripped = input.replace(/^[/\\]+/, '');
+    resolved = path.resolve(process.cwd(), stripped);
+
+    if (process.env.NODE_ENV !== 'production' && !ensureServerRootDir._warned) {
+      // Colors
+      const yellow = '\x1b[33m';
+      const cyan = '\x1b[36m';
+      const green = '\x1b[32m';
+      const magenta = '\x1b[35m';
+      const reset = '\x1b[0m';
+
+      console.warn(
+        `${yellow}upfly notice:${reset} outputDir ${cyan}'${input}'${reset} looked like a root path.\n` +
+        `→ Resolved under project root as: ${green}${resolved}${reset}\n` +
+        `If you really want to write outside the project, use an explicit absolute path:\n` +
+        `  Windows: ${cyan}C:\\\\data\\\\uploads${reset}  or  ${cyan}D:/data/uploads${reset}\n` +
+        `  Linux/Mac: ${cyan}/var/data/uploads${reset}`
+      );
+      ensureServerRootDir._warned = true;
+    }
+  } else {
+    // Regular relative path
+    resolved = path.resolve(process.cwd(), input);
   }
 
-  return fullPath;
+  if (!fs.existsSync(resolved)) {
+    fs.mkdirSync(resolved, { recursive: true });
+  }
+
+  return resolved;
 }
 
 const saveRawFileToDisk = async(file, outputDir) => {
