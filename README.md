@@ -1,15 +1,13 @@
-# upfly
+## Upfly — Elegant image upload & conversion for Express
 
 [![npm version](https://img.shields.io/npm/v/upfly.svg)](https://www.npmjs.com/package/upfly)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/ramin-010/upfly/actions/workflows/ci.yml/badge.svg)](https://github.com/ramin-010/upfly/actions/workflows/ci.yml)
 [![downloads](https://img.shields.io/npm/dm/upfly.svg)](https://www.npmjs.com/package/upfly)
 
-- Website: https://ramin-010.github.io/upfly/
+[Website](https://ramin-010.github.io/upfly/)
 
-- Upload & on‑the‑fly image conversion for Express. Uses Multer (peer) + Sharp.
-
-This is the official upfly npm package for Express image uploads and conversion.
+Optimize images as they upload — one middleware, zero extra steps. Configure what you care about and Upfly handles the rest: safe paths, smart filenames, graceful fallbacks, and fast defaults.
 
 - **Upload + convert**: Accept files and convert images to `webp/jpeg/png/avif`
 - **Memory or disk**: Return converted buffers or save to disk
@@ -39,7 +37,7 @@ const { upflyUpload, upflyConvert } = require('upfly');
 - `upflyUpload` (upload + convert): One middleware handles memory upload and image conversion. Save to memory or disk.
 - `upflyConvert` (convert only): Want full control over your Multer logic? Use your own `upload.single/array/fields` and add conversion.
 
-### Quick start
+## Quick start (30 seconds)
 
 ```js
 const express = require('express');
@@ -51,16 +49,105 @@ app.post(
   '/upload',
   upflyUpload({
     fields: {
-      images: { output: 'memory', format: 'webp', quality: 80 },
-      cover: { output: 'disk', format: 'jpeg', quality: 85 },
+      images: {},               // defaults apply: memory + webp + q80
+      cover: { output: 'disk' } // disk + webp + q80
     },
     outputDir: './uploads',
-    limit: 5 * 1024 * 1024, // 5 MB
   }),
-  (req, res) => {
-    res.json({ files: req.files, file: req.file });
-  }
+  (req, res) => res.json({ files: req.files })
 );
+```
+
+## How it works
+
+1. Upload with fast in‑process memory storage
+2. Convert on‑the‑fly to your chosen format and quality
+3. Return converted buffers (memory) or save to disk with safe paths and smart filenames
+
+Unknown fields are ignored up front and never buffered.
+
+## Why developers love Upfly
+
+- ⚡ Instant conversion during upload (no extra step)
+- 🛡️ Safe path handling and guardrails
+- 🎯 Memory or disk, per field
+- 📦 One middleware replaces boilerplate
+- 🔒 Graceful fallbacks on failures
+- 📝 Fully typed
+
+## Configure it your way
+
+### 1) Save to memory (ideal for cloud upload)
+```js
+upflyUpload({
+  fields: {
+    profilePic: { output: 'memory', format: 'webp', quality: 85 },
+    gallery:    { output: 'memory', format: 'avif', quality: 75 },
+  }
+})
+```
+
+### 2) Save to disk
+```js
+upflyUpload({
+  fields: {
+    images:    { output: 'disk', format: 'webp', quality: 80 },
+    documents: { output: 'disk' }, // non-images saved as-is
+  },
+  outputDir: './uploads'
+})
+```
+
+### 3) Mixed scenarios
+```js
+upflyUpload({
+  fields: {
+    thumbnails: { output: 'memory', format: 'webp', quality: 60 },
+    originals:  { output: 'disk', format: 'jpeg', quality: 95 },
+    avatars:    { output: 'disk', format: 'avif', quality: 70 },
+  },
+  outputDir: './public/uploads',
+})
+```
+
+### 4) Minimal config (you choose fields; defaults do the rest)
+```js
+upflyUpload({
+  fields: {
+    images: {},   // memory + webp + quality 80 (default)
+    avatars: {},  // memory + webp + quality 80 (default)
+  }
+})
+```
+
+What happens under the hood when you provide only field names (empty configs):
+- format: webp
+- quality: 80
+- output: memory
+- mimetype updated accordingly (e.g., image/webp)
+- unknown file fields are ignored (not buffered)
+```
+
+### 5) Complete API example
+```js
+const express = require('express');
+const { upflyUpload } = require('upfly');
+
+const app = express();
+
+app.post('/upload',
+  upflyUpload({
+    fields: {
+      images:    { output: 'memory', format: 'webp', quality: 80 },
+      documents: { output: 'disk' }, // saved as-is
+    },
+    outputDir: './uploads',
+    limit: 5 * 1024 * 1024,
+  }),
+  (req, res) => res.json({ message: 'Upload successful!', files: req.files })
+);
+
+app.listen(3000);
 ```
 
 ## API
@@ -74,6 +161,9 @@ Handles upload (via Multer memory storage) and image conversion, and optionally 
 - When `output: 'disk'`:
   - Files are saved to `outputDir`
   - Returned objects omit `buffer` and include `path` and `filename`
+ - Unlisted fields:
+   - File fields not present in `options.fields` are silently ignored (no Multer error)
+   - Efficient: rejected by Multer `fileFilter` and never buffered
 
 Example (saving to disk):
 ```js
@@ -88,7 +178,7 @@ app.post(
 ```
 
 ### `upflyConvert(options)`
-Conversion‑only middleware. Use when you supply your own Multer setup.
+Conversion‑only middleware. Use when you supply your own upload setup.
 
 ```js
 const multer = require('multer');
@@ -103,6 +193,15 @@ app.post(
 );
 ```
 
+## Edge cases handled for you
+
+- 🖼️ Non‑image files: pass through unchanged (memory) or saved as‑is (disk)
+- 🔧 Conversion failures: original file returned/saved; your app stays stable
+- 🛡️ Path security: paths like `/uploads` resolve safely under your project root
+- 📁 Auto directory creation: `outputDir` is created if missing
+- 🏷️ Smart filenames: `{fieldname?}-{slug(originalname)}-{xxxx}.{ext}`
+- ⚡ Dev insights: optional conversion logs in development
+
 ## Options
 - `fields: Record<string, FieldConfig>`
   - `format`: "webp" | "jpeg" | "png" | "avif" (default: `webp`)
@@ -111,7 +210,7 @@ app.post(
 - `outputDir: string` directory used when any field has `output: 'disk'` (default: `./uploads`)
 - `limit: number` file size in bytes for Multer memory storage (default: `5 * 1024 * 1024`)
 
-## Path resolution and safety
+## Path safety (no surprises)
 `outputDir` is normalized by the library to reduce surprises:
 
 - Paths like `'/uploads'` or `'\\uploads'` are treated as project‑root relative and resolved under `process.cwd()` (equivalent to `'./uploads'`).
@@ -138,6 +237,8 @@ Examples:
 - **Filenames when saving to disk**
   - `{fieldname?}-{slug(originalname)}-{xxxx}.{ext}`
   - Example: `images-summer-trip-2a3f.webp`
+ - **Unknown fields**
+   - Extra multipart file fields not configured in `fields` are skipped and not loaded into memory
 
 ## Types
 `index.d.ts` includes typings for options and middleware signatures.
