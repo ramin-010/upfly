@@ -5,7 +5,9 @@
 [![CI](https://github.com/ramin-010/upfly/actions/workflows/ci.yml/badge.svg)](https://github.com/ramin-010/upfly/actions/workflows/ci.yml)
 [![downloads](https://img.shields.io/npm/dm/upfly.svg)](https://www.npmjs.com/package/upfly)
 
-Upload & on‑the‑fly image conversion for Express. Uses Multer (peer) + Sharp.
+- Website: https://ramin-010.github.io/upfly/
+
+- Upload & on‑the‑fly image conversion for Express. Uses Multer (peer) + Sharp.
 
 This is the official upfly npm package for Express image uploads and conversion.
 
@@ -27,6 +29,15 @@ pnpm add upfly multer
 
 - Requires Node.js >= 18
 - `multer` is a peer dependency (>=1.4 <3). You choose the version that fits your app
+
+### Two APIs — use what fits your flow
+- Add it once and stop worrying about image optimization and edge cases — forever.
+
+```js
+const { upflyUpload, upflyConvert } = require('upfly');
+```
+- `upflyUpload` (upload + convert): One middleware handles memory upload and image conversion. Save to memory or disk.
+- `upflyConvert` (convert only): Want full control over your Multer logic? Use your own `upload.single/array/fields` and add conversion.
 
 ### Quick start
 

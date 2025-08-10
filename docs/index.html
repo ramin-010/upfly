@@ -3,25 +3,228 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Upfly – npm package for Express image upload & conversion</title>
-  <meta name="description" content="Upfly npm package for Express: upload files and convert images with Multer and Sharp. WebP, JPEG, PNG, AVIF. Save to memory or disk.">
+  <title>Upfly — Elegant image upload & conversion for Express</title>
+  <meta name="description" content="Elegant, production‑ready Express middleware for file upload and on‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Memory or disk.">
   <meta name="robots" content="index,follow">
-  <link rel="canonical" href="https://www.npmjs.com/package/upfly">
-  <meta property="og:title" content="Upfly – npm package for Express image upload & conversion">
-  <meta property="og:description" content="Upload files and convert images with Multer and Sharp. WebP, JPEG, PNG, AVIF. Save to memory or disk.">
+  <link rel="canonical" href="https://ramin-010.github.io/upfly/">
+  <meta property="og:title" content="Upfly — Elegant image upload & conversion for Express">
+  <meta property="og:description" content="On‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Memory or disk. Production‑ready.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://ramin-010.github.io/upfly/">
   <meta property="og:site_name" content="Upfly">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Upfly — Elegant image upload & conversion for Express">
+  <meta name="twitter:description" content="On‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Production‑ready.">
+  
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; margin: 0; color: #111; }
-    header { padding: 32px 16px; background: #f7f7f7; }
-    main { padding: 24px 16px; max-width: 900px; margin: 0 auto; }
-    code, pre { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
-    pre { padding: 12px; overflow: auto; }
-    a { color: #0969da; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    :root {
+      /* Classic, trustworthy palette */
+      --primary: #1e3a8a;         /* Indigo 800 */
+      --primary-hover: #1e40af;   /* Indigo 900 */
+      --secondary: #f8fafc;       /* Slate-50 */
+      --accent: #ca8a04;          /* Gold 600 */
+      --accent-hover: #a16207;    /* Gold 700 */
+      --text: #0f172a;            /* Slate 900 */
+      --text-muted: #334155;      /* Slate 700 */
+      --border: #e5e7eb;          /* Gray 200 */
+      --code-bg: #f6f7f9;
+      --gradient: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background: #ffffff;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    /* Top Navigation */
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255,255,255,0.85);
+      -webkit-backdrop-filter: saturate(140%) blur(10px);
+      backdrop-filter: saturate(140%) blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .site-nav .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.7rem;
+      color: var(--primary);
+      letter-spacing: 0.2px;
+    }
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      background: var(--gradient);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-link { color: var(--text); text-decoration: none; font-weight: 600; padding: 8px 10px; border-radius: 8px; }
+    .nav-link:hover { color: var(--primary); background: #f3f4f6; }
+    .nav-cta { text-decoration: none; padding: 8px 14px; border-radius: 999px; font-weight: 700; color: #fff; background: var(--accent); border: 1px solid transparent; }
+    .nav-cta:hover { background: var(--accent-hover); }
+
+    /* Hero Section */
+    .hero {
+      background: var(--gradient);
+      color: white;
+      padding: 80px 0;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse"><path d="M 12 0 L 0 0 0 12" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      opacity: 0.12;
+    }
+    
+    .hero-content { position: relative; z-index: 1; }
+    .hero h1 { font-size: 3.1rem; font-weight: 800; margin-bottom: 16px; line-height: 1.1; }
+    .hero-subtitle { font-size: 1.2rem; margin-bottom: 26px; opacity: 0.95; max-width: 700px; margin-left: auto; margin-right: auto; }
+    .cta-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn { padding: 12px 20px; border-radius: 10px; text-decoration: none; font-weight: 700; transition: all 0.2s; border: none; cursor: pointer; font-size: 1rem; }
+    .btn-primary { background: var(--accent); color: #ffffff; }
+    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-2px); }
+    .btn-secondary { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+    .btn-secondary:hover { background: var(--accent); color: #ffffff; }
+
+    /* Badges row */
+    .badges { margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .badges img { height: 22px; }
+
+    .mycode { color:#1e40af; font-weight: 800;}
+    .imports {color : #1e40af; font-weight: 800;}
+    /* Punch line + import */
+    .punch { margin-top: 16px; color: #fff; opacity: 0.95; }
+    .import-line { margin-top: 10px; display: inline-block; }
+    .import-line pre { display: inline-block; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 999px; padding: 8px 12px; font-size: 0.9rem; }
+
+    /* Hero code */
+    .hero-code { margin-top: 26px; max-width: 820px; margin-left: auto; margin-right: auto; text-align: left; }
+    .hero-code pre { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 10px; }
+
+    /* Highlights */
+    .highlights { padding: 64px 0; background: #fff; }
+    .highlights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+    .highlight-card { border: 1px solid var(--border); border-radius: 12px; padding: 20px; background: #fff; }
+    .highlight-title { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+    .highlight-emoji { font-size: 1.2rem; }
+    .highlight-text { color: var(--text-muted); }
+
+    /* Two ways to use */
+    .ways { padding: 56px 0; background: #fff; }
+    .ways h2 { text-align: center; font-size: 2rem; margin-bottom: 20px; }
+    .ways-sub { text-align: center; color: var(--text-muted); margin-bottom: 26px; }
+    .ways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; display: flex; justify-content: center; }
+    .way-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: #fff; width: 650px;}
+    .way-title { font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .way-accent { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12); }
+    .way-note { color: var(--text-muted); margin-bottom: 12px; }
+
+    /* How it works */
+    .how { padding: 70px 0; background: var(--secondary); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 28px; }
+    .step { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .step-num { display: inline-block; background: var(--accent); color: #fff; font-weight: 800; padding: 2px 10px; border-radius: 999px; margin-bottom: 10px; font-size: 0.85rem; }
+
+    /* Problem Section */
+    .problem { padding: 80px 0; background: var(--secondary); }
+    .problem h2 { font-size: 2.5rem; text-align: center; margin-bottom: 50px; color: var(--text); }
+    .problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 50px; }
+    .problem-item { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .problem-item .icon { font-size: 2rem; margin-bottom: 15px; display: block; }
+    .problem-item h3 { font-size: 1.25rem; margin-bottom: 15px; color: var(--text); }
+    .solution-highlight { text-align: center; padding: 40px; background: white; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+    .solution-highlight h3 { font-size: 2rem; color: var(--accent); margin-bottom: 15px; }
+
+    /* Features Section */
+    .features { padding: 80px 0; }
+    .features h2 { font-size: 2.5rem; text-align: center; margin-bottom: 50px; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 40px; }
+    .feature { text-align: center; }
+    .feature-icon { width: 80px; height: 80px; background: var(--gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 2rem; color: white; }
+    .feature h3 { font-size: 1.5rem; margin-bottom: 15px; }
+
+    /* Configuration Examples */
+    .config-examples { padding: 80px 0; background: var(--secondary); }
+    .config-examples h2 { font-size: 2.5rem; text-align: center; margin-bottom: 50px; }
+    .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px; }
+    .config-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .config-header { padding: 20px; background: var(--primary); color: white; }
+    .config-header h3 { font-size: 1.25rem; margin-bottom: 5px; }
+    .config-header p { opacity: 0.9; font-size: 0.9rem; }
+
+    /* Code Styles */
+    code, pre { font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; }
+    pre { background: var(--code-bg); padding: 20px; border-radius: 8px; overflow-x: auto; font-size: 0.95rem; line-height: 1.55; border: 1px solid var(--border); }
+    .config-card pre { margin: 0; border-radius: 0; border: none; }
+
+    /* API Example */
+    .api-example { padding: 80px 0; }
+    .api-example h2 { font-size: 2.5rem; text-align: center; margin-bottom: 30px; }
+    .api-subtitle { text-align: center; font-size: 1.1rem; color: var(--text-muted); margin-bottom: 50px; }
+    .api-card { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border: 1px solid var(--border); }
+
+    /* Install Section */
+    .install { padding: 80px 0; background: var(--secondary); text-align: center; }
+    .install h2 { font-size: 2.5rem; margin-bottom: 30px; }
+    .install-options { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 30px; }
+    .install-cmd { background: var(--text); color: white; padding: 15px 25px; border-radius: 8px; font-family: monospace; font-size: 1rem; }
+
+    /* Edge Cases */
+    .edge-cases { padding: 80px 0; }
+    .edge-cases h2 { font-size: 2.5rem; text-align: center; margin-bottom: 50px; }
+    .edge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }
+    .edge-item { padding: 30px; background: white; border-left: 4px solid var(--accent); border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .edge-item h3 { color: var(--accent); margin-bottom: 15px; }
+
+    /* Footer */
+    .footer { padding: 40px 0; background: var(--text); color: white; text-align: center; }
+    .footer-links { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; flex-wrap: wrap; }
+    .footer-links a { color: white; text-decoration: none; font-weight: 500; }
+    .footer-links a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.2rem; }
+      .hero-subtitle { font-size: 1.02rem; }
+      .container { padding: 0 15px; }
+      .config-grid { grid-template-columns: 1fr; }
+      .cta-buttons { flex-direction: column; align-items: center; }
+    }
+
+    /* Animations */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+    .hero-content, .problem-item, .feature, .config-card, .edge-item { animation: fadeInUp 0.6s ease-out; }
   </style>
+  
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -32,52 +235,370 @@
     "url": "https://github.com/ramin-010/upfly",
     "downloadUrl": "https://www.npmjs.com/package/upfly",
     "softwareVersion": "1.x",
-    "description": "Upfly is an npm package for Express to upload files and convert images with Sharp and Multer.",
-    "programmingLanguage": "JavaScript"
+    "description": "Elegant Express middleware for file upload and on‑the‑fly image conversion. WebP, AVIF, JPEG, PNG with Multer and Sharp.",
+    "programmingLanguage": "JavaScript",
+    "keywords": "express, middleware, image, webp, avif, upload, conversion, optimization, multer, sharp"
   }
   </script>
 </head>
 <body>
-  <header>
-    <main>
-      <h1>Upfly – npm package for Express image upload & conversion</h1>
-      <p>Upfly is an Express middleware that uploads files and converts images with <strong>Multer</strong> and <strong>Sharp</strong>. Convert to <code>webp</code>, <code>jpeg</code>, <code>png</code>, or <code>avif</code>; keep buffers in memory or save to disk.</p>
-      <p>
-        <a href="https://www.npmjs.com/package/upfly">npm</a> ·
-        <a href="https://github.com/ramin-010/upfly">GitHub</a>
-      </p>
+  <header class="site-nav">
+    <div class="container nav-inner">
+      <div class="brand">
+        <!-- <span class="brand-mark" aria-hidden="true"></span> -->
+        Upfly
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" href="#install">Install</a>
+        <a class="nav-link" href="#api">API</a>
+        <a class="nav-link" href="https://github.com/ramin-010/upfly">GitHub</a>
+        <a class="nav-cta" href="https://www.npmjs.com/package/upfly">npm</a>
+      </div>
+    </div>
+  </header>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <h1>Optimize images as they upload — one middleware, zero extra steps</h1>
+        <p class="hero-subtitle">On‑the‑fly WebP/AVIF/JPEG/PNG in Express. Trustworthy, solid, and lightweight — powered by Multer and Sharp.</p>
+        <div class="cta-buttons">
+          <a href="https://www.npmjs.com/package/upfly" class="btn btn-primary">Get Started</a>
+          <a href="https://github.com/ramin-010/upfly" class="btn btn-secondary">View on GitHub</a>
+        </div>
+        <div class="badges">
+          <img src="https://img.shields.io/npm/v/upfly.svg" alt="npm version">
+          <img src="https://img.shields.io/npm/dm/upfly.svg" alt="npm downloads">
+          <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+        </div>
+        <p class="punch">Add it once and stop worrying about image optimization and edge cases — forever.</p>
+        <span class="import-line"><pre><code>const { upflyUpload, upflyConvert } = require('upfly')</code></pre></span>
+        <div class="hero-code">
+           <pre><code> upflyUpload({
+   fields: { 
+     'images': { output: 'memory', format: 'webp', quality: 70 }, //webp version stored in req.files
+     'HeroImage': { output: 'disk', format: 'webp', quality: 80 },   //webp version saved to disk
+     'documents': { output: 'disk'}  //saved to disk as-is,
+   },
+   outputDir: './uploads',
+   limit: 5 * 1024 * 1024 // 5MB
+ })</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Highlights -->
+  <section class="highlights">
+    <div class="container">
+      <div class="highlights-grid">
+        <div class="highlight-card">
+          <div class="highlight-title"><span class="highlight-emoji">🛡️</span> Trustworthy</div>
+          <div class="highlight-text">Safe path handling, one‑time dev warnings, graceful fallbacks. Your app stays stable even when conversion fails.</div>
+        </div>
+        <div class="highlight-card">
+          <div class="highlight-title"><span class="highlight-emoji">🧱</span> Solid</div>
+          <div class="highlight-text">Battle‑tested patterns with Multer + Sharp. Clear APIs, typed options, and sensible defaults.</div>
+        </div>
+        <div class="highlight-card">
+          <div class="highlight-title"><span class="highlight-emoji">🪶</span> Lightweight</div>
+          <div class="highlight-text">One middleware replaces piles of boilerplate. Configure only what you need, nothing more.</div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-      <h2>Install</h2>
-      <pre><code>npm i upfly multer
-# or
-yarn add upfly multer
-# or
-pnpm add upfly multer</code></pre>
+  <!-- Two ways to use -->
+  <section class="ways">
+    <div class="container">
+      <h2>Two APIs — use what fits your flow</h2>
+      <p class="ways-sub">Upload + convert in one step, or keep full control over Multer and convert only</p>
+      <div class="ways-grid">
+        <div class="way-card">
+          <div class="way-title">upflyUpload <span style="color:var(--text-muted); font-weight:600;">(upload + convert)</span></div>
+          <div class="way-note">One middleware handles memory upload and image conversion. Save to memory or disk.</div>
+          <pre><code><span class="imports">
+{ upflyUpload } = require('upfly')</span>
 
-      <h2>Quick start</h2>
-      <pre><code>const express = require('express');
-const { upflyUpload } = require('upfly');
+app.post('/upload',<span class="mycode"> upflyUpload({
+  fields: { images: { output: 'memory', format: 'webp', quality: 80 } },
+  outputDir: './uploads'
+})</span>, (req, res) => res.json({ files: req.files }))</code>
+
+
+</pre>
+        </div>
+        <div class="way-card ">
+          <div class="way-title">upflyConvert <span style="color:var(--text-muted); font-weight:600;">(convert only)</span></div>
+          <div class="way-note">Want full control over your Multer logic? upflyConvert is for you.</div>
+          <pre><code>const multer = require('multer')
+<span class="imports">{ upflyConvert } = require('upfly')</span>
+const upload = multer({ storage: multer.memoryStorage() })
+
+app.post('/convert',
+  upload.fields([{ name: 'images', maxCount: 10 }]), <span class="mycode">//Your own multer Logic</span>
+  <span class="mycode">upflyConvert({ 
+    fields: { 
+      images: { format: 'webp', quality: 80 }    //default saves to the memory(req.file || req.files)
+    }}),</span>
+  (req, res) => res.json({ files: req.files }))</code>
+
+</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- How it works -->
+  <section class="how" id="how">
+    <div class="container">
+      <h2 style="text-align:center; font-size:2rem;">How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="highlight-title">Upload with memory storage</div>
+          <div class="highlight-text">Files are received via Multer’s memory storage for fast in‑process handling.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="highlight-title">Convert on‑the‑fly</div>
+          <div class="highlight-text">Images are converted to your chosen format and quality using Sharp.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="highlight-title">Return buffers or save to disk</div>
+          <div class="highlight-text">Keep converted buffers in memory or save directly to a safe output directory.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Problem Section -->
+  <section class="problem">
+    <div class="container">
+      <h2>The Problem Every Developer Faces</h2>
+      <div class="problem-grid">
+        <div class="problem-item">
+          <span class="icon">⏰</span>
+          <h3>Time-Consuming Workflow</h3>
+          <p>You have to manually convert images to WebP before uploading, or set up complex pipelines to handle optimization after upload.</p>
+        </div>
+        <div class="problem-item">
+          <span class="icon">🐌</span>
+          <h3>Slow Website Performance</h3>
+          <p>Large unoptimized images kill your site speed. Users bounce, SEO suffers, and conversion rates drop.</p>
+        </div>
+        <div class="problem-item">
+          <span class="icon">🔧</span>
+          <h3>Complex Setup</h3>
+          <p>Setting up Multer, Sharp, file handling, error management, and different output formats requires tons of boilerplate code.</p>
+        </div>
+      </div>
+      
+      <div class="solution-highlight">
+        <h3>Upfly solves all of this in one line</h3>
+        <p>Upload files and convert images instantly. Memory or disk storage. Multiple formats. Graceful fallbacks. Type-safe. Production-ready.</p>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Features -->
+  <section class="features">
+    <div class="container">
+      <h2>Why Developers Love Upfly</h2>
+      <div class="features-grid">
+        <div class="feature">
+          <div class="feature-icon">⚡</div>
+          <h3>Instant Conversion</h3>
+          <p>Convert images to WebP, AVIF, JPEG, or PNG on-the-fly during upload. No separate processing step needed.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🛡️</div>
+          <h3>Bulletproof Error Handling</h3>
+          <p>If conversion fails, files pass through unchanged. Your app never breaks, users never get stuck.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🎯</div>
+          <h3>Memory or Disk</h3>
+          <p>Store converted buffers in memory for immediate use, or save directly to disk. Your choice, seamlessly handled.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📦</div>
+          <h3>One Middleware</h3>
+          <p>Replace dozens of lines of Multer + Sharp boilerplate with one clean middleware configuration.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🔒</div>
+          <h3>Safe Path Handling</h3>
+          <p>Automatically resolves paths safely under your project root. Warns about potential security issues in development.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📝</div>
+          <h3>Fully Typed</h3>
+          <p>Ships with TypeScript definitions. Get autocomplete and type safety out of the box.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Install -->
+  <section class="install" id="install">
+    <div class="container">
+      <h2>Get Started in 30 Seconds</h2>
+      <p>Install upfly and multer (peer dependency)</p>
+      <div class="install-options">
+        <div class="install-cmd">npm i upfly multer</div>
+        <div class="install-cmd">yarn add upfly multer</div>
+        <div class="install-cmd">pnpm add upfly multer</div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Configuration Examples -->
+  <section class="config-examples">
+    <div class="container">
+      <h2>Configure It Your Way</h2>
+      <p style="text-align: center; margin-bottom: 40px; color: var(--text-muted);">Here's what YOU write - simple, clean, powerful</p>
+      
+      <div class="config-grid">
+        <div class="config-card">
+          <div class="config-header">
+            <h3>💾 Save to Memory</h3>
+            <p>Perfect for cloud uploads or immediate processing</p>
+          </div>
+          <pre><code>upflyUpload({
+  fields: {
+    profilePic: { output: 'memory', format: 'webp', quality: 85 },
+    gallery:    { output: 'memory', format: 'avif', quality: 75 }
+  }
+})</code></pre>
+        </div>
+
+        <div class="config-card">
+          <div class="config-header">
+            <h3>💿 Save to Disk</h3>
+            <p>Great for static file serving and CDN uploads</p>
+          </div>
+          <pre><code>upflyUpload({
+  fields: {
+    images:    { output: 'disk', format: 'webp', quality: 80 },
+    documents: { output: 'disk' } // Non-images pass through
+  },
+  outputDir: './uploads'
+})</code></pre>
+        </div>
+
+        <div class="config-card">
+          <div class="config-header">
+            <h3>🎨 Mixed Scenarios</h3>
+            <p>Different fields, different formats, different outputs</p>
+          </div>
+          <pre><code>upflyUpload({
+  fields: {
+    thumbnails: { output: 'memory', format: 'webp', quality: 60 },
+    originals:  { output: 'disk', format: 'jpeg', quality: 95 },
+    avatars:    { output: 'disk', format: 'avif', quality: 70 }
+  },
+  outputDir: './public/uploads',
+  limit: 10 * 1024 * 1024 // 10MB
+})</code></pre>
+        </div>
+
+        <div class="config-card">
+          <div class="config-header">
+            <h3>⚙️ Conversion Only</h3>
+            <p>Use with your own Multer setup</p>
+          </div>
+          <pre><code>// Your existing Multer
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Just add conversion
+upflyConvert({ fields: { images: { format: 'webp', quality: 80 } } })</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Full API Example -->
+  <section class="api-example" id="api">
+    <div class="container">
+      <h2>Complete API Example</h2>
+      <p class="api-subtitle">Here's how it looks in a real Express route</p>
+      
+      <div class="api-card">
+        <pre><code>const express = require('express');
+<span class="imports">const { upflyUpload } = require('upfly');</span>
+
 
 const app = express();
 
-app.post(
-  '/upload',
-  upflyUpload({
+// Single route handles upload + conversion
+app.post('/upload',
+  <span class="mycode">upflyUpload({
     fields: {
-      images: { output: 'memory', format: 'webp', quality: 80 },
+      images:    { output: 'memory', format: 'webp', quality: 80 },
+      documents: { output: 'disk' } // PDFs, etc. saved as-is
     },
     outputDir: './uploads',
-  }),
+    limit: 5 * 1024 * 1024 // 5MB limit
+  })</span>,
   (req, res) => {
-    res.json({ files: req.files, file: req.file });
+    // Images are now optimized WebP in req.files.images
+    // Documents are saved to disk in req.files.documents
+    
+    res.json({ message: 'Upload successful!', files: req.files });
   }
-);</code></pre>
+);
 
-      <h2>Path safety</h2>
-      <p>Paths like <code>/uploads</code> or <code>\uploads</code> resolve under your project root. Use explicit absolute paths to write outside the project (e.g., <code>C:\data\uploads</code> or <code>/var/data/uploads</code>).</p>
-
-      <p style="margin-top:32px; color:#555;">MIT License · &copy; Upfly contributors</p>
-    </main>
-  </header>
+app.listen(3000);</code></pre>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Edge Cases -->
+  <section class="edge-cases">
+    <div class="container">
+      <h2>Handles Every Edge Case</h2>
+      <div class="edge-grid">
+        <div class="edge-item">
+          <h3>🖼️ Non-Image Files</h3>
+          <p>PDFs, documents, videos pass through unchanged. Only images get converted. No errors, no confusion.</p>
+        </div>
+        <div class="edge-item">
+          <h3>🔧 Conversion Failures</h3>
+          <p>If Sharp fails (corrupted image, unsupported format), original file is returned. Your app keeps running.</p>
+        </div>
+        <div class="edge-item">
+          <h3>🛡️ Path Security</h3>
+          <p>Paths like '/uploads' resolve safely under your project root. Warns about potential issues in development.</p>
+        </div>
+        <div class="edge-item">
+          <h3>📁 Auto Directory Creation</h3>
+          <p>Output directories are created automatically. No need to manually create folder structures.</p>
+        </div>
+        <div class="edge-item">
+          <h3>🏷️ Smart Filenames</h3>
+          <p>Generated filenames include field names, slugified originals, and unique suffixes. No collisions, ever.</p>
+        </div>
+        <div class="edge-item">
+          <h3>⚡ Performance Logging</h3>
+          <p>Development mode shows before/after file sizes and conversion details. Know exactly what's happening.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://www.npmjs.com/package/upfly">npm Package</a>
+        <a href="https://github.com/ramin-010/upfly">GitHub Repository</a>
+        <a href="https://github.com/ramin-010/upfly/issues">Report Issues</a>
+        <a href="https://github.com/ramin-010/upfly/blob/main/LICENSE">MIT License</a>
+      </div>
+      <p>&copy; 2025 Upfly contributors • Built with ❤️ for the developer community</p>
+    </div>
+  </footer>
 </body>
-</html> 
+</html>
