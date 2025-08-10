@@ -43,18 +43,32 @@ const uploadAndWebify = (options = {}) => {
     throw new TypeError("`limits.fileSize` must be a positive number (bytes).");
   }
 
-  const multerfields = Object.keys(fields).map((fieldname) => ({
-    name: fieldname,
-    maxCount: 10
-  }));
+  const allowedFieldNames = new Set(Object.keys(fields));
 
-  const upload = multer({ storage: multer.memoryStorage(), limits : {fileSize : limit} }).fields(multerfields);
+  // Use fileFilter to avoid buffering unknown fields at all (most memory/CPU efficient)
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: limit },
+    fileFilter: (req, file, cb) => {
+      if (!allowedFieldNames.has(file.fieldname)) return cb(null, false);
+      cb(null, true);
+    }
+  }).any();
 
   return async (req, res, next) => {
     upload(req, res, async (uploadErr) => {
       if (uploadErr) return next(uploadErr);
       if (!req.files) return next();
-     
+
+      // convert array to grouped object
+      if (Array.isArray(req.files)) {
+        const grouped = {};
+        for (const file of req.files) {
+          if (!grouped[file.fieldname]) grouped[file.fieldname] = [];
+          grouped[file.fieldname].push(file);
+        }
+        req.files = grouped;
+      }
 
       try {
         for (const fieldname in req.files) {

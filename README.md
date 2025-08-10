@@ -1,4 +1,4 @@
-## Upfly — Elegant image upload & conversion for Express
+"Upfly — An All in one middleware that lets you Upload, optimize, and serve images with zero fuss"
 
 [![npm version](https://img.shields.io/npm/v/upfly.svg)](https://www.npmjs.com/package/upfly)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

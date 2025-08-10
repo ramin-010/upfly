@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Upfly — Elegant image upload & conversion for Express</title>
-  <meta name="description" content="Elegant, production‑ready Express middleware for file upload and on‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Memory or disk.">
+  <meta name="description" content="Elegant, production‑ready Express middleware for file upload and on‑the‑fly image conversion. WebP, AVIF, JPEG, PNG. Memory or disk.">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="https://ramin-010.github.io/upfly/">
   <meta property="og:title" content="Upfly — Elegant image upload & conversion for Express">
-  <meta property="og:description" content="On‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Memory or disk. Production‑ready.">
+  <meta property="og:description" content="On‑the‑fly image conversion. WebP, AVIF, JPEG, PNG. Memory or disk. Production‑ready.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://ramin-010.github.io/upfly/">
   <meta property="og:site_name" content="Upfly">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Upfly — Elegant image upload & conversion for Express">
-  <meta name="twitter:description" content="On‑the‑fly image conversion with Multer and Sharp. WebP, AVIF, JPEG, PNG. Production‑ready.">
+  <meta name="twitter:description" content="On‑the‑fly image conversion. WebP, AVIF, JPEG, PNG. Production‑ready.">
   
   <style>
     :root {
@@ -38,6 +38,7 @@
       line-height: 1.6;
       color: var(--text);
       background: #ffffff;
+      overflow-x: hidden;
     }
     
     .container {
@@ -78,7 +79,7 @@
       background: var(--gradient);
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
-    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-links { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .nav-link { color: var(--text); text-decoration: none; font-weight: 600; padding: 8px 10px; border-radius: 8px; }
     .nav-link:hover { color: var(--primary); background: #f3f4f6; }
     .nav-cta { text-decoration: none; padding: 8px 14px; border-radius: 999px; font-weight: 700; color: #fff; background: var(--accent); border: 1px solid transparent; }
@@ -121,10 +122,11 @@
 
     .mycode { color:#1e40af; font-weight: 800;}
     .imports {color : #1e40af; font-weight: 800;}
+    .comments {color :#84878b}
     /* Punch line + import */
     .punch { margin-top: 16px; color: #fff; opacity: 0.95; }
     .import-line { margin-top: 10px; display: inline-block; }
-    .import-line pre { display: inline-block; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 999px; padding: 8px 12px; font-size: 0.9rem; }
+    .import-line pre { display: inline-block; max-width: 100%; overflow-x: auto; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 999px; padding: 8px 12px; font-size: 0.9rem; }
 
     /* Hero code */
     .hero-code { margin-top: 26px; max-width: 820px; margin-left: auto; margin-right: auto; text-align: left; }
@@ -142,10 +144,13 @@
     .ways { padding: 56px 0; background: #fff; }
     .ways h2 { text-align: center; font-size: 2rem; margin-bottom: 20px; }
     .ways-sub { text-align: center; color: var(--text-muted); margin-bottom: 26px; }
-    .ways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; display: flex; justify-content: center; }
-    .way-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: #fff; width: 650px;}
+    .ways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+    .way-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: #fff; width: 100%; max-width: 620px; margin: 0 auto; }
     .way-title { font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-    .way-accent { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12); }
+    .way-accent { border-color: #195a88;box-shadow:
+  0 4px 6px rgba(14, 92, 149, 0.5),
+  0 10px 20px rgba(14, 92, 149, 0.65);
+ }
     .way-note { color: var(--text-muted); margin-bottom: 12px; }
 
     /* How it works */
@@ -183,7 +188,7 @@
 
     /* Code Styles */
     code, pre { font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; }
-    pre { background: var(--code-bg); padding: 20px; border-radius: 8px; overflow-x: auto; font-size: 0.95rem; line-height: 1.55; border: 1px solid var(--border); }
+    pre { background: var(--code-bg); padding: 20px; border-radius: 8px; overflow-x: auto; font-size: 0.95rem; line-height: 1.55; border: 1px solid var(--border); max-width: 100%; }
     .config-card pre { margin: 0; border-radius: 0; border: none; }
 
     /* API Example */
@@ -213,11 +218,31 @@
 
     /* Responsive */
     @media (max-width: 768px) {
-      .hero h1 { font-size: 2.2rem; }
-      .hero-subtitle { font-size: 1.02rem; }
-      .container { padding: 0 15px; }
+      .hero { padding: 56px 0; }
+      .hero h1 { font-size: 1.8rem; }
+      .hero-subtitle { font-size: 0.95rem; }
+      .container { padding: 0 14px; }
       .config-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; gap: 20px; }
+      .highlights-grid { grid-template-columns: 1fr; }
+      .ways-grid { grid-template-columns: 1fr; }
+      .ways { padding: 40px 0; }
+      .way-card { width: 100%; max-width: 350px; margin: 0 auto; }
       .cta-buttons { flex-direction: column; align-items: center; }
+      .feature-icon { margin-bottom: 12px; }
+      .api-card { padding: 24px; }
+      .way-title { font-size: 1.05rem; }
+      .way-note { font-size: 0.95rem; }
+      .api-subtitle { font-size: 0.98rem; }
+      .install h2, .features h2, .config-examples h2, .api-example h2, .edge-cases h2, .ways h2 { font-size: 1.8rem; }
+      .problem h2 { font-size: 2rem; }
+      .ways-header { text-align: center; max-width: 620px; margin: 0 auto; }
+    }
+
+    @media (max-width: 400px) {
+      .hero h1 { font-size: 1.6rem; }
+      .hero-subtitle { font-size: 0.9rem; }
+      .btn { padding: 10px 14px; font-size: 0.95rem; }
     }
 
     /* Animations */
@@ -261,7 +286,7 @@
     <div class="container">
       <div class="hero-content">
         <h1>Optimize images as they upload — one middleware, zero extra steps</h1>
-        <p class="hero-subtitle">On‑the‑fly WebP/AVIF/JPEG/PNG in Express. Trustworthy, solid, and lightweight — powered by Multer and Sharp.</p>
+        <p class="hero-subtitle">On‑the‑fly WebP/AVIF/JPEG/PNG in Express. Trustworthy, solid, and lightweight.</p>
         <div class="cta-buttons">
           <a href="https://www.npmjs.com/package/upfly" class="btn btn-primary">Get Started</a>
           <a href="https://github.com/ramin-010/upfly" class="btn btn-secondary">View on GitHub</a>
@@ -276,9 +301,9 @@
         <div class="hero-code">
            <pre><code> upflyUpload({
    fields: { 
-     'images': { output: 'memory', format: 'webp', quality: 70 }, //webp version stored in req.files
-     'HeroImage': { output: 'disk', format: 'webp', quality: 80 },   //webp version saved to disk
-     'documents': { output: 'disk'}  //saved to disk as-is,
+     'images': { output: 'memory', format: 'webp', quality: 70 }, <span class="comments"> //webp version stored in req.files</span>
+     'HeroImage': { output: 'disk', format: 'webp', quality: 80 }, <span class="comments">//webp version saved to disk</span>
+     'documents': { output: 'disk'}  <span class="comments">  //saved to disk as-is,</span>
    },
    outputDir: './uploads',
    limit: 5 * 1024 * 1024 // 5MB
@@ -298,7 +323,7 @@
         </div>
         <div class="highlight-card">
           <div class="highlight-title"><span class="highlight-emoji">🧱</span> Solid</div>
-          <div class="highlight-text">Battle‑tested patterns with Multer + Sharp. Clear APIs, typed options, and sensible defaults.</div>
+          <div class="highlight-text">Battle‑tested patterns. Clear APIs, typed options, and sensible defaults.</div>
         </div>
         <div class="highlight-card">
           <div class="highlight-title"><span class="highlight-emoji">🪶</span> Lightweight</div>
@@ -308,20 +333,68 @@
     </div>
   </section>
 
+  <!-- Minimal Config Defaults -->
+  <section class="config-examples">
+    <div class="container">
+      <h2>Minimal Config — Just Choose Fields</h2>
+      <p style="text-align: center; margin-bottom: 40px; color: var(--text-muted);">Only pass field names and (optionally) an output directory. Everything else is handled for you.</p>
+      <div class="config-grid">
+        <div class="config-card">
+          <div class="config-header">
+            <h3>✨ Just fields</h3>
+            <p>Defaults: format webp · quality 80 · output memory</p>
+          </div>
+          <pre><code>upflyUpload({
+  fields: {
+    images: {},
+    avatars: {}
+  }
+})</code></pre>
+        </div>
+        <div class="config-card">
+          <div class="config-header">
+            <h3>📂 Fields + Directory</h3>
+            <p>When any field outputs to disk, files are saved safely under your project</p>
+          </div>
+          <pre><code>upflyUpload({
+  fields: { images: { output: 'disk' } },
+  outputDir: '/uploads' <span class="comments">// resolves to &lt;projectRoot&gt;/uploads</span>
+})</code></pre>
+        </div>
+      </div>
+      <div style="margin-top:16px; color: var(--text-muted); font-size: 0.98rem;">
+        <p>Under the hood when you only provide field names:</p>
+        <ul style="margin-left: 18px;">
+          <li>format → webp</li>
+          <li>quality → 80</li>
+          <li>output → memory</li>
+          <li>mimetype is updated (e.g., image/webp)</li>
+          <li>unknown file fields are ignored up front (not buffered)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- Two ways to use -->
   <section class="ways">
     <div class="container">
-      <h2>Two APIs — use what fits your flow</h2>
-      <p class="ways-sub">Upload + convert in one step, or keep full control over Multer and convert only</p>
+      <div class="ways-header">
+        <h2>Two APIs — use what fits your flow</h2>
+        <p class="ways-sub">Upload + convert in one step, or keep full control over Multer and convert only</p>
+      </div>
       <div class="ways-grid">
-        <div class="way-card">
+        <div class="way-card way-accent">
           <div class="way-title">upflyUpload <span style="color:var(--text-muted); font-weight:600;">(upload + convert)</span></div>
           <div class="way-note">One middleware handles memory upload and image conversion. Save to memory or disk.</div>
           <pre><code><span class="imports">
 { upflyUpload } = require('upfly')</span>
 
 app.post('/upload',<span class="mycode"> upflyUpload({
-  fields: { images: { output: 'memory', format: 'webp', quality: 80 } },
+  fields: { 
+    'images': { output: 'memory', format: 'webp', quality: 70 }, <span class="comments"> //webp version stored in req.files</span>
+    'HeroImage': { output: 'disk', format: 'webp', quality: 80 }, <span class="comments">//webp version saved to disk</span>
+    'documents': { output: 'disk'}  <span class="comments">  //saved to disk as-is,</span>
+  },
   outputDir: './uploads'
 })</span>, (req, res) => res.json({ files: req.files }))</code>
 
@@ -329,14 +402,14 @@ app.post('/upload',<span class="mycode"> upflyUpload({
 </pre>
         </div>
         <div class="way-card ">
-          <div class="way-title">upflyConvert <span style="color:var(--text-muted); font-weight:600;">(convert only)</span></div>
-          <div class="way-note">Want full control over your Multer logic? upflyConvert is for you.</div>
+      <div class="way-title">upflyConvert <span style="color:var(--text-muted); font-weight:600;">(convert only)</span></div>
+      <div class="way-note">Already manage upload yourself? Add conversion only.</div>
           <pre><code>const multer = require('multer')
 <span class="imports">{ upflyConvert } = require('upfly')</span>
 const upload = multer({ storage: multer.memoryStorage() })
 
 app.post('/convert',
-  upload.fields([{ name: 'images', maxCount: 10 }]), <span class="mycode">//Your own multer Logic</span>
+  upload.fields([{ name: 'images', maxCount: 10 }]), <span class="mycode">// your upload logic</span>
   <span class="mycode">upflyConvert({ 
     fields: { 
       images: { format: 'webp', quality: 80 }    //default saves to the memory(req.file || req.files)
@@ -505,12 +578,12 @@ app.post('/convert',
         </div>
 
         <div class="config-card">
-          <div class="config-header">
-            <h3>⚙️ Conversion Only</h3>
-            <p>Use with your own Multer setup</p>
-          </div>
-          <pre><code>// Your existing Multer
-const upload = multer({ storage: multer.memoryStorage() });
+      <div class="config-header">
+        <h3>⚙️ Conversion Only</h3>
+        <p>Use with your own upload setup</p>
+      </div>
+          <pre><code>// Your existing upload
+ const upload = multer({ storage: multer.memoryStorage() });
 
 // Just add conversion
 upflyConvert({ fields: { images: { format: 'webp', quality: 80 } } })</code></pre>
