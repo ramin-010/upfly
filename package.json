@@ -1,6 +1,6 @@
 {
   "name": "upfly",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Upfly: upload & on-the-fly image conversion for Express (Multer peer + Sharp)",
   "main": "src/index.js",
   "types": "index.d.ts",
