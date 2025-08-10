@@ -88,7 +88,7 @@ const uploadAndWebify = (options = {}) => {
                   : file;
               }
               try{
-                const buffer = await convertImage(file.buffer, format, quality);
+                const buffer = await convertImage(file.buffer, format, quality, file.originalname);
                 if (output === 'disk') {
                   const normalizedOutputDir = ensureServerRootDir(outputDir);
                   return saveConvertedToDisk(buffer, file, normalizedOutputDir, format);
@@ -138,7 +138,7 @@ const webify = (options = {}) =>{
           const format = config.format || 'webp'
 
           try{
-            const buffer = await convertImage(req.file.buffer, format, quality);
+            const buffer = await convertImage(req.file.buffer, format, quality, req.file.originalname);
             req.file = {
               ...req.file,
               buffer : buffer,
@@ -166,7 +166,7 @@ const webify = (options = {}) =>{
                       }
 
                       try{
-                        const buffer = await convertImage(file.buffer, format, quality);
+                        const buffer = await convertImage(file.buffer, format, quality, file.originalname);
 
                         return {
                           ...file,
@@ -191,7 +191,7 @@ const webify = (options = {}) =>{
 }
 
 // safer conversion for production
-const convertImage = async (inputBuffer, format, quality) => {
+const convertImage = async (inputBuffer, format, quality, filename) => {
   try {
     const buffer = await sharp(inputBuffer)
       .toFormat(format, { quality })
@@ -204,7 +204,7 @@ const convertImage = async (inputBuffer, format, quality) => {
 
     if (process.env.NODE_ENV && process.env.NODE_ENV.toLowerCase() === 'development') {
       console.log(
-        `Converted image to \x1b[32m${format}\x1b[0m with quality \x1b[32m${quality}\x1b[0m: ` +
+        `Converted ${filename} to \x1b[32m${format}\x1b[0m with quality \x1b[32m${quality}\x1b[0m: ` +
         `original size \x1b[32m${(inputBuffer.length / (1024 * 1024)).toFixed(2)} MB\x1b[0m, ` +
         `converted size \x1b[32m${(buffer.length / (1024 * 1024)).toFixed(2)} MB\x1b[0m`
       );
