@@ -3,6 +3,83 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const fsPromise = fs.promises;
+const os = require('os');
+
+// Files larger than this threshold will be spilled to a temporary file on disk
+// instead of being kept in memory. This reduces peak RAM usage without changing
+// the external API. Final destination still respects output: 'memory' | 'disk'.
+const LARGE_FILE_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB
+
+function createAdaptiveStorage(thresholdBytes = LARGE_FILE_THRESHOLD_BYTES) {
+  const tmpBaseDir = path.join(os.tmpdir(), 'upfly');
+  if (!fs.existsSync(tmpBaseDir)) {
+    fs.mkdirSync(tmpBaseDir, { recursive: true });
+  }
+
+  return {
+    _handleFile(req, file, cb) {
+      const chunks = [];
+      let size = 0;
+      let spilled = false;
+      let tmpPath = null;
+      let writeStream = null;
+
+      function spillToDisk() {
+        if (spilled) return;
+        spilled = true;
+        const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        tmpPath = path.join(tmpBaseDir, `tmp-${unique}`);
+        writeStream = fs.createWriteStream(tmpPath);
+        // flush existing buffered chunks to disk
+        for (const ch of chunks) {
+          writeStream.write(ch);
+        }
+      }
+
+      file.stream.on('data', (chunk) => {
+        size += chunk.length;
+        if (!spilled && size > thresholdBytes) spillToDisk();
+        if (spilled) {
+          writeStream.write(chunk);
+        } else {
+          chunks.push(chunk);
+        }
+      });
+
+      file.stream.on('error', (err) => {
+        if (writeStream) {
+          writeStream.destroy();
+          fsPromise.unlink(tmpPath).catch(() => {});
+        }
+        cb(err);
+      });
+
+      file.stream.on('end', () => {
+        if (spilled) {
+          writeStream.end(() => {
+            cb(null, {
+              destination: tmpBaseDir,
+              path: tmpPath,
+              size,
+              filename: path.basename(tmpPath),
+              _upflyTmp: true,
+            });
+          });
+        } else {
+          const buffer = Buffer.concat(chunks, size);
+          cb(null, { buffer, size });
+        }
+      });
+    },
+    _removeFile(req, file, cb) {
+      if (file && file._upflyTmp && file.path) {
+        fsPromise.unlink(file.path).finally(() => cb(null));
+      } else {
+        cb(null);
+      }
+    },
+  };
+}
 
 const uploadAndWebify = (options = {}) => {
   const {
@@ -47,7 +124,7 @@ const uploadAndWebify = (options = {}) => {
 
   // Use fileFilter to avoid buffering unknown fields at all (most memory/CPU efficient)
   const upload = multer({
-    storage: multer.memoryStorage(),
+    storage: createAdaptiveStorage(LARGE_FILE_THRESHOLD_BYTES),
     limits: { fileSize: limit },
     fileFilter: (req, file, cb) => {
       if (!allowedFieldNames.has(file.fieldname)) return cb(null, false);
@@ -83,21 +160,41 @@ const uploadAndWebify = (options = {}) => {
               
               if (!file.mimetype || !file.mimetype.startsWith("image")) {
                 const normalizedOutputDir = ensureServerRootDir(outputDir);
-                return output === 'disk'
-                  ? saveRawFileToDisk(file, normalizedOutputDir)
-                  : file;
+                if (output === 'disk') {
+                  const res = await saveRawFileToDisk(file, normalizedOutputDir);
+                  if (file._upflyTmp && file.path) await fsPromise.unlink(file.path).catch(() => {});
+                  return res;
+                } else {
+                  // memory: ensure buffer present; if came from temp path, read it once
+                  if (!file.buffer && file.path) {
+                    const buf = await fsPromise.readFile(file.path);
+                    if (file._upflyTmp) await fsPromise.unlink(file.path).catch(() => {});
+                    return { ...file, buffer: buf };
+                  }
+                  return file;
+                }
               }
               try{
-                const buffer = await convertImage(file.buffer, format, quality, file.originalname);
                 if (output === 'disk') {
                   const normalizedOutputDir = ensureServerRootDir(outputDir);
-                  return saveConvertedToDisk(buffer, file, normalizedOutputDir, format);
+                  if (file.path) {
+                    const saved = await saveConvertedPathToDisk(file.path, file, normalizedOutputDir, format, quality);
+                    if (file._upflyTmp) await fsPromise.unlink(file.path).catch(() => {});
+                    return saved;
+                  } else {
+                    const buffer = await convertImage(file.buffer, format, quality, file.originalname);
+                    return saveConvertedToDisk(buffer, file, normalizedOutputDir, format);
+                  }
                 } else {
-                  return {
-                    ...file,
-                    buffer,
-                    mimetype: `image/${format.toLowerCase()}`
-                  };
+                  // memory output
+                  let buffer;
+                  if (file.path) {
+                    buffer = await sharp(file.path).toFormat(format, { quality }).toBuffer();
+                    if (file._upflyTmp) await fsPromise.unlink(file.path).catch(() => {});
+                  } else {
+                    buffer = await convertImage(file.buffer, format, quality, file.originalname);
+                  }
+                  return { ...file, buffer, mimetype: `image/${format.toLowerCase()}` };
                 }
               }catch(err){
                 if (output === 'disk') {
@@ -105,11 +202,18 @@ const uploadAndWebify = (options = {}) => {
                     `File saved with original format. Sharp failed for ${file.originalname}: ${err.message || 'Unknown error'}`
                   );                  
                   const normalizedOutputDir = ensureServerRootDir(outputDir);
-                  return saveRawFileToDisk(file, normalizedOutputDir);
+                  const res = await saveRawFileToDisk(file, normalizedOutputDir);
+                  if (file._upflyTmp && file.path) await fsPromise.unlink(file.path).catch(() => {});
+                  return res;
                 } else {
                   console.error(
                     `Sharp failed for ${file.originalname}: ${err.message || 'Unknown error'}`
                   );
+                  if (!file.buffer && file.path) {
+                    const buf = await fsPromise.readFile(file.path).catch(() => null);
+                    if (file._upflyTmp) await fsPromise.unlink(file.path).catch(() => {});
+                    if (buf) return { ...file, buffer: buf };
+                  }
                   return file;
                 }
               }
@@ -264,20 +368,26 @@ const ensureServerRootDir = (targetPath) =>{
   return resolved;
 }
 
-const saveRawFileToDisk = async(file, outputDir) => {
-  let {ext} = path.parse(file.originalname);
+const saveRawFileToDisk = async (file, outputDir) => {
+  let { ext } = path.parse(file.originalname);
   ext = ext ? ext.slice(1).toLowerCase() : 'bin';
   const format = ext || 'bin';
 
-  const filename = generateFileName(file, format)  //#generating a safe name
+  const filename = generateFileName(file, format); // generating a safe name
   const filePath = path.join(outputDir, filename);
 
-  await fsPromise.writeFile(filePath, file.buffer)
+  if (file.path) {
+    // Spilled to temp: copy from temp to destination without loading in memory
+    await fsPromise.copyFile(file.path, filePath);
+  } else {
+    await fsPromise.writeFile(filePath, file.buffer);
+  }
+
   return {
     ...file,
     buffer: undefined,
     path: filePath,
-    filename: filename
+    filename,
   };
 };
 
@@ -293,6 +403,22 @@ const saveConvertedToDisk = async(buffer, file, outputDir, format) => {
     filename: fileName,
     path: filePath,
     mimetype: `image/${format.toLowerCase()}`
+  };
+};
+
+// Convert from an existing on-disk path and write directly to destination file
+const saveConvertedPathToDisk = async (inputPath, file, outputDir, format, quality) => {
+  const fileName = generateFileName(file, format.toLowerCase());
+  const filePath = path.join(outputDir, fileName);
+
+  await sharp(inputPath).toFormat(format, { quality }).toFile(filePath);
+
+  return {
+    ...file,
+    buffer: undefined,
+    filename: fileName,
+    path: filePath,
+    mimetype: `image/${format.toLowerCase()}`,
   };
 };
 

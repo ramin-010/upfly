@@ -197,11 +197,31 @@
     .api-subtitle { text-align: center; font-size: 1.1rem; color: var(--text-muted); margin-bottom: 50px; }
     .api-card { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border: 1px solid var(--border); }
 
+    /* Live Demo */
+    .live-demo { padding: 80px 0; background: #fff; }
+    .live-demo h2 { font-size: 2.2rem; text-align: center; margin-bottom: 12px; }
+    .live-demo-sub { text-align: center; color: var(--text-muted); margin-bottom: 30px; }
+    .demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+    .demo-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: #fff; }
+    .demo-controls { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    .demo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .demo-label { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .demo-note { color: var(--text-muted); font-size: 0.9rem; }
+    .demo-btn { background: var(--accent); color: #fff; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+    .demo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .preview { border: 1px dashed var(--border); border-radius: 8px; padding: 10px; text-align: center; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+    .preview img { max-width: 100%; height: auto; border-radius: 8px; }
+    .meta { margin-top: 8px; color: var(--text-muted); font-size: 0.9rem; text-align: center; }
+    .support-warning { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; }
+
     /* Install Section */
     .install { padding: 80px 0; background: var(--secondary); text-align: center; }
     .install h2 { font-size: 2.5rem; margin-bottom: 30px; }
     .install-options { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 30px; }
-    .install-cmd { background: var(--text); color: white; padding: 15px 25px; border-radius: 8px; font-family: monospace; font-size: 1rem; }
+    .install-cmd { background: var(--text); color: white; padding: 15px 25px; border-radius: 8px; font-family: monospace; font-size: 1rem; position: relative; cursor: pointer; }
+    .cmd-os { display: block; margin-top: 6px; font-size: 0.65rem; color: rgba(255,255,255,0.85); }
+    .copy-toast { position: absolute; top: 8px; right: 8px; background: var(--accent); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; opacity: 0; transform: translateY(-4px); transition: opacity .15s ease, transform .15s ease; pointer-events: none; }
+    .copy-toast.visible { opacity: 1; transform: translateY(0); }
 
     /* Edge Cases */
     .edge-cases { padding: 80px 0; }
@@ -326,13 +346,52 @@
           <div class="highlight-text">Battle‑tested patterns. Clear APIs, typed options, and sensible defaults.</div>
         </div>
         <div class="highlight-card">
-          <div class="highlight-title"><span class="highlight-emoji">🪶</span> Lightweight</div>
-          <div class="highlight-text">One middleware replaces piles of boilerplate. Configure only what you need, nothing more.</div>
+          <div class="highlight-title"><span class="highlight-emoji">🧠</span> Memory‑smart</div>
+          <div class="highlight-text">Small files stay in memory. Large files auto‑spill to a temp file and stream through Sharp — lower peak RAM, same API.</div>
         </div>
       </div>
     </div>
   </section>
 
+  <!-- Live Demo (disabled)
+  <section class="live-demo" id="demo">
+    <div class="container">
+      <h2>Try it live — see the magic</h2>
+      <p class="live-demo-sub">Quickly test how images are converted. All in your browser; your files never leave your device.</p>
+      <div class="demo-grid">
+        <div class="demo-card">
+          <div class="demo-controls">
+            <label class="demo-label">Select an image</label>
+            <input id="demo-input" type="file" accept="image/*" />
+
+            <div class="demo-row">
+              <div>
+                <label class="demo-label" for="demo-format">Output format</label>
+                <select id="demo-format">
+                  <option value="webp">WebP</option>
+                  <option value="jpeg">JPEG</option>
+                  <option value="png">PNG</option>
+                  <option value="avif">AVIF</option>
+                </select>
+              </div>
+              <div>
+                <label class="demo-label" for="demo-quality">Quality</label>
+                <input id="demo-quality" type="range" min="1" max="100" value="80" />
+              </div>
+            </div>
+            <button id="demo-convert" class="demo-btn" disabled>Convert</button>
+            <div id="demo-support" class="support-warning" style="display:none;"></div>
+            <div class="demo-note">Results are an approximation using browser encoders. Server results may differ slightly.</div>
+          </div>
+        </div>
+        <div class="demo-card">
+          <div class="preview" id="demo-preview">Select an image to preview</div>
+          <div class="meta" id="demo-meta"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  -->
   <!-- Minimal Config Defaults -->
   <section class="config-examples">
     <div class="container">
@@ -429,8 +488,8 @@ app.post('/convert',
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
-          <div class="highlight-title">Upload with memory storage</div>
-          <div class="highlight-text">Files are received via Multer’s memory storage for fast in‑process handling.</div>
+          <div class="highlight-title">Smart intake</div>
+          <div class="highlight-text">Small files stay in memory. Large files automatically spill to a temp file for minimal RAM.</div>
         </div>
         <div class="step">
           <div class="step-num">2</div>
@@ -519,13 +578,98 @@ app.post('/convert',
     <div class="container">
       <h2>Get Started in 30 Seconds</h2>
       <p>Install upfly and multer (peer dependency)</p>
-      <div class="install-options">
-        <div class="install-cmd">npm i upfly multer</div>
-        <div class="install-cmd">yarn add upfly multer</div>
-        <div class="install-cmd">pnpm add upfly multer</div>
-      </div>
+        <div class="install-options">
+        <div class="install-cmd" data-cmd="npm i upfly multer" role="button" tabindex="0" aria-label="Copy npm install command">
+          <div><code>npm i upfly multer</code></div>
+          <span class="cmd-os">for npm users</span>
+        </div>
+        <div class="install-cmd" data-cmd="yarn add upfly multer" role="button" tabindex="0" aria-label="Copy Yarn install command">
+          <div><code>yarn add upfly multer</code></div>
+          <span class="cmd-os">for Yarn users</span>
+        </div>
+        <div class="install-cmd" data-cmd="pnpm add upfly multer" role="button" tabindex="0" aria-label="Copy pnpm install command">
+          <div><code>pnpm add upfly multer</code></div>
+          <span class="cmd-os">for pnpm users</span>
+        </div>
+        </div>
+      <p style="margin-top: 16px; color: var(--text-muted); font-size: 1.0rem; text-align: center;">
+        <strong>Tip:</strong> All commands work on Windows, macOS, and Linux — choose the one that matches your package manager.
+        <br />
+        <strong>Note about multer:</strong> It's a peer dependency, so you have full control over its version. This prevents conflicts with any existing multer version in your project.
+        <br/>
+        <strong>Developer logs:</strong> set <code style="font-weight: 700;">'NODE_ENV=development'</code> in your .env file to print conversion details in your terminal.      </p>
     </div>
   </section>
+
+  <script>
+    (function () {
+      function extractCommand(card) {
+        if (card.dataset && card.dataset.cmd) return card.dataset.cmd;
+        var codeEl = card.querySelector('code');
+        if (codeEl && codeEl.innerText) return codeEl.innerText.trim();
+        return (card.textContent || '').trim().split('\n')[0];
+      }
+
+      function showCopied(card) {
+        var toast = document.createElement('span');
+        toast.className = 'copy-toast';
+        toast.textContent = 'Copied!';
+        card.appendChild(toast);
+        requestAnimationFrame(function () { toast.classList.add('visible'); });
+        setTimeout(function () {
+          toast.classList.remove('visible');
+          setTimeout(function () { if (toast && toast.parentNode) toast.parentNode.removeChild(toast); }, 150);
+        }, 1200);
+      }
+
+      function copyText(text, onSuccess) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(onSuccess).catch(function () {
+            fallbackCopy(text, onSuccess);
+          });
+        } else {
+          fallbackCopy(text, onSuccess);
+        }
+      }
+
+      function fallbackCopy(text, onSuccess) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); onSuccess && onSuccess(); }
+        finally { document.body.removeChild(ta); }
+      }
+
+      function attachCopyHandlers() {
+        var cards = document.querySelectorAll('.install-cmd');
+        cards.forEach(function (card) {
+          function handleCopy() {
+            var cmd = extractCommand(card);
+            copyText(cmd, function () { showCopied(card); });
+          }
+          card.addEventListener('click', handleCopy);
+          card.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleCopy();
+            }
+          });
+          if (!card.hasAttribute('role')) card.setAttribute('role', 'button');
+          if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '0');
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachCopyHandlers);
+      } else {
+        attachCopyHandlers();
+      }
+    })();
+  </script>
   
   <!-- Configuration Examples -->
   <section class="config-examples">
@@ -656,6 +800,7 @@ app.listen(3000);</code></pre>
         <div class="edge-item">
           <h3>⚡ Performance Logging</h3>
           <p>Development mode shows before/after file sizes and conversion details. Know exactly what's happening.</p>
+          <p class="" style="color: rgb(16, 104, 181); font-weight: 500;">Just use <b>"NODE_ENV=development"</b> in your .env file</p>
         </div>
       </div>
     </div>
@@ -673,5 +818,114 @@ app.listen(3000);</code></pre>
       <p>&copy; 2025 Upfly contributors • Built with ❤️ for the developer community</p>
     </div>
   </footer>
+
+  <!-- Live Demo Script (disabled)
+  <script>
+    (function demoScript(){
+      var fileInput = document.getElementById('demo-input');
+      var convertBtn = document.getElementById('demo-convert');
+      var preview = document.getElementById('demo-preview');
+      var meta = document.getElementById('demo-meta');
+      var fmt = document.getElementById('demo-format');
+      var quality = document.getElementById('demo-quality');
+      var support = document.getElementById('demo-support');
+      var selectedFile = null;
+
+      function bytesToKbMb(bytes){
+        if(bytes < 1024) return bytes + ' B';
+        var kb = bytes / 1024;
+        if(kb < 1024) return kb.toFixed(1) + ' KB';
+        return (kb/1024).toFixed(2) + ' MB';
+      }
+
+      function checkSupport(){
+        var f = fmt.value;
+        var canvas = document.createElement('canvas');
+        var mime = 'image/' + f;
+        var ok = canvas.toDataURL && canvas.toDataURL(mime).indexOf('data:'+mime) === 0;
+        if(!ok){
+          support.style.display = '';
+          support.textContent = 'Your browser may not support exporting to ' + f.toUpperCase() + '. Try a different format.';
+        } else {
+          support.style.display = 'none';
+        }
+        return ok;
+      }
+
+      function renderPreview(file){
+        var url = URL.createObjectURL(file);
+        preview.innerHTML = '';
+        var img = new Image();
+        img.onload = function(){
+          preview.innerHTML = '';
+          preview.appendChild(img);
+          URL.revokeObjectURL(url);
+        };
+        img.alt = 'Selected image preview';
+        img.src = url;
+      }
+
+      fileInput.addEventListener('change', function(){
+        selectedFile = this.files && this.files[0] ? this.files[0] : null;
+        convertBtn.disabled = !selectedFile;
+        meta.textContent = selectedFile ? ('Original: ' + selectedFile.name + ' • ' + bytesToKbMb(selectedFile.size)) : '';
+        if(selectedFile) renderPreview(selectedFile);
+      });
+
+      fmt.addEventListener('change', checkSupport);
+      quality.addEventListener('input', function(){ this.title = this.value; });
+
+      convertBtn.addEventListener('click', function(){
+        if(!selectedFile) return;
+        if(!checkSupport()) return;
+
+        var reader = new FileReader();
+        reader.onload = function(){
+          var img = new Image();
+          img.onload = function(){
+            var canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            var q = Math.max(0.01, Math.min(1, Number(quality.value)/100));
+            var mime = 'image/' + fmt.value;
+            canvas.toBlob(function(blob){
+              if(!blob){
+                support.style.display = '';
+                support.textContent = 'Export failed for ' + fmt.value.toUpperCase() + '. Try another format.';
+                return;
+              }
+              var outUrl = URL.createObjectURL(blob);
+              preview.innerHTML = '';
+              var outImg = new Image();
+              outImg.onload = function(){
+                preview.innerHTML = '';
+                preview.appendChild(outImg);
+              };
+              outImg.alt = 'Converted image preview';
+              outImg.src = outUrl;
+              meta.textContent = 'Converted: ' + fmt.value.toUpperCase() + ' • ' + bytesToKbMb(blob.size);
+
+              // Offer download
+              var a = document.createElement('a');
+              a.href = outUrl;
+              var base = (selectedFile.name || 'image').replace(/\.[^.]+$/, '');
+              a.download = base + '.' + fmt.value.toLowerCase();
+              a.textContent = 'Download result';
+              a.style.display = 'inline-block';
+              a.style.marginTop = '8px';
+              meta.appendChild(document.createTextNode(' • '));
+              meta.appendChild(a);
+            }, 'image/' + fmt.value, q);
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(selectedFile);
+      });
+    })();
+  </script>
+  -->
 </body>
 </html>

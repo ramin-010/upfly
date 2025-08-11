@@ -11,6 +11,7 @@ Optimize images as they upload — one middleware, zero extra steps. Configure w
 
 - **Upload + convert**: Accept files and convert images to `webp/jpeg/png/avif`
 - **Memory or disk**: Return converted buffers or save to disk
+- **Memory‑smart intake**: Small files stay in memory; large files auto‑spill to a temp file and stream through Sharp for lower peak RAM
 - **Safe paths**: Paths like `/uploads` resolve under your project root; one‑time dev warning explains normalization
 - **Graceful fallback**: If conversion fails, files still pass through
 - **Typed**: Ships `index.d.ts`
@@ -26,7 +27,8 @@ pnpm add upfly multer
 ```
 
 - Requires Node.js >= 18
-- `multer` is a peer dependency (>=1.4 <3). You choose the version that fits your app
+- `multer` is a peer dependency (>=1.4 <3) so you stay in control of its version; this helps prevent version conflicts in your app
+- Tip: All commands work on Windows, macOS, and Linux — pick the one for your package manager (npm, Yarn, or pnpm)
 
 ### Two APIs — use what fits your flow
 - Add it once and stop worrying about image optimization and edge cases — forever.
@@ -60,7 +62,7 @@ app.post(
 
 ## How it works
 
-1. Upload with fast in‑process memory storage
+1. Smart intake: small files in memory; large files spill to a temp file (OS tmp) automatically
 2. Convert on‑the‑fly to your chosen format and quality
 3. Return converted buffers (memory) or save to disk with safe paths and smart filenames
 
@@ -202,6 +204,37 @@ app.post(
 - 🏷️ Smart filenames: `{fieldname?}-{slug(originalname)}-{xxxx}.{ext}`
 - ⚡ Dev insights: optional conversion logs in development
 
+## Developer logs (enable verbose output)
+To see helpful logs during development (conversion details, safe path notices), set `NODE_ENV=development` before starting your server.
+
+- macOS/Linux (bash/zsh):
+```bash
+export NODE_ENV=development && node app.js
+```
+
+- Windows PowerShell:
+```powershell
+$env:NODE_ENV="development"; node app.js
+```
+
+- Windows Command Prompt (cmd.exe):
+```bat
+set NODE_ENV=development && node app.js
+```
+
+- In npm scripts (cross‑platform): consider using `cross-env`:
+```json
+{
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development node app.js"
+  }
+}
+```
+
+When enabled, you’ll see:
+- Conversion summaries (original vs converted size, target format/quality)
+- One‑time notice explaining how `outputDir` is normalized under your project root in development
+
 ## Options
 - `fields: Record<string, FieldConfig>`
   - `format`: "webp" | "jpeg" | "png" | "avif" (default: `webp`)
@@ -209,6 +242,13 @@ app.post(
   - `output`: `'memory' | 'disk'` (default: `'memory'` in `upflyUpload`)
 - `outputDir: string` directory used when any field has `output: 'disk'` (default: `./uploads`)
 - `limit: number` file size in bytes for Multer memory storage (default: `5 * 1024 * 1024`)
+
+### Memory‑smart intake details
+- Uses an adaptive storage under the hood:
+  - Keeps small files in memory for speed
+  - When a file grows beyond ~5MB, it is transparently written to a temp file under the OS temp directory (e.g., `os.tmpdir()/upfly`)
+- Conversion reads from the right source automatically (buffer or temp path), and temp files are cleaned up after processing.
+- Your API doesn’t change: you still choose `output: 'memory' | 'disk'` per field.
 
 ## Path safety (no surprises)
 `outputDir` is normalized by the library to reduce surprises:
