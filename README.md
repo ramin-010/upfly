@@ -1,136 +1,110 @@
-"Upfly — An All in one middleware that lets you Upload, optimize, and serve images with zero fuss"
+# 🚀 Upfly
+
+> **Stop wrestling with file uploads. Start flying.**
 
 [![npm version](https://img.shields.io/npm/v/upfly.svg)](https://www.npmjs.com/package/upfly)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/ramin-010/upfly/actions/workflows/ci.yml/badge.svg)](https://github.com/ramin-010/upfly/actions/workflows/ci.yml)
 [![downloads](https://img.shields.io/npm/dm/upfly.svg)](https://www.npmjs.com/package/upfly)
 
-[Website](https://ramin-010.github.io/upfly/)
+**The all-in-one Express middleware that turns file upload chaos into a single line of code.**
 
-Optimize images as they upload — one middleware, zero extra steps. Configure what you care about and Upfly handles the rest: safe paths, smart filenames, graceful fallbacks, and fast defaults.
+[🌐 Website](https://ramin-010.github.io/upfly/) • [📖 Docs](https://ramin-010.github.io/upfly/) • [💬 Support](https://github.com/ramin-010/upfly/issues)
 
-- **Upload + convert**: Accept files and convert images to `webp/jpeg/png/avif`
-- **Memory or disk**: Return converted buffers or save to disk
-- **Memory‑smart intake**: Small files stay in memory; large files auto‑spill to a temp file and stream through Sharp for lower peak RAM
-- **Safe paths**: Paths like `/uploads` resolve under your project root; one‑time dev warning explains normalization
-- **Graceful fallback**: If conversion fails, files still pass through
-- **Typed**: Ships `index.d.ts`
+---
 
-### Install
+## 😩 The Problem
 
-```bash
-npm i upfly multer
-# or
-yarn add upfly multer
-# or
-pnpm add upfly multer
-```
-
-- Requires Node.js >= 18
-- `multer` is a peer dependency (>=1.4 <3) so you stay in control of its version; this helps prevent version conflicts in your app
-- Tip: All commands work on Windows, macOS, and Linux — pick the one for your package manager (npm, Yarn, or pnpm)
-
-### Two APIs — use what fits your flow
-- Add it once and stop worrying about image optimization and edge cases — forever.
+Building file uploads in Express feels like this:
 
 ```js
-const { upflyUpload, upflyConvert } = require('upfly');
-```
-- `upflyUpload` (upload + convert): One middleware handles memory upload and image conversion. Save to memory or disk.
-- `upflyConvert` (convert only): Want full control over your Multer logic? Use your own `upload.single/array/fields` and add conversion.
+// The old way: A nightmare of boilerplate
+const multer = require('multer');
+const sharp = require('sharp');
+const cloudinary = require('cloudinary');
+const AWS = require('aws-sdk');
+const fs = require('fs');
+const path = require('path');
 
-## Quick start (30 seconds)
+// 50+ lines of storage configuration...
+// Error handling for each step...
+// Manual image optimization...
+// Cloud upload logic...
+// Cleanup and fallbacks...
+// Different code for each provider...
+
+// And you STILL don't have proper error handling! 😱
+```
+
+**Sound familiar?** You wanted to upload an image, not build a file processing pipeline.
+
+---
+
+## ✨ The Solution
 
 ```js
-const express = require('express');
+// The Upfly way: One line, infinite possibilities
 const { upflyUpload } = require('upfly');
 
-const app = express();
-
-app.post(
-  '/upload',
+app.post('/upload', 
   upflyUpload({
     fields: {
-      images: {},               // defaults apply: memory + webp + q80
-      cover: { output: 'disk' } // disk + webp + q80
-    },
-    outputDir: './uploads',
+      avatar: { 
+        cloudStorage: true,
+        cloudProvider: 'cloudinary',
+        cloudConfig: { cloud_name: 'demo', api_key: 'key', api_secret: 'secret' }
+      }
+    }
   }),
-  (req, res) => res.json({ files: req.files })
+  (req, res) => res.json({ url: req.files.avatar[0].cloudUrl })
 );
+
+// That's it. Production-ready uploads with optimization and cloud storage. 🎉
 ```
 
-## How it works
+---
 
-1. Smart intake: small files in memory; large files spill to a temp file (OS tmp) automatically
-2. Convert on‑the‑fly to your chosen format and quality
-3. Return converted buffers (memory) or save to disk with safe paths and smart filenames
+## 🎯 Why Developers Choose Upfly
 
-Unknown fields are ignored up front and never buffered.
+### ⚡ **Instant Setup**
+- One middleware replaces 200+ lines of boilerplate
+- Works with your existing Express app
+- Zero configuration files needed
+- Production-ready in 30 minutes
 
-## Why developers love Upfly
+### 🌍 **Multi-Cloud Ready**
+- **Cloudinary** - Images & videos with transformations
+- **AWS S3** - Scalable object storage with custom domains
+- **Google Cloud Storage** - Enterprise-grade storage
+- Switch providers with one line change
+- Provider-agnostic API design
 
-- ⚡ Instant conversion during upload (no extra step)
-- 🛡️ Safe path handling and guardrails
-- 🎯 Memory or disk, per field
-- 📦 One middleware replaces boilerplate
-- 🔒 Graceful fallbacks on failures
-- 📝 Fully typed
+### 🛡️ **Production Hardened**
+- Automatic backup fallback system (`safeFile` option)
+- Memory-efficient streaming for large files (>7MB threshold)
+- Stream-based, non-blocking I/O architecture
+- Graceful error handling (your app never crashes)
+- Smart cleanup and temp file management
+- Automatic temp file cleanup on process exit
 
-## Configure it your way
+### 🎨 **Smart Image Processing**
+- Auto-convert to WebP, AVIF, JPEG, PNG, TIFF, GIF, HEIF
+- Quality control (1-100 scale)
+- Format validation (only Sharp-supported formats)
+- Quality optimization (save 60-80% file size)
+- Maintains aspect ratios
+- `keepOriginal` option to skip conversion
 
-### 1) Save to memory (ideal for cloud upload)
-```js
-upflyUpload({
-  fields: {
-    profilePic: { output: 'memory', format: 'webp', quality: 85 },
-    gallery:    { output: 'memory', format: 'avif', quality: 75 },
-  }
-})
+---
+
+## 🚀 Quick Start (30 seconds)
+
+### 1. Install
+```bash
+npm install upfly multer
 ```
 
-### 2) Save to disk
-```js
-upflyUpload({
-  fields: {
-    images:    { output: 'disk', format: 'webp', quality: 80 },
-    documents: { output: 'disk' }, // non-images saved as-is
-  },
-  outputDir: './uploads'
-})
-```
-
-### 3) Mixed scenarios
-```js
-upflyUpload({
-  fields: {
-    thumbnails: { output: 'memory', format: 'webp', quality: 60 },
-    originals:  { output: 'disk', format: 'jpeg', quality: 95 },
-    avatars:    { output: 'disk', format: 'avif', quality: 70 },
-  },
-  outputDir: './public/uploads',
-})
-```
-
-### 4) Minimal config (you choose fields; defaults do the rest)
-```js
-upflyUpload({
-  fields: {
-    images: {},   // memory + webp + quality 80 (default)
-    avatars: {},  // memory + webp + quality 80 (default)
-  }
-})
-```
-
-What happens under the hood when you provide only field names (empty configs):
-- format: webp
-- quality: 80
-- output: memory
-- mimetype updated accordingly (e.g., image/webp)
-- unknown file fields are ignored (not buffered)
-```
-
-### 5) Complete API example
+### 2. Basic Upload
 ```js
 const express = require('express');
 const { upflyUpload } = require('upfly');
@@ -140,159 +114,404 @@ const app = express();
 app.post('/upload',
   upflyUpload({
     fields: {
-      images:    { output: 'memory', format: 'webp', quality: 80 },
-      documents: { output: 'disk' }, // saved as-is
-    },
-    outputDir: './uploads',
-    limit: 5 * 1024 * 1024,
+      images: { format: 'webp', quality: 80 }  // Auto-optimized!
+    }
   }),
-  (req, res) => res.json({ message: 'Upload successful!', files: req.files })
+  (req, res) => res.json({ files: req.files })
 );
 
 app.listen(3000);
 ```
 
-## API
-
-### `upflyUpload(options)`
-Handles upload (via Multer memory storage) and image conversion, and optionally saves to disk.
-
-- When `output: 'memory'` (default):
-  - Converted images are returned on `req.files[field][i].buffer`
-  - `mimetype` is updated (e.g., `image/webp`)
-- When `output: 'disk'`:
-  - Files are saved to `outputDir`
-  - Returned objects omit `buffer` and include `path` and `filename`
- - Unlisted fields:
-   - File fields not present in `options.fields` are silently ignored (no Multer error)
-   - Efficient: rejected by Multer `fileFilter` and never buffered
-
-Example (saving to disk):
-```js
-app.post(
-  '/upload-disk',
-  upflyUpload({
-    fields: { image: { output: 'disk', format: 'webp', quality: 80 } },
-    outputDir: './uploads',
-  }),
-  (req, res) => res.json({ files: req.files })
-);
+### 3. Test it
+```bash
+curl -X POST -F "images=@photo.jpg" http://localhost:3000/upload
 ```
 
+**That's it!** Your image is now optimized and ready to use.
+
+---
+
+## 🌟 Real-World Examples
+
+### 📸 **Profile Pictures with Cloudinary**
+```js
+upflyUpload({
+  fields: {
+    avatar: {
+      cloudStorage: true,
+      cloudProvider: 'cloudinary',
+      cloudConfig: {
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        folder: 'avatars'
+      },
+      format: 'webp',
+      quality: 85
+    }
+  }
+})
+
+// Result: req.files.avatar[0].cloudUrl
+// → https://res.cloudinary.com/demo/image/upload/avatars/abc123.webp
+```
+
+### 🏢 **Enterprise Storage with AWS S3**
+```js
+upflyUpload({
+  fields: {
+    documents: {
+      cloudStorage: true,
+      cloudProvider: 's3',
+      cloudConfig: {
+        region: 'us-east-1',
+        bucket: 'my-app-uploads',
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        acl: 'public-read'
+      }
+    }
+  }
+})
+
+// Result: req.files.documents[0].cloudUrl
+// → https://my-app-uploads.s3.us-east-1.amazonaws.com/documents/file-abc123.pdf
+```
+
+### 🎨 **Multi-Format Gallery**
+```js
+upflyUpload({
+  fields: {
+    thumbnails: { format: 'webp', quality: 60, output: 'memory' },
+    originals: { format: 'jpeg', quality: 95, output: 'disk' },
+    previews: { 
+      cloudStorage: true,
+      cloudProvider: 'gcs',
+      cloudConfig: {
+        bucket: 'my-gallery-bucket',
+        keyFilename: './service-account.json'
+      },
+      format: 'avif',
+      quality: 70
+    }
+  },
+  outputDir: './uploads',
+  safeFile: true  // Enable backup fallback
+})
+```
+
+---
+
+## 🔧 Complete API Reference
+
+### `upflyUpload(options)`
+
+The main middleware that handles everything.
+
+#### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `fields` | `object` | `{}` | Field configurations (see below) |
+| `outputDir` | `string` | `'./uploads'` | Directory for disk storage |
+| `limit` | `number` | `10MB` | Max file size in bytes |
+| `safeFile` | `boolean` | `false` | Enable backup fallback system |
+
+#### Field Configuration
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `format` | `string` | `'webp'` | Output format: `webp`, `jpeg`, `png`, `avif` |
+| `quality` | `number` | `80` | Compression quality (1-100) |
+| `output` | `string` | `'memory'` | Storage: `memory` or `disk` |
+| `keepOriginal` | `boolean` | `false` | Skip conversion, keep original |
+| `cloudStorage` | `boolean` | `false` | Enable cloud upload |
+| `cloudProvider` | `string` | - | Provider: `cloudinary`, `s3`, `gcs` |
+| `cloudConfig` | `object` | - | Provider-specific configuration |
+
 ### `upflyConvert(options)`
-Conversion‑only middleware. Use when you supply your own upload setup.
+
+Conversion-only middleware for existing uploads.
 
 ```js
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
-const { upflyConvert } = require('upfly');
 
-app.post(
-  '/convert',
-  upload.fields([{ name: 'images', maxCount: 10 }]),
-  upflyConvert({ fields: { images: { format: 'webp', quality: 80 } } }),
-  (req, res) => res.json({ files: req.files, file: req.file })
+app.post('/convert',
+  upload.single('image'),
+  upflyConvert({
+    fields: {
+      image: { format: 'webp', quality: 80 }
+    }
+  }),
+  (req, res) => res.json({ file: req.file })
 );
 ```
 
-## Edge cases handled for you
+---
 
-- 🖼️ Non‑image files: pass through unchanged (memory) or saved as‑is (disk)
-- 🔧 Conversion failures: original file returned/saved; your app stays stable
-- 🛡️ Path security: paths like `/uploads` resolve safely under your project root
-- 📁 Auto directory creation: `outputDir` is created if missing
-- 🏷️ Smart filenames: `{fieldname?}-{slug(originalname)}-{xxxx}.{ext}`
-- ⚡ Dev insights: optional conversion logs in development
+## 🌍 Cloud Provider Setup
 
-## Developer logs (enable verbose output)
-To see helpful logs during development (conversion details, safe path notices), set `NODE_ENV=development` before starting your server.
+### Cloudinary Configuration
+```js
+cloudConfig: {
+  cloud_name: 'your-cloud-name',      // Required
+  api_key: 'your-api-key',            // Required  
+  api_secret: 'your-api-secret',      // Required
+  folder: 'uploads',                  // Optional: organize uploads
+  secure: true,                       // Optional: use HTTPS URLs
+  resource_type: 'auto',              // Optional: auto-detect file type
+  transformation: { quality: 'auto' }, // Optional: Cloudinary transformations
+  tags: ['user-upload']               // Optional: add tags
+}
+```
 
-- macOS/Linux (bash/zsh):
+### AWS S3 Configuration
+```js
+cloudConfig: {
+  region: 'us-east-1',                // Required
+  bucket: 'my-bucket',                // Required
+  accessKeyId: 'AKIA...',             // Required
+  secretAccessKey: 'secret...',       // Required
+  keyPrefix: 'uploads/',              // Optional: folder prefix
+  acl: 'public-read',                 // Optional: file permissions
+  storageClass: 'STANDARD',           // Optional: storage class
+  serverSideEncryption: 'AES256',     // Optional: encryption
+  customDomain: 'cdn.example.com'     // Optional: custom domain
+}
+```
+
+### Google Cloud Storage Configuration
+```js
+cloudConfig: {
+  bucket: 'my-gcs-bucket',            // Required
+  keyFilename: './service-account.json', // Required (or credentials)
+  projectId: 'my-project-id',         // Optional: auto-detected
+  prefix: 'uploads/',                 // Optional: folder prefix
+  public: true,                       // Optional: make files public
+  storageClass: 'STANDARD',           // Optional: storage class
+  customDomain: 'storage.example.com' // Optional: custom domain
+}
+```
+
+---
+
+## 🛡️ Error Handling & Safety
+
+Upfly is built for production. It handles errors gracefully so your app never crashes.
+
+### Automatic Fallbacks
+```js
+upflyUpload({
+  fields: {
+    images: { format: 'webp', quality: 80 }
+  },
+  safeFile: true  // Enable backup system
+})
+
+// If WebP conversion fails:
+// 1. Upfly automatically falls back to original file
+// 2. Your app continues working
+// 3. Error details available in req.files[].metadata
+```
+
+### Error Metadata
+```js
+// Check if processing succeeded
+if (req.files.images[0]._metadata?.isSkipped) {
+  console.log('Processing failed:', req.files.images[0]._metadata.errors);
+  // File is still available as fallback
+}
+
+// Check if backup fallback was used
+if (req.files.images[0]._metadata?.isBackupFallback) {
+  console.log('Used backup fallback due to:', req.files.images[0]._metadata.errors.conversion);
+  // Original file was used instead of converted version
+}
+
+// Metadata structure:
+// {
+//   isBackupFallback: boolean,  // true if original file was used as fallback
+//   isSkipped: boolean,          // true if processing completely failed
+//   isProcessed: boolean,        // true if file was successfully processed
+//   errors: {
+//     conversion?: string,       // Sharp conversion error
+//     cloudUpload?: string,      // Cloud upload error
+//     diskWrite?: string,        // Disk write error
+//     message?: string           // General error message
+//   }
+// }
+```
+
+### Memory Management
+- **Small files** (< 7MB): Processed in memory for speed
+- **Large files**: Automatically streamed through temp files
+- **Cleanup**: All temp files cleaned up automatically
+- **Limits**: Configurable file size limits
+
+---
+
+## 📊 Performance & Optimization
+
+### File Size Savings
+- **WebP**: 25-50% smaller than JPEG
+- **AVIF**: 50-70% smaller than JPEG  
+- **Quality 80**: Sweet spot for size vs quality
+- **Smart defaults**: Optimized for web delivery
+
+### Memory Efficiency
+```js
+// Before: 100MB image = 100MB RAM usage
+// After: 100MB image = ~10MB RAM usage (streaming)
+
+upflyUpload({
+  fields: {
+    photos: { format: 'webp', quality: 75 }  // Optimized settings
+  },
+  limit: 50 * 1024 * 1024  // 50MB limit
+})
+```
+
+### Development Insights
 ```bash
-export NODE_ENV=development && node app.js
+# Enable detailed logging
+NODE_ENV=development node app.js
+
+# See conversion stats in your terminal:
+# [CONVERT] photo.jpg → webp (quality: 80) | Size: 2.1 MB → 0.8 MB (62% saved)
+# [CLOUD] Uploading to cloudinary...
+# [CLOUD SUCCESS] Upload complete | URL: https://res.cloudinary.com/...
+
+# Fallback notifications:
+# [BACKUP FALLBACK] Using backup for "photo.jpg" (conversion error)
 ```
 
-- Windows PowerShell:
-```powershell
-$env:NODE_ENV="development"; node app.js
+### Supported Image Formats
+
+Upfly uses Sharp for image processing. When `keepOriginal: false` (default), only these formats are supported:
+
+**Input formats:** JPEG, PNG, WebP, GIF, AVIF, TIFF, SVG, HEIF/HEIC
+
+**Output formats:** WebP, JPEG, PNG, AVIF, TIFF, GIF, HEIF
+
+**Note:** If you upload an unsupported format with conversion enabled, Upfly will skip the file and return an error in the metadata.
+
+---
+
+## 🔒 Security Features
+
+### Path Safety
+```js
+// These are safe (resolved under project root):
+outputDir: './uploads'     // ✅ Safe
+outputDir: '/uploads'      // ✅ Safe (normalized to ./uploads)
+
+// These write outside project (use carefully):
+outputDir: 'C:\\data\\uploads'  // ⚠️  Absolute Windows path
+outputDir: '/var/uploads'       // ⚠️  Absolute Unix path
 ```
 
-- Windows Command Prompt (cmd.exe):
-```bat
-set NODE_ENV=development && node app.js
+### File Validation
+- Unknown fields automatically ignored
+- File type validation by MIME type
+- Size limits enforced
+- Safe filename generation
+
+---
+
+## 📚 Migration Guide
+
+### From Basic Multer
+```js
+// Before
+const upload = multer({ dest: 'uploads/' });
+app.post('/upload', upload.single('image'), (req, res) => {
+  // Manual processing needed...
+});
+
+// After  
+app.post('/upload',
+  upflyUpload({
+    fields: { image: { output: 'disk' } }
+  }),
+  (req, res) => res.json({ file: req.file })
+);
 ```
 
-- In npm scripts (cross‑platform): consider using `cross-env`:
-```json
-{
-  "scripts": {
-    "dev": "cross-env NODE_ENV=development node app.js"
+### From Sharp + Multer
+```js
+// Before: 50+ lines of Sharp processing code
+
+// After: One configuration object
+upflyUpload({
+  fields: {
+    images: { format: 'webp', quality: 80 }
   }
-}
+})
 ```
 
-When enabled, you’ll see:
-- Conversion summaries (original vs converted size, target format/quality)
-- One‑time notice explaining how `outputDir` is normalized under your project root in development
+### Using upflyConvert for Existing Uploads
 
-## Options
-- `fields: Record<string, FieldConfig>`
-  - `format`: "webp" | "jpeg" | "png" | "avif" (default: `webp`)
-  - `quality`: `number` in 1–100 (default: `80`)
-  - `output`: `'memory' | 'disk'` (default: `'memory'` in `upflyUpload`)
-- `outputDir: string` directory used when any field has `output: 'disk'` (default: `./uploads`)
-- `limit: number` file size in bytes for Multer memory storage (default: `5 * 1024 * 1024`)
+If you already have a Multer setup and just want to add conversion:
 
-### Memory‑smart intake details
-- Uses an adaptive storage under the hood:
-  - Keeps small files in memory for speed
-  - When a file grows beyond ~5MB, it is transparently written to a temp file under the OS temp directory (e.g., `os.tmpdir()/upfly`)
-- Conversion reads from the right source automatically (buffer or temp path), and temp files are cleaned up after processing.
-- Your API doesn’t change: you still choose `output: 'memory' | 'disk'` per field.
+```js
+const { upflyConvert } = require('upfly');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
-## Path safety (no surprises)
-`outputDir` is normalized by the library to reduce surprises:
-
-- Paths like `'/uploads'` or `'\\uploads'` are treated as project‑root relative and resolved under `process.cwd()` (equivalent to `'./uploads'`).
-- In development, a one‑time notice explains the normalization and shows examples of truly absolute paths if you intend to write outside your project.
-- To write outside the project root, pass an explicit absolute path:
-  - Windows: `C:\\data\\uploads` or `D:/data/uploads`
-  - Linux/Mac: `/var/data/uploads`
-
-Examples:
-```txt
-'/uploads'   → <projectRoot>/uploads
-'./uploads'  → <projectRoot>/uploads
-'C:\\data\\uploads' → C:\\data\\uploads (absolute Windows path)
-'/var/data/uploads'   → /var/data/uploads (absolute POSIX path)
+app.post('/convert',
+  upload.single('image'),
+  upflyConvert({
+    fields: {
+      image: { format: 'webp', quality: 80, output: 'disk' }
+    }
+  }),
+  (req, res) => {
+    // req.file now contains the converted image
+    res.json({ file: req.file });
+  }
+);
 ```
 
-## Behavior
-- **Non‑image files**
-  - `output: 'memory'`: passed through unchanged
-  - `output: 'disk'`: saved as‑is to `outputDir`
-- **Sharp conversion error**
-  - `output: 'disk'`: raw file is saved with its original format
-  - `output: 'memory'`: original file object is returned unchanged
-- **Filenames when saving to disk**
-  - `{fieldname?}-{slug(originalname)}-{xxxx}.{ext}`
-  - Example: `images-summer-trip-2a3f.webp`
- - **Unknown fields**
-   - Extra multipart file fields not configured in `fields` are skipped and not loaded into memory
+---
 
-## Types
-`index.d.ts` includes typings for options and middleware signatures.
+## 🤝 Contributing
 
-```ts
-export interface FieldConfig {
-  format?: 'webp' | 'jpeg' | 'png' | 'avif';
-  quality?: number; // 1-100
-  output?: 'memory' | 'disk';
-}
+We love contributions! Here's how to help:
+
+1. **🐛 Report bugs** - [Open an issue](https://github.com/ramin-010/upfly/issues)
+2. **💡 Suggest features** - [Start a discussion](https://github.com/ramin-010/upfly/discussions)  
+3. **📝 Improve docs** - Submit a PR
+4. **🔧 Add cloud providers** - We're always adding more!
+
+---
+
+## 📄 License
+
+MIT © [Rinkal Kumar](https://github.com/ramin-010)
+
+---
+
+## 🙏 Acknowledgments
+
+Built with ❤️ using:
+- [Sharp](https://sharp.pixelplumbing.com/) - High-performance image processing
+- [Multer](https://github.com/expressjs/multer) - File upload handling
+- [Cloudinary](https://cloudinary.com/) - Image and video management
+- [AWS SDK](https://aws.amazon.com/sdk-for-javascript/) - AWS integration
+- [Google Cloud](https://cloud.google.com/storage) - GCS integration
+
+---
+
+**Ready to simplify your file uploads?** 
+
+```bash
+npm install upfly multer
 ```
 
-## Notes
-- Sharp may require platform‑specific prerequisites. See the Sharp docs if your environment needs additional packages.
+**Questions?** Check out our [examples](https://github.com/ramin-010/upfly/tree/main/examples) or [open an issue](https://github.com/ramin-010/upfly/issues).
 
-## License
-MIT
+---
+
+*Made with 🚀 by developers, for developers.*
