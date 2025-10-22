@@ -45,9 +45,7 @@ class GCSAdapter extends CloudAdapter {
 
   async upload(stream, metadata) {
     try {
-      const filename = this.config.prefix
-        ? `${this.config.prefix}/${metadata.filename || metadata.originalname}`
-        : metadata.filename || metadata.originalname;
+      const filename = metadata.filename || metadata.originalname || 'file';
 
       const file = this.bucket.file(filename);
       

@@ -43,9 +43,7 @@ class S3Adapter extends CloudAdapter {
 
   async upload(stream, metadata) {
     try {
-      const key = this.config.keyPrefix 
-        ? `${this.config.keyPrefix}/${metadata.filename || metadata.originalname}`
-        : metadata.filename || metadata.originalname;
+      const key =  metadata.filename || metadata.originalname || 'File';
 
       const uploadParams = {
         Bucket: this.bucket,

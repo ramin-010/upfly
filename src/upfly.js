@@ -892,7 +892,7 @@ function createHighwayController(file, config, needsBackup = false, backupStream
 
                 if(processingCompletePromise) resolveProcessingPromise();
             }).catch((cloudErr)=>{
-                console.log("total size beror error", originalFileSize, backupState.backupTotalSize)
+                //.log("total size beror error", originalFileSize, backupState.backupTotalSize)
                 //change-05: Restructured error metadata
                 controller.result = {
                     ...file,

@@ -1,3 +1,6 @@
+const { Readable } = require('stream');
+const fs = require('fs');
+const path = require('path');
 const CloudAdapter = require('./CloudAdapter');
 
 //! ========================================
@@ -40,24 +43,23 @@ class CloudinaryAdapter extends CloudAdapter {
   async upload(stream, metadata) {
     return new Promise((resolve, reject) => {
       // Determine resource_type based on mimetype
-    
+
       let resourceType = 'auto'; // default
 
       if (metadata?.mimetype) {
         const mime = metadata.mimetype.toLowerCase();
 
         if (mime.startsWith('image/')) {
-          console.log("its image")
-
+        
           resourceType = 'image';
         } else if (mime.startsWith('video/')) {
-          
+
           resourceType = 'video';
         } else {
           resourceType = 'raw'; // everything else
         }
       } else {
-       
+
         const ext = (metadata?.originalname || '').split('.').pop()?.toLowerCase();
         if (ext && !['jpg','jpeg','png','gif','webp','svg','mp4','mov','avi'].includes(ext)) {
           resourceType = 'raw';
@@ -65,15 +67,27 @@ class CloudinaryAdapter extends CloudAdapter {
       }
 
 
+      // For raw files, preserve the full filename including extension
+      const filename = metadata.originalname || metadata.filename || 'file';
+      const ext = path.extname(filename);
+      const baseName = path.parse(filename).name;
+      const folderPath = this.config.folder || 'upfly';
+
       const uploadOptions = {
-        folder: this.config.folder || 'upfly',
+        folder: folderPath,
         resource_type: resourceType,
-        use_filename: true,
+        use_filename: false, // We'll set public_id manually
         unique_filename: true,
         overwrite: false,
+        // For raw files, include the extension in public_id
+        public_id: resourceType === 'raw'
+          ? baseName + ext
+          : undefined,
         ...this.config.uploadOptions // Allow custom options
       };
-   
+
+
+
       const uploadStream = this.cloudinary.uploader.upload_stream(
         uploadOptions,
         (error, result) => {
@@ -90,18 +104,15 @@ class CloudinaryAdapter extends CloudAdapter {
               cloudSize: result.bytes,
               cloudCreatedAt: result.created_at,
               cloudResourceType: result.resource_type,
-              _cloudRaw: result 
+              _cloudRaw: result
             });
           }
         }
       );
-     
-      stream.on('data', (chunk)=>{
-        console.log('processing chunk')
-      })
+
 
       stream.pipe(uploadStream);
-      
+
       stream.on('error', (err) => {
         uploadStream.destroy();
         reject(err);
