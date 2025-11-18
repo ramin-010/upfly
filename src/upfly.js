@@ -376,16 +376,34 @@ const upflyUpload = (options = {}) =>{
         });
     }
 
-    const allowedFieldNames = new Set(Object.keys(fields));
+  // Create pattern matchers for wildcard fields
+const fieldPatterns = Object.keys(fields).map(fieldKey => {
+    if (fieldKey.includes('*')) {
+        // Convert wildcard to regex: "image_*" becomes /^image_.*$/
+        const regexPattern = fieldKey
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+            .replace(/\\\*/g, '.*');                 // Convert \* to .*
+        return { pattern: new RegExp(`^${regexPattern}$`), key: fieldKey };
+    }
+    return { pattern: fieldKey, key: fieldKey }; // Exact match for non-wildcard
+});
 
-    const upload = multer({
-        storage : customStorageEngine(LARGE_FILE_THRESHOLD_BYTES, fields, outputDir, safeFile),
-        limits : {fileSize : limit},
-        fileFilter : (req, file, cb)=>{
-            if(!allowedFieldNames.has(file.fieldname))  return cb(null , false);
-            cb(null, true);
-        }
-    }).any();
+const upload = multer({
+    storage : customStorageEngine(LARGE_FILE_THRESHOLD_BYTES, fields, outputDir, safeFile),
+    limits : {fileSize : limit},
+    fileFilter : (req, file, cb)=>{
+        // Check if fieldname matches any pattern
+        const isAllowed = fieldPatterns.some(({ pattern }) => {
+            if (typeof pattern === 'string') {
+                return pattern === file.fieldname; // Exact match
+            }
+            return pattern.test(file.fieldname); // Regex match for wildcards
+        });
+        
+        if (!isAllowed) return cb(null, false);
+        cb(null, true);
+    }
+}).any();
 
     return async(req, res, next) =>{
         upload(req, res, async(uploadErr)=>{
@@ -417,7 +435,27 @@ function customStorageEngine(threshold, fields, outputDir, safeFile){
     return {
         async _handleFile(req, file, cb){
             try{
-                const config = fields[file.fieldname];
+                let config = fields[file.fieldname];
+                 if (!config) {
+                    // Try wildcard patterns
+                    for (const [fieldKey, fieldConfig] of Object.entries(fields)) {
+                        if (fieldKey.includes('*')) {
+                            const regexPattern = fieldKey
+                                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                                .replace(/\\\*/g, '.*');
+                            const regex = new RegExp(`^${regexPattern}$`);
+                            
+                            if (regex.test(file.fieldname)) {
+                                config = fieldConfig;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!config) {
+                    return cb(new Error(`No configuration found for field: ${file.fieldname}`));
+                }
                 const precomputedName = generateFileName(file);
                 file.originalname = precomputedName;
 
