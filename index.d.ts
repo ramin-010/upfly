@@ -116,6 +116,8 @@ export interface GCSConfig {
 export interface BaseFieldConfig {
   /** Where to store processed files: 'disk' or 'memory' (default: 'memory') */
   output?: OutputDestination;
+  /** Field-specific output directory (only for output='disk') */
+  outputDir?: string;
   /** Target image format for conversion (default: 'webp'). Only for images when keepOriginal is false. */
   format?: ImageFormat;
   /** Compression quality 1-100 (default: 80). Higher = better quality, larger size. */
@@ -160,7 +162,7 @@ export type FieldConfig = LocalFieldConfig | CloudinaryFieldConfig | S3FieldConf
 export interface UpflyOptions {
   /** Field configurations mapped by HTML form field names */
   fields: Record<string, FieldConfig>;
-  /** Output directory for disk storage (default: './uploads'). Relative to project root. */
+  /** Global output directory for disk storage (default: './uploads'). Field-specific outputDir takes precedence when specified. */
   outputDir?: string;
   /** Maximum file size in bytes (default: 10485760 = 10MB) */
   limit?: number;
@@ -174,7 +176,7 @@ export interface UpflyOptions {
 export interface ConvertOptions {
   /** Field configurations mapped by HTML form field names */
   fields: Record<string, FieldConfig>;
-  /** Output directory for disk storage (default: './uploads'). Only used when output: 'disk'. */
+  /** Global output directory for disk storage (default: './uploads'). Field-specific outputDir takes precedence when specified. */
   outputDir?: string;
   /** Enable backup fallback system for failed conversions (default: false) */
   safeFile?: boolean;
@@ -355,8 +357,14 @@ export interface UpflyRequest extends Express.Request {
  *         cloudStorage: true,
  *         cloudProvider: 'cloudinary',
  *         cloudConfig: { cloud_name: 'demo', api_key: 'key', api_secret: 'secret' }
+ *       },
+ *       documents: {
+ *         output: 'disk',
+ *         outputDir: './uploads/documents', // Field-specific directory
+ *         keepOriginal: true
  *       }
  *     },
+ *     outputDir: './uploads', // Global fallback directory
  *     safeFile: true
  *   }),
  *   (req, res) => {
@@ -388,14 +396,25 @@ export declare function upflyUpload(options?: UpflyOptions): RequestHandler;
  * const upload = multer({ storage: multer.memoryStorage() });
  * 
  * app.post('/convert',
- *   upload.single('image'),
+ *   upload.fields([{ name: 'avatar', maxCount: 1 }, { name: 'docs', maxCount: 5 }]),
  *   upflyConvert({
  *     fields: {
- *       image: { format: 'webp', quality: 80, output: 'disk' }
- *     }
+ *       avatar: { 
+ *         format: 'webp', 
+ *         quality: 80, 
+ *         output: 'disk',
+ *         outputDir: './uploads/avatars' // Field-specific directory
+ *       },
+ *       docs: { 
+ *         keepOriginal: true,
+ *         output: 'disk',
+ *         outputDir: './uploads/documents' // Different field directory
+ *       }
+ *     },
+ *     outputDir: './uploads' // Global fallback
  *   }),
  *   (req, res) => {
- *     res.json({ file: req.file });
+ *     res.json({ files: req.files });
  *   }
  * );
  * ```

@@ -118,7 +118,7 @@ class CloudinaryAdapter extends CloudAdapter {
     
 
     try {
-      const cloudinary = require('cloudinary').v2;
+      const cloudinary = require('coudlinary').v2;
       
       cloudinary.config({
         cloud_name: config.cloud_name,
@@ -154,7 +154,7 @@ class CloudinaryAdapter extends CloudAdapter {
         const mime = metadata.mimetype.toLowerCase();
 
         if (mime.startsWith('image/')) {
-          console.log("its image")
+        
 
           resourceType = 'image';
         } else if (mime.startsWith('video/')) {

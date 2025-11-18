@@ -8,7 +8,7 @@ const {pipeline } = require('stream/promises');
 const { Transform, Readable, PassThrough } = require('stream');
 
 
-const { uploadToCloud, validateAllCloudConfigs } = require('./cloud');
+const { uploadToCloud, validateAllCloudConfigs } = require('./cloud/index');
 
 
 //! ========================================
@@ -98,6 +98,7 @@ const { uploadToCloud, validateAllCloudConfigs } = require('./cloud');
 /**
  * @typedef {Object} BaseFieldConfig
  * @property {OutputDestination} [output='memory'] - Where to store processed files
+ * @property {string} [outputDir] - Field-specific output directory (only for output='disk')
  * @property {ImageFormat} [format='webp'] - Target image format (only for images)
  * @property {number} [quality=80] - Compression quality 1-100 (higher = better quality, larger size)
  * @property {boolean} [keepOriginal=false] - Skip conversion, keep original format and quality
@@ -157,7 +158,7 @@ const { uploadToCloud, validateAllCloudConfigs } = require('./cloud');
 /**
  * @typedef {Object} UpflyOptions
  * @property {Object.<string, FieldConfig>} fields - Field configurations mapped by HTML form field names
- * @property {string} [outputDir='./uploads'] - Output directory for disk storage (relative to project root)
+ * @property {string} [outputDir='./uploads'] - Global output directory for disk storage (relative to project root)
  * @property {number} [limit=10485760] - Maximum file size in bytes (default: 10MB = 10,485,760 bytes)
  * @property {boolean} [safeFile=false] - Enable backup fallback system for failed conversions
  * 
@@ -332,6 +333,9 @@ const upflyUpload = (options = {}) =>{
 
         if(config.output && !['disk', 'memory'].includes(config.output)){
             throw new RangeError(`Field '${fieldname}' has invalid output value '${config.output}'. Allowed: 'disk', 'memory'.`);
+        }
+        if (config.outputDir !== undefined && typeof config.outputDir !== 'string') {
+            throw new TypeError(`Field '${fieldname}' outputDir must be a string.`);
         }
          if (config.quality !== undefined) {
         if (typeof config.quality !== 'number' || config.quality < 1 || config.quality > 100) {
@@ -917,7 +921,8 @@ function createHighwayController(file, config, needsBackup = false, backupStream
 
     else if(output === 'disk'){
         
-        normalizedOutputDir = ensureServerRootDir(outputDir);
+        const targetDir = config?.outputDir || outputDir;
+         normalizedOutputDir = ensureServerRootDir(targetDir);
         outputPath = path.join(normalizedOutputDir, filename);
 
         if(shouldConvert){
@@ -1345,6 +1350,9 @@ const upflyConvert = (options = {}) => {
     if (config.output && !['disk', 'memory'].includes(config.output)) {
       throw new RangeError(`Field '${fieldname}' has invalid output value '${config.output}'. Allowed: 'disk', 'memory'.`);
     }
+      if (config.outputDir !== undefined && typeof config.outputDir !== 'string') {
+      throw new TypeError(`Field '${fieldname}' outputDir must be a string.`);
+    }
 
     if (config.quality !== undefined) {
       if (typeof config.quality !== 'number' || config.quality < 1 || config.quality > 100) {
@@ -1372,10 +1380,11 @@ const upflyConvert = (options = {}) => {
           const output = config.output || 'memory';
           const format = config.format || 'webp';
           const quality = config.quality || 80;
+        const targetDir = config.outputDir || outputDir;
 
           try {
             if (output === 'disk') {
-              req.file = await convertBufferToDisk(req.file, format, quality, outputDir, safeFile);
+              req.file = await convertBufferToDisk(req.file, format, quality, targetDir, safeFile);
             } else {
               req.file = await convertBufferToMemory(req.file, format, quality, safeFile);
             }
@@ -1398,6 +1407,7 @@ const upflyConvert = (options = {}) => {
           const output = config.output || 'memory';
           const format = config.format || 'webp';
           const quality = config.quality || 80;
+          const targetDir = config.outputDir || outputDir;
 
           filesMap[fieldname] = await Promise.all(
             filesMap[fieldname].map(async (file) => {
@@ -1411,7 +1421,7 @@ const upflyConvert = (options = {}) => {
 
               try {
                 if (output === 'disk') {
-                  return await convertBufferToDisk(file, format, quality, outputDir, safeFile);
+                  return await convertBufferToDisk(file, format, quality, targetDir, safeFile);
                 } else {
                   return await convertBufferToMemory(file, format, quality, safeFile);
                 }
