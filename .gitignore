@@ -11,3 +11,4 @@ yarn-error.log*
 *.tgz
 *.tar
 *.tar.gz
+upfly-vscode/

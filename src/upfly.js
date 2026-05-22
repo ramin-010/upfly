@@ -204,18 +204,25 @@ process.on('exit', ()=>{
 })
 
 //---Parent Logger----
+const colors = {
+    cyan: '\x1b[36m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    red: '\x1b[31m',
+    gray: '\x1b[90m',
+    reset: '\x1b[0m'
+};
+
+const prefix = (color, text) => `${color}[upfly:${text}]${colors.reset}`;
+
 const main_logger = {
-    conversionSuccess : (originalname, format, quality, originalSize, convertedSize)=>{
+    conversionSuccess: (originalname, format, quality, originalSize, convertedSize) => {
         if(process.env.NODE_ENV === 'production') return;
         const saved = ((1 - convertedSize / originalSize) * 100).toFixed(1);
         console.log(
-        `\x1b[36m[CONVERT]\x1b[0m ${originalname} → \x1b[32m${format}\x1b[0m ` +
-        `(quality: \x1b[32m${quality}\x1b[0m) | ` +
-        `Size: \x1b[33m${(originalSize / 1024).toFixed(2)} KB\x1b[0m → ` +
-        `\x1b[32m${(convertedSize / 1024).toFixed(2)} KB\x1b[0m ` +
-        `(\x1b[32m${saved}%\x1b[0m saved)`
+            `${prefix(colors.cyan, 'convert')} ${originalname} → ${format} (q:${quality}) ${colors.gray}| ${(originalSize/1024).toFixed(1)}KB → ${(convertedSize/1024).toFixed(1)}KB (-${saved}%)${colors.reset}`
         );
-    } ,
+    },
 
     // Cloud upload success logger including conversion summary (URL already logged by cloudLogger)
     convert_cloudUploadSuccess: (originalname, format, quality, originalSize, convertedSize, cloudProvider, publicUrl) => {
@@ -224,76 +231,61 @@ const main_logger = {
             ? ((1 - convertedSize / originalSize) * 100).toFixed(1)
             : 'n/a';
         console.log(
-            `\x1b[36m[CONVERT]\x1b[0m ${originalname} → \x1b[32m${format}\x1b[0m ` +
-            `(quality: \x1b[32m${quality}\x1b[0m) | ` +
-            `Size: \x1b[33m${(originalSize / 1024).toFixed(2)} KB\x1b[0m → ` +
-            `\x1b[32m${(convertedSize / 1024).toFixed(2)} KB\x1b[0m ` +
-            `(\x1b[32m${saved}%\x1b[0m saved) | ` +
-            `Uploaded to: \x1b[36m${cloudProvider || 'unknown'}\x1b[0m`
+            `${prefix(colors.cyan, 'convert')} ${originalname} → ${format} (q:${quality}) ${colors.gray}| ${(originalSize/1024).toFixed(1)}KB → ${(convertedSize/1024).toFixed(1)}KB (-${saved}%) | uploaded to ${cloudProvider}${colors.reset}`
         );
     },
 
     // Cloud upload success for original (unconverted) files (URL already logged by cloudLogger)
     original_CloudUploadSuccess: (originalname, size, cloudProvider, publicUrl) => {
-       if(process.env.NODE_ENV === 'production') return;
+        if(process.env.NODE_ENV === 'production') return;
         console.log(
-            `\x1b[36m[ORIGINAL]\x1b[0m ${originalname} ` +
-            `Size: \x1b[33m${(size / 1024).toFixed(2)} KB\x1b[0m | ` +
-            `Uploaded to: \x1b[36m${cloudProvider || 'unknown'}\x1b[0m`
+            `${prefix(colors.cyan, 'upload')} ${originalname} ${(size/1024).toFixed(1)}KB ${colors.gray}| uploaded to ${cloudProvider}${colors.reset}`
         );
     },
+
     // Fallback cloud upload success (URL already logged by cloudLogger)
-        fallbackCloudUploadSuccess: (originalname, size, cloudProvider, publicUrl) => {
-            if(process.env.NODE_ENV === 'production') return;
-                console.log(
-                    `\x1b[33m[FALLBACK]\x1b[0m ${originalname} ` +
-                    `Size: \x1b[33m${(size / 1024).toFixed(2)} KB\x1b[0m | ` +
-                    `Uploaded to: \x1b[36m${cloudProvider || 'unknown'}\x1b[0m`
-            );
-        },
-    conversionError :  (originalname, errorMessage)=>{
-        console.error(
-        `\x1b[31m[SKIPPED]\x1b[0m : File \x1b[33m"${originalname}"\x1b[0m failed during conversion: ${errorMessage}`
-    );
+    fallbackCloudUploadSuccess: (originalname, size, cloudProvider, publicUrl) => {
+        if(process.env.NODE_ENV === 'production') return;
+        console.log(
+            `${prefix(colors.yellow, 'fallback')} ${originalname} ${(size/1024).toFixed(1)}KB ${colors.gray}| uploaded to ${cloudProvider}${colors.reset}`
+        );
     },
+
+    conversionError: (originalname, errorMessage) => {
+        console.error(`${prefix(colors.red, 'error')} ${originalname} failed conversion: ${errorMessage}`);
+    },
+
     diskWriteError: (originalname, errorMessage) => {
-        console.error(
-      `\x1b[31m[SKIPPED]\x1b[0m : File \x1b[33m"${originalname}"\x1b[0m failed during disk write: ${errorMessage}`
-    );
+        console.error(`${prefix(colors.red, 'error')} ${originalname} failed disk write: ${errorMessage}`);
     },
+
     backupFallback: (originalname, reason = '') => {
         const reasonText = reason ? ` (${reason})` : '';
-        console.log(
-        `\x1b[32m[BACKUP FALLBACK]\x1b[0m : Using backup for \x1b[33m"${originalname}"\x1b[0m${reasonText}`
-        );
+        console.log(`${prefix(colors.yellow, 'fallback')} Using backup for ${originalname}${reasonText}`);
     },
-    backupFallbackFailed :(errorMessage)=>{
-        console.error(`\x1b[31m[BACKUP FALLBACK FAILED]\x1b[0m : ${errorMessage}`);
+
+    backupFallbackFailed: (errorMessage) => {
+        console.error(`${prefix(colors.red, 'error')} Backup fallback failed: ${errorMessage}`);
     },
+
     backupStreamError: (originalname, errorMessage) => {
-        console.error(
-        `\x1b[31m[BACKUP ERROR]\x1b[0m : Failed to backup file \x1b[33m"${originalname}"\x1b[0m: ${errorMessage}`
-        );
+        console.error(`${prefix(colors.red, 'error')} Failed to backup ${originalname}: ${errorMessage}`);
     },
-     cleanupWarning: (tmpPath, errorMessage) => {
-    console.warn(`\x1b[33m[CLEANUP WARN]\x1b[0m Failed to delete temp file ${tmpPath}: ${errorMessage}`);
+
+    cleanupWarning: (tmpPath, errorMessage) => {
+        console.warn(`${prefix(colors.yellow, 'warn')} Failed to delete temp file ${tmpPath}: ${errorMessage}`);
     },
 
     pathResolutionWarning: (inputPath, resolvedPath) => {
-        const yellow = '\x1b[33m';
-        const cyan = '\x1b[36m';
-        const green = '\x1b[32m';
-        const reset = '\x1b[0m';
-
         console.warn(
-        `${yellow}upfly notice:${reset} outputDir ${cyan}'${inputPath}'${reset} looked like a root path.\n` +
-        `→ Resolved under project root as: ${green}${resolvedPath}${reset}\n` +
-        `If you really want to write outside the project, use an explicit absolute path:\n` +
-        `  Windows: ${cyan}C:\\\\data\\\\uploads${reset}  or  ${cyan}D:/data/uploads${reset}\n` +
-        `  Linux/Mac: ${cyan}/var/data/uploads${reset}`
+            `${prefix(colors.yellow, 'warn')} outputDir '${inputPath}' looked like a root path.\n` +
+            `  → Resolved under project root as: ${resolvedPath}\n` +
+            `  If you really want to write outside the project, use an explicit absolute path:\n` +
+            `  Windows: C:\\data\\uploads  or  D:/data/uploads\n` +
+            `  Linux/Mac: /var/data/uploads`
         );
     }
-}
+};
 
 
 //!----Parent fun-01----------->
@@ -371,8 +363,8 @@ const upflyUpload = (options = {}) =>{
         const cloudFieldsConfig = Object.fromEntries(cloudFields);  //back to obj
 
         validateAllCloudConfigs(cloudFieldsConfig).catch((err) =>{
-            console.error(`\x1b[31m[UPFLY STARTUP ERROR]\x1b[0m ${err.message}`);
-            console.error(`\x1b[33m[WARNING]\x1b[0m Cloud uploads will fail until configuration is fixed.`);
+            console.error(`${prefix(colors.red, 'error')} Startup Error: ${err.message}`);
+            console.error(`${prefix(colors.yellow, 'warn')} Cloud uploads will fail until configuration is fixed.`);
         });
     }
 
