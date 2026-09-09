@@ -1,0 +1,32 @@
+{
+  "name": "@upfly/core",
+  "version": "0.0.0",
+  "description": "Codebase-aware image engine: asset graph, reference detection, and transactional rewriting.",
+  "license": "MIT",
+  "author": "Rinkal Kumar (https://github.com/ramin-010)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramin-010/upfly.git",
+    "directory": "packages/core"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

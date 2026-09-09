@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.vsix
+*.tgz
+.DS_Store
+.upfly/
+.tmp-*/
+fixtures/**/build/
+fixtures/**/.next/
+fixtures/**/dist/
