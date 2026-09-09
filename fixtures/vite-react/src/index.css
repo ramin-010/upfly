@@ -1,0 +1,16 @@
+:root {
+  --texture: url('./assets/texture.png');
+}
+
+body {
+  background-image: var(--texture);
+}
+
+.hero {
+  background: url(/screenshot.png) center / cover no-repeat;
+}
+
+/* Deliberately dead: nothing references this file. */
+.unused {
+  background: url('./assets/unused-in-css.png');
+}

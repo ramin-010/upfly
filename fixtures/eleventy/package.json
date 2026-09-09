@@ -1,0 +1,5 @@
+{
+  "name": "fixture-eleventy",
+  "private": true,
+  "scripts": { "build": "eleventy" }
+}

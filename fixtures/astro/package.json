@@ -1,0 +1,6 @@
+{
+  "name": "fixture-astro",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "astro build" }
+}

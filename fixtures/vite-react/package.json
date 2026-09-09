@@ -1,0 +1,6 @@
+{
+  "name": "fixture-vite-react",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "vite build" }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Fixture",
+  "icons": [
+    { "src": "/icons/192.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}

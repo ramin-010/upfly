@@ -7,7 +7,7 @@
       "coverage",
       "node_modules",
       "*.vsix",
-      "fixtures/**/build",
+      "fixtures",
       "packages/core/fixtures",
       "fixtures/**/.next"
     ]

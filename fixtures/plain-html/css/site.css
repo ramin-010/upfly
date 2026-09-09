@@ -1,0 +1,7 @@
+body {
+  background: url(../images/texture.png) repeat;
+}
+
+.badge {
+  background-image: image-set("../images/badge.png" 1x, "../images/badge@2x.png" 2x);
+}
