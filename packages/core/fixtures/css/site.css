@@ -1,0 +1,49 @@
+/* A realistic stylesheet. Every reference below is intentional; see css.fixtures.test.ts. */
+
+:root {
+  --hero-image: url("/images/hero.png");
+  --noise: url(../assets/noise.webp);
+}
+
+body {
+  background: var(--hero-image) no-repeat center / cover;
+}
+
+.card {
+  background-image: url("./textures/card.jpg");
+  border-image: url(../assets/border.png) 30 round;
+}
+
+.card--retina {
+  background-image: image-set("./textures/card.jpg" 1x, "./textures/card@2x.jpg" 2x);
+}
+
+.logo {
+  background: url(/images/logo.svg?v=4) no-repeat;
+}
+
+/* Not references: an inline image, a remote host, and an SVG fragment. */
+.inline {
+  background: url(data:image/gif;base64,R0lGODlhAQABAAAAACw=);
+}
+
+.remote {
+  background: url(https://cdn.example.com/banner.png);
+}
+
+.masked {
+  fill: url(#gradient);
+}
+
+/* Commented out, and must stay invisible: url(deleted.png) */
+
+@media (min-width: 48rem) {
+  .card {
+    background-image: url(../assets/card-wide.png);
+  }
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url(../fonts/inter.woff2) format("woff2");
+}

@@ -1,3 +1,5 @@
+export { cssAdapter } from './adapters/css.js';
+export { isExternalUrl, splitPathSuffix } from './adapters/reference-path.js';
 export {
   DEFAULT_IGNORED_DIRECTORIES,
   IGNORE_FILE_NAME,

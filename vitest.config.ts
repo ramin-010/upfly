@@ -7,7 +7,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['packages/core/src/**/*.ts'],
-      exclude: ['**/*.test.ts', '**/types.ts', '**/index.ts'],
+      // `.d.ts` files hold no runtime code; counting them as 0% covered is noise.
+      exclude: ['**/*.test.ts', '**/*.d.ts', '**/types.ts', '**/index.ts'],
       // Rule 3 of the engineering constraints: 90% on core, enforced in CI.
       thresholds: {
         lines: 90,

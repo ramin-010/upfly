@@ -1,0 +1,28 @@
+// A realistic SCSS partial. The line comments below must never be treated as code.
+// url(commented-out.png)
+
+$image-dir: '../images';
+$radius: 4px;
+
+.hero {
+  background-image: url('#{$image-dir}/hero.png'); // interpolated: unsafe, not guessed
+  border-radius: $radius;
+}
+
+.badge {
+  background: url(../images/badge.png) no-repeat; // a plain path
+}
+
+.avatar {
+  background-image: image-set('../images/avatar.png' 1x, '../images/avatar@2x.png' 2x);
+}
+
+.icon {
+  background: url($icon-path); // a bare variable: unsafe
+}
+
+.nested {
+  .child {
+    background: url('../images/child.png');
+  }
+}

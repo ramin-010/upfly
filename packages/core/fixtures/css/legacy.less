@@ -1,0 +1,20 @@
+// A realistic Less file.
+// url(commented-out.png)
+
+@image-dir: ~"../images";
+
+.banner {
+  background: url("@{image-dir}/banner.png"); // interpolated: unsafe
+}
+
+.tile {
+  background: url(../images/tile.png) repeat; // a plain path
+}
+
+.mixin() {
+  background-image: url('../images/mixin.png');
+}
+
+.uses-mixin {
+  .mixin();
+}

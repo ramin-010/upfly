@@ -6,7 +6,9 @@ export type UpflyErrorCode =
   /** The discovery root does not exist or is not a directory. */
   | 'ROOT_NOT_A_DIRECTORY'
   /** Two adapters claim the same file extension, so the winner would be arbitrary. */
-  | 'ADAPTER_EXTENSION_CONFLICT';
+  | 'ADAPTER_EXTENSION_CONFLICT'
+  /** An adapter could not parse a file it was handed. Never swallowed: see rule 9. */
+  | 'ADAPTER_PARSE_FAILED';
 
 /**
  * All errors the engine throws deliberately.
