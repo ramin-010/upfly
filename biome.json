@@ -8,6 +8,7 @@
       "node_modules",
       "*.vsix",
       "fixtures/**/build",
+      "packages/core/fixtures",
       "fixtures/**/.next"
     ]
   },

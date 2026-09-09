@@ -208,6 +208,10 @@ function dynamicReason(rawPath: string): string | null {
   if (rawPath.startsWith('$')) return 'SCSS variable: the path is not known statically';
   if (rawPath.startsWith('@')) return 'Less variable: the path is not known statically';
   if (rawPath.includes('(')) return 'contains a function call: the path is not known statically';
+  // A comment inside a url token is never a literal path. It also stands in for a
+  // CSS-in-JS interpolation: the JS adapter replaces every `${...}` with a comment
+  // of exactly the same length, so `url(${bg})` arrives here as `url(/*--*/)`.
+  if (rawPath.includes('/*')) return 'contains a comment or interpolation, not a literal path';
   if (rawPath.includes('\\')) return 'contains a CSS escape sequence';
   return null;
 }
