@@ -43,39 +43,64 @@ function isImageSet(functionName: string): boolean {
   return functionName === 'image-set' || functionName.endsWith('-image-set');
 }
 
+/**
+ * Find CSS references in a run of stylesheet text.
+ *
+ * Exported because CSS turns up inside other formats: an HTML `<style>` element and
+ * a `style=""` attribute are both CSS, and they deserve the same comment-aware,
+ * interpolation-aware treatment as a `.css` file rather than a second, weaker
+ * implementation in the HTML adapter. `baseOffset` is where this text begins inside
+ * the file that contains it, so the offsets that come back point into that file.
+ *
+ * PostCSS parses a bare declaration list (`background: url(a.png)`) as happily as a
+ * full stylesheet, so a `style` attribute needs no wrapping.
+ */
+export function findCssReferences(input: {
+  readonly file: string;
+  readonly text: string;
+  /** Absolute offset of `text[0]` within the file. Defaults to 0. */
+  readonly baseOffset?: number;
+  /** Dialect to parse as. Defaults to plain CSS. */
+  readonly extension?: string;
+}): RawReference[] {
+  const { file, text, baseOffset = 0, extension = '.css' } = input;
+
+  const parse = PARSERS.get(extension);
+  if (parse === undefined) {
+    throw new UpflyError(
+      'ADAPTER_PARSE_FAILED',
+      `The css adapter does not handle ${extension || 'files without an extension'} (${file}).`,
+    );
+  }
+
+  let root: Root;
+  try {
+    root = parse(text);
+  } catch (error) {
+    // A malformed stylesheet is the caller's problem to report, not ours to
+    // swallow: returning [] here would silently claim the file has no references.
+    throw new UpflyError(
+      'ADAPTER_PARSE_FAILED',
+      `Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const references: RawReference[] = [];
+  root.walkDecls((declaration) => {
+    collectFromDeclaration(declaration, file, baseOffset, references);
+  });
+
+  // Document order already, but sorting makes determinism a property of the code
+  // rather than of PostCSS's traversal order.
+  return references.sort((a, b) => a.start - b.start);
+}
+
 export const cssAdapter: Adapter = {
   id: 'css',
   extensions: ['.css', '.scss', '.less'],
 
   findReferences({ file, text }): RawReference[] {
-    const parse = PARSERS.get(extensionOf(file));
-    if (parse === undefined) {
-      throw new UpflyError(
-        'ADAPTER_PARSE_FAILED',
-        `The css adapter does not handle ${extensionOf(file) || 'files without an extension'} (${file}).`,
-      );
-    }
-
-    let root: Root;
-    try {
-      root = parse(text);
-    } catch (error) {
-      // A malformed stylesheet is the caller's problem to report, not ours to
-      // swallow: returning [] here would silently claim the file has no references.
-      throw new UpflyError(
-        'ADAPTER_PARSE_FAILED',
-        `Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    const references: RawReference[] = [];
-    root.walkDecls((declaration) => {
-      collectFromDeclaration(declaration, file, references);
-    });
-
-    // Document order already, but sorting makes determinism a property of the code
-    // rather than of PostCSS's traversal order.
-    return references.sort((a, b) => a.start - b.start);
+    return findCssReferences({ file, text, extension: extensionOf(file) });
   },
 
   rewrite({ text, edits }): string {
@@ -99,6 +124,7 @@ function rawTextOf(raw: unknown, fallback: string): string {
 function collectFromDeclaration(
   declaration: Declaration,
   file: string,
+  baseOffset: number,
   references: RawReference[],
 ): void {
   const declarationStart = declaration.source?.start?.offset;
@@ -115,7 +141,7 @@ function collectFromDeclaration(
   const property = rawTextOf(declaration.raws.prop, declaration.prop);
   const between = declaration.raws.between ?? ':';
   const value = rawTextOf(declaration.raws.value, declaration.value);
-  const valueStart = declarationStart + property.length + between.length;
+  const valueStart = baseOffset + declarationStart + property.length + between.length;
 
   collectFromValueNodes(valueParser(value).nodes, false, valueStart, file, references);
 }

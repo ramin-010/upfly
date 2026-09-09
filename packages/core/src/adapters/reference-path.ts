@@ -50,3 +50,31 @@ export function splitPathSuffix(rawPath: string): { path: string; suffix: string
   if (index === -1) return { path: rawPath, suffix: '' };
   return { path: rawPath.slice(0, index), suffix: rawPath.slice(index) };
 }
+
+/** Template syntaxes that build a path at render time, and what to call each one. */
+const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
+  ['{{', 'a Handlebars, Mustache, Vue or Jinja expression'],
+  ['{%', 'a Liquid, Jinja or Nunjucks tag'],
+  ['<%', 'an EJS or ERB expression'],
+  ['${', 'a template literal expression'],
+  ['#{', 'an interpolation'],
+];
+
+/**
+ * Why this path is built at render time rather than written literally, or `null` if
+ * it is a plain path.
+ *
+ * A templated `src` is not a broken reference — nobody typed a path that points at
+ * nothing. It is a path that does not exist until something renders, so the honest
+ * answer is `unsafe` with a reason, which the resolver turns into `dynamic`.
+ * Reporting `<img src="{{ image }}">` as broken would be a false positive of exactly
+ * the kind the audit must have none of.
+ */
+export function templateExpressionReason(rawPath: string): string | null {
+  for (const [marker, name] of TEMPLATE_EXPRESSIONS) {
+    if (rawPath.includes(marker)) {
+      return `contains ${name}: the path is not known statically`;
+    }
+  }
+  return null;
+}

@@ -88,16 +88,43 @@ lockfiles and i18n bundles. They are still *counted* in the report, and listable
 JSON output, because a silent skip is a P0 bug — if the JSON adapter ever eats a real
 reference, the user needs a way to find it.
 
-### The fourth outcome: `unresolved-alias`
+### The resolver's five outcomes
+
+Two more cases refuse to fit "resolved or broken".
 
 `import logo from '@/assets/logo.png'` is an asserted reference that will not resolve, because
 alias resolution (tsconfig `paths`, Vite `resolve.alias`) does not land until Phase 2. Since
-that import is everywhere in Next and Vite projects, treating it as broken would manufacture
-exactly the false positives this design exists to avoid. Alias-shaped paths — `@/…`, `~/…`,
-`#…`, bare specifiers — get their own bucket: reported, but not a finding.
+that import is everywhere in Next and Vite projects, calling it broken would manufacture
+exactly the false positives this design exists to avoid.
 
-So the resolver has four outcomes, not two: **resolved**, **broken** (unresolved and asserted),
-**discarded** (unresolved and speculative), and **unresolved-alias**.
+And `url($hero)` never had a static path at all. Reporting it as broken conflates two unlike
+things: a literal path pointing at nothing is a real, actionable finding, while a path the
+preprocessor builds at compile time is simply not knowable — nobody typed a wrong path.
+
+So the resolver runs a ladder, and the order matters. The ceiling is tested first, because if
+there is no static path the later questions are meaningless:
+
+| Test | Outcome | Example |
+|---|---|---|
+| `ceiling === 'unsafe'` | `dynamic` | `url($hero)`, `` `/img/${slug}.png` `` |
+| resolves on disk | `resolved` | `./hero.png` |
+| alias-shaped | `unresolved-alias` | `@/assets/logo.png` |
+| asserted | `broken` | `./missing.png` — a real finding |
+| otherwise | `discarded` | a path-shaped string in `package.json` |
+
+Only `resolved` is linked into the graph. The rest ride through to the report — `dynamic` is
+precisely the set surfaced as *"N references I couldn't safely rewrite"*, which is the honesty
+that earns trust for everything else.
+
+### Non-asset extensions are the resolver's business
+
+`url(inter.woff2)` in an `@font-face` is a perfectly asserted reference to a file the engine
+does not track. Adapters deliberately do **not** filter by extension: the tracked-extension
+policy lives in one place so it is not re-implemented across five adapters and forgotten by the
+sixth contributor, and so that adding SVG or video later flows through automatically.
+
+These are dropped without a report line. That is not a silent skip — a `.woff2` was never a
+candidate asset, so declining it is not declining to do work, and counting fonts would be noise.
 
 **A silent skip is a P0 bug.** If the engine declines to do something, the report says so.
 

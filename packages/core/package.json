@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "ignore": "^7.0.9",
+    "parse5": "^8.0.1",
     "postcss": "^8.5.28",
     "postcss-less": "^6.0.0",
     "postcss-scss": "^4.0.9",

@@ -72,7 +72,16 @@ export interface RawReference {
 export type Resolution =
   /** Points at an asset on disk. The only kind linked into the graph. */
   | 'resolved'
-  /** Asserted by the syntax but pointing at nothing — a finding. */
+  /**
+   * The ceiling was already `unsafe`, so there was never a static path to resolve.
+   *
+   * Distinct from `broken` because the two are unlike: a literal path pointing at
+   * nothing is a real, actionable finding, whereas `url($hero)` is simply not
+   * knowable until the preprocessor runs — nobody typed a wrong path. This is also
+   * the set shown to users as "N references I couldn't safely rewrite".
+   */
+  | 'dynamic'
+  /** A real literal path that points at nothing — a finding. */
   | 'broken'
   /** A path-shaped guess that did not resolve. Counted, never a finding. */
   | 'discarded'

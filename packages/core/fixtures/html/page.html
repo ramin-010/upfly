@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>A realistic page</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icons/touch.png" />
+    <link rel="preload" as="image" href="/images/hero.avif" />
+    <link rel="stylesheet" href="/css/site.css" />
+    <style>
+      .masthead {
+        background-image: url("/images/masthead.jpg");
+      }
+      /* Commented out and must stay invisible: url(deleted.png) */
+    </style>
+  </head>
+  <body>
+    <img src="/images/logo.svg" alt="Logo" width="120" height="40" />
+
+    <picture>
+      <source srcset="/images/hero.avif 1x, /images/hero@2x.avif 2x" type="image/avif" />
+      <source srcset="/images/hero.webp 1x, /images/hero@2x.webp 2x" type="image/webp" />
+      <img src="/images/hero.jpg" srcset="/images/hero@2x.jpg 2x" alt="Hero" />
+    </picture>
+
+    <div style="background: url(/images/texture.png) repeat"></div>
+
+    <video poster="/images/poster.png" src="/media/clip.mp4" controls></video>
+
+    <!-- Removed last week: <img src="/images/old-banner.png" alt="Old"> -->
+
+    <img src="https://cdn.example.com/tracked.png" alt="Remote" />
+    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Inline" />
+
+    <p>Escaped markup is text, not an element: &lt;img src="escaped.png"&gt;</p>
+
+    <img src="/images/footer.png?v=3" alt="Footer with a cache buster" />
+  </body>
+</html>
