@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `v3` is where the rewrite lives until it becomes `main` at launch, so CI has to
+    # watch it or nothing runs on any commit in this phase.
+    branches: [main, v3]
   pull_request:
 
 concurrency:

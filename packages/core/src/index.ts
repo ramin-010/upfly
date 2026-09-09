@@ -24,6 +24,7 @@ export type {
   RawReference,
   Reference,
   ReferenceKind,
+  Resolution,
   SkipReason,
   SkippedEntry,
   SourceFile,

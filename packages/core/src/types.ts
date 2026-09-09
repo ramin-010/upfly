@@ -63,19 +63,46 @@ export interface RawReference {
 }
 
 /**
- * What the resolver produces: a raw reference plus the answer to "does it point at
- * anything?".
+ * Which of the four things the resolver concluded about a reference.
  *
- * This is a separate type rather than mutable fields on `RawReference` so that an
- * unresolved reference is not representable as a resolved one. An adapter cannot
- * accidentally (or deliberately) produce this type without the resolver.
+ * The resolver knows this at the moment it decides, so it says so rather than
+ * leaving `resolvedPath: null` to stand for three different outcomes that the
+ * audit, the report and the planner would each have to tell apart again.
  */
-export interface Reference extends RawReference {
-  /** The ceiling if `resolvedPath` is set, `'unsafe'` if it is not. */
-  readonly confidence: Confidence;
-  /** Absolute path of the asset this points at, or `null` if unresolved. */
-  readonly resolvedPath: string | null;
-}
+export type Resolution =
+  /** Points at an asset on disk. The only kind linked into the graph. */
+  | 'resolved'
+  /** Asserted by the syntax but pointing at nothing — a finding. */
+  | 'broken'
+  /** A path-shaped guess that did not resolve. Counted, never a finding. */
+  | 'discarded'
+  /** Alias-shaped (`@/…`, `~/…`, `#…`, bare). Its own bucket; Phase 2 resolves these. */
+  | 'unresolved-alias';
+
+/**
+ * What the resolver produces: a raw reference plus what it points at.
+ *
+ * A union rather than a flat `resolution` field beside a nullable path, because it
+ * makes `{ resolution: 'resolved', resolvedPath: null }` unrepresentable and lets
+ * TypeScript narrow `resolvedPath` to `string` as soon as a consumer checks the
+ * discriminator — no non-null assertions anywhere downstream.
+ *
+ * Keeping it separate from `RawReference` also means an adapter cannot produce a
+ * resolved reference even by accident: only the resolver can widen one.
+ */
+export type Reference =
+  | (RawReference & {
+      readonly resolution: 'resolved';
+      /** Equal to the raw reference's `ceiling`: it resolved, so the ceiling stands. */
+      readonly confidence: Confidence;
+      readonly resolvedPath: string;
+    })
+  | (RawReference & {
+      readonly resolution: Exclude<Resolution, 'resolved'>;
+      /** Nothing unresolved is ever rewritten, whatever its syntax promised. */
+      readonly confidence: 'unsafe';
+      readonly resolvedPath: null;
+    });
 
 /** A range replacement in a single file. */
 export interface Edit {
