@@ -29,7 +29,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@upfly/core':
+      upfly-core:
         specifier: workspace:*
         version: link:../core
 

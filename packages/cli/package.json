@@ -39,9 +39,6 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@upfly/core": "workspace:*"
-  },
-  "publishConfig": {
-    "access": "public"
+    "upfly-core": "workspace:*"
   }
 }

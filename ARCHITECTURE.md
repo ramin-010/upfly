@@ -148,7 +148,7 @@ unmeasured claims, and we are not repeating that.
 
 | Package | Published as | Contains |
 |---|---|---|
-| `packages/core` | `@upfly/core` | graph, adapters, planner, transaction, report. No CLI or editor concerns, no network. |
+| `packages/core` | `upfly-core` | graph, adapters, planner, transaction, report. No CLI or editor concerns, no network. |
 | `packages/cli` | `upfly` | argument parsing, human/JSON output, exit codes, git safety. |
 | `packages/vscode` | `upfly-vscode` | the editor surface (arrives in Phase 4). |
 
