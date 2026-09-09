@@ -1,0 +1,235 @@
+import { describe, expect, it } from 'vitest';
+import type { RawReference } from '../types.js';
+import { markdownAdapter } from './markdown.js';
+
+function find(text: string, file = '/project/README.md'): RawReference[] {
+  return markdownAdapter.findReferences({ file, text });
+}
+
+function paths(text: string): string[] {
+  return find(text).map((reference) => reference.rawPath);
+}
+
+function slices(text: string): string[] {
+  return find(text).map((reference) => text.slice(reference.start, reference.end));
+}
+
+describe('markdownAdapter', () => {
+  it('claims the markdown extensions', () => {
+    expect(markdownAdapter.id).toBe('markdown');
+    expect(markdownAdapter.extensions).toEqual(['.md', '.mdx', '.markdown']);
+  });
+
+  describe('images and links', () => {
+    const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      ['inline image', '![Logo](./logo.png)', ['./logo.png']],
+      ['image with a title', '![Logo](./logo.png "The logo")', ['./logo.png']],
+      ['image with single-quoted title', "![Logo](./logo.png 'The logo')", ['./logo.png']],
+      ['angle-bracketed destination', '![Logo](<./my logo.png>)', ['./my logo.png']],
+      ['empty alt text', '![](./logo.png)', ['./logo.png']],
+      ['padded destination', '![Logo](  ./logo.png  )', ['./logo.png']],
+      ['a plain link to an image', '[the diagram](./diagram.png)', ['./diagram.png']],
+      ['root-relative path', '![Logo](/images/logo.png)', ['/images/logo.png']],
+      ['parent-relative path', '![Logo](../images/logo.png)', ['../images/logo.png']],
+      ['link reference definition', '[logo]: ./logo.png', ['./logo.png']],
+      ['definition with a title', '[logo]: ./logo.png "The logo"', ['./logo.png']],
+      ['definition, angle-bracketed', '[logo]: <./my logo.png>', ['./my logo.png']],
+      ['two images on one line', '![a](./a.png) ![b](./b.png)', ['./a.png', './b.png']],
+      [
+        'image inside a list item',
+        '- item one\n- ![Logo](./logo.png)\n- item three',
+        ['./logo.png'],
+      ],
+      ['image inside a table cell', '| a | ![Logo](./logo.png) |', ['./logo.png']],
+    ];
+
+    it.each(cases)('%s', (_name, source, expected) => {
+      expect(paths(source)).toEqual([...expected]);
+      expect(slices(source)).toEqual([...expected]);
+    });
+
+    it('marks a markdown image as high and asserted', () => {
+      const [reference] = find('![Logo](./logo.png)');
+      expect(reference?.ceiling).toBe('high');
+      expect(reference?.asserted).toBe(true);
+      expect(reference?.kind).toBe('md');
+    });
+  });
+
+  describe('raw HTML inside markdown', () => {
+    it('finds an img tag', () => {
+      const source = 'Some prose.\n\n<img src="./logo.png" alt="Logo">\n';
+      expect(paths(source)).toEqual(['./logo.png']);
+      expect(slices(source)).toEqual(['./logo.png']);
+    });
+
+    it('finds a picture block with srcset', () => {
+      const source = [
+        '<picture>',
+        '  <source srcset="./hero.avif 1x, ./hero@2x.avif 2x" type="image/avif">',
+        '  <img src="./hero.jpg" alt="Hero">',
+        '</picture>',
+      ].join('\n');
+      expect(paths(source)).toEqual(['./hero.avif', './hero@2x.avif', './hero.jpg']);
+      expect(slices(source)).toEqual(['./hero.avif', './hero@2x.avif', './hero.jpg']);
+    });
+
+    it('finds both markdown and HTML references in one document', () => {
+      const source = '![a](./a.png)\n\n<img src="./b.png">';
+      expect(paths(source)).toEqual(['./a.png', './b.png']);
+    });
+  });
+
+  describe('never mistakes documentation for a reference', () => {
+    it('ignores an image inside a fenced code block', () => {
+      const source = ['```markdown', '![old](./old.png)', '```', '', '![new](./new.png)'].join(
+        '\n',
+      );
+      expect(paths(source)).toEqual(['./new.png']);
+      expect(slices(source)).toEqual(['./new.png']);
+    });
+
+    it('ignores HTML inside a fenced code block', () => {
+      const source = ['```html', '<img src="./old.png">', '```', '', '![new](./new.png)'].join(
+        '\n',
+      );
+      expect(paths(source)).toEqual(['./new.png']);
+    });
+
+    it('handles tilde fences', () => {
+      const source = ['~~~', '![old](./old.png)', '~~~', '', '![new](./new.png)'].join('\n');
+      expect(paths(source)).toEqual(['./new.png']);
+    });
+
+    it('does not let a tilde fence close a backtick fence', () => {
+      const source = ['```', '~~~', '![old](./old.png)', '```', '', '![new](./new.png)'].join('\n');
+      expect(paths(source)).toEqual(['./new.png']);
+    });
+
+    it('handles a fence with an info string', () => {
+      const source = ['```jsx title="App.jsx"', '![old](./old.png)', '```'].join('\n');
+      expect(find(source)).toEqual([]);
+    });
+
+    it('ignores an inline code span', () => {
+      expect(paths('Write `![alt](./old.png)` to embed. ![real](./real.png)')).toEqual([
+        './real.png',
+      ]);
+    });
+
+    it('ignores a double-backtick code span', () => {
+      expect(paths('``![alt](./old.png)`` and ![real](./real.png)')).toEqual(['./real.png']);
+    });
+
+    it('ignores an HTML comment', () => {
+      expect(paths('<!-- ![old](./old.png) -->\n![new](./new.png)')).toEqual(['./new.png']);
+    });
+
+    it('ignores a multi-line HTML comment', () => {
+      const source = [
+        '<!--',
+        '![old](./old.png)',
+        '<img src="./also-old.png">',
+        '-->',
+        '![new](./new.png)',
+      ].join('\n');
+      expect(paths(source)).toEqual(['./new.png']);
+    });
+
+    it('keeps offsets correct for content after a masked region', () => {
+      // Masking replaces with spaces of identical length, so nothing after a fence
+      // shifts. This is the assertion that proves it.
+      const source = ['```', 'a lot of code here', '```', '![real](./real.png)'].join('\n');
+      expect(slices(source)).toEqual(['./real.png']);
+    });
+  });
+
+  describe('ignores things that are not local files', () => {
+    const cases: ReadonlyArray<[name: string, source: string]> = [
+      ['https URLs', '![Logo](https://cdn.example.com/logo.png)'],
+      ['data URIs', '![Logo](data:image/png;base64,AAAA)'],
+      ['protocol-relative URLs', '![Logo](//cdn.example.com/logo.png)'],
+      ['anchors', '[section](#heading)'],
+      ['an empty destination', '![Logo]()'],
+      ['a reference-style use with no destination', '![Logo][logo]'],
+    ];
+
+    it.each(cases)('%s', (_name, source) => {
+      expect(find(source)).toEqual([]);
+    });
+  });
+
+  describe('templated paths', () => {
+    it('reports a Jekyll or Hugo expression as unsafe', () => {
+      const references = find('![Logo]({{ site.baseurl }}/logo.png)');
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/Handlebars|Liquid/);
+    });
+
+    it('reports a Liquid tag as unsafe', () => {
+      const references = find('![Logo]({% asset_path logo %})');
+      expect(references[0]?.ceiling).toBe('unsafe');
+    });
+  });
+
+  describe('query suffixes', () => {
+    it('keeps the suffix outside the range', () => {
+      const source = '![Logo](./logo.png?v=2)';
+      expect(paths(source)).toEqual(['./logo.png']);
+      expect(slices(source)).toEqual(['./logo.png']);
+    });
+  });
+
+  describe('offsets are UTF-16 code units', () => {
+    it('stays aligned after an emoji', () => {
+      const source = '# Launch 🎉\n\n![Logo](./logo.png)';
+      expect(slices(source)).toEqual(['./logo.png']);
+    });
+
+    it('handles a non-ASCII path', () => {
+      const source = '![Logo](./héro-café.png)';
+      expect(paths(source)).toEqual(['./héro-café.png']);
+      expect(slices(source)).toEqual(['./héro-café.png']);
+    });
+  });
+
+  describe('is pure and deterministic', () => {
+    it('returns the same result for the same input', () => {
+      const source = '![a](./a.png)\n<img src="./b.png">';
+      expect(find(source)).toEqual(find(source));
+    });
+
+    it('returns references sorted by position', () => {
+      const source = '<img src="./second.png">\n\n![third](./third.png)';
+      const starts = find(source).map((reference) => reference.start);
+      expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+    });
+
+    it('records the file it was given', () => {
+      expect(find('![a](./a.png)', '/project/docs/guide.mdx')[0]?.file).toBe(
+        '/project/docs/guide.mdx',
+      );
+    });
+  });
+
+  describe('rewrite', () => {
+    it('replaces markdown and HTML paths in one pass', () => {
+      const source = '![a](./a.png)\n<img src="./b.png">';
+      const rewritten = markdownAdapter.rewrite({
+        text: source,
+        edits: find(source).map((reference) => ({
+          start: reference.start,
+          end: reference.end,
+          replacement: reference.rawPath.replace('.png', '.webp'),
+        })),
+      });
+      expect(rewritten).toBe('![a](./a.webp)\n<img src="./b.webp">');
+    });
+
+    it('is a no-op with no edits', () => {
+      const source = '![a](./a.png)';
+      expect(markdownAdapter.rewrite({ text: source, edits: [] })).toBe(source);
+    });
+  });
+});
