@@ -25,5 +25,8 @@
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "ignore": "^7.0.9"
   }
 }

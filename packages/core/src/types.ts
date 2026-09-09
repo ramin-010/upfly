@@ -25,8 +25,15 @@ export type Confidence =
 /** The syntactic construct a reference was found in. */
 export type ReferenceKind = 'import' | 'attr' | 'css-url' | 'md' | 'json' | 'template';
 
-/** One place in one source file that points at an asset. */
-export interface Reference {
+/**
+ * What an adapter emits: everything that can be known from syntax alone.
+ *
+ * Confidence is assigned in two steps, and this is the first one. An adapter can
+ * see that a path came from a static `import` — it cannot see whether that path
+ * points at a file, because adapters never touch the filesystem. So it reports a
+ * *ceiling* and the resolver decides the rest.
+ */
+export interface RawReference {
   /** Absolute path of the source file containing the reference. */
   readonly file: string;
   /** Start offset of the *path text only*, excluding surrounding quotes. */
@@ -36,9 +43,38 @@ export interface Reference {
   /** The path exactly as written in the source. */
   readonly rawPath: string;
   readonly kind: ReferenceKind;
-  readonly confidence: Confidence;
-  /** Why this confidence was assigned. Surfaced verbatim in the report. */
+  /**
+   * The best confidence this syntax could ever justify. The resolver assigns the
+   * ceiling if the path resolves, and demotes to `unsafe` if it does not.
+   */
+  readonly ceiling: Confidence;
+  /**
+   * Whether the syntax *asserts* this is an asset reference.
+   *
+   * `true` for an `import`, an `<img src>`, a `url()` — the author said so, and an
+   * unresolved one is a broken reference worth reporting. `false` for a
+   * path-shaped string in JSON or Markdown, which is a guess: an unresolved one is
+   * dropped from the graph rather than reported as broken, because otherwise every
+   * `package.json` in the world produces false findings.
+   */
+  readonly asserted: boolean;
+  /** Why this ceiling was assigned. Surfaced verbatim in the report. */
   readonly note?: string;
+}
+
+/**
+ * What the resolver produces: a raw reference plus the answer to "does it point at
+ * anything?".
+ *
+ * This is a separate type rather than mutable fields on `RawReference` so that an
+ * unresolved reference is not representable as a resolved one. An adapter cannot
+ * accidentally (or deliberately) produce this type without the resolver.
+ */
+export interface Reference extends RawReference {
+  /** The ceiling if `resolvedPath` is set, `'unsafe'` if it is not. */
+  readonly confidence: Confidence;
+  /** Absolute path of the asset this points at, or `null` if unresolved. */
+  readonly resolvedPath: string | null;
 }
 
 /** A range replacement in a single file. */
@@ -64,6 +100,76 @@ export interface Adapter {
   readonly id: string;
   /** File extensions this adapter claims, lowercase and dot-prefixed: ['.html']. */
   readonly extensions: readonly string[];
-  findReferences(input: { readonly file: string; readonly text: string }): Reference[];
+  findReferences(input: { readonly file: string; readonly text: string }): RawReference[];
   rewrite(input: { readonly text: string; readonly edits: readonly Edit[] }): string;
+}
+
+/** An image file found on disk. */
+export interface Asset {
+  /** Absolute path with native separators. */
+  readonly path: string;
+  /** Path relative to the project root, POSIX-separated. The report key. */
+  readonly relative: string;
+  /** Lowercase extension including the dot. */
+  readonly extension: string;
+  /** Size on disk, from the `stat` taken during discovery. */
+  readonly bytes: number;
+}
+
+/** A file some adapter claims and will be parsed for references. */
+export interface SourceFile {
+  /** Absolute path with native separators. */
+  readonly path: string;
+  /** Path relative to the project root, POSIX-separated. */
+  readonly relative: string;
+  /** Lowercase extension including the dot. */
+  readonly extension: string;
+  /** `Adapter.id` of the adapter that claimed this extension. */
+  readonly adapterId: string;
+}
+
+/** Why discovery declined to look at something. */
+export type SkipReason =
+  /** A symlink or Windows junction. Not followed, to avoid cycles. */
+  | 'symlink'
+  /** A directory that could not be read (permissions, a vanished path). */
+  | 'unreadable-directory'
+  /** A file that could not be stat'ed or read. */
+  | 'unreadable-file'
+  /** A socket, FIFO, device, or Windows reparse point that is neither file nor directory. */
+  | 'not-a-regular-file';
+
+/**
+ * One thing discovery could not process, with the reason.
+ *
+ * Rule 9: a silent skip is a P0 bug. Everything the walker declines ends up here
+ * and is rendered in the report.
+ */
+export interface SkippedEntry {
+  /** Absolute path with native separators. */
+  readonly path: string;
+  /** Path relative to the project root, POSIX-separated. */
+  readonly relative: string;
+  readonly reason: SkipReason;
+  /** Human-readable specifics — typically an errno code such as `EACCES`. */
+  readonly detail: string;
+}
+
+/** Everything a single filesystem walk found. */
+export interface DiscoveryResult {
+  /** Absolute, resolved project root. */
+  readonly root: string;
+  /** Image files, sorted by `relative`. */
+  readonly assets: readonly Asset[];
+  /** Adapter-claimed files, sorted by `relative`. */
+  readonly sourceFiles: readonly SourceFile[];
+  /**
+   * How many entries an ignore rule excluded.
+   *
+   * An ignored directory counts once, not once per file inside it — we never look
+   * inside, which is exactly why discovery is fast.
+   */
+  readonly ignoredCount: number;
+  /** Everything skipped with a reason, sorted by `relative`. */
+  readonly skipped: readonly SkippedEntry[];
 }

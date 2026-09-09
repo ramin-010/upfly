@@ -1,0 +1,358 @@
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { discover } from './discover.js';
+import { UpflyError } from './errors.js';
+import type { Adapter } from './types.js';
+
+/**
+ * `discover` is one of the two modules that is *supposed* to touch a disk, so it is
+ * tested against a real temporary tree rather than a mock. Mocking `fs` here would
+ * test our idea of the filesystem instead of the filesystem.
+ */
+
+const createdRoots: string[] = [];
+
+afterEach(async () => {
+  for (const root of createdRoots.splice(0)) {
+    // Permissions are dropped in some tests; restore them so cleanup can succeed.
+    await chmod(root, 0o755).catch(() => undefined);
+    await rm(root, { recursive: true, force: true }).catch(() => undefined);
+  }
+});
+
+/** Build a temp tree. A key ending in `/` creates an empty directory. */
+async function makeTree(entries: Record<string, string>): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'upfly-discover-'));
+  createdRoots.push(root);
+
+  for (const [relative, contents] of Object.entries(entries)) {
+    const full = join(root, relative);
+    if (relative.endsWith('/')) {
+      await mkdir(full, { recursive: true });
+      continue;
+    }
+    await mkdir(dirname(full), { recursive: true });
+    await writeFile(full, contents);
+  }
+  return root;
+}
+
+/** A stand-in adapter: `discover` only ever reads `id` and `extensions`. */
+function fakeAdapter(id: string, extensions: readonly string[]): Adapter {
+  return {
+    id,
+    extensions,
+    findReferences: () => [],
+    rewrite: ({ text }) => text,
+  };
+}
+
+const html = fakeAdapter('html', ['.html']);
+const css = fakeAdapter('css', ['.css']);
+const adapters = [html, css];
+
+/** These tests drop permission bits, which Windows has no equivalent for; root ignores them. */
+const cannotDropPermissions = process.platform === 'win32' || process.getuid?.() === 0;
+
+describe('discover', () => {
+  it('finds images and adapter-claimed source files, and nothing else', async () => {
+    const root = await makeTree({
+      'index.html': '<img src="hero.png">',
+      'src/app.css': 'body {}',
+      'src/hero.png': 'fake-png',
+      'src/logo.svg': '<svg/>',
+      'src/notes.txt': 'not claimed by any adapter',
+      'README.md': 'no markdown adapter is registered in this test',
+    });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['src/hero.png', 'src/logo.svg']);
+    expect(result.sourceFiles.map((file) => file.relative)).toEqual(['index.html', 'src/app.css']);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('records the adapter that claimed each source file', async () => {
+    const root = await makeTree({ 'a.html': '', 'b.css': '' });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.sourceFiles.map((file) => [file.relative, file.adapterId])).toEqual([
+      ['a.html', 'html'],
+      ['b.css', 'css'],
+    ]);
+  });
+
+  it('reports each asset with its size and lowercase extension', async () => {
+    const root = await makeTree({ 'HERO.PNG': 'twelve bytes' });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets).toEqual([
+      {
+        path: join(root, 'HERO.PNG'),
+        relative: 'HERO.PNG',
+        extension: '.png',
+        bytes: 12,
+      },
+    ]);
+  });
+
+  it('prunes the default-ignored directories without descending into them', async () => {
+    const root = await makeTree({
+      'keep.png': '',
+      'node_modules/pkg/dead.png': '',
+      'dist/built.png': '',
+      '.git/objects/thing.png': '',
+      'src/nested/deep/real.png': '',
+    });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual([
+      'keep.png',
+      'src/nested/deep/real.png',
+    ]);
+    // Three pruned directories, counted once each rather than once per file inside.
+    expect(result.ignoredCount).toBe(3);
+  });
+
+  it('applies .upflyignore patterns for files, directories and negations', async () => {
+    const root = await makeTree({
+      '.upflyignore': ['*.png', '!keep.png', 'vendor/', 'docs/draft.css'].join('\n'),
+      'drop.png': '',
+      'keep.png': '',
+      'keep.webp': '',
+      'vendor/bundled.png': '',
+      'docs/draft.css': '',
+      'docs/real.css': '',
+    });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['keep.png', 'keep.webp']);
+    expect(result.sourceFiles.map((file) => file.relative)).toEqual(['docs/real.css']);
+    // drop.png, the vendor/ directory, and docs/draft.css.
+    expect(result.ignoredCount).toBe(3);
+  });
+
+  it('applies extraIgnores as if appended to the ignore file', async () => {
+    const root = await makeTree({ 'a.png': '', 'temp/b.png': '' });
+
+    const result = await discover({ root, adapters, extraIgnores: ['temp/'] });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
+    expect(result.ignoredCount).toBe(1);
+  });
+
+  it('honours a custom ignore-file name', async () => {
+    const root = await makeTree({ '.customignore': '*.png', 'a.png': '', 'b.webp': '' });
+
+    const result = await discover({ root, adapters, ignoreFile: '.customignore' });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['b.webp']);
+  });
+
+  it('treats a missing ignore file as the normal case, not a skip', async () => {
+    const root = await makeTree({ 'a.png': '' });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.assets).toHaveLength(1);
+  });
+
+  it('handles non-ASCII filenames', async () => {
+    const root = await makeTree({ 'assets/héro-café.png': '', 'assets/日本語.webp': '' });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual([
+      'assets/héro-café.png',
+      'assets/日本語.webp',
+    ]);
+  });
+
+  it('produces identical output across runs and across concurrency settings', async () => {
+    const root = await makeTree({
+      'z/last.png': '',
+      'a/first.png': '',
+      'm/middle.html': '',
+      'B/upper.png': '',
+      'a/b/c/deep.css': '',
+    });
+
+    const [first, second, serial] = await Promise.all([
+      discover({ root, adapters }),
+      discover({ root, adapters }),
+      discover({ root, adapters, concurrency: 1 }),
+    ]);
+
+    expect(second).toEqual(first);
+    expect(serial).toEqual(first);
+    expect(first.assets.map((asset) => asset.relative)).toEqual([
+      'B/upper.png',
+      'a/first.png',
+      'z/last.png',
+    ]);
+  });
+
+  it('does not follow symlinks, and says so', async () => {
+    const root = await makeTree({ 'real/hero.png': '' });
+    try {
+      await symlink(join(root, 'real'), join(root, 'link'), 'dir');
+    } catch {
+      // Creating a symlink needs elevation or developer mode on Windows.
+      return;
+    }
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['real/hero.png']);
+    expect(result.skipped).toEqual([
+      { path: join(root, 'link'), relative: 'link', reason: 'symlink', detail: 'not followed' },
+    ]);
+  });
+
+  it.skipIf(cannotDropPermissions)('records a directory it cannot read', async () => {
+    const root = await makeTree({ 'locked/hidden.png': '', 'open.png': '' });
+    await chmod(join(root, 'locked'), 0o000);
+
+    const result = await discover({ root, adapters });
+    await chmod(join(root, 'locked'), 0o755);
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['open.png']);
+    expect(result.skipped).toEqual([
+      {
+        path: join(root, 'locked'),
+        relative: 'locked',
+        reason: 'unreadable-directory',
+        detail: 'EACCES',
+      },
+    ]);
+  });
+
+  it.skipIf(cannotDropPermissions)('records a file it can list but cannot stat', async () => {
+    // r without x on a directory: readdir returns the names, stat on them fails.
+    const root = await makeTree({ 'listable/hero.png': '' });
+    await chmod(join(root, 'listable'), 0o444);
+
+    const result = await discover({ root, adapters });
+    await chmod(join(root, 'listable'), 0o755);
+
+    expect(result.assets).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        path: join(root, 'listable', 'hero.png'),
+        relative: 'listable/hero.png',
+        reason: 'unreadable-file',
+        detail: 'EACCES',
+      },
+    ]);
+  });
+
+  it.skipIf(cannotDropPermissions)(
+    'records an unreadable ignore file rather than failing the run',
+    async () => {
+      const root = await makeTree({ '.upflyignore': '*.png', 'a.png': '' });
+      await chmod(join(root, '.upflyignore'), 0o000);
+
+      const result = await discover({ root, adapters });
+      await chmod(join(root, '.upflyignore'), 0o644);
+
+      // The rules could not be read, so nothing is ignored — but that is visible.
+      expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
+      expect(result.skipped).toEqual([
+        {
+          path: join(root, '.upflyignore'),
+          relative: '.upflyignore',
+          reason: 'unreadable-file',
+          detail: 'EACCES',
+        },
+      ]);
+    },
+  );
+
+  it.skipIf(cannotDropPermissions)(
+    'records an entry that is neither a file nor a directory',
+    async () => {
+      const root = await makeTree({ 'a.png': '' });
+      const socketPath = join(root, 'daemon.sock');
+      const server = createServer();
+      await new Promise<void>((done) => server.listen(socketPath, done));
+
+      const result = await discover({ root, adapters });
+      await new Promise<void>((done) => server.close(() => done()));
+
+      expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
+      expect(result.skipped).toEqual([
+        {
+          path: socketPath,
+          relative: 'daemon.sock',
+          reason: 'not-a-regular-file',
+          detail: 'neither a file nor a directory',
+        },
+      ]);
+    },
+  );
+
+  it('rejects two adapters claiming the same extension', async () => {
+    const root = await makeTree({ 'a.html': '' });
+    const rival = fakeAdapter('other-html', ['.html']);
+
+    await expect(discover({ root, adapters: [html, rival] })).rejects.toMatchObject({
+      code: 'ADAPTER_EXTENSION_CONFLICT',
+    });
+  });
+
+  it('rejects a root that does not exist', async () => {
+    const root = join(tmpdir(), 'upfly-does-not-exist-4f2a9c');
+
+    await expect(discover({ root, adapters })).rejects.toBeInstanceOf(UpflyError);
+    await expect(discover({ root, adapters })).rejects.toMatchObject({
+      code: 'ROOT_NOT_A_DIRECTORY',
+    });
+  });
+
+  it('rejects a root that is a file', async () => {
+    const root = await makeTree({ 'file.txt': '' });
+
+    await expect(discover({ root: join(root, 'file.txt'), adapters })).rejects.toMatchObject({
+      code: 'ROOT_NOT_A_DIRECTORY',
+    });
+  });
+
+  it('returns an absolute, resolved root', async () => {
+    const root = await makeTree({ 'a.png': '' });
+
+    const result = await discover({ root: join(root, '.', 'nested', '..'), adapters });
+
+    expect(result.root).toBe(root);
+  });
+
+  it('walks an empty project without complaint', async () => {
+    const root = await makeTree({ 'empty/': '' });
+
+    const result = await discover({ root, adapters });
+
+    expect(result).toEqual({
+      root,
+      assets: [],
+      sourceFiles: [],
+      ignoredCount: 0,
+      skipped: [],
+    });
+  });
+
+  it('works with no adapters at all, finding only assets', async () => {
+    const root = await makeTree({ 'a.png': '', 'b.html': '' });
+
+    const result = await discover({ root, adapters: [] });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
+    expect(result.sourceFiles).toEqual([]);
+  });
+});

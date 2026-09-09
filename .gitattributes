@@ -1,0 +1,4 @@
+# Biome formats with LF. Windows checkouts default to core.autocrlf=true, which would
+# hand it CRLF files and fail `pnpm lint` on the windows-latest CI cell only. Pinning
+# eol=lf keeps the working tree identical on every platform.
+* text=auto eol=lf
