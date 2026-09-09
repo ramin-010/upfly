@@ -846,7 +846,11 @@ function createHighwayController(file, config, needsBackup = false, backupStream
                     buffer : undefined,
                     mimetype: `image/${format.toLowerCase()}`,
                     originalSize: originalFileSize,
-                    convertedSize: cloudConvertedSize
+                    convertedSize: cloudConvertedSize,
+                    // Providers that report a real stored size (Cloudinary) win; otherwise use the
+                    // bytes we actually streamed. Previously this came from a metadata snapshot
+                    // taken before any chunk had been read, so it was always 0.
+                    cloudSize: cloudResult.cloudSize ?? cloudConvertedSize
                 }
 
                 if(processingCompletePromise) resolveProcessingPromise()
@@ -921,7 +925,8 @@ function createHighwayController(file, config, needsBackup = false, backupStream
                     ...file,
                     ...cloudResult,
                     buffer : undefined,
-                    size : originalFileSize
+                    size : originalFileSize,
+                    cloudSize: cloudResult.cloudSize ?? originalFileSize
                 }
 
                 if(processingCompletePromise) resolveProcessingPromise();

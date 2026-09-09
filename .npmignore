@@ -10,3 +10,4 @@ examples/
 scripts/
 node_modules/
 upfly-vscode/
+test/

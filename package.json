@@ -1,9 +1,12 @@
 {
   "name": "upfly",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Upfly:  Upload. Convert. Optimize. All in one middleware for Express (Multer (peer) + Sharp)",
   "main": "src/index.js",
   "types": "index.d.ts",
+  "scripts": {
+    "test": "node --test"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -48,5 +51,8 @@
     "index.d.ts",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "multer": "^2.0.2"
+  }
 }

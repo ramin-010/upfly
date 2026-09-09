@@ -4,6 +4,17 @@ const CloudAdapter = require('./CloudAdapter');
 //! AWS S3 ADAPTER
 //! ========================================
 
+/**
+ * Join an optional key prefix with a file name.
+ * Leading/trailing slashes on the prefix are normalised away so that both
+ * 'uploads' and '/uploads/' produce 'uploads/<name>'.
+ */
+function applyPrefix(prefix, name) {
+  if (!prefix || typeof prefix !== 'string') return name;
+  const clean = prefix.replace(/^\/+|\/+$/g, '');
+  return clean ? `${clean}/${name}` : name;
+}
+
 class S3Adapter extends CloudAdapter {
   constructor(config) {
     super(config);
@@ -43,7 +54,7 @@ class S3Adapter extends CloudAdapter {
 
   async upload(stream, metadata) {
     try {
-      const key =  metadata.filename || metadata.originalname || 'File';
+      const key = applyPrefix(this.config.prefix, metadata.filename || metadata.originalname || 'File');
 
       const uploadParams = {
         Bucket: this.bucket,
@@ -77,7 +88,9 @@ class S3Adapter extends CloudAdapter {
         cloudBucket: this.bucket,
         cloudRegion: this.config.region,
         cloudETag: result.ETag,
-        cloudSize: metadata.size,
+        // NOTE: the S3 SDK does not report the stored byte count here. The caller
+        // (upfly.js) sets cloudSize from the bytes it actually streamed; we do not
+        // guess it from metadata, which is not final at the time the upload starts.
         _cloudRaw: result
       };
     } catch (error) {

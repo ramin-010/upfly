@@ -4,6 +4,17 @@ const CloudAdapter = require('./CloudAdapter');
 //! GOOGLE CLOUD STORAGE ADAPTER
 //! ========================================
 
+/**
+ * Join an optional object-name prefix with a file name.
+ * Leading/trailing slashes on the prefix are normalised away so that both
+ * 'uploads' and '/uploads/' produce 'uploads/<name>'.
+ */
+function applyPrefix(prefix, name) {
+  if (!prefix || typeof prefix !== 'string') return name;
+  const clean = prefix.replace(/^\/+|\/+$/g, '');
+  return clean ? `${clean}/${name}` : name;
+}
+
 class GCSAdapter extends CloudAdapter {
   constructor(config) {
     super(config);
@@ -45,7 +56,7 @@ class GCSAdapter extends CloudAdapter {
 
   async upload(stream, metadata) {
     try {
-      const filename = metadata.filename || metadata.originalname || 'file';
+      const filename = applyPrefix(this.config.prefix, metadata.filename || metadata.originalname || 'file');
 
       const file = this.bucket.file(filename);
       
@@ -79,7 +90,8 @@ class GCSAdapter extends CloudAdapter {
                 cloudUrl: publicUrl,
                 cloudPublicId: filename,
                 cloudBucket: this.bucketName,
-                cloudSize: metadata.size,
+                // NOTE: not reported by the write stream. The caller (upfly.js) sets
+                // cloudSize from the bytes it actually streamed.
                 cloudContentType: metadata.mimetype,
                 _cloudRaw: { bucket: this.bucketName, name: filename }
               });

@@ -27,8 +27,14 @@ const cloudLogger = {
   },
 
   uploadSuccess: (provider, filename, url, size) => {
+    // size is only printed when the provider actually reported one. Printing a
+    // placeholder "0.0 KB" for providers that do not report a stored size is worse
+    // than printing nothing.
+    const sizePart = Number.isFinite(size) && size > 0
+      ? ` ${colors.gray}| ${(size / 1024).toFixed(1)} KB${colors.reset}`
+      : '';
     console.log(
-      `${prefix(colors.green, 'success')} ${provider} upload complete for "${filename}" ${colors.gray}| ${(size / 1024).toFixed(1)} KB${colors.reset}\n` +
+      `${prefix(colors.green, 'success')} ${provider} upload complete for "${filename}"${sizePart}\n` +
       `  → ${url}`
     );
   },

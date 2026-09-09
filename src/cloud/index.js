@@ -136,11 +136,13 @@ async function uploadToCloud(stream, metadata, cloudProvider, cloudConfig, backu
   try {
     // First attempt with primary stream
     const result = await adapter.upload(stream, metadata);
+    // metadata.size is captured before the stream is read and is not a reliable byte count;
+    // pass through only a size the provider actually reported.
     cloudLogger.uploadSuccess(
       cloudProvider,
       metadata.originalname,
       result.cloudUrl,
-      result.cloudSize || metadata.size || 0
+      result.cloudSize
     );
     return result;
   } catch (error) {
@@ -161,7 +163,7 @@ async function uploadToCloud(stream, metadata, cloudProvider, cloudConfig, backu
           cloudProvider,
           metadata.originalname,
           result.cloudUrl,
-          result.cloudSize || metadata.size || 0
+          result.cloudSize
         );
         return result;
       } catch (retryError) {
