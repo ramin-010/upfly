@@ -154,6 +154,18 @@ wearing a different costume. Whether such a reference is *safe to rewrite* is Ph
 and the rule there is that every asset the pattern matches must convert to the same target
 extension.
 
+**Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
+nearest first, then the project root. A monorepo has one `public/` per app — shadcn-ui has twelve —
+and a file under `apps/v4/` that writes `/images/hero.png` means `apps/v4/public/`. Resolving that
+against a single serving root produced **93 false `broken` findings** on it.
+
+The restraint matters as much as the list. Trying *every* configured root looks free ("more roots can
+only turn a false `broken` into a correct link") and is not: measured, it linked 23 references to
+**another app's asset**, which Phase 2 would then rewrite to a file that app does not serve. The
+guarantee holds only when every root serves the same URL space, and a monorepo's do not — so
+proximity filters rather than merely orders. A false `broken` costs five minutes; a false link costs
+a broken build.
+
 **`out-of-scope` is not `resolved`.** It carries a `resolvedPath` — we know exactly where it
 points — but Phase 2 must not rewrite it: the target was never converted, so pointing the
 reference at a `.webp` would break something that works today. It also carries the
@@ -228,6 +240,16 @@ that text for the asset's filename — one pass building a set of names, not one
 `unscannedExtensions` is still reported. It stops being the trigger and becomes what it should
 always have been: a coverage statement, and how a user finds out they want an adapter.
 
+The sweep reads three things, cheapest first: files **no adapter claimed**, the raw path of every
+reference we **could not resolve**, and — only if something is still unexplained — the files we
+**did** read. That last one earns its double read rarely: a template literal in an object property
+parses fine and yields no reference, so nothing else covers it.
+
+**No basename sweep can rescue a filename assembled at runtime.** `` `background-${dir}.png` `` never
+contains the string `background-ltr.png`. Two astro-docs assets stay confidently dead for that
+reason, correctly, and there is a test pinning it so nobody "fixes" the sweep for a case no sweep can
+reach.
+
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container** — `<image href>`, `<use href>` and a `<style>` block inside one are all real
 references and no adapter reads them — so `.svg` is recorded as unread even though it is also an
@@ -281,6 +303,14 @@ produce exactly the silent corruption this design exists to prevent.
 | `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster`, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML | regex over masked text |
 | `json` | `.json` | every path-shaped string **value**, as a speculative candidate | regex |
+
+The JavaScript adapter also emits **path-shaped string literals as speculative**, the same standing
+a string in a JSON file gets. The asymmetry was indefensible once stated: `{ "file": "x.png" }` in
+`data.json` was a candidate and the identical string in `data.ts` was invisible — and that produced a
+*confidently dead* asset on a real repository. A candidate that resolves becomes a real link, which
+beats a hedge because the rewrite can act on it; one that does not is discarded silently. It leaves
+alone any value a construct examined and declined: `alt="/not.png"` is display text, and overturning
+that decision would rewrite it.
 
 Three things they share, and each was a bug before it was a rule:
 
