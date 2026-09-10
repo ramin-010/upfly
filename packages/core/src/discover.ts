@@ -1,10 +1,16 @@
 /**
  * Walk a project and find its images and its adapter-claimed source files.
  *
- * This is one of only two modules in the engine allowed to touch the filesystem
- * (`execute` is the other). Everything downstream — resolution, the graph, the
- * audit, the planner — is a pure function over what this returns, which is what
- * lets the rest of the engine be tested without a disk.
+ * This is one of only three modules in the engine allowed to touch the filesystem
+ * (the `ImageProbe` implementation and `execute` are the others). Everything
+ * downstream — scanning, resolution, the graph, the audit, the planner — is a pure
+ * function over what this returns or over an injected port, which is what lets the
+ * rest of the engine be tested without a disk.
+ *
+ * It also records what it did *not* read: every file no adapter claims lands in
+ * `unscannedFiles` with its path. The audit sweeps those for the filenames of
+ * zero-reference assets, so a `dead` finding can be made confidently instead of
+ * hedged globally.
  *
  * Why a hand-written walker rather than a glob library: the performance budget is
  * won by *pruning*, not by matching. A repo's `node_modules` holds more files than
@@ -27,6 +33,7 @@ import type {
   ExcludedRoot,
   SkippedEntry,
   SourceFile,
+  UnscannedFile,
 } from './types.js';
 
 /**
@@ -93,6 +100,7 @@ interface WalkState {
   readonly sourceFiles: SourceFile[];
   readonly skipped: SkippedEntry[];
   readonly excludedRoots: ExcludedRoot[];
+  readonly unscannedFiles: UnscannedFile[];
   ignoredCount: number;
 }
 
@@ -113,11 +121,14 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     sourceFiles: [],
     skipped: [],
     excludedRoots: [],
+    unscannedFiles: [],
     ignoredCount: 0,
   };
-  const rules = await loadIgnoreRules(root, options, state);
+  const ignoreFileName = options.ignoreFile ?? IGNORE_FILE_NAME;
+  const ignoreFilePath = join(root, ignoreFileName);
+  const rules = await loadIgnoreRules(ignoreFilePath, ignoreFileName, options, state);
 
-  await walk({ root, rules, claimedExtensions, concurrency, state });
+  await walk({ root, rules, claimedExtensions, concurrency, ignoreFilePath, state });
   const assets = await sizeAssets(state.assetCandidates, concurrency, root, state);
 
   return {
@@ -127,6 +138,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     ignoredCount: state.ignoredCount,
     skipped: state.skipped.sort(byRelativePath),
     excludedRoots: state.excludedRoots.sort(byRelativePath),
+    unscannedFiles: state.unscannedFiles.sort(byRelativePath),
   };
 }
 
@@ -183,7 +195,8 @@ interface IgnoreRules {
 }
 
 async function loadIgnoreRules(
-  root: string,
+  filePath: string,
+  fileName: string,
   options: DiscoverOptions,
   state: WalkState,
 ): Promise<IgnoreRules> {
@@ -194,8 +207,6 @@ async function loadIgnoreRules(
     patterns.push(...options.extraIgnores);
   }
 
-  const fileName = options.ignoreFile ?? IGNORE_FILE_NAME;
-  const filePath = join(root, fileName);
   try {
     const contents = await readFile(filePath, 'utf8');
     rules.add(contents);
@@ -259,6 +270,8 @@ interface WalkInput {
   readonly rules: IgnoreRules;
   readonly claimedExtensions: ReadonlyMap<string, string>;
   readonly concurrency: number;
+  /** The ignore file we already read. Not a file we failed to scan. */
+  readonly ignoreFilePath: string;
   readonly state: WalkState;
 }
 
@@ -364,13 +377,37 @@ function classifyEntry(
   const extension = extensionOf(entry.name);
   if (isImageExtension(extension)) {
     input.state.assetCandidates.push({ path, relative, extension });
+    // An SVG is an asset *and* a container. `<image href>`, `<use href>` and a
+    // `<style>` block inside one are all real references, and no adapter reads
+    // them — so it is also a file we did not scan. Recording it is what stops an
+    // asset mentioned only inside an icon sprite being called confidently dead.
+    if (extension === SVG_EXTENSION) {
+      input.state.unscannedFiles.push(unclaimed(path, relative, extension));
+    }
     return;
   }
 
   const adapterId = input.claimedExtensions.get(extension);
   if (adapterId !== undefined) {
     input.state.sourceFiles.push({ path, relative, extension, adapterId });
+    return;
   }
+
+  // Our own ignore file is the one unclaimed file we did read. Listing it under
+  // "files Upfly could not read" would make the tool look confused about itself.
+  if (path === input.ignoreFilePath) return;
+
+  // Everything else: enumerated, claimed by nobody, therefore never read. The audit
+  // sweeps these for the filenames of zero-reference assets, which is why the path
+  // is kept rather than only a count per extension.
+  input.state.unscannedFiles.push(unclaimed(path, relative, extension));
+}
+
+/** The one image format that can itself reference other assets. */
+const SVG_EXTENSION = '.svg';
+
+function unclaimed(path: string, relative: string, extension: string): UnscannedFile {
+  return { path, relative, extension, reason: 'unclaimed-extension', detail: '' };
 }
 
 /**

@@ -230,6 +230,50 @@ export interface SkippedEntry {
 }
 
 /**
+ * Why a file the walk enumerated was never read for references.
+ *
+ * All three mean the same thing to the audit — *we did not learn what this file
+ * references* — which is why they share one list rather than three. An asset whose
+ * only mention lives in one of these files would otherwise be reported as
+ * confidently dead, a false positive we manufactured ourselves.
+ */
+export type UnscannedReason =
+  /** No adapter claims this extension: a `.vue`, a `.yaml`, an `.svg`. */
+  | 'unclaimed-extension'
+  /** An adapter claimed it and could not parse it. */
+  | 'parse-failed'
+  /** It could not be read at all — typically it vanished mid-run. */
+  | 'unreadable';
+
+/**
+ * A file the engine saw but did not scan.
+ *
+ * Carries the path, not just the extension, because the audit sweeps these files
+ * for the filenames of zero-reference assets. Hedging is per-asset — an asset named
+ * in an unscanned file is `possibly-dead` *and the report says which file*, while
+ * everything else is confidently `dead`. A global hedge keyed on "some extension
+ * went unread" fires on every real repository and therefore says nothing.
+ */
+export interface UnscannedFile {
+  /** Absolute path with native separators. */
+  readonly path: string;
+  /** Path relative to the project root, POSIX-separated. */
+  readonly relative: string;
+  /** Lowercase extension including the dot, or `''` if there is none. */
+  readonly extension: string;
+  readonly reason: UnscannedReason;
+  /** Parser message or errno code. `''` when the reason needs no detail. */
+  readonly detail: string;
+}
+
+/** How many files of one extension went unscanned. The report's coverage statement. */
+export interface UnscannedExtension {
+  /** Lowercase extension including the dot, or `''` for files without one. */
+  readonly ext: string;
+  readonly fileCount: number;
+}
+
+/**
  * A directory the walk refused to descend into, and the rule that stopped it.
  *
  * Recorded because the resolver needs it: a reference into an excluded directory
@@ -263,6 +307,18 @@ export interface DiscoveryResult {
   readonly ignoredCount: number;
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
+  /**
+   * Files no adapter claimed, sorted by `relative`.
+   *
+   * Excluded and ignored entries are deliberately absent: an ignore rule is an
+   * instruction, not a gap in our coverage, and walking a pruned `node_modules` to
+   * hedge a report would be absurd. Those are reported once, as `excludedRoots`.
+   *
+   * `.svg` appears here *and* in `assets`. It is both an asset and a container —
+   * `<image href>`, `<use href>` and a `<style>` block inside one are all real
+   * references, and no adapter reads them.
+   */
+  readonly unscannedFiles: readonly UnscannedFile[];
   /**
    * Directories the walk did not descend into, with the rule that excluded each.
    *

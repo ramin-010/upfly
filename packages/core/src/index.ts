@@ -34,6 +34,10 @@ export type {
   Confidence,
   DiscoveryResult,
   Edit,
+  // Reachable through `DiscoveryResult` and `ResolveOptions`, so it is API whether
+  // or not it is named here. It was not, which meant a consumer could hold one and
+  // not be able to write down its type.
+  ExcludedRoot,
   RawReference,
   Reference,
   ReferenceKind,
@@ -41,4 +45,7 @@ export type {
   SkipReason,
   SkippedEntry,
   SourceFile,
+  UnscannedExtension,
+  UnscannedFile,
+  UnscannedReason,
 } from './types.js';

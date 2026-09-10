@@ -164,6 +164,88 @@ describe('discover', () => {
     expect((await discover({ root, adapters })).excludedRoots).toEqual([]);
   });
 
+  describe('unscanned files', () => {
+    it('records every file no adapter claimed, with its path', async () => {
+      const root = await makeTree({
+        'index.html': '',
+        'src/hero.png': '',
+        'src/notes.txt': '',
+        'config.yaml': '',
+        LICENSE: '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      // The path, not just the extension: the audit sweeps these files for the
+      // filenames of zero-reference assets, and hedges per asset rather than
+      // globally. A count alone could not name the file in the report.
+      expect(result.unscannedFiles.map((file) => [file.relative, file.extension])).toEqual([
+        ['LICENSE', ''],
+        ['config.yaml', '.yaml'],
+        ['src/notes.txt', '.txt'],
+      ]);
+      expect(result.unscannedFiles.every((file) => file.reason === 'unclaimed-extension')).toBe(
+        true,
+      );
+    });
+
+    it('records an SVG as an asset AND as unscanned', async () => {
+      const root = await makeTree({ 'icons/sprite.svg': '<svg/>', 'hero.png': '' });
+
+      const result = await discover({ root, adapters });
+
+      // An SVG is both. `<image href="hero.png">` inside a sprite is a real
+      // reference no adapter reads, so an asset mentioned only there must not be
+      // reported as confidently dead.
+      expect(result.assets.map((asset) => asset.relative)).toEqual([
+        'hero.png',
+        'icons/sprite.svg',
+      ]);
+      expect(result.unscannedFiles.map((file) => file.relative)).toEqual(['icons/sprite.svg']);
+    });
+
+    it('does not record other image formats as unscanned', async () => {
+      const root = await makeTree({ 'a.png': '', 'b.jpg': '', 'c.webp': '' });
+
+      // A PNG cannot reference another asset, so listing one would be noise in the
+      // report's coverage statement and cost the audit a pointless read.
+      expect((await discover({ root, adapters })).unscannedFiles).toEqual([]);
+    });
+
+    it('does not record ignored or excluded entries', async () => {
+      const root = await makeTree({
+        '.upflyignore': 'legacy/\nsecrets.txt\n',
+        'legacy/old.vue': '',
+        'node_modules/pkg/index.vue': '',
+        'secrets.txt': '',
+        'app.vue': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      // An ignore rule is an instruction, not a gap in our coverage — hedging a
+      // report on a directory the user told us to skip would be dishonest in the
+      // other direction, and walking a pruned node_modules to do it is absurd.
+      // `.upflyignore` is absent because we read it; it is not a file we failed on.
+      expect(result.unscannedFiles.map((file) => file.relative)).toEqual(['app.vue']);
+    });
+
+    it('does not record the ignore file it read, under any name', async () => {
+      const root = await makeTree({ '.upflyrc': 'legacy/\n', 'a.png': '' });
+
+      const result = await discover({ root, adapters, ignoreFile: '.upflyrc' });
+
+      expect(result.unscannedFiles).toEqual([]);
+    });
+
+    it('leaves unscannedFiles empty when every file was claimed', async () => {
+      const root = await makeTree({ 'index.html': '', 'app.css': '', 'hero.png': '' });
+
+      // The case where a `dead` finding can be made confidently.
+      expect((await discover({ root, adapters })).unscannedFiles).toEqual([]);
+    });
+  });
+
   it('applies extraIgnores as if appended to the ignore file', async () => {
     const root = await makeTree({ 'a.png': '', 'temp/b.png': '' });
 
@@ -370,6 +452,7 @@ describe('discover', () => {
       ignoredCount: 0,
       skipped: [],
       excludedRoots: [],
+      unscannedFiles: [],
     });
   });
 
