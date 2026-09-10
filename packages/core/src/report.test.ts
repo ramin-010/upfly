@@ -9,6 +9,7 @@ import { javascriptAdapter } from './adapters/javascript.js';
 import { jsonAdapter } from './adapters/json.js';
 import { markdownAdapter } from './adapters/markdown.js';
 import { audit } from './audit.js';
+import type { Finding } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
@@ -19,6 +20,7 @@ import type { Report } from './report.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
+import type { Mention } from './sweep.js';
 import type { Adapter } from './types.js';
 
 /**
@@ -249,6 +251,140 @@ describe('buildReport', () => {
 
       expect(text).toContain('huge.png');
       expect(text).toContain('could not be measured');
+    });
+  });
+
+  describe('the possibly-dead headings — R16', () => {
+    // Hand-built, and it has to be: **every hedge in every fixture tree comes from
+    // an `.astro` or `.njk` file**, so all five are `unscanned-file`. A
+    // fixture-driven assertion about the other two sources could never fire — which
+    // is precisely how a heading that is false for 119 of astro-docs' 140 findings
+    // shipped past a green suite.
+    const ROOT = '/repo';
+
+    function mention(source: Mention['source'], where: string, quote: string): Mention {
+      return { asset: quote, source, where, quote };
+    }
+
+    function hedgedReport(): Report {
+      const hedge = (asset: string, evidence: readonly [Mention, ...Mention[]]): Finding => ({
+        kind: 'possibly-dead',
+        asset,
+        bytes: 2048,
+        inPublicDir: false,
+        evidence,
+      });
+
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings: [
+            // Two from one file, so the grouping has something to count.
+            hedge('public/logos/gitbook.svg', [
+              mention('unresolved-reference', 'src/data/logos.ts:56', 'gitbook.svg'),
+            ]),
+            hedge('public/logos/hugo.svg', [
+              mention('unresolved-reference', 'src/data/logos.ts:65', 'hugo.svg'),
+            ]),
+            hedge('src/assets/docs.svg', [
+              mention('unscanned-file', 'src/components/SiteTitle.astro:3', 'docs.svg'),
+            ]),
+            hedge('public/assets/arc.webp', [
+              mention('scanned-file', 'src/content/tutorial.mdx:119', 'arc.webp'),
+            ]),
+          ],
+          publicDirDeadCount: 0,
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+      });
+    }
+
+    it('never claims a file could not be read when the engine read it fine', () => {
+      // The defect R16 was ruled on. `src/data/logos.ts` is ordinary TypeScript that
+      // parses perfectly; `'gitbook.svg'` is simply not a resolvable path. A user who
+      // follows that citation under a "cannot read" heading opens a readable file and
+      // concludes the tool is broken — one wrong sentence costing a correct finding.
+      const text = renderReport(hedgedReport());
+      const section = text.slice(text.indexOf('possibly unreferenced'));
+      const unresolvedLine = section
+        .split('\n')
+        .findIndex((line) => line.includes('src/data/logos.ts'));
+      const heading = section
+        .split('\n')
+        .slice(0, unresolvedLine)
+        .filter((line) => line.trimStart().startsWith('named '))
+        .at(-1);
+
+      expect(heading).toContain('could not resolve');
+      expect(heading).not.toContain('no adapter reads');
+    });
+
+    it('heads each evidence source separately, because they mean different things', () => {
+      const text = renderReport(hedgedReport());
+
+      expect(text).toContain('named in a file no adapter reads');
+      expect(text).toContain('named in text Upfly read but no adapter claimed');
+      expect(text).toContain('named by a path Upfly read but could not resolve');
+    });
+
+    it('groups by the citing file and counts it, which is the actionable fact', () => {
+      const text = renderReport(hedgedReport());
+
+      expect(text).toContain('src/data/logos.ts — 2 assets');
+      expect(text).toContain('src/components/SiteTitle.astro — 1 asset');
+    });
+
+    it('files an asset under its most actionable evidence, and still prints the rest', () => {
+      // A real case: `Sponsors.astro` imports `./logos/mux.svg` and `logos.ts` names
+      // `mux.svg` too, so the asset carries both. It belongs under the heading with
+      // something to do about it, and neither citation may be dropped.
+      const both = buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings: [
+            {
+              kind: 'possibly-dead',
+              asset: 'public/logos/mux.svg',
+              bytes: 809,
+              inPublicDir: true,
+              evidence: [
+                mention('unresolved-reference', 'src/data/logos.ts:80', 'mux.svg'),
+                mention('unscanned-file', 'src/components/Sponsors.astro:4', 'mux.svg'),
+              ],
+            },
+          ],
+          publicDirDeadCount: 0,
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+      });
+      const text = renderReport(both);
+
+      expect(text).toContain('named in a file no adapter reads');
+      expect(text).not.toContain('could not resolve —');
+      expect(text).toContain('src/components/Sponsors.astro — 1 asset');
+      expect(text).toContain('named in src/data/logos.ts:80');
     });
   });
 

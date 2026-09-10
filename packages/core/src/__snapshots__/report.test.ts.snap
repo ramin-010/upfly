@@ -141,13 +141,16 @@ Findings — 4 items
   unreferenced images (1)
     public/never-used.png  70 B
 
-  possibly unreferenced (3) — named somewhere Upfly cannot read
-    public/banner.png  70 B
-      named in src/pages/index.astro:11: banner.png
-    public/favicon.png  70 B
-      named in src/pages/index.astro:7: favicon.png
-    src/assets/logo.png  70 B
-      named in src/pages/index.astro:2: logo.png
+  possibly unreferenced (3) — each is named somewhere, but not by a reference Upfly could follow
+
+    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
+      src/pages/index.astro — 3 assets
+        public/banner.png  70 B
+          named in src/pages/index.astro:11: banner.png
+        public/favicon.png  70 B
+          named in src/pages/index.astro:7: favicon.png
+        src/assets/logo.png  70 B
+          named in src/pages/index.astro:2: logo.png
 
 Worth knowing
 
@@ -323,15 +326,22 @@ Findings — 5 items
   unreferenced images (1)
     src/img/unused.png  70 B
 
-  possibly unreferenced (4) — named somewhere Upfly cannot read
-    src/img/favicon.png  70 B
-      named in src/_includes/base.njk:4: favicon.png
-    src/img/hero.jpg  160 B
-      named in src/index.njk:6: hero.jpg
-    src/img/logo.png  70 B
-      named in src/index.njk:5: logo.png
-    src/img/templated.png  70 B
-      named in src/posts/first.md:7: {{ site.url }}/img/templated.png
+  possibly unreferenced (4) — each is named somewhere, but not by a reference Upfly could follow
+
+    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
+      src/index.njk — 2 assets
+        src/img/hero.jpg  160 B
+          named in src/index.njk:6: hero.jpg
+        src/img/logo.png  70 B
+          named in src/index.njk:5: logo.png
+      src/_includes/base.njk — 1 asset
+        src/img/favicon.png  70 B
+          named in src/_includes/base.njk:4: favicon.png
+
+    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (1)
+      src/posts/first.md — 1 asset
+        src/img/templated.png  70 B
+          named in src/posts/first.md:7: {{ site.url }}/img/templated.png
 
 Worth knowing
 

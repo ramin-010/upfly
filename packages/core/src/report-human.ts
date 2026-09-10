@@ -19,7 +19,9 @@
  */
 
 import type { Finding } from './audit.js';
+import { compareStrings } from './paths.js';
 import type { Report, SkipStage, SkippedItem } from './report.js';
+import type { MentionSource } from './sweep.js';
 
 /** Render the report as plain text. */
 export function renderReport(report: Report): string {
@@ -127,6 +129,17 @@ function findingsSection(report: Report): string[] {
   let previous: Finding['kind'] | null = null;
 
   for (const finding of report.findings) {
+    // Hedges are not a flat list: they are three different statements about why an
+    // asset has no references, and they are rendered as such. See below.
+    if (finding.kind === 'possibly-dead') {
+      if (previous !== 'possibly-dead') {
+        if (previous !== null) lines.push('');
+        lines.push(...possiblyDeadSection(report));
+        previous = 'possibly-dead';
+      }
+      continue;
+    }
+
     if (finding.kind !== previous) {
       if (previous !== null) lines.push('');
       lines.push(`  ${headingFor(finding.kind, report)}`);
@@ -139,6 +152,105 @@ function findingsSection(report: Report): string[] {
   return lines;
 }
 
+type PossiblyDead = Extract<Finding, { kind: 'possibly-dead' }>;
+
+/**
+ * Most actionable first. A finding is filed under the best evidence it carries,
+ * and still prints all of it.
+ */
+const MENTION_RANK: readonly MentionSource[] = [
+  'unscanned-file',
+  'scanned-file',
+  'unresolved-reference',
+];
+
+/**
+ * What each source means to the person reading, which is the only axis that
+ * matters here: the three differ in what the user can *do*.
+ */
+const MENTION_HEADING: Record<MentionSource, string> = {
+  'unscanned-file': 'in a file no adapter reads — an adapter or a config entry would resolve these',
+  'scanned-file':
+    'in text Upfly read but no adapter claimed — the weakest evidence; look if the asset matters',
+  'unresolved-reference':
+    'by a path Upfly read but could not resolve — nothing to fix; those files parse fine',
+};
+
+/**
+ * The hedges, split by what the evidence actually is and grouped by the file that
+ * named them.
+ *
+ * The single heading this replaced — *"named somewhere Upfly cannot read"* — was
+ * **false for the majority of the findings it headed**: 119 of 140 on `astro-docs`,
+ * 5 of 10 on `eleventy-docs`, 5 of 8 on `shadcn-ui` have no `unscanned-file`
+ * evidence at all. `src/data/logos.ts` is ordinary TypeScript that parses perfectly;
+ * `'gitbook.svg'` simply is not a resolvable path. A user who follows that citation
+ * opens a readable file and concludes the tool is broken — so one wrong sentence
+ * costs the credibility of a finding that was right.
+ *
+ * Grouping is by **citing file**, not by source. "120 assets are named in
+ * `src/data/logos.ts`" is a fact somebody can act on; "120 unresolved-reference" is
+ * our internal taxonomy, and one file explaining 86% of a repository's hedges is the
+ * whole finding.
+ */
+function possiblyDeadSection(report: Report): string[] {
+  const findings = report.findings.filter(
+    (finding): finding is PossiblyDead => finding.kind === 'possibly-dead',
+  );
+  const lines = [
+    `  possibly unreferenced (${findings.length}) — each is named somewhere, but not by a reference Upfly could follow`,
+  ];
+
+  for (const source of MENTION_RANK) {
+    const group = findings.filter((finding) => bestSource(finding) === source);
+    if (group.length === 0) continue;
+
+    lines.push('', `    named ${MENTION_HEADING[source]} (${group.length})`);
+
+    const byFile = new Map<string, PossiblyDead[]>();
+    for (const finding of group) {
+      const file = citingFile(finding, source);
+      byFile.set(file, [...(byFile.get(file) ?? []), finding]);
+    }
+
+    // Biggest cause first, because that is the one worth acting on — with ties
+    // broken on the path, so rule 11 survives two files naming the same number.
+    const files = [...byFile].sort(
+      (a, b) => b[1].length - a[1].length || compareStrings(a[0], b[0]),
+    );
+
+    for (const [file, assets] of files) {
+      lines.push(`      ${file} — ${count(assets.length, 'asset')}`);
+      for (const finding of assets) {
+        lines.push(`        ${finding.asset}  ${bytes(finding.bytes)}`);
+        // Every mention, not only the one that filed it: the citation is the whole
+        // point of hedging per asset rather than globally.
+        for (const mention of finding.evidence) {
+          lines.push(`          named in ${mention.where}: ${mention.quote}`);
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
+/** The most actionable source among a finding's evidence. */
+function bestSource(finding: PossiblyDead): MentionSource {
+  let best = finding.evidence[0].source;
+  for (const mention of finding.evidence) {
+    if (MENTION_RANK.indexOf(mention.source) < MENTION_RANK.indexOf(best)) best = mention.source;
+  }
+  return best;
+}
+
+/** The file that filed this finding, without the line number `where` carries. */
+function citingFile(finding: PossiblyDead, source: MentionSource): string {
+  const mention = finding.evidence.find((entry) => entry.source === source);
+  const where = mention?.where ?? finding.evidence[0].where;
+  return where.replace(/:\d+$/, '');
+}
+
 function headingFor(kind: Finding['kind'], report: Report): string {
   const total = report.summary.findings[kind];
   switch (kind) {
@@ -147,7 +259,10 @@ function headingFor(kind: Finding['kind'], report: Report): string {
     case 'dead':
       return `unreferenced images (${total})`;
     case 'possibly-dead':
-      return `possibly unreferenced (${total}) — named somewhere Upfly cannot read`;
+      // Unreachable: `findingsSection` routes these through `possiblyDeadSection`,
+      // which heads each of the three evidence kinds separately. Kept so the
+      // exhaustive switch still compiles and an eighth finding still breaks it.
+      return `possibly unreferenced (${total})`;
     case 'oversized':
       return `oversized images (${total})`;
     case 'format-opportunity':
