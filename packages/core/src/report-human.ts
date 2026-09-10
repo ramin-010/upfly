@@ -19,7 +19,8 @@
  */
 
 import { staticExtensionOf } from './adapters/reference-path.js';
-import type { Finding } from './audit.js';
+import type { Finding, OversizeDimension } from './audit.js';
+import { formatBytes as bytes } from './format.js';
 import { compareStrings, isImageExtension } from './paths.js';
 import type { Report, SkipStage, SkippedItem } from './report.js';
 import type { MentionSource } from './sweep.js';
@@ -58,10 +59,19 @@ function headline(report: Report): string[] {
   return lines;
 }
 
+/**
+ * What each stage's failures were, said as the thing that happened.
+ *
+ * ⚠️ The sweep's label used to read `could not be searched`, which under a heading
+ * about what Upfly "could not handle" and beside conversion messages read as *"why
+ * are we trying to convert fonts?"* (R21). They are fonts too large to grep for a
+ * filename — nothing to do with conversion — so the label now says which search and
+ * why, and the two kinds no longer look like one kind.
+ */
 const STAGE_LABEL: Record<SkipStage, string> = {
   discovery: 'could not be read',
   scan: 'could not be parsed',
-  sweep: 'could not be searched',
+  sweep: 'too large to search for asset filenames',
   citation: 'could not be re-read for a line number',
   measurement: 'could not be measured',
 };
@@ -86,7 +96,11 @@ function skippedSection(report: Report): string[] {
   const lines: string[] = [];
 
   if (skipped.length > 0) {
-    lines.push(`Skipped — ${count(skipped.length, 'thing')} Upfly could not handle`, '');
+    // "could not handle" was false for 134 of `astro-docs`' 140 (R21): those were
+    // determinations — a vector, a file already in the target format — filed as
+    // failures. They are a caveat now, and what is left here really is what went
+    // wrong, so the heading can say so plainly.
+    lines.push(`Skipped — ${count(skipped.length, 'thing')} Upfly could not do`, '');
     for (const [stage, items] of groupByStage(skipped)) {
       lines.push(`  ${STAGE_LABEL[stage]}:`);
       for (const item of items) lines.push(`    ${item.what} — ${item.reason}`);
@@ -106,7 +120,16 @@ function skippedSection(report: Report): string[] {
     const listed = references.unsafe.filter((entry) => showsAnImageFilename(entry.rawPath));
     const counted = references.unsafe.length - listed.length;
 
+    // The two columns are `where it was found` and `what was found` (R21). Reading
+    // `api-reference.mdx  script-src 'self' …` cold, the question it provoked was
+    // whether the `.mdx` was being treated as an image — which nothing on the page
+    // answered. One line of header costs less than the doubt did.
     lines.push(`${count(references.unsafe.length, 'reference')} could not be resolved safely`, '');
+    // Only when there is a list to head. A column key above an empty list is its
+    // own small piece of noise, and this section is often entirely counted.
+    if (listed.length > 0) {
+      lines.push('  (the file it was found in, then the path text as written)', '');
+    }
     for (const entry of listed) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
       lines.push(`    ${entry.resolution} — ${entry.reason}`);
@@ -193,6 +216,19 @@ function findingsSection(report: Report): string[] {
         if (previous !== null) lines.push('');
         lines.push(...possiblyDeadSection(report));
         previous = 'possibly-dead';
+      }
+      continue;
+    }
+
+    // Both size findings are one statement about one file (R21). All five of
+    // astro-docs' `oversized` assets were also in `format-opportunity`, in two
+    // sections a page apart with nothing connecting them, so the same image was
+    // reported twice and its total story was in neither place.
+    if (finding.kind === 'oversized' || finding.kind === 'format-opportunity') {
+      if (previous !== 'oversized') {
+        if (previous !== null) lines.push('');
+        lines.push(...sizeSection(report));
+        previous = 'oversized';
       }
       continue;
     }
@@ -308,6 +344,72 @@ function citingFile(finding: PossiblyDead, source: MentionSource): string {
   return where.replace(/:\d+$/, '');
 }
 
+/** What exceeding each limit means, said as a comparison a reader can check. */
+const OVERSIZE_LABEL: Record<OversizeDimension, string> = {
+  bytes: 'larger than the size limit',
+  width: 'wider than the width limit',
+  height: 'taller than the height limit',
+};
+
+type Oversized = Extract<Finding, { kind: 'oversized' }>;
+type Opportunity = Extract<Finding, { kind: 'format-opportunity' }>;
+
+/**
+ * Everything about an image's size, once per image.
+ *
+ * `oversized` and `format-opportunity` are two measurements of the same thing, and
+ * printing them in separate sections meant `landing-page-book.png` appeared twice
+ * with nothing linking the entries — 551 KB in one place, "340 KB as webp" in
+ * another, and the sentence a reader actually wants ("551 KB, and 340 KB as webp")
+ * in neither. On `astro-docs` **all five** oversized assets were also opportunities.
+ *
+ * Both counts stay in the heading, so nothing is hidden by the merge.
+ */
+function sizeSection(report: Report): string[] {
+  const merged = new Map<string, { over: Oversized | null; opportunities: Opportunity[] }>();
+
+  // First-encounter order, which is the report's own deterministic finding order —
+  // rule 11 holds without a second sort.
+  for (const finding of report.findings) {
+    if (finding.kind !== 'oversized' && finding.kind !== 'format-opportunity') continue;
+    const entry = merged.get(finding.asset) ?? { over: null, opportunities: [] };
+    if (finding.kind === 'oversized') entry.over = finding;
+    else entry.opportunities.push(finding);
+    merged.set(finding.asset, entry);
+  }
+
+  const oversized = report.summary.findings.oversized;
+  const opportunities = report.summary.findings['format-opportunity'];
+  const lines = [
+    `  size — ${count(merged.size, 'image')}: ${oversized} over the limit, ${opportunities} smaller as another format (measured, not estimated)`,
+    '',
+  ];
+
+  for (const [asset, entry] of merged) {
+    const first = entry.over ?? entry.opportunities[0];
+    if (first === undefined) continue;
+
+    const shape = entry.over === null ? '' : dimensions(entry.over.width, entry.over.height);
+    lines.push(`    ${asset}  ${bytes(first.bytes)}${shape}`);
+
+    if (entry.over !== null) {
+      // One line each, not `over ${exceeded.join(' and ')}` — which rendered as
+      // "over bytes and width", a phrase in no language. `exceeded` holds the
+      // dimension *names*, and joining internal identifiers into a sentence is the
+      // same shape of defect as the headings R21 was raised about. Separate lines
+      // also sidestep "limit" vs "limits".
+      for (const dimension of entry.over.exceeded) lines.push(`      ${OVERSIZE_LABEL[dimension]}`);
+    }
+    for (const opportunity of entry.opportunities) {
+      lines.push(
+        `      ${bytes(opportunity.wouldBe)} as ${opportunity.to} — saves ${bytes(opportunity.savedBytes)}, ${opportunity.savedPercent}%`,
+      );
+    }
+  }
+
+  return lines;
+}
+
 function headingFor(kind: Finding['kind'], report: Report): string {
   const total = report.summary.findings[kind];
   switch (kind) {
@@ -397,18 +499,6 @@ function count(value: number, noun: string): string {
  * `1,5 MB` on another and rule 11's byte-identical output would quietly be false.
  * Decimal units, because that is what file managers show.
  */
-function bytes(value: number): string {
-  if (value < 1_000) return `${value} B`;
-  if (value < 1_000_000) return `${tenths(value / 1_000)} KB`;
-  if (value < 1_000_000_000) return `${tenths(value / 1_000_000)} MB`;
-  return `${tenths(value / 1_000_000_000)} GB`;
-}
-
-/** One decimal place, without trailing `.0`, and without locale rules. */
-function tenths(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
-}
 
 function dimensions(width: number | null, height: number | null): string {
   return width === null || height === null ? '' : `, ${width}×${height}`;

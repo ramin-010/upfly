@@ -35,6 +35,7 @@
  */
 
 import { citeReferences, lineOf } from './citation.js';
+import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings, imageFilenamePattern } from './paths.js';
@@ -222,7 +223,11 @@ async function sweepFiles(
     if (text.length > maxBytes) {
       skipped.push({
         relative: file.relative,
-        reason: `larger than the ${maxBytes}-byte sweep limit`,
+        // Human scale, not a raw byte count: the report prints this verbatim and
+        // "larger than the 2097152-byte sweep limit" is a number nobody reads.
+        // Hard-coding megabytes was the version that broke — a 100-byte limit
+        // rounds to `0 MB` — so it shares the renderer's formatter.
+        reason: `larger than the ${formatBytes(maxBytes)} limit for searching a file's text`,
       });
       continue;
     }

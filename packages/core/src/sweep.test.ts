@@ -518,7 +518,10 @@ describe('sweepForMentions', () => {
 
       expect(result.mentions.size).toBe(0);
       expect(result.skipped).toEqual([
-        { relative: 'promo.mp4', reason: 'larger than the 100-byte sweep limit' },
+        {
+          relative: 'promo.mp4',
+          reason: "larger than the 100 B limit for searching a file's text",
+        },
       ]);
     });
   });

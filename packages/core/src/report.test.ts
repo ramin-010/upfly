@@ -396,6 +396,215 @@ describe('buildReport', () => {
     });
   });
 
+  describe('one image, one size story (R21)', () => {
+    /**
+     * `oversized` and `format-opportunity` are two measurements of the same file,
+     * and they were printed in sections a page apart with nothing linking them. On
+     * `astro-docs` **all five** oversized assets were also opportunities, so every
+     * one appeared twice and the sentence a reader wants — "551 KB, and 340 KB as
+     * webp" — was in neither place.
+     *
+     * Hand-built, and unavoidably so: `reportFor` runs the fixtures with
+     * `probed = false`, so **no fixture produces either finding**. The merged
+     * section is invisible to every snapshot. That is the fourth report branch this
+     * phase that no fixture could reach.
+     */
+    const ROOT = '/repo';
+
+    function sizeReport(findings: Finding[]) {
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings,
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: true,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+      });
+    }
+
+    const oversized: Finding = {
+      kind: 'oversized',
+      asset: 'src/assets/landing-page-book.png',
+      bytes: 551_000,
+      width: 2256,
+      height: 1320,
+      exceeded: ['bytes'],
+    };
+    const opportunity: Finding = {
+      kind: 'format-opportunity',
+      asset: 'src/assets/landing-page-book.png',
+      bytes: 551_000,
+      from: 'png',
+      wouldBe: 340_000,
+      to: 'webp',
+      savedBytes: 211_000,
+      savedPercent: 38,
+    };
+
+    it('reports one file once, with both measurements under it', () => {
+      const text = renderReport(sizeReport([oversized, opportunity]));
+
+      expect(text.match(/landing-page-book\.png/g)).toHaveLength(1);
+      expect(text).toContain('larger than the size limit');
+      expect(text).toContain('as webp');
+    });
+
+    it('keeps both counts in the heading, so the merge hides nothing', () => {
+      // Rule 9 applied to a collapse: two numbers went in, two numbers come out.
+      const text = renderReport(sizeReport([oversized, opportunity]));
+
+      expect(text).toContain('1 over the limit');
+      expect(text).toContain('1 smaller as another format');
+    });
+
+    it('reads naturally for a file with only one of the two', () => {
+      const text = renderReport(sizeReport([opportunity]));
+
+      expect(text).toContain('landing-page-book.png');
+      // The specific line, not the substring: `over ` also matches the heading's
+      // "0 over the limit", so the loose version failed for the right reason.
+      expect(text).not.toContain('larger than the size limit');
+      expect(text).toContain('0 over the limit');
+    });
+  });
+
+  describe('a determination is not a failure (R21)', () => {
+    /**
+     * `Skipped — 140 things Upfly could not handle` was false for 134 of them on
+     * `astro-docs`: 126 vectors and 8 files already in the target format, each one
+     * Upfly *working out* that there was nothing to gain. The reader's question was
+     * the right one — "if you can identify that, doesn't that count?"
+     *
+     * Hand-built because **no fixture renders the skipped section at all.** Every
+     * stage label, the heading, and the grouping are invisible to the fixture
+     * snapshots, so this whole path looks tested and is not — the same trap as the
+     * discarded line, the encode cap and the counted-unsafe branch.
+     */
+    const ROOT = '/repo';
+
+    function probe(relative: string, code: 'vector' | 'already-target-format' | 'encode-failed') {
+      const reason =
+        code === 'vector'
+          ? 'SVG is a vector: encoding it measures a rasterisation, not a saving'
+          : code === 'already-target-format'
+            ? 'already webp'
+            : 'the encoder rejected it';
+      return {
+        relative,
+        metadata: { width: 10, height: 10, format: 'png' as const, pages: 1 },
+        encoded: [],
+        skipped: [{ measurement: 'webp' as const, code, reason }],
+      };
+    }
+
+    function reportWith(probes: ReturnType<typeof probe>[]) {
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: true,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        probes,
+      });
+    }
+
+    it('keeps a vector and an already-converted file out of the skipped list', () => {
+      const report = reportWith([
+        probe('logo.svg', 'vector'),
+        probe('hero.webp', 'already-target-format'),
+      ]);
+
+      expect(report.skipped).toEqual([]);
+    });
+
+    it('counts them in one caveat instead, with the reasons broken out', () => {
+      // Rule 9: the count survives the collapse, and the per-asset detail is
+      // untouched in `probes[].skipped` for anyone reading the JSON.
+      const caveat = reportWith([
+        probe('a.svg', 'vector'),
+        probe('b.svg', 'vector'),
+        probe('c.webp', 'already-target-format'),
+      ]).caveats.find((entry) => entry.code === 'nothing-to-measure');
+
+      expect(caveat?.count).toBe(3);
+      expect(caveat?.message).toContain('needed no measurement');
+      expect(caveat?.detail).toEqual([
+        'vectors, where an encode would measure a rasterisation rather than a saving — 2',
+        'already in the format Upfly would convert to — 1',
+      ]);
+    });
+
+    it('still reports a measurement that genuinely failed', () => {
+      // The control, and the thing that must not be lost: an encoder rejecting an
+      // image is a failure, not a determination, and it belongs in the list.
+      const report = reportWith([probe('broken.png', 'encode-failed')]);
+
+      expect(report.skipped).toEqual([
+        { what: 'broken.png', stage: 'measurement', reason: 'webp: the encoder rejected it' },
+      ]);
+      expect(report.caveats.some((entry) => entry.code === 'nothing-to-measure')).toBe(false);
+    });
+
+    it('says what the sweep skip actually was, not "could not be searched"', () => {
+      // Eight fonts over the sweep's size limit, under a heading about what Upfly
+      // could not handle and beside conversion messages, read as "why are we trying
+      // to convert fonts?" They are not being converted at all.
+      const report = buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: {
+          mentions: new Map(),
+          skipped: [{ relative: 'fonts/inter.woff2', reason: 'over 2 MB' }],
+        },
+      });
+      const text = renderReport(report);
+
+      expect(text).toContain('too large to search for asset filenames');
+      expect(text).not.toContain('could not be searched');
+      expect(text).toContain('Upfly could not do');
+    });
+  });
+
   describe('the unsafe bucket lists what can be checked (R21)', () => {
     // Hand-built, and it has to be: the only fixture with an unsafe reference has
     // exactly one, and it *shows a filename*, so the counted branch below is

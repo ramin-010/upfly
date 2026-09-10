@@ -318,6 +318,8 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 
 1 reference could not be resolved safely
 
+  (the file it was found in, then the path text as written)
+
   src/posts/first.md  {{ site.url }}/img/templated.png
     dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
 
@@ -558,12 +560,10 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "message": "images were not decoded, so oversized assets and format opportunities are unknown",
     },
     {
-      "code": "unscanned-extensions",
+      "code": "svg-both-ways",
       "count": 1,
-      "detail": [
-        ".svg — 1 file",
-      ],
-      "message": "1 file type had no adapter, so 1 file went unread",
+      "detail": [],
+      "message": "SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (1 SVG here)",
     },
   ],
   "coverage": {
@@ -644,7 +644,6 @@ Findings — 1 item
 Worth knowing
 
   images were not decoded, so oversized assets and format opportunities are unknown
-  1 file type had no adapter, so 1 file went unread:
-    .svg — 1 file
+  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (1 SVG here)
 "
 `;

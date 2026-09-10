@@ -25,7 +25,7 @@
 import type { AuditResult, Finding } from './audit.js';
 import type { Graph } from './graph.js';
 import { compareStrings, relativePath } from './paths.js';
-import type { AssetProbe } from './probe.js';
+import type { AssetProbe, ProbeSkipCode } from './probe.js';
 import type { SweepResult } from './sweep.js';
 import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from './types.js';
 
@@ -126,10 +126,13 @@ export interface Caveat {
   readonly code:
     | 'public-dir-dead'
     | 'framework-conventions'
+    | 'nothing-to-measure'
     | 'not-probed'
     | 'encode-capped'
     | 'excluded-roots'
-    | 'unscanned-extensions';
+    | 'unscanned-extensions'
+    | 'binary-file-types'
+    | 'svg-both-ways';
   readonly count: number;
   /**
    * Rendered verbatim, and complete on its own.
@@ -298,6 +301,17 @@ function coverageReport(input: ReportInput): CoverageReport {
  * place to append to — and because the human renderer prints this *first*, which
  * only works if it is one thing to print.
  */
+/**
+ * Probe outcomes that are conclusions rather than failures.
+ *
+ * Keyed on `ProbeSkipCode` rather than on the message, which is what that field is
+ * for: a report that groups by prose breaks the moment somebody rewords a sentence.
+ */
+const DETERMINED_NOT_WORTH_MEASURING: ReadonlySet<ProbeSkipCode> = new Set([
+  'vector',
+  'already-target-format',
+]);
+
 function collectSkips(input: ReportInput): SkippedItem[] {
   const items: SkippedItem[] = [];
 
@@ -326,6 +340,13 @@ function collectSkips(input: ReportInput): SkippedItem[] {
 
   for (const probe of input.probes ?? []) {
     for (const skip of probe.skipped) {
+      // A determination is not a failure (R21). `vector` and
+      // `already-target-format` are Upfly working out that there is nothing to gain
+      // and saying so — filing them here made `140 things Upfly could not handle`
+      // false for 134 of the 140 on `astro-docs`, and repeated one sentence 126
+      // times. They are counted in a caveat instead; the per-asset detail is
+      // untouched in the JSON, so rule 9 holds and nothing is hidden.
+      if (DETERMINED_NOT_WORTH_MEASURING.has(skip.code)) continue;
       items.push({
         what: probe.relative,
         stage: 'measurement',
@@ -341,6 +362,101 @@ function collectSkips(input: ReportInput): SkippedItem[] {
       compareStrings(a.reason, b.reason),
   );
 }
+
+/**
+ * How many assets needed no measurement, and why, grouped by reason.
+ *
+ * One asset can contribute two entries — an SVG measured against both webp and avif
+ * — so assets are counted once and the per-reason breakdown counts measurements.
+ * The headline is the number of *images*, which is what a reader is counting.
+ */
+function countDeterminations(input: ReportInput): { total: number; detail: string[] } {
+  const assets = new Set<string>();
+  const byCode = new Map<ProbeSkipCode, number>();
+
+  for (const probe of input.probes ?? []) {
+    for (const skip of probe.skipped) {
+      if (!DETERMINED_NOT_WORTH_MEASURING.has(skip.code)) continue;
+      assets.add(probe.relative);
+      byCode.set(skip.code, (byCode.get(skip.code) ?? 0) + 1);
+    }
+  }
+
+  const label: Record<string, string> = {
+    vector: 'vectors, where an encode would measure a rasterisation rather than a saving',
+    'already-target-format': 'already in the format Upfly would convert to',
+  };
+
+  return {
+    total: assets.size,
+    // `thing — count`, matching the other detail lists, rather than `count thing`
+    // which rendered as "126 a vector". It is also the shape that cannot disagree
+    // with itself at one.
+    detail: [...byCode]
+      .sort((a, b) => b[1] - a[1] || compareStrings(a[0], b[0]))
+      .map(([code, count]) => `${label[code] ?? code} — ${count}`),
+  };
+}
+
+/**
+ * Unscanned extensions, split by what a reader can do about each.
+ *
+ * The distinction is not cosmetic: an adapter closes the first group, nothing closes
+ * the second, and the third is a deliberate design decision rather than a gap.
+ */
+function groupUnscanned(extensions: readonly UnscannedExtension[]): {
+  adapterCould: UnscannedExtension[];
+  binary: UnscannedExtension[];
+  svg: number;
+} {
+  const adapterCould: UnscannedExtension[] = [];
+  const binary: UnscannedExtension[] = [];
+  let svg = 0;
+
+  for (const entry of extensions) {
+    if (entry.ext === '.svg') svg += entry.fileCount;
+    else if (BINARY_EXTENSIONS.has(entry.ext)) binary.push(entry);
+    else adapterCould.push(entry);
+  }
+
+  return { adapterCould, binary, svg };
+}
+
+/**
+ * Extensions whose contents are not text.
+ *
+ * Deliberately a list rather than a heuristic: guessing wrong in the *other*
+ * direction would tell a user that a format no adapter reads is unreadable in
+ * principle, which is exactly the kind of confident-and-wrong sentence R21 was
+ * raised about. Anything not named here is assumed to be text an adapter could one
+ * day read.
+ */
+const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.avi',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.otf',
+  '.ttf',
+  '.woff',
+  '.woff2',
+  '.eot',
+  '.ico',
+  '.pdf',
+  '.zip',
+  '.gz',
+  '.tar',
+  '.wasm',
+  '.node',
+  '.bin',
+  '.psd',
+  '.sketch',
+  '.db',
+  '.sqlite',
+]);
 
 /** The limitations that apply to the whole run rather than to one finding. */
 function caveats(input: ReportInput): Caveat[] {
@@ -371,6 +487,20 @@ function caveats(input: ReportInput): Caveat[] {
     });
   }
 
+  // R21: the count of things Upfly decided were not worth measuring, as one line
+  // rather than 134. `astro-docs` is 126 vectors and 8 files already in the target
+  // format — every one a successful determination, and the reader's question was
+  // exactly right: *"if you can identify that, doesn't that count?"*
+  const determined = countDeterminations(input);
+  if (determined.total > 0) {
+    list.push({
+      code: 'nothing-to-measure',
+      count: determined.total,
+      message: `${plural(determined.total, 'image')} needed no measurement`,
+      detail: determined.detail,
+    });
+  }
+
   if (!input.audit.probed) {
     list.push({
       code: 'not-probed',
@@ -392,26 +522,56 @@ function caveats(input: ReportInput): Caveat[] {
     });
   }
 
-  const unscanned = input.graph.unscannedExtensions;
-  if (unscanned.length > 0) {
+  // R21: three different things were sharing one sentence, and only one of them is
+  // a gap anybody can close.
+  //
+  //   `.astro` (82 files) is a real coverage gap — an adapter would read it.
+  //   `.mp4`, `.otf`, `.ttf`, `.ico` are **binary**. There is nothing to read and no
+  //   adapter will ever change that, so listing them as something we failed to do is
+  //   the same error as filing a vector under "could not handle".
+  //   `.svg` is a third case entirely: it is tracked as an image asset *and* can
+  //   itself hold references (`<image href>`), so it is deliberately in both places.
+  //
+  // Splitting them is what turns a list into three statements a reader can act on
+  // differently. The counts still add up to the same total.
+  const groups = groupUnscanned(input.graph.unscannedExtensions);
+
+  if (groups.adapterCould.length > 0) {
+    const files = groups.adapterCould.reduce((total, entry) => total + entry.fileCount, 0);
     list.push({
       code: 'unscanned-extensions',
-      count: input.graph.unscannedFiles.length,
-      message: `${plural(unscanned.length, 'file type')} had no adapter, so ${plural(input.graph.unscannedFiles.length, 'file')} went unread`,
+      count: files,
+      message: `${plural(groups.adapterCould.length, 'file type')} had no adapter, so ${plural(files, 'file')} went unread`,
       // Naming them is the point: this is how a user discovers which adapter they
       // want, and it is the difference between a shrug and a next step.
-      detail: unscanned.map(
-        (entry) => `${entry.ext || '(no extension)'} — ${plural(entry.fileCount, 'file')}`,
+      detail: groups.adapterCould.map(
+        (entry) =>
+          `${entry.ext === '' ? '(no extension)' : entry.ext} — ${plural(entry.fileCount, 'file')}`,
       ),
     });
   }
 
-  if (input.discovery.excludedRoots.length > 0) {
+  if (groups.binary.length > 0) {
+    const files = groups.binary.reduce((total, entry) => total + entry.fileCount, 0);
     list.push({
-      code: 'excluded-roots',
-      count: input.discovery.excludedRoots.length,
-      message: `${plural(input.discovery.excludedRoots.length, 'directory', 'directories')} ${were(input.discovery.excludedRoots.length)} not entered, so nothing inside ${input.discovery.excludedRoots.length === 1 ? 'it' : 'them'} was read`,
-      detail: input.discovery.excludedRoots.map((root) => `${root.relative} — ${root.reason}`),
+      code: 'binary-file-types',
+      count: files,
+      // Invariant subject, so the count cannot disagree with the verb. Written as
+      // `${plural(files,'file')} are binary…` first, which reads "1 file are
+      // binary" — the third instance of that bug in this file, committed an hour
+      // after writing the note about avoiding it. A construction that cannot carry
+      // it beats remembering to check.
+      message: `binary formats have no text for an adapter to read, so no adapter ever will (${plural(files, 'file')} here)`,
+      detail: groups.binary.map((entry) => `${entry.ext} — ${plural(entry.fileCount, 'file')}`),
+    });
+  }
+
+  if (groups.svg > 0) {
+    list.push({
+      code: 'svg-both-ways',
+      count: groups.svg,
+      message: `SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (${plural(groups.svg, 'SVG')} here)`,
+      detail: [],
     });
   }
 
