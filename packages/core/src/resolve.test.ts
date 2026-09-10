@@ -295,6 +295,79 @@ describe('resolveReferences', () => {
     });
   });
 
+  describe('R15 — a `./` path meant relative to the project root', () => {
+    it('lets a speculative dot-path fall back to the project root', () => {
+      // astro-docs: `path: './src/pages/.../docs-logo.png'` in an object, handed to
+      // a filesystem read where the cwd is the project root. Resolved against the
+      // file it lands on `src/pages/open-graph/src/pages/...`, which is nowhere.
+      const [resolved] = resolveReferences(
+        [
+          raw({
+            rawPath: './src/assets/logo.png',
+            file: join(ROOT, 'src/pages/deep/handler.ts'),
+            asserted: false,
+            ceiling: 'high',
+          }),
+        ],
+        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+      );
+
+      expect(resolved?.resolution).toBe('resolved');
+      // Recorded, not re-derived: Phase 2 must know this link is evidence the asset
+      // is alive and NOT licence to rewrite the string, because the code may join
+      // it to a different base entirely.
+      expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('project-root');
+    });
+
+    it('refuses the same fallback for an asserted import', () => {
+      // `./` in a module system unambiguously means file-relative. Falling back
+      // here would link a genuinely broken import to an unrelated file — a false
+      // link, and a false link costs a broken build where a false broken costs
+      // five minutes.
+      const [resolved] = resolveReferences(
+        [
+          raw({
+            rawPath: './src/assets/logo.png',
+            file: join(ROOT, 'src/pages/deep/handler.ts'),
+          }),
+        ],
+        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+      );
+
+      expect(resolved?.resolution).toBe('broken');
+    });
+
+    it('records how an ordinary relative reference resolved', () => {
+      const reference = resolveOne({ rawPath: './assets/logo.png' });
+
+      expect(reference?.resolution === 'resolved' && reference.resolvedVia).toBe('file');
+    });
+
+    it('records a serving-root resolution as one', () => {
+      const [resolved] = resolveReferences([raw({ rawPath: '/banner.png' })], {
+        root: ROOT,
+        assets: ASSETS,
+        publicDirs: ['public'],
+        exists: NOTHING_EXISTS,
+      });
+
+      expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('serving-root');
+    });
+
+    it('records the project-root fallback for a root-relative path as one', () => {
+      // `at-root.png` is not under `public/`, so no configured serving root has it
+      // and the engine is guessing at the base.
+      const [resolved] = resolveReferences([raw({ rawPath: '/at-root.png' })], {
+        root: ROOT,
+        assets: ASSETS,
+        publicDirs: ['public'],
+        exists: NOTHING_EXISTS,
+      });
+
+      expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('project-root');
+    });
+  });
+
   describe('rung 5 — alias-shaped paths are their own bucket', () => {
     it.each([
       ['a webpack-style alias', '@/assets/logo.png'],

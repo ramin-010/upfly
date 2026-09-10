@@ -16,7 +16,7 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { splitPathSuffix } from './adapters/reference-path.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
-import type { Asset, ExcludedRoot, RawReference, Reference } from './types.js';
+import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
 export interface ResolveOptions {
   /** Absolute project root, as returned by `discover`. */
@@ -119,7 +119,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 2. A pattern. Glob it; never let it fall through to `broken`.
   if (raw.ceiling === 'medium') {
-    const matches = index.matchPattern(raw.rawPath, raw, root, publicDirs);
+    const { matches, via } = index.matchPattern(raw.rawPath, raw, root, publicDirs);
     const [first, ...rest] = matches;
     if (first === undefined) return unlinked(raw, 'dynamic');
     return {
@@ -127,6 +127,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
       resolution: 'resolved-pattern',
       confidence: 'medium',
       resolvedPaths: [first, ...rest],
+      resolvedVia: via,
     };
   }
 
@@ -138,7 +139,13 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   // 4. Points at an asset we found.
   const target = index.lookup(path, raw, root, publicDirs);
   if (target !== null) {
-    return { ...raw, resolution: 'resolved', confidence: raw.ceiling, resolvedPath: target };
+    return {
+      ...raw,
+      resolution: 'resolved',
+      confidence: raw.ceiling,
+      resolvedPath: target.path,
+      resolvedVia: target.via,
+    };
   }
 
   // 5. Points at a real file we deliberately do not index.
@@ -169,7 +176,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
  * exit criterion — the trade is not close.
  */
 function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
-  for (const candidate of candidatePaths(path, raw.file, context.root, context.publicDirs)) {
+  for (const { path: candidate } of candidatePaths(path, raw, context.root, context.publicDirs)) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
       if (!candidate.startsWith(prefix)) continue;
@@ -242,10 +249,10 @@ class AssetIndex {
     raw: RawReference,
     root: string,
     publicDirs: readonly string[],
-  ): string | null {
-    for (const candidate of candidatePaths(path, raw.file, root, publicDirs)) {
-      const match = this.byPath.get(candidate);
-      if (match !== undefined) return match;
+  ): Candidate | null {
+    for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
+      const match = this.byPath.get(candidate.path);
+      if (match !== undefined) return { path: match, via: candidate.via };
     }
     return null;
   }
@@ -262,21 +269,23 @@ class AssetIndex {
     raw: RawReference,
     root: string,
     publicDirs: readonly string[],
-  ): readonly string[] {
+  ): { matches: readonly string[]; via: ResolvedVia } {
     const { path } = splitPathSuffix(rawPath.replace(/\$\{[^}]*\}/g, HOLE));
-    const matches: string[] = [];
 
-    for (const candidate of candidatePaths(path, raw.file, root, publicDirs)) {
-      const pattern = globRegex(candidate);
+    for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
+      const matches: string[] = [];
+      const pattern = globRegex(candidate.path);
       for (const assetPath of this.ordered) {
         if (!pattern.test(assetPath)) continue;
         const native = this.byPath.get(assetPath);
         if (native !== undefined && !matches.includes(native)) matches.push(native);
       }
-      if (matches.length > 0) break;
+      // The provenance has to be the candidate that actually matched, so the
+      // matches and the `via` cannot disagree about which base was used.
+      if (matches.length > 0) return { matches, via: candidate.via };
     }
 
-    return matches;
+    return { matches: [], via: 'file' };
   }
 }
 
@@ -297,27 +306,63 @@ class AssetIndex {
  * all — see `servingRootsFor`. That restraint is load-bearing rather than tidy:
  * without it a monorepo links one app's reference to another app's asset.
  */
+/** One place a path might live, and how the engine got there. */
+interface Candidate {
+  readonly path: string;
+  readonly via: ResolvedVia;
+}
+
 function candidatePaths(
   path: string,
-  fromFile: string,
+  raw: RawReference,
   root: string,
   publicDirs: readonly string[],
-): readonly string[] {
+): readonly Candidate[] {
   if (!path.startsWith('/')) {
-    return [toPosix(resolvePath(dirname(fromFile), path))];
+    const relative: Candidate[] = [
+      { path: toPosix(resolvePath(dirname(raw.file), path)), via: 'file' },
+    ];
+
+    // R15, and **speculative only**. In every module system `./` unambiguously
+    // means file-relative, so falling back to the project root on an asserted
+    // `import './missing.png'` could link a genuinely broken import to an unrelated
+    // file — a false link, which is the expensive failure. A path-shaped string in
+    // a data object carries no such contract: it is already a guess, and the code
+    // may well join it to the project root, which is what astro-docs does. Letting
+    // a guess guess harder costs it nothing it had.
+    //
+    // Measured before it was proposed: 14 unresolved dot-paths across the three
+    // validation repos, of which exactly 2 resolve this way, and both are real.
+    if (!raw.asserted) {
+      relative.push({ path: toPosix(resolvePath(root, stripDotSlash(path))), via: 'project-root' });
+    }
+    return relative;
   }
 
   const withoutLeadingSlash = path.slice(1);
-  const candidates: string[] = [];
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: Candidate): void => {
+    if (seen.has(candidate.path)) return;
+    seen.add(candidate.path);
+    candidates.push(candidate);
+  };
 
-  for (const publicDir of servingRootsFor(publicDirs, fromFile, root)) {
-    const candidate = toPosix(resolvePath(root, publicDir, withoutLeadingSlash));
-    if (!candidates.includes(candidate)) candidates.push(candidate);
+  for (const publicDir of servingRootsFor(publicDirs, raw.file, root)) {
+    add({ path: toPosix(resolvePath(root, publicDir, withoutLeadingSlash)), via: 'serving-root' });
   }
 
-  const fromRoot = toPosix(resolvePath(root, withoutLeadingSlash));
-  if (!candidates.includes(fromRoot)) candidates.push(fromRoot);
+  // The project root, when no configured serving root claimed it. A plain static
+  // site really does serve `/hero.png` from here — but if the caller named its
+  // serving roots and none matched, this is a fallback rather than a statement,
+  // which is why it is recorded as one.
+  add({ path: toPosix(resolvePath(root, withoutLeadingSlash)), via: 'project-root' });
   return candidates;
+}
+
+/** `./a/b.png` -> `a/b.png`, leaving `../` alone: that really is file-relative. */
+function stripDotSlash(path: string): string {
+  return path.startsWith('./') ? path.slice(2) : path;
 }
 
 /**

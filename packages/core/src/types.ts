@@ -118,6 +118,31 @@ export type Resolution =
   | 'unresolved-alias';
 
 /**
+ * How a reference reached the asset it points at.
+ *
+ * Recorded rather than left to be re-derived: Phase 2 needs it, and re-deriving
+ * what the producer already knew is the mistake the ceiling/confidence split exists
+ * to remove.
+ *
+ * The distinction that matters: a **`project-root`** resolution proves the asset is
+ * alive but is **not strong enough to rewrite the reference**, because the code may
+ * join that string to a different base entirely. The other two are safe to rewrite.
+ */
+export type ResolvedVia =
+  /** Relative to the directory of the referencing file. The ordinary case. */
+  | 'file'
+  /** A root-relative path against a configured serving root. */
+  | 'serving-root'
+  /**
+   * Against the project root as a fallback — no configured serving root had it.
+   *
+   * Reached two ways: a root-relative path no serving root claimed, and a
+   * `./`-spelled **speculative** path that failed file-relative. In both the engine
+   * is guessing at the base, so the link is evidence of life and nothing more.
+   */
+  | 'project-root';
+
+/**
  * What the resolver produces: a raw reference plus what it points at.
  *
  * A union rather than a flat `resolution` field beside a nullable path, because it
@@ -138,6 +163,7 @@ export type Reference =
       /** Equal to the raw reference's `ceiling`: it resolved, so the ceiling stands. */
       readonly confidence: Confidence;
       readonly resolvedPath: string;
+      readonly resolvedVia: ResolvedVia;
     })
   | (RawReference & {
       readonly resolution: 'resolved-pattern';
@@ -145,6 +171,7 @@ export type Reference =
       readonly confidence: 'medium';
       /** Every asset the pattern matched. Non-empty by construction. */
       readonly resolvedPaths: readonly [string, ...string[]];
+      readonly resolvedVia: ResolvedVia;
     })
   | (RawReference & {
       readonly resolution: 'out-of-scope';
