@@ -250,8 +250,36 @@ function unscannedFile(
     relative: file.relative,
     extension: file.extension,
     reason,
-    detail,
+    detail: withoutAbsolutePath(detail, file),
   };
+}
+
+/**
+ * The failure message, with this file's absolute path written the way the rest of
+ * the report writes paths.
+ *
+ * Adapters are handed an absolute path and several of them interpolate it into the
+ * message they throw — `Could not parse ${file}: …`. That message is carried
+ * verbatim into the report, so on a repository with one unparseable file the output
+ * contains `E:\…\combined.cjs` and rule 11 is quietly false: the same repository
+ * audited from two checkouts produces different bytes.
+ *
+ * It is scrubbed **here** rather than in the five adapter throw sites because this
+ * is the layer that knows both spellings, and because adapters are the contribution
+ * surface — a community adapter's message cannot be relied on to be clean, which is
+ * the same argument that makes this function catch every throw rather than ours.
+ *
+ * Found by §5.1(f) on `eleventy-docs`. No fixture tree contains a file that fails to
+ * parse, so the report's own absolute-path guard had nothing to fire on.
+ */
+function withoutAbsolutePath(message: string, file: SourceFile): string {
+  if (message === '') return message;
+
+  // `split`/`join` rather than a regex: the path is full of backslashes on Windows
+  // and escaping them into a pattern is a bug waiting to happen.
+  const scrubbed = message.split(file.path).join(file.relative);
+  const posix = file.path.replaceAll('\\', '/');
+  return posix === file.path ? scrubbed : scrubbed.split(posix).join(file.relative);
 }
 
 /** A one-line description of a failure, without asserting its shape. */

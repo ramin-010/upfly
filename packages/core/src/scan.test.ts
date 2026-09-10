@@ -168,6 +168,64 @@ describe('scanSources', () => {
       ]);
     });
 
+    it('writes the relative path into the detail, never the absolute one', async () => {
+      // §5.1(f) found this on `eleventy-docs`: `css.ts` and `javascript.ts` both
+      // throw `Could not parse ${file}: …` with the absolute path they were handed,
+      // and that message is carried verbatim into the report. One unparseable file
+      // therefore puts `E:\…\combined.cjs` in the output and rule 11 becomes false —
+      // the same repository audited from two checkouts produces different bytes.
+      //
+      // Invisible until now because **no fixture tree contains a file that fails to
+      // parse**, so the report's own absolute-path guard had nothing to fire on.
+      const throwing: Adapter = {
+        ...css,
+        findReferences: ({ file }) => {
+          throw new UpflyError('ADAPTER_PARSE_FAILED', `Could not parse ${file}: Unexpected token`);
+        },
+      };
+
+      const result = await scanSources({
+        sourceFiles: [sourceFile('deep/nested/broken.css', 'css')],
+        adapters: [throwing],
+        readFile: filesystem({ '/repo/deep/nested/broken.css': 'a {' }),
+      });
+
+      expect(result.unscanned[0]?.detail).toBe(
+        'ADAPTER_PARSE_FAILED: Could not parse deep/nested/broken.css: Unexpected token',
+      );
+      expect(result.unscanned[0]?.detail).not.toContain('/repo/');
+    });
+
+    it('scrubs a Windows-spelled absolute path out of the detail too', async () => {
+      // The native separator is what an adapter actually interpolates on Windows,
+      // and it is the platform rule 5 makes first-class. Built with `String.raw` so
+      // the backslashes survive the file rather than becoming escapes.
+      const path = String.raw`E:\repo\deep\broken.css`;
+      const file: SourceFile = {
+        path,
+        relative: 'deep/broken.css',
+        extension: '.css',
+        adapterId: 'css',
+      };
+      const throwing: Adapter = {
+        ...css,
+        findReferences: (input) => {
+          throw new UpflyError('ADAPTER_PARSE_FAILED', `Could not parse ${input.file}: bad token`);
+        },
+      };
+
+      const result = await scanSources({
+        sourceFiles: [file],
+        adapters: [throwing],
+        readFile: filesystem({ [path]: 'a {' }),
+      });
+
+      expect(result.unscanned[0]?.detail).toBe(
+        'ADAPTER_PARSE_FAILED: Could not parse deep/broken.css: bad token',
+      );
+      expect(result.unscanned[0]?.detail).not.toContain('E:');
+    });
+
     it('survives an adapter throwing something that is not an UpflyError', async () => {
       // Adapters are the contribution surface. A bug in a community adapter must
       // not take down an audit of a repo that adapter barely touches — and it must
