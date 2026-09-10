@@ -29,6 +29,7 @@ export type {
   ImageProbe,
   ProbeOptions,
   ProbeSkip,
+  ProbeSkipCode,
 } from './probe.js';
 export { resolveReferences } from './resolve.js';
 export type { ResolveOptions } from './resolve.js';

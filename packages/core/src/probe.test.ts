@@ -139,6 +139,7 @@ describe('probeAssets', () => {
       expect(result?.skipped).toEqual([
         {
           measurement: 'webp',
+          code: 'vector',
           reason: 'SVG is a vector: encoding it measures a rasterisation, not a saving',
         },
       ]);
@@ -153,7 +154,9 @@ describe('probeAssets', () => {
       });
 
       expect(result?.encoded.map((entry) => entry.format)).toEqual(['avif']);
-      expect(result?.skipped).toEqual([{ measurement: 'webp', reason: 'already webp' }]);
+      expect(result?.skipped).toEqual([
+        { measurement: 'webp', code: 'already-target-format', reason: 'already webp' },
+      ]);
     });
 
     it('records a reason rather than throwing when the header is unreadable', async () => {
@@ -166,9 +169,14 @@ describe('probeAssets', () => {
 
       expect(result?.metadata).toBeNull();
       expect(result?.skipped).toEqual([
-        { measurement: 'metadata', reason: 'Input file contains unsupported image format' },
+        {
+          measurement: 'metadata',
+          code: 'header-unreadable',
+          reason: 'Input file contains unsupported image format',
+        },
         {
           measurement: 'webp',
+          code: 'header-unreadable',
           reason: 'the header could not be read, so there is nothing to encode',
         },
       ]);
@@ -183,7 +191,11 @@ describe('probeAssets', () => {
       expect(result?.metadata).not.toBeNull();
       expect(result?.encoded).toEqual([]);
       expect(result?.skipped).toEqual([
-        { measurement: 'webp', reason: 'VipsJpeg: premature end of JPEG image' },
+        {
+          measurement: 'webp',
+          code: 'encode-failed',
+          reason: 'VipsJpeg: premature end of JPEG image',
+        },
       ]);
     });
 
@@ -227,6 +239,111 @@ describe('probeAssets', () => {
 
       expect(results[0]?.metadata).toBeNull();
       expect(results[1]?.metadata?.width).toBe(10);
+    });
+  });
+
+  describe('the encode cap', () => {
+    it('measures the largest sources and reports the rest as unmeasured', async () => {
+      const results = await probeAssets(
+        [asset('small.png', 100), asset('huge.png', 9000), asset('medium.png', 500)],
+        { probe: fakeProbe(), formats: ['webp'], maxEncodedAssets: 2 },
+      );
+
+      const measured = results.filter((result) => result.encoded.length > 0);
+      expect(measured.map((result) => result.relative)).toEqual(['huge.png', 'medium.png']);
+
+      // Rule 9: the one left out says so, rather than looking like it had no
+      // opportunity. And it names the flag that lifts the cap.
+      const capped = results.find((result) => result.relative === 'small.png');
+      expect(capped?.skipped).toEqual([
+        {
+          measurement: 'webp',
+          code: 'beyond-encode-cap',
+          reason: 'not among the 2 largest assets measured (raise --max-encodes to include it)',
+        },
+      ]);
+    });
+
+    it('still reads every header, so oversized findings stay complete', async () => {
+      // What makes the cap safe: it degrades one finding of four. `dead` and
+      // `broken` need no probe, and `oversized` needs only the ~1 ms header read.
+      const results = await probeAssets([asset('a.png', 100), asset('b.png', 9000)], {
+        probe: fakeProbe({ width: 4000, height: 3000 }),
+        formats: ['webp'],
+        maxEncodedAssets: 1,
+      });
+
+      expect(results.every((result) => result.metadata?.width === 4000)).toBe(true);
+    });
+
+    it('breaks a size tie by path, so two runs choose the same assets', async () => {
+      // Rule 11 reaches the *selection*, not only the output order: the same
+      // repository must produce the same report on any machine.
+      const assets = [asset('z.png', 500), asset('a.png', 500), asset('m.png', 500)];
+
+      const forwards = await probeAssets(assets, {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 2,
+      });
+      const backwards = await probeAssets([...assets].reverse(), {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 2,
+      });
+
+      const measured = (results: typeof forwards) =>
+        results
+          .filter((result) => result.encoded.length > 0)
+          .map((result) => result.relative)
+          .sort();
+
+      expect(measured(forwards)).toEqual(['a.png', 'm.png']);
+      expect(measured(backwards)).toEqual(['a.png', 'm.png']);
+    });
+
+    it('does not let an asset that could never be encoded occupy a slot', async () => {
+      // An SVG is never encoded, so counting it would quietly turn "the two
+      // largest" into "one asset and a vector".
+      const results = await probeAssets(
+        [asset('huge.svg', 9000), asset('big.png', 800), asset('small.png', 100)],
+        { probe: fakeProbe(), formats: ['webp'], maxEncodedAssets: 2 },
+      );
+
+      expect(
+        results.filter((result) => result.encoded.length > 0).map((result) => result.relative),
+      ).toEqual(['big.png', 'small.png']);
+    });
+
+    it('measures everything when the cap is not reached', async () => {
+      const results = await probeAssets([asset('a.png', 100), asset('b.png', 200)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 10,
+      });
+
+      expect(results.every((result) => result.encoded.length === 1)).toBe(true);
+      expect(results.every((result) => result.skipped.length === 0)).toBe(true);
+    });
+
+    it('measures everything when there is no cap', async () => {
+      const results = await probeAssets([asset('a.png', 100), asset('b.png', 200)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+      });
+
+      expect(results.every((result) => result.encoded.length === 1)).toBe(true);
+    });
+
+    it('measures nothing at a cap of zero, and says so for each', async () => {
+      const results = await probeAssets([asset('a.png', 100), asset('b.png', 200)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 0,
+      });
+
+      expect(results.every((result) => result.encoded.length === 0)).toBe(true);
+      expect(results.every((result) => result.skipped[0]?.code === 'beyond-encode-cap')).toBe(true);
     });
   });
 
