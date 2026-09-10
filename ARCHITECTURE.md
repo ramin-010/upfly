@@ -246,9 +246,15 @@ reference we **could not resolve**, and — only if something is still unexplain
 parses fine and yields no reference, so nothing else covers it.
 
 **No basename sweep can rescue a filename assembled at runtime.** `` `background-${dir}.png` `` never
-contains the string `background-ltr.png`. Two astro-docs assets stay confidently dead for that
-reason, correctly, and there is a test pinning it so nobody "fixes" the sweep for a case no sweep can
-reach.
+contains the string `background-ltr.png`, so there is a test pinning that limit — of *the sweep*, so
+nobody "fixes" it for a case no sweep can reach.
+
+⚠️ **But a limit of one mechanism is not a limit of all of them, and this paragraph used to claim it
+was.** It read "two astro-docs assets stay confidently dead for that reason, correctly." They are
+not dead: a template literal carries a `medium` ceiling, the resolver globs it, and
+`resolved-pattern` links every match. Both are live findings today. The lesson is worth more than
+the correction — **when one mechanism cannot reach a case, check whether a different existing
+mechanism already does before calling the limit fundamental.**
 
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container** — `<image href>`, `<use href>` and a `<style>` block inside one are all real
@@ -308,7 +314,9 @@ The JavaScript adapter also emits **path-shaped string literals as speculative**
 a string in a JSON file gets. The asymmetry was indefensible once stated: `{ "file": "x.png" }` in
 `data.json` was a candidate and the identical string in `data.ts` was invisible — and that produced a
 *confidently dead* asset on a real repository. A candidate that resolves becomes a real link, which
-beats a hedge because the rewrite can act on it; one that does not is discarded silently. It leaves
+beats a hedge because the rewrite can act on it; one that does not is discarded — **counted in the
+report, and listable with `--include-discarded`**, because a candidate the JSON adapter ate in error
+is invisible unless the count says something is wrong and the list says what. It leaves
 alone any value a construct examined and declined: `alt="/not.png"` is display text, and overturning
 that decision would rewrite it.
 
@@ -558,12 +566,24 @@ back to copy + unlink, long paths are supported, and `EBUSY` is retried with bac
 ## Performance budget
 
 Building the graph on a 10k-file / 2k-image repository must stay **under 3 seconds** cold.
-File reads are parallel and adapter work runs in a worker pool.
+
+🔴 **That budget is currently MISSED, and this section used to describe a design that does not
+exist.** It read "file reads are parallel and adapter work runs in a worker pool." There is no worker
+pool; nothing has ever run adapter work off-thread. It was written from a diagnosis that measurement
+later inverted: parsing was believed to be about a sixth of the cost and is **77% of `scan`**, with
+Babel over `.tsx` alone reaching 41% of the whole budget. The earlier number came from a benchmark
+tree holding real code's file count and **a thirtieth of its bytes**.
+Measured on a recalibrated tree: **12,518 ms**, stable at 3% across three separate invocations.
+File reads *are* parallel. The fix — a worker pool, a faster parser, or both — is Phase 2 scope with
+this section as its brief. **The budget number does not move until a fix is measured.**
 
 That budget covers **discovery, parsing, resolution and graph building only**. Probing and
 encoding are explicitly excluded and reported as a separate number: both are dominated by
 libvips, and optimising against a target that included them would mean tuning our code against
-somebody else's decode time. Both are bounded by `--concurrency` (default `os.cpus() - 1`).
+somebody else's decode time. **They are bounded separately, because their profiles are opposite:**
+reads are IO-bound and default to **16 at a time** (`scan.ts`), encodes are CPU-bound with libvips
+already multithreading internally and default to **4** (`probe.ts`) — measured, where the
+`os.cpus() - 1` this line used to claim was an assumption and about 21% worse.
 
 `bench/` is checked in and runs in CI against a fixed fixture, so a regression shows up as a
 number rather than a feeling. Per the project rules, **any performance claim in the README must
