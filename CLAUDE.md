@@ -82,3 +82,8 @@ it up with options and a recommendation and ask the parent chat.
 
 Commit locally as you go. **Never push, never publish, never tag** — hand Rinkal the exact commands
 and let him run them. `git push` and `gh` are denied at the permission layer.
+
+A hook runs `pnpm check` before every `git commit` here and **refuses the commit if it is red**
+(rule 3). It takes ~20s. If you are deliberately checkpointing work mid-red-green cycle, put
+**`[wip]`** in the commit message and it will let you through — that escape exists so the gate never
+pushes work toward not being committed at all.
