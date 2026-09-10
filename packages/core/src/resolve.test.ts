@@ -56,6 +56,30 @@ function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReferen
   };
 }
 
+/**
+ * Assert the outcome and narrow to it in one step.
+ *
+ * `Reference` is a union, so `reference?.exclusionReason` does not typecheck — and
+ * that error was invisible for as long as test files went unchecked (rule 17). The
+ * runtime hazard is the quieter one: an optional chain into the wrong branch yields
+ * `undefined`, and `undefined` compares equal to nothing at all, so an assertion can
+ * pass by luck rather than by the resolver being right.
+ *
+ * Throwing here names the resolution we actually got, which is the thing worth
+ * knowing when this fails.
+ */
+function expectResolution<K extends Reference['resolution']>(
+  reference: Reference | undefined,
+  resolution: K,
+): Extract<Reference, { resolution: K }> {
+  if (reference?.resolution !== resolution) {
+    throw new Error(
+      `expected resolution '${resolution}', got '${reference?.resolution ?? 'none'}'`,
+    );
+  }
+  return reference as Extract<Reference, { resolution: K }>;
+}
+
 function resolveOne(overrides: Partial<RawReference> & { rawPath: string }): Reference | undefined {
   return resolveReferences([raw(overrides)], {
     root: ROOT,
@@ -421,13 +445,16 @@ describe('resolveReferences', () => {
       // here would be a false positive, and the exit criterion allows none.
       const reference = resolveWithExclusions('../legacy/old.png');
 
-      expect(reference?.resolution).toBe('out-of-scope');
-      expect(reference?.exclusionReason).toBe("the ignore rule 'legacy/'");
+      expect(expectResolution(reference, 'out-of-scope').exclusionReason).toBe(
+        "the ignore rule 'legacy/'",
+      );
     });
 
     it('knows exactly where it points', () => {
       const reference = resolveWithExclusions('../legacy/old.png');
-      expect(reference?.resolvedPath).toBe(toPosix(join(ROOT, 'legacy/old.png')));
+      expect(expectResolution(reference, 'out-of-scope').resolvedPath).toBe(
+        toPosix(join(ROOT, 'legacy/old.png')),
+      );
     });
 
     it('is never linked, so it cannot be rewritten and cannot be a dead asset', () => {
@@ -443,8 +470,9 @@ describe('resolveReferences', () => {
       const target = toPosix(join(ROOT, 'src/hidden.png'));
       const reference = resolveWithExclusions('./hidden.png', (path) => path === target);
 
-      expect(reference?.resolution).toBe('out-of-scope');
-      expect(reference?.exclusionReason).toBe('resolved outside the indexed asset set');
+      expect(expectResolution(reference, 'out-of-scope').exclusionReason).toBe(
+        'resolved outside the indexed asset set',
+      );
     });
 
     it('is still broken when the file genuinely is not there', () => {

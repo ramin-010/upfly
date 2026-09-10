@@ -53,6 +53,7 @@ function resolved(file: string, rawPath: string, target: string): Reference {
     resolution: 'resolved',
     confidence: 'high',
     resolvedPath: `${ROOT}/${target}`,
+    resolvedVia: 'file',
   };
 }
 

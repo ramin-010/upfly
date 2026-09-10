@@ -106,7 +106,7 @@ describe('framework conventions (R17)', () => {
       // ⚠️ This assertion was written the other way round first — as "a directory
       // named app deeper in the tree is not the router" — and it passed, blessing a
       // limitation that is simply wrong. Next supports `src/app` and `shadcn-ui`
-      // holds four projects using it. That is the exact failure this file's header
+      // holds six `src/app` directories. That is the exact failure this file's header
       // warns about, committed while writing the test meant to prevent it.
       expect(conventionLinkFor('apps/v4/src/app/icon.png', roots)).not.toBeNull();
     });

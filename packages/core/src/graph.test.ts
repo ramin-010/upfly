@@ -41,6 +41,7 @@ function resolved(file: string, rawPath: string, target: string, start = 0): Ref
     resolution: 'resolved',
     confidence: 'high',
     resolvedPath: `${ROOT}/${target}`,
+    resolvedVia: 'file',
   };
 }
 
@@ -51,6 +52,7 @@ function pattern(file: string, rawPath: string, targets: [string, ...string[]]):
     resolution: 'resolved-pattern',
     confidence: 'medium',
     resolvedPaths: targets.map((target) => `${ROOT}/${target}`) as [string, ...string[]],
+    resolvedVia: 'file',
   };
 }
 

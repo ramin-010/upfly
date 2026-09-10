@@ -98,8 +98,8 @@ export function conventionLinkFor(
     const within = asset.slice(prefix.length);
     const segments = within.split('/');
 
-    // `app/` or `src/app/`. Next supports both layouts and `shadcn-ui` contains four
-    // `src/app` projects, so omitting it would have left the mechanism silently
+    // `app/` or `src/app/`. Next supports both layouts and `shadcn-ui` contains six
+    // `src/app` directories, so omitting it would have left the mechanism silently
     // half-working on the very repository that motivated it.
     const router =
       segments[0] === 'app' ? 1 : segments[0] === 'src' && segments[1] === 'app' ? 2 : 0;

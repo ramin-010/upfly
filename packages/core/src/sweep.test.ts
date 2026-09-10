@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { javascriptAdapter } from './adapters/javascript.js';
 import { buildGraph } from './graph.js';
+import { scanSources } from './scan.js';
 import type { ReadFilePort } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Asset, RawReference, Reference, UnscannedFile } from './types.js';
@@ -69,6 +71,7 @@ function resolved(file: string, rawPath: string, target: string): Reference {
     resolution: 'resolved',
     confidence: 'high',
     resolvedPath: `${ROOT}/${target}`,
+    resolvedVia: 'file',
   };
 }
 
@@ -382,6 +385,61 @@ describe('sweepForMentions', () => {
       ]);
     });
 
+    /**
+     * Drive `scan` for real rather than hand-feeding the sweep.
+     *
+     * ⚠️ The previous version of the pair below passed `scannedFiles: [...]` to
+     * `sweepForMentions`. **There is no such option.** `SweepOptions` takes
+     * `scannedMentions`, so the object was dropped in silence, the sweep ran with an
+     * empty third haystack, and `mentions.size === 0` was true for the wiring rather
+     * than for the reason the test is named after. It was green and it proved
+     * nothing — in the very test whose comment warns about a limit of one mechanism
+     * being mistaken for a limit of all of them. Nothing in the toolchain could see
+     * it, because test files were not typechecked (rule 17 exists because of this).
+     *
+     * Hand-feeding is what made that possible, so these drive the real pipeline:
+     * `scan` reads the source, its mention pass runs, and whatever it genuinely
+     * produces is what the sweep gets.
+     */
+    async function sweepAfterScanning(source: string, assetRelative: string) {
+      const scanned = await scanSources({
+        sourceFiles: [
+          { path: '/repo/gen.ts', relative: 'gen.ts', extension: '.ts', adapterId: 'javascript' },
+        ],
+        adapters: [javascriptAdapter],
+        readFile: files({ '/repo/gen.ts': source }),
+        assetBasenames: new Set([assetRelative.slice(assetRelative.lastIndexOf('/') + 1)]),
+      });
+
+      const result = await sweepForMentions({
+        graph: graphOf({ assets: [asset(assetRelative)] }),
+        readFile: files({}),
+        scannedMentions: scanned.mentions,
+      });
+
+      return { scanned, result };
+    }
+
+    it('rescues a literal filename through the real scan — the control', async () => {
+      // First, because everything below asserts that a mention is *absent*, and an
+      // absence passes just as well when the pipeline was never connected. This is
+      // the same source shape with the name written out, and it must hedge.
+      const { scanned, result } = await sweepAfterScanning(
+        ['export const x = {', "  path: './img/background-ltr.png',", '};'].join('\n'),
+        'img/background-ltr.png',
+      );
+
+      expect(scanned.mentions.map((mention) => mention.basename)).toEqual(['background-ltr.png']);
+      expect(result.mentions.get('img/background-ltr.png')).toEqual([
+        {
+          asset: 'img/background-ltr.png',
+          source: 'scanned-file',
+          where: 'gen.ts:2',
+          quote: 'background-ltr.png',
+        },
+      ]);
+    });
+
     it('cannot rescue a filename that is assembled at runtime — the resolver must', async () => {
       // The honest limit of every basename sweep: `background-${dir}.png` never
       // contains the string `background-ltr.png`, so there is nothing to find.
@@ -389,20 +447,13 @@ describe('sweepForMentions', () => {
       // This asserts what the *sweep* cannot do, not that the finding is correct.
       // The right tool is the resolver: a template carries a `medium` ceiling, the
       // glob matches `background-*.png`, and `resolved-pattern` links every match.
-      // The first version of this test read as though the dead finding were right,
-      // which is how a limit of one mechanism gets mistaken for a limit of all of
-      // them.
-      const graph = graphOf({ assets: [asset('img/background-ltr.png')] });
-      const source = ['export const x = {', '  path: `./img/background-${dir}.png`,', '};'].join(
-        '\n',
+      const { scanned, result } = await sweepAfterScanning(
+        ['export const x = {', '  path: `./img/background-${dir}.png`,', '};'].join('\n'),
+        'img/background-ltr.png',
       );
 
-      const result = await sweepForMentions({
-        graph,
-        readFile: files({ '/repo/gen.ts': source }),
-        scannedFiles: [{ path: '/repo/gen.ts', relative: 'gen.ts' }],
-      });
-
+      // The zero comes from `scan` finding nothing to offer, which is the claim.
+      expect(scanned.mentions).toEqual([]);
       expect(result.mentions.size).toBe(0);
     });
 
