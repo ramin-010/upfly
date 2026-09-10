@@ -185,6 +185,65 @@ describe('buildReport', () => {
     });
   });
 
+  describe('the encode cap caveat', () => {
+    // Hand-built: no fixture run is capped, so a fixture-driven assertion here
+    // would never fire. Same trap as the discarded candidates one below.
+    function cappedReport() {
+      const ROOT = '/repo';
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: { findings: [], publicDirDeadCount: 0, unreadableSources: [], probed: true },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        probes: [
+          {
+            relative: 'huge.png',
+            metadata: { width: 10, height: 10, format: 'png', pages: 1 },
+            encoded: [],
+            skipped: [
+              {
+                measurement: 'webp',
+                code: 'beyond-encode-cap',
+                reason:
+                  'not among the 2 largest assets measured (run with --probe-all to measure the rest)',
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    it('counts the assets it did not measure', () => {
+      const caveat = cappedReport().caveats.find((entry) => entry.code === 'encode-capped');
+
+      expect(caveat?.count).toBe(1);
+    });
+
+    it('names --probe-all, the flag a user wants at that moment', () => {
+      // Both `--max-encodes <n>` and `--probe-all` reach the same option. This
+      // string is where someone notices a number is missing, so it points at the
+      // discoverable name rather than the tunable.
+      const text = renderReport(cappedReport());
+
+      expect(text).toContain('--probe-all');
+    });
+
+    it('lists the per-asset reason in the skipped section too', () => {
+      const text = renderReport(cappedReport());
+
+      expect(text).toContain('huge.png');
+      expect(text).toContain('could not be measured');
+    });
+  });
+
   describe('discarded candidates', () => {
     // Every fixture tree has zero discarded candidates, so these are hand-built.
     // A fixture-only test here would pass while asserting nothing — the guard

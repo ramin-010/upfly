@@ -147,6 +147,10 @@ export interface ProbeOptions {
    * reported as unmeasured with `beyond-encode-cap` — silence would read as "no
    * opportunity here", which rule 9 forbids.
    *
+   * Two CLI spellings reach this one option: `--max-encodes <n>` sets it, and
+   * `--probe-all` clears it. The report points at `--probe-all`, because that is
+   * the name a user needs at the moment they notice a number is missing.
+   *
    * The cap degrades exactly one of the four audit findings. `dead` and `broken`
    * need no probe at all and `oversized` needs only the header, so the cheap
    * findings stay complete however low this goes. The default belongs in `bench/`
@@ -269,7 +273,10 @@ async function probeOne(
       skipped.push({
         measurement: format,
         code: 'beyond-encode-cap',
-        reason: `not among the ${options.maxEncodedAssets} largest assets measured (raise --max-encodes to include it)`,
+        // Names `--probe-all` rather than `--max-encodes`: both exist, but this
+        // string is what a user meets at the moment they want the missing number,
+        // and a discoverable name matters more there than orthogonality does.
+        reason: `not among the ${options.maxEncodedAssets} largest assets measured (run with --probe-all to measure the rest)`,
       });
       continue;
     }

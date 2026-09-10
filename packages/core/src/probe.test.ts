@@ -259,7 +259,10 @@ describe('probeAssets', () => {
         {
           measurement: 'webp',
           code: 'beyond-encode-cap',
-          reason: 'not among the 2 largest assets measured (raise --max-encodes to include it)',
+          // Points at `--probe-all`, the flag a user reaches for at exactly this
+          // moment — not at the tunable that also happens to lift the cap.
+          reason:
+            'not among the 2 largest assets measured (run with --probe-all to measure the rest)',
         },
       ]);
     });

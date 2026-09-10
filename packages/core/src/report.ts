@@ -371,7 +371,7 @@ function caveats(input: ReportInput): Caveat[] {
     list.push({
       code: 'encode-capped',
       count: capped,
-      message: `${plural(capped, 'image')} beyond the measurement cap ${were(capped)} not encoded, so the savings there are unknown`,
+      message: `${plural(capped, 'image')} beyond the measurement cap ${were(capped)} not encoded — run with --probe-all to measure the rest`,
       detail: [],
     });
   }
