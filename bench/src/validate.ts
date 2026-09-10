@@ -17,8 +17,9 @@
 import type { Dirent } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
-import { argv, stdout } from 'node:process';
+import { argv, chdir, cwd, stdout } from 'node:process';
 import {
   type Adapter,
   type Asset,
@@ -110,6 +111,17 @@ interface Unaccounted {
   readonly explanation: string | null;
 }
 
+/** One complete pass over a repository, from the walk to the rendered report. */
+interface PipelineResult {
+  readonly discovery: Awaited<ReturnType<typeof discover>>;
+  readonly scanned: Awaited<ReturnType<typeof scanSources>>;
+  readonly references: readonly Reference[];
+  readonly graph: Graph;
+  readonly report: Report;
+  readonly human: string;
+  readonly graphMs: number;
+}
+
 interface RepoResult {
   readonly repo: RepoSpec;
   readonly files: number;
@@ -120,6 +132,9 @@ interface RepoResult {
   readonly graphMs: number;
   readonly deterministic: boolean;
   readonly cwdIndependent: boolean;
+  readonly noAbsolutePath: boolean;
+  /** Whatever proved the absolute-path check wrong, so a failure names itself. */
+  readonly absolutePathEvidence: string[];
   readonly unaccounted: Unaccounted[];
   readonly report: Report;
   readonly human: string;
@@ -144,7 +159,17 @@ async function main(): Promise<void> {
   stdout.write(`\nWrote worksheets to ${outDir}\n`);
 }
 
-async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
+/**
+ * Every stage, run for real, from a cold start.
+ *
+ * It is a function rather than inline code because §5.1(f) asks whether *two runs*
+ * agree, and the first version of this file answered that by calling `buildReport`
+ * twice on one set of in-memory objects. That proves `buildReport` is pure and
+ * nothing else: with `Math.random()` sorting the references it still reported
+ * `deterministic: true` while the written JSON differed by 318 lines. Determinism
+ * has to be measured over the whole pipeline or it is not measured at all.
+ */
+async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
 
@@ -171,9 +196,6 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   });
   const graphMs = Math.round(performance.now() - started);
 
-  // --- (a) the range invariant, over real code -----------------------------------
-  const { checked, failures } = await checkRanges(scanned.references, readFileText);
-
   // --- the audit and report, which (c) and (d) are reviews of ---------------------
   const sweep = await sweepForMentions({
     graph,
@@ -195,28 +217,105 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   });
   const report = buildReport({ graph, audit: auditResult, discovery, sweep, probes });
 
-  // --- (f) determinism ------------------------------------------------------------
-  const second = buildReport({ graph, audit: auditResult, discovery, sweep, probes });
-  const deterministic = JSON.stringify(second) === JSON.stringify(report);
-  const cwdIndependent = !JSON.stringify(report).includes(root.replaceAll('\\', '/'));
+  return { discovery, scanned, references, graph, report, human: renderReport(report), graphMs };
+}
+
+async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
+  const root = join(VALIDATION_ROOT, repo.name);
+  const readFileText = (path: string) => readFile(path, 'utf8');
+
+  const first = await runPipeline(repo);
+
+  // --- (a) the range invariant, over real code -----------------------------------
+  const { checked, failures } = await checkRanges(first.scanned.references, readFileText);
+
+  // --- (f) determinism: two whole runs, byte for byte ------------------------------
+  const second = await runPipeline(repo);
+  const deterministic = JSON.stringify(second.report) === JSON.stringify(first.report);
+
+  // --- (f) and a third run from a different working directory ----------------------
+  // §5.1(f) asks for this by name. `Reference.file` is absolute and four upstream
+  // types carry an absolute path beside their relative one, so a cwd the output
+  // depends on is a real risk rather than a theoretical one.
+  const originalCwd = cwd();
+  chdir(tmpdir());
+  const elsewhere = await runPipeline(repo);
+  chdir(originalCwd);
+  const cwdIndependent = JSON.stringify(elsewhere.report) === JSON.stringify(first.report);
+
+  // --- (f) and no absolute path in the output at all -------------------------------
+  const { clean: noAbsolutePath, evidence: absolutePathEvidence } = checkNoAbsolutePath(
+    first.report,
+    first.human,
+    root,
+  );
 
   // --- (b) the false-negative sweep -----------------------------------------------
-  const unaccounted = await falseNegativeSweep(root, graph, references);
+  const unaccounted = await falseNegativeSweep(root, first.graph, first.references);
 
   return {
     repo,
-    files: discovery.sourceFiles.length + discovery.assets.length + discovery.unscannedFiles.length,
-    assets: discovery.assets.length,
-    references: references.length,
+    files:
+      first.discovery.sourceFiles.length +
+      first.discovery.assets.length +
+      first.discovery.unscannedFiles.length,
+    assets: first.discovery.assets.length,
+    references: first.references.length,
     rangeInvariantChecked: checked,
     rangeInvariantFailures: failures,
-    graphMs,
+    graphMs: first.graphMs,
     deterministic,
     cwdIndependent,
+    noAbsolutePath,
+    absolutePathEvidence,
     unaccounted,
-    report,
-    human: renderReport(report),
+    report: first.report,
+    human: first.human,
   };
+}
+
+/**
+ * §5.1(f): no absolute path reaches the output.
+ *
+ * The first version searched the serialised JSON for the root spelled with forward
+ * slashes. `JSON.stringify` escapes a native Windows path to `E:\\PERSONAL…`, so
+ * that needle could not match the one spelling the leak actually takes: with 81
+ * absolute paths deliberately leaked into the report it still answered "clean".
+ *
+ * So this checks what `report.test.ts` checks on the fixtures — an escaped
+ * backslash, or a drive letter — plus the root in both spellings, and it returns
+ * what it found so a failure names itself instead of being one boolean.
+ */
+function checkNoAbsolutePath(
+  report: Report,
+  human: string,
+  root: string,
+): { clean: boolean; evidence: string[] } {
+  const serialised = JSON.stringify(report);
+  const evidence: string[] = [];
+
+  const nativeRoot = JSON.stringify(root).slice(1, -1);
+  if (serialised.includes(nativeRoot)) evidence.push(`JSON contains the root: ${nativeRoot}`);
+
+  const posixRoot = root.replaceAll('\\', '/');
+  if (serialised.includes(posixRoot)) evidence.push(`JSON contains the POSIX root: ${posixRoot}`);
+
+  // A literal backslash in any string value. Every path in the report is meant to be
+  // POSIX-relative, so there is no honest reason for one to be there.
+  const backslash = serialised.match(/"[^"]*\\\\[^"]*"/)?.[0];
+  if (backslash !== undefined) evidence.push(`JSON has a backslashed path: ${backslash}`);
+
+  // A drive letter must not be preceded by another letter, or every `https://` in a
+  // documentation repository matches on the `s:/`. `report.test.ts` uses the looser
+  // form and passes only because no fixture report contains a URL.
+  const drive = serialised.match(/(?:^|[^A-Za-z])[A-Za-z]:\//)?.[0];
+  if (drive !== undefined) evidence.push(`JSON has a drive letter: ${drive}`);
+
+  if (human.includes(root) || human.includes(posixRoot)) {
+    evidence.push('the human report contains the root');
+  }
+
+  return { clean: evidence.length === 0, evidence };
 }
 
 /**
@@ -534,7 +633,10 @@ function summarise(result: RepoResult): string {
     `  files ${result.files}, assets ${result.assets}, references ${result.references}`,
     `  (a) range invariant: ${result.rangeInvariantChecked} checked, ${result.rangeInvariantFailures.length} failures`,
     `  (b) unaccounted grep hits: ${result.unaccounted.length} total, ${needsHuman} need a human`,
-    `  (f) deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}`,
+    `  (f) deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}, no absolute path: ${result.noAbsolutePath}`,
+    ...(result.absolutePathEvidence.length === 0
+      ? []
+      : result.absolutePathEvidence.map((line) => `      ! ${line}`)),
     `  (g) graph: ${result.graphMs} ms`,
     `  findings: broken ${counts.broken}, dead ${counts.dead}, possibly-dead ${counts['possibly-dead']}, oversized ${counts.oversized}, opportunities ${counts['format-opportunity']}`,
     '',
@@ -548,14 +650,14 @@ function overallSummary(results: readonly RepoResult[]): string {
     'Produced by `bench/src/validate.ts`. Parts (c) and (d) need a person; see each',
     '`*.review.md` worksheet.',
     '',
-    '| repo | files | assets | refs | (a) checked | (a) fail | (b) need human | (f) det. | (f) no abs path | (g) graph ms |',
-    '|---|---|---|---|---|---|---|---|---|---|',
+    '| repo | files | assets | refs | (a) checked | (a) fail | (b) need human | (f) det. | (f) cwd | (f) no abs path | (g) graph ms |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
   ];
 
   for (const result of results) {
     const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null).length;
     lines.push(
-      `| ${result.repo.name} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.graphMs} |`,
+      `| ${result.repo.name} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.noAbsolutePath ? 'yes' : 'NO'} | ${result.graphMs} |`,
     );
   }
 
