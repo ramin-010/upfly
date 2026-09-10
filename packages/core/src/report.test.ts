@@ -202,7 +202,13 @@ describe('buildReport', () => {
       const ROOT = '/repo';
       return buildReport({
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
-        audit: { findings: [], publicDirDeadCount: 0, unreadableSources: [], probed: true },
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: true,
+        },
         discovery: {
           root: ROOT,
           assets: [],
@@ -294,6 +300,7 @@ describe('buildReport', () => {
             ]),
           ],
           publicDirDeadCount: 0,
+          conventionLinked: [],
           unreadableSources: [],
           probed: false,
         },
@@ -365,6 +372,7 @@ describe('buildReport', () => {
             },
           ],
           publicDirDeadCount: 0,
+          conventionLinked: [],
           unreadableSources: [],
           probed: false,
         },
@@ -416,6 +424,7 @@ describe('buildReport', () => {
         audit: {
           findings: [],
           publicDirDeadCount: 0,
+          conventionLinked: [],
           unreadableSources: [],
           probed: false,
         },

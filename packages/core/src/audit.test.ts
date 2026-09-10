@@ -605,12 +605,68 @@ describe('audit', () => {
     });
   });
 
+  describe('assets a framework reads by filename (R17)', () => {
+    const CONVENTION = 'apps/v4/app/(app)/sera/opengraph-image.jpg';
+    const ROOTS = [{ framework: 'next', dir: 'apps/v4' }] as const;
+
+    function auditWith(conventionRoots: readonly { framework: 'next'; dir: string }[]) {
+      return audit({
+        graph: graphOf({ assets: [asset(CONVENTION), asset('apps/v4/public/orphan.png')] }),
+        sweep: NO_SWEEP,
+        readFile: files(),
+        conventionRoots,
+      });
+    }
+
+    it('reports it dead when nothing says otherwise — the check that can fail', async () => {
+      // Deliberately first. Everything below asserts that a mechanism *suppresses* a
+      // finding, and an assertion like that passes just as well when the finding was
+      // never produced. This is the control: with no roots detected, the same asset
+      // is reported dead, so the tests underneath are measuring the mechanism rather
+      // than an empty list.
+      const result = await auditWith([]);
+
+      expect(result.findings.filter((finding) => finding.kind === 'dead')).toHaveLength(2);
+      expect(result.conventionLinked).toEqual([]);
+    });
+
+    it('does not report it dead once the framework is known', async () => {
+      const result = await auditWith(ROOTS);
+      const dead = result.findings.filter((finding) => finding.kind === 'dead');
+
+      expect(dead.map((finding) => finding.kind === 'dead' && finding.asset)).toEqual([
+        'apps/v4/public/orphan.png',
+      ]);
+    });
+
+    it('does not hedge it either — a hedge would be evasive, not weaker', async () => {
+      // `possibly-dead` means *we do not know*. Here we do: Next will emit it. R17
+      // rejected hedging for exactly that reason.
+      const result = await auditWith(ROOTS);
+
+      expect(result.findings.some((finding) => finding.kind === 'possibly-dead')).toBe(false);
+    });
+
+    it('accounts for it rather than dropping it, because a silent skip is a P0', async () => {
+      // Rule 9, and it is also arithmetic: the asset has zero references, so the
+      // headline counts it as unreferenced. Without this list the report would show
+      // one more unreferenced image than it has findings and explain the gap
+      // nowhere.
+      const result = await auditWith(ROOTS);
+
+      expect(result.conventionLinked).toEqual([
+        { asset: CONVENTION, reason: expect.stringContaining('Next.js reads') },
+      ]);
+    });
+  });
+
   it('audits an empty project without complaint', async () => {
     const result = await audit({ graph: graphOf({}), sweep: NO_SWEEP, readFile: files() });
 
     expect(result).toEqual({
       findings: [],
       publicDirDeadCount: 0,
+      conventionLinked: [],
       unreadableSources: [],
       probed: false,
     });

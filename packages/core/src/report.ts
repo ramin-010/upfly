@@ -125,6 +125,7 @@ export interface SkippedItem {
 export interface Caveat {
   readonly code:
     | 'public-dir-dead'
+    | 'framework-conventions'
     | 'not-probed'
     | 'encode-capped'
     | 'excluded-roots'
@@ -352,6 +353,21 @@ function caveats(input: ReportInput): Caveat[] {
       count: deadInPublic,
       message: `${plural(deadInPublic, 'unreferenced image')} under the public directory may be linked from outside this repository`,
       detail: [],
+    });
+  }
+
+  // R17. This line is load-bearing arithmetic, not a footnote: these assets have
+  // zero references and produce no finding, so without it the headline's "N not
+  // referenced" exceeds the dead and possibly-dead findings by an amount nothing
+  // in the report explains. Naming the convention is the difference between a
+  // reader trusting the gap and hunting for the bug.
+  const convention = input.audit.conventionLinked;
+  if (convention.length > 0) {
+    list.push({
+      code: 'framework-conventions',
+      count: convention.length,
+      message: `${plural(convention.length, 'unreferenced image')} are read by a framework from the filename, so they are not reported dead`,
+      detail: convention.map((link) => `${link.asset} — ${link.reason}`),
     });
   }
 

@@ -32,6 +32,7 @@ import {
   buildReport,
   createSharpProbe,
   cssAdapter,
+  detectConventionRoots,
   discover,
   htmlAdapter,
   javascriptAdapter,
@@ -211,8 +212,18 @@ async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
     graph.assets.map((node) => node.asset),
     { probe: await createSharpProbe(), formats: ['webp'], maxEncodedAssets: 100 },
   );
+  // R17: which directories a framework reads certain filenames from. Derived from
+  // the file list `discover` already produced, so no extra walk and no disk access
+  // in `audit` — `next.config.mjs` is claimed by the JavaScript adapter, so it is
+  // already a source file by the time this runs.
+  const conventionRoots = detectConventionRoots([
+    ...discovery.sourceFiles.map((file) => file.relative),
+    ...discovery.unscannedFiles.map((file) => file.relative),
+  ]);
+
   const auditResult = await audit({
     graph,
+    conventionRoots,
     sweep,
     readFile: readFileText,
     publicDirs: repo.publicDirs,
@@ -601,13 +612,38 @@ function verdictHeadline(verified: VerifyResult): string {
   const wrong = verified.items.filter((item) => item.verdict === 'confirmed-false').length;
   const unclear = verified.items.filter((item) => item.verdict === 'ambiguous').length;
 
-  if (wrong > 0) {
-    return `**${wrong} finding(s) came back confirmed-false — the gate is not passed.**`;
-  }
-  return unclear === 0
-    ? `All ${verified.items.length} came back confirmed-genuine.`
-    : `None came back false; ${unclear} are ambiguous and need you.`;
+  const headline =
+    wrong > 0
+      ? `**${wrong} finding(s) came back confirmed-false — the gate is not passed.**`
+      : unclear === 0
+        ? `All ${verified.items.length} came back confirmed-genuine.`
+        : `None came back false; ${unclear} are ambiguous and need you.`;
+
+  return `${headline}\n\n${BLIND_SPOT}`;
 }
+
+/**
+ * What the oracle structurally cannot see, stated next to its verdicts.
+ *
+ * §5.1(d), amended: **independent in implementation is not independent in
+ * assumption.** This oracle walks a different tree with a different regex and never
+ * touches the engine's resolver — and it still confirmed a false `dead` as genuine,
+ * because the engine and the oracle are both *string searchers*. R17 was found by a
+ * person reading the output, not by the machine that had just run over it.
+ *
+ * A "0 confirmed-false" that does not say what it cannot see is the same overclaim
+ * as a check that cannot fail, which is what §5.1(f) turned out to be.
+ */
+const BLIND_SPOT = [
+  '> ⚠️ **What this pass cannot see.** Every check above searches for a *string*. An asset that is',
+  '> alive with **no string naming it anywhere** is invisible to it exactly as it is invisible to the',
+  '> engine — a framework file convention (R17 was found this way, and this oracle confirmed one of',
+  '> the two as genuine), a build-config glob, a CMS, a filename assembled at runtime from data.',
+  '> So "0 confirmed-false" bounds the machine\'s reach, not the truth.',
+  '>',
+  '> **The question only a person can carry:** *is anything here alive for a reason that is not a',
+  '> string?*',
+].join('\n');
 
 /**
  * One finding kind, ordered by how much attention it needs.
@@ -726,6 +762,16 @@ function overallSummary(results: readonly RepoResult[]): string {
       `| ${result.repo.name} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.noAbsolutePath ? 'yes' : 'NO'} | ${result.graphMs} |`,
     );
   }
+
+  lines.push(
+    '',
+    '⚠️ **What the §5.1(d) verdicts cannot cover.** Every automated check searches for a string.',
+    'An asset alive with no string naming it anywhere is invisible to the oracle exactly as it is',
+    'invisible to the engine — R17 is one, and the oracle confirmed one of its two instances as',
+    '*genuine*. A person still has to ask whether anything here is alive for a reason that is not',
+    'a string.',
+    '',
+  );
 
   lines.push('', '## Findings per repo', '');
   lines.push('| repo | broken | dead | possibly-dead | oversized | opportunities |');

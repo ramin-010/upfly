@@ -22,6 +22,8 @@
  */
 
 import { citeReferences } from './citation.js';
+import type { ConventionLink, ConventionRoot } from './conventions.js';
+import { conventionLinkFor } from './conventions.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
@@ -157,6 +159,15 @@ export interface AuditOptions {
   readonly readFile: ReadFilePort;
   /** Public directories relative to the root, as the resolver was given them. */
   readonly publicDirs?: readonly string[];
+  /**
+   * Directories whose framework reads certain filenames without being told to.
+   *
+   * From `detectConventionRoots(discovery)` — a pure function over the file list, so
+   * this module stays off the disk. Absent means the check does not run, which is
+   * correct for a project that is not one of those frameworks and is what the other
+   * two validation repositories exercise.
+   */
+  readonly conventionRoots?: readonly ConventionRoot[];
   readonly thresholds?: AuditThresholds;
 }
 
@@ -172,6 +183,16 @@ export interface AuditResult {
    * not, and is exactly how the global hedge degenerated.
    */
   readonly publicDirDeadCount: number;
+  /**
+   * Unreferenced assets a framework reads by filename, and why (R17).
+   *
+   * They produce **no** `dead` finding, because they are not dead. Rule 9 is why
+   * this is a list rather than nothing: without it the headline's "N not
+   * referenced" would exceed the findings by an unexplained amount, and silently
+   * dropping an asset from a report is the failure this project exists to be the
+   * opposite of.
+   */
+  readonly conventionLinked: readonly ConventionLink[];
   /** Source files that could not be re-read to cite a line, sorted. */
   readonly unreadableSources: readonly { readonly relative: string; readonly reason: string }[];
   /** Whether a probe ran at all. `false` means oversized and opportunities are absent. */
@@ -199,7 +220,7 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   const publicPrefixes = normalisePublicDirs(options.publicDirs);
 
   const { findings: broken, unreadableSources } = await brokenFindings(options);
-  const dead = deadFindings(options, publicPrefixes);
+  const { findings: dead, conventionLinked } = deadFindings(options, publicPrefixes);
   // `AssetProbe` measures pixels and `discover` measured bytes, so the two are
   // joined here — the one place that holds both — rather than by threading the
   // graph down into every size rule.
@@ -213,6 +234,7 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
     findings: [...dead, ...broken, ...probeFindings].sort(byReportOrder),
     publicDirDeadCount: dead.filter((finding) => finding.kind === 'dead' && finding.inPublicDir)
       .length,
+    conventionLinked,
     unreadableSources,
     probed: options.probes !== undefined,
   };
@@ -228,11 +250,27 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
 function deadFindings(
   options: AuditOptions,
   publicPrefixes: readonly string[],
-): (DeadFinding | PossiblyDeadFinding)[] {
+): {
+  findings: (DeadFinding | PossiblyDeadFinding)[];
+  conventionLinked: ConventionLink[];
+} {
   const findings: (DeadFinding | PossiblyDeadFinding)[] = [];
+  const conventionLinked: ConventionLink[] = [];
+  const roots = options.conventionRoots ?? [];
 
   for (const node of unreferencedAssets(options.graph)) {
     const asset = node.asset.relative;
+
+    // R17. Before the hedge, not after: an asset a framework reads by filename is
+    // **alive**, and `possibly-dead` would be evasive rather than merely weaker —
+    // a hedge says *we do not know*, and here we do. It is checked first for the
+    // same reason: nothing below this line has anything true to say about it.
+    const convention = conventionLinkFor(asset, roots);
+    if (convention !== null) {
+      conventionLinked.push(convention);
+      continue;
+    }
+
     const inPublicDir = publicPrefixes.some((prefix) => asset.startsWith(prefix));
     const mentions = options.sweep.mentions.get(asset) ?? [];
     const [first, ...rest] = mentions;
@@ -250,7 +288,7 @@ function deadFindings(
     );
   }
 
-  return findings;
+  return { findings, conventionLinked };
 }
 
 /** Every asserted path pointing at nothing, cited so a reviewer can open it. */
