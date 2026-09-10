@@ -321,4 +321,92 @@ describe('markdownAdapter', () => {
       ).toEqual(['./hero.png']);
     });
   });
+
+  describe('fence tracking follows CommonMark (R21)', () => {
+    /**
+     * Getting a fence boundary wrong does not lose one reference — it **inverts the
+     * mask** from that point to the end of the file. Everything fenced becomes live
+     * and everything live becomes fenced, so the same defect produces a false
+     * positive and a false negative at once, with no error either way.
+     *
+     * Found by chasing why `astro-docs`' unsafe bucket was full of CSP headers. Those
+     * sit inside a ```html block; the mask had come out of step six hundred lines
+     * earlier, at a ```ts fence.
+     *
+     * Each case asserts the same thing: the fenced example must not be a reference,
+     * and the live one after it must still be found.
+     */
+
+    it('does not let an info-string fence close a block — it may only open one', () => {
+      // `api-reference.mdx` opens fences with ```astro and ```ts title="…" all the
+      // way down. Reading one of those as a *close* is what desynchronised it.
+      const text = [
+        '```',
+        'inside a plain fence',
+        '```ts',
+        '![example](./fenced.png)',
+        '```',
+        '',
+        '![real](./real.png)',
+      ].join('\n');
+
+      expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
+    });
+
+    it('does not let a shorter fence close a longer one', () => {
+      // How a ```` block quotes a ``` block, which is what documentation *about*
+      // Markdown does constantly — including ours.
+      const text = [
+        '````',
+        'showing how a fence works:',
+        '```',
+        '![example](./fenced.png)',
+        '````',
+        '',
+        '![real](./real.png)',
+      ].join('\n');
+
+      expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
+    });
+
+    it('does not let a tilde fence be closed by a backtick fence', () => {
+      // This rule was already right. Asserted so it stays right.
+      const text = [
+        '~~~',
+        '```',
+        '![example](./fenced.png)',
+        '~~~',
+        '',
+        '![real](./real.png)',
+      ].join('\n');
+
+      expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
+    });
+
+    it('closes on a longer run of the same character', () => {
+      // The other direction: a fence longer than its opener still closes it, so the
+      // fix must not make blocks impossible to end.
+      const text = ['```', '![example](./fenced.png)', '`````', '', '![real](./real.png)'].join(
+        '\n',
+      );
+
+      expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
+    });
+
+    it('still masks an ordinary fenced block, indented or not', () => {
+      // The control. A fix that stopped masking anything would pass three of the
+      // four assertions above.
+      const text = [
+        'prose',
+        '',
+        '  ```js',
+        '  ![example](./fenced.png)',
+        '  ```',
+        '',
+        '![real](./real.png)',
+      ].join('\n');
+
+      expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
+    });
+  });
 });

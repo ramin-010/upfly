@@ -218,23 +218,53 @@ function maskUnclosedRawText(text: string): string {
   return masked;
 }
 
+/**
+ * Blank every fenced code block.
+ *
+ * ⚠️ **Two CommonMark rules were missing, and getting them wrong inverts the mask
+ * from that point to the end of the file** — so a fenced example becomes a live
+ * reference *and* a real reference two paragraphs later is blanked away. A false
+ * positive and a false negative from one defect, with no error either way.
+ *
+ * Found by chasing why `astro-docs`'s unsafe bucket was full of CSP headers: those
+ * headers sit inside a ` ```html ` block, and the mask had come out of step 600
+ * lines earlier. The report noise was the symptom; this is the cause.
+ *
+ * - **A closing fence may not carry an info string.** ` ```ts ` can only ever open a
+ *   block. Treating it as a close is what desynchronised `api-reference.mdx`, which
+ *   opens fences with ` ```astro ` and ` ```ts title="…" ` throughout.
+ * - **A closing fence must be at least as long as the opening one**, which is how a
+ *   ` ```` ` block quotes a ` ``` ` block — exactly what documentation about Markdown
+ *   does constantly.
+ *
+ * The character rule was already right: a `~~~` block is not closed by ` ``` `.
+ */
 function maskFencedBlocks(text: string): string {
   const lines = text.split('\n');
-  let fence: string | null = null;
+  let fence: { char: string; length: number } | null = null;
 
   const maskedLines = lines.map((line) => {
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    const opening = /^ {0,3}((`{3,})|(~{3,}))([^\n]*)$/.exec(line);
+    const marker = opening?.[1];
+    const info = opening?.[4] ?? '';
 
     if (fence === null) {
-      if (opening !== null && opening[1] !== undefined) {
-        fence = opening[1].charAt(0);
+      if (marker !== undefined) {
+        fence = { char: marker.charAt(0), length: marker.length };
         return blank(line);
       }
       return line;
     }
 
-    // Inside a fence: a closing fence is one of at least three of the same character.
-    if (opening !== null && opening[1] !== undefined && opening[1].charAt(0) === fence) {
+    // A closing fence: same character, at least as long, and no info string. A
+    // backtick fence's info string may not contain a backtick either, so a line of
+    // pure backticks longer than the opener still closes.
+    if (
+      marker !== undefined &&
+      marker.charAt(0) === fence.char &&
+      marker.length >= fence.length &&
+      info.trim() === ''
+    ) {
       fence = null;
     }
     return blank(line);

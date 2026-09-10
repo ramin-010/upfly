@@ -270,7 +270,19 @@ function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): vo
 
   // Bound it the same way the string rule is bounded: the static text has to look
   // like a path with a file extension. `${x} items` is not a candidate.
-  const literal = node.quasis.map((quasi) => quasi.value.raw).join('');
+  //
+  // ⚠️ The holes become `*` rather than being deleted, which is how the resolver
+  // globs them — and joining the quasis *without* a placeholder silently lost the
+  // commonest templated path there is. `` `./images/${name}.png` `` concatenated to
+  // `./images/.png`, whose last segment is a **dotfile**, so `extensionOf` returned
+  // `''` and the reference was dropped. Every `` `/images/${slug}.png` `` in a
+  // gallery or CMS data object went with it — and since no basename exists for the
+  // sweep to find either, those assets were reported **confidently dead**.
+  //
+  // It only ever worked when the hole was not the whole filename stem, which is why
+  // R14-1b's `background-${dir}.png` and the plan's own `${base}/img/hero.png` both
+  // pass and the plan's other example, `./images/${name}.png`, did not.
+  const literal = node.quasis.map((quasi) => quasi.value.raw).join('*');
   if (extensionOf(splitPathSuffix(literal).path) === '') return;
   if (/[\s,]/.test(literal)) return;
 
@@ -602,6 +614,19 @@ function addReference(input: {
   if (rawPath === '') return;
   const into = asserted ? context.references : context.speculative;
 
+  // Above the `skipPathChecks` branch, not inside it (R21). That flag means *suffix
+  // splitting would be wrong on this text* — which is what its own comment says —
+  // and it was also skipping the external-URL test, so every templated URL in the
+  // codebase became an `unsafe` reference. On `astro-docs` that bucket, which §1.1
+  // shows users as "references I couldn't safely rewrite", contained
+  // `https://${previewBranch}.previews.docs.astro.build/` and an npm registry call
+  // and no images at all.
+  //
+  // A URL is external whatever its holes interpolate to: `https://${branch}.x.com/`
+  // is hosted somewhere we do not manage, and `` `${base}/hero.png` `` still starts
+  // with a hole rather than a scheme, so it is untouched.
+  if (isExternalUrl(rawPath, kind)) return;
+
   if (skipPathChecks) {
     into.push({
       file: context.file,
@@ -615,8 +640,6 @@ function addReference(input: {
     });
     return;
   }
-
-  if (isExternalUrl(rawPath, kind)) return;
 
   const { path, suffix } = splitPathSuffix(rawPath);
   if (path === '') return;

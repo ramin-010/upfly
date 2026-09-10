@@ -498,4 +498,53 @@ describe('javascriptAdapter', () => {
       expect(javascriptAdapter.rewrite({ text: source, edits: [] })).toBe(source);
     });
   });
+
+  describe('templated URLs are external too (R21)', () => {
+    /**
+     * `skipPathChecks` means *suffix splitting would be wrong on this text*, which
+     * is what its own comment says — and it was also skipping the external-URL
+     * test. So every templated URL in a codebase became an `unsafe` reference, and
+     * that bucket is what §1.1 shows users as "references I couldn't safely
+     * rewrite". On `astro-docs` it held an npm registry call and a preview-branch
+     * URL and **no images at all**.
+     */
+
+    it.each([
+      ['https://${branch}.previews.example.com/', 'an interpolated host'],
+      ['https://raw.githubusercontent.com/${repo}/${ref}/pkg', 'an interpolated path'],
+      ['//${cdn}/hero.png', 'protocol-relative'],
+    ])('drops %s (%s)', (url) => {
+      const references = find(`const target = \`${url}\`;`);
+
+      expect(references).toEqual([]);
+    });
+
+    it('still keeps a template whose static prefix is a real path', () => {
+      // The control, and the thing that must not break: a hole at the *start* is not
+      // a scheme, so this is a local path the resolver globs.
+      const references = find('const src = `${base}/img/hero.png`;');
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('medium');
+    });
+
+    it('keeps a relative templated path whose hole is the whole filename stem', () => {
+      // ⚠️ This never worked, and finding out why was worth more than the URL fix
+      // above it. The guard joined the quasis with the holes **deleted**, so
+      // `./images/${name}.png` became `./images/.png` — a dotfile, no extension,
+      // dropped. Every `/images/${slug}.png` in a gallery or CMS data object went
+      // the same way, and with no basename for the sweep to find, those assets were
+      // reported *confidently dead*. The holes now become `*`, which is what the
+      // resolver globs them to anyway.
+      const references = find('const src = `./images/${name}.png`;');
+
+      expect(references.map((reference) => reference.rawPath)).toEqual(['./images/${name}.png']);
+    });
+
+    it('still rejects a template that is not path-shaped', () => {
+      // The control for that change: `*` must not make everything look like a path.
+      expect(find('const label = `${count} items`;')).toEqual([]);
+      expect(find('const key = `user:${id}`;')).toEqual([]);
+    });
+  });
 });

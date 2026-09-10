@@ -35,6 +35,12 @@ describe('javascriptAdapter fixtures', () => {
       { path: './assets/thumb.png', ceiling: 'certain', slice: './assets/thumb.png' },
       { path: '../images/frame.png', ceiling: 'high', slice: '../images/frame.png' },
       { path: '../images/frame-hover.png', ceiling: 'high', slice: '../images/frame-hover.png' },
+      // `const dynamic = \`/generated/${slug}.png\`` on line 35. The fixture was
+      // written to exercise it and the adapter never saw it: the speculative
+      // template guard joined the quasis with the holes deleted, making
+      // `/generated/.png` — a dotfile — so it was dropped. This list asserted 14
+      // references for a file that has 15, which is a test blessing a defect.
+      { path: '/generated/${slug}.png', ceiling: 'medium', slice: '/generated/${slug}.png' },
       { path: '/static/inline.png', ceiling: 'high', slice: '/static/inline.png' },
       { path: '/static/inline@2x.png', ceiling: 'high', slice: '/static/inline@2x.png' },
       {
