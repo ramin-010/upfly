@@ -25,20 +25,23 @@ implementation, and `execute` — which are the only places that touch the files
 lets the whole engine be tested without a disk.
 
 ```
-discover(fs) ──► assets[], sourceFiles[]   images, plus files claimed by an adapter
-        │                                  ignored paths pruned by directory name
+discover(fs) ──► assets[], sourceFiles[]      images, plus files claimed by an adapter
+        │        excludedRoots[]              each pruned directory + the rule that pruned it
+        │        skipped[]                    symlinks, unreadable entries, with reasons
         ▼
 adapters.findReferences(file) ──► rawReferences[]
         │  syntax only: { file, start, end, rawPath, kind, ceiling, asserted }
         ▼
-resolve(rawReferences, assets) ──► references[]
+resolve(rawReferences, assets, excludedRoots, exists) ──► references[]
+        │  an eight-rung ladder producing one of seven outcomes
         │  final confidence = ceiling if it resolved, otherwise `unsafe`
         ▼
-graph = link(assets, references)      asset → refs, ref → asset, unresolved buckets
+graph = link(assets, references)      asset → refs, ref → asset, via isLinked()
+        │                             unscannedExtensions[] — formats no adapter claimed
         ▼
 probe(assets) ──► dimensions, candidate encoded sizes     (read-only, injected)
         ▼
-audit(graph, probe) ──► findings    dead / broken / oversized / opportunities
+audit(graph, probe) ──► findings    dead | possibly-dead / broken / oversized / opportunities
         ▼
 plan(graph, config) ──► { assetPlans[], edits[] }     only confidence ≤ medium
         ▼
@@ -57,7 +60,7 @@ Every reference carries a confidence, and the planner only rewrites the top thre
 |---|---|---|
 | `certain` | Static `import`/`require`, resolved on disk | yes |
 | `high` | String literal in a known attribute or function, resolved on disk | yes |
-| `medium` | Template literal with a static prefix resolving to exactly one asset | yes |
+| `medium` | Template literal with a static prefix, glob-matched against the assets | only if every match converts alike |
 | `unsafe` | Dynamic concatenation, variable-only paths, unresolvable | **never** |
 
 Notice that every tier above `unsafe` says *"resolved on disk"* — and an adapter is forbidden
@@ -88,33 +91,91 @@ lockfiles and i18n bundles. They are still *counted* in the report, and listable
 JSON output, because a silent skip is a P0 bug — if the JSON adapter ever eats a real
 reference, the user needs a way to find it.
 
-### The resolver's five outcomes
+### The resolver's seven outcomes
 
-Two more cases refuse to fit "resolved or broken".
+"Resolved or broken" is not enough, and every extra outcome below exists because some real
+syntax would otherwise be reported as broken. Zero false `broken` findings is the phase's exit
+criterion, so this is where most of the design pressure lands.
 
-`import logo from '@/assets/logo.png'` is an asserted reference that will not resolve, because
-alias resolution (tsconfig `paths`, Vite `resolve.alias`) does not land until Phase 2. Since
-that import is everywhere in Next and Vite projects, calling it broken would manufacture
-exactly the false positives this design exists to avoid.
+Five cases refuse to fit:
 
-And `url($hero)` never had a static path at all. Reporting it as broken conflates two unlike
-things: a literal path pointing at nothing is a real, actionable finding, while a path the
-preprocessor builds at compile time is simply not knowable — nobody typed a wrong path.
+- `import logo from '@/assets/logo.png'` is asserted and will not resolve, because alias
+  resolution (tsconfig `paths`, Vite `resolve.alias`) does not land until Phase 2. That import
+  is everywhere in Next and Vite projects.
+- `url($hero)` never had a static path at all. A literal path pointing at nothing is a real,
+  actionable finding; a path the preprocessor builds is simply not knowable, and nobody typed a
+  wrong path.
+- `` `./images/${name}.png` `` is a *pattern*. Resolved literally it fails; treated as a glob it
+  may name a dozen assets, and all of them must be linked.
+- `url(inter.woff2)` points at a real file the engine does not track at all.
+- A reference into a directory the walk pruned — the common case being a user who put `legacy/`
+  in `.upflyignore` while `legacy/` is still referenced — points at a file that really is there.
 
-So the resolver runs a ladder, and the order matters. The ceiling is tested first, because if
-there is no static path the later questions are meaningless:
+So the resolver runs a numbered ladder, and **the order is load-bearing**:
 
-| Test | Outcome | Example |
-|---|---|---|
-| `ceiling === 'unsafe'` | `dynamic` | `url($hero)`, `` `/img/${slug}.png` `` |
-| resolves on disk | `resolved` | `./hero.png` |
-| alias-shaped | `unresolved-alias` | `@/assets/logo.png` |
-| asserted | `broken` | `./missing.png` — a real finding |
-| otherwise | `discarded` | a path-shaped string in `package.json` |
+| # | Test | Outcome | Example |
+|---|---|---|---|
+| 1 | `ceiling === 'unsafe'` | `dynamic` | `url($hero)` |
+| 2 | `ceiling === 'medium'` | `resolved-pattern` / `dynamic` | `` `./img/${name}.png` `` |
+| 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
+| 4 | resolves in the asset set | `resolved` | `./hero.png` |
+| 5 | under an excluded root, or exists on disk | `out-of-scope` | `../legacy/old.png` |
+| 6 | alias-shaped | `unresolved-alias` | `@/assets/logo.png` |
+| 7 | asserted | `broken` | `./missing.png` — a real finding |
+| 8 | otherwise | `discarded` | a path-shaped string in `package.json` |
 
-Only `resolved` is linked into the graph. The rest ride through to the report — `dynamic` is
-precisely the set surfaced as *"N references I couldn't safely rewrite"*, which is the honesty
-that earns trust for everything else.
+The ceiling tests come first because if there is no static path, every later question is
+meaningless. **Rung 3's position is the subtle one**, and it is wrong in both directions: moved
+above the ceiling tests it silently swallows `url($hero)` and `` `/img/${file}` `` — real dynamic
+references with no extension to test — and moved below rung 4 it turns every `url(inter.woff2)`
+into a broken finding. There is a test for each failure mode, because the placement is invisible
+otherwise.
+
+Two outcomes deserve their own note.
+
+**`resolved-pattern` links every match, not one.** A `medium` template becomes a glob, each
+`${…}` becoming `[^/]*` so a hole cannot cross a directory boundary. One or more matches and it
+resolves, carrying all of them; zero matches and it is `dynamic`, never `broken`. Linking only
+the first would leave the rest looking unreferenced, which is a false `dead asset` finding
+wearing a different costume. Whether such a reference is *safe to rewrite* is Phase 2's question,
+and the rule there is that every asset the pattern matches must convert to the same target
+extension.
+
+**`out-of-scope` is not `resolved`.** It carries a `resolvedPath` — we know exactly where it
+points — but Phase 2 must not rewrite it: the target was never converted, so pointing the
+reference at a `.webp` would break something that works today. It also carries the
+`exclusionReason`, naming the actual rule (`the ignore rule 'legacy/'`) rather than a generic
+"excluded", because that is the difference between a report line that explains a missing asset
+and one that just mentions it.
+
+### The resolver is pure, and its one filesystem need is a port
+
+Resolution happens against the **asset set** `discover` returned, not against a disk. That is
+what keeps the two-step confidence rule honest — the adapter knows syntax, the resolver knows
+what exists — without adding a fourth module that touches a filesystem.
+
+The exception is rung 5's fallback: a file excluded by a *file-level* ignore rule such as
+`*.png` leaves no pruned directory to match against, so the only way to tell "excluded" from
+"missing" is to look. That is an injected `exists` port, the same shape as the `ImageProbe`, and
+it is consulted **only** for a reference about to be called broken — a set that should number in
+the tens. It is a required option rather than an optional one, because a default would let a call
+site keep the false `broken` silently.
+
+### Ask `isLinked`, never `resolution === 'resolved'`
+
+Two of the seven outcomes are linked into the graph, so:
+
+```ts
+export function isLinked(ref: Reference): ref is Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>;
+export function linkedPaths(ref: Reference): readonly string[];
+```
+
+This is not a convenience. `if (ref.resolution === 'resolved')` compiles, runs, and silently
+ignores every pattern reference — a false negative the compiler cannot see, and precisely the
+class the validation protocol exists to catch. The graph builder, the audit and the planner call
+`isLinked`; nothing outside the resolver compares `resolution` by hand, and every `switch` over
+it carries a `never`-typed default so an eighth outcome breaks the build instead of quietly
+un-linking a whole category.
 
 ### Non-asset extensions are the resolver's business
 
@@ -127,6 +188,21 @@ These are dropped without a report line. That is not a silent skip — a `.woff2
 candidate asset, so declining it is not declining to do work, and counting fonts would be noise.
 
 **A silent skip is a P0 bug.** If the engine declines to do something, the report says so.
+
+### `possibly-dead`, and why "zero references" is usually a lie
+
+An asset referenced only from a `.vue`, `.svelte`, `.astro` or `.njk` file has zero references
+for a reason that has nothing to do with the asset: no adapter reads that format yet. Calling it
+dead is a false positive we manufactured ourselves.
+
+So the graph records `unscannedExtensions: { ext, fileCount }[]` — every extension present in the
+project that no adapter claimed — and **while that list is non-empty, every dead finding is
+reported as `possibly-dead`**, naming the extensions and their counts. `dead` is reserved for a
+repository where every file was claimed, which is the only case where zero references really
+means zero references.
+
+It costs one counter, and it is what makes shipping before the long-tail adapters honest rather
+than merely early.
 
 ## Adapters — the contribution surface
 
@@ -159,6 +235,41 @@ Parsing strategy: use a real parser wherever one is cheap and correct — `@babe
 `oxc` for JS/TS, `parse5` for HTML, `postcss` for CSS. Regex is acceptable for Markdown and
 JSON only. **Never regex JavaScript**; it will find references inside comments and strings and
 produce exactly the silent corruption this design exists to prevent.
+
+### The five that exist
+
+| Adapter | Extensions | Reads | Parser |
+|---|---|---|---|
+| `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
+| `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, icon and preloaded-image `<link>`, `<style>`, `style=""` | `parse5` |
+| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster`, CSS-in-JS | `@babel/parser` |
+| `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML | regex over masked text |
+| `json` | `.json` | every path-shaped string **value**, as a speculative candidate | regex |
+
+Three things they share, and each was a bug before it was a rule:
+
+- **CSS is read in one place.** An HTML `<style>` element, a `style=""` attribute and a
+  `styled.div` template all go through the CSS adapter's scanner rather than a second, weaker
+  implementation. Markdown hands its raw HTML to the HTML adapter for the same reason.
+- **Mask before you match.** The Markdown adapter blanks fenced blocks, code spans and HTML
+  comments with spaces *of identical length* before running any pattern, so a `![](old.png)` in a
+  documentation example is invisible while every offset after it stays exact. The JavaScript
+  adapter does the same to flatten a CSS-in-JS template, replacing each `${…}` with a CSS comment
+  of matching length — a comment rather than a SCSS interpolation, because `styled.div` templates
+  routinely open with `${baseStyles}` at statement level, where an interpolation fails to parse
+  and would cost the real `url()` below it.
+- **A `?query` or `#fragment` sits outside the reference range.** Rewriting swaps `hero.png` for
+  `hero.webp` and leaves the author's `?v=2` alone. Including it would also make the path
+  unresolvable and produce a false broken finding.
+
+Two places where the same character means opposite things, both settled by `kind`:
+
+- A leading `#` is a document fragment (`url(#gradient)`) everywhere except a module specifier,
+  where `#internal/img.png` is a Node subpath import. `isExternalUrl` takes the reference `kind`
+  as a **required** argument for exactly this — a default would let a call site keep the wrong
+  reading silently, and dropping a subpath import made it vanish from every report under no
+  reason at all.
+- `#{` opens a SCSS interpolation, so it is never treated as a fragment.
 
 ## Discovery
 
@@ -197,6 +308,14 @@ Two details that are easy to get wrong:
 
 `.gitignore` is deliberately *not* honoured: generated-but-referenced assets under `public/` are
 routinely gitignored, and skipping them would produce false "dead asset" findings.
+
+Discovery also records **what it excluded, and why**. Every pruned directory lands in
+`excludedRoots` with the rule responsible — a built-in name prune, or the specific `.upflyignore`
+pattern that matched. It keeps the raw pattern list to do that, because `ignore` reports *whether*
+a path matches but not *which* pattern did, and "excluded by some rule you wrote" is a much worse
+report line than "excluded by `legacy/`" when someone is working out where their asset went. The
+resolver prefix-tests references against these to produce `out-of-scope` instead of a false
+`broken`.
 
 ## Offsets are UTF-16 code units
 
