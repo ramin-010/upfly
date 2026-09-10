@@ -65,7 +65,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     references: resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDir: PUBLIC_DIRS[name] ?? 'public',
+      publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),
@@ -84,7 +84,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     graph,
     sweep,
     readFile: readFileText,
-    publicDir: PUBLIC_DIRS[name] ?? 'public',
+    publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
     ...(probes === undefined ? {} : { probes }),
   });
 

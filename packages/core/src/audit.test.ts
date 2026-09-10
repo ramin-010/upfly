@@ -197,7 +197,7 @@ describe('audit', () => {
         graph: graphOf({ assets: [asset('public/promo.png'), asset('src/orphan.png')] }),
         sweep: NO_SWEEP,
         readFile: files(),
-        publicDir: 'public',
+        publicDirs: ['public'],
       });
 
       expect(kinds(result.findings)).toEqual(['dead', 'dead']);
@@ -214,7 +214,7 @@ describe('audit', () => {
         graph: graphOf({ assets: [asset('images/orphan.png')] }),
         sweep: NO_SWEEP,
         readFile: files(),
-        publicDir: '',
+        publicDirs: [''],
       });
 
       expect(result.publicDirDeadCount).toBe(0);
@@ -239,7 +239,7 @@ describe('audit', () => {
         graph,
         sweep: await sweepForMentions({ graph, readFile }),
         readFile,
-        publicDir: 'public',
+        publicDirs: ['public'],
       });
 
       expect(kinds(result.findings)).toEqual(['possibly-dead']);

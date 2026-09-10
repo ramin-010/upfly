@@ -99,9 +99,22 @@ export const javascriptAdapter: Adapter = {
       );
     }
 
-    const context: Context = { file, text, references: [] };
+    const context: Context = { file, text, references: [], speculative: [], handled: new Set() };
     walk(ast, (node) => collectFromNode(node, context));
-    return context.references.sort((a, b) => a.start - b.start);
+
+    // A speculative string whose range a real construct already claimed is that
+    // construct's reference, not a second one. Filtering afterwards rather than
+    // during the walk keeps this independent of visit order, which `walk` does not
+    // promise.
+    const claimed = new Set(context.references.map((reference) => reference.start));
+    const guesses = context.speculative.filter(
+      (reference) =>
+        !claimed.has(reference.start) &&
+        !claimed.has(reference.start + 1) &&
+        !context.handled.has(reference.start),
+    );
+
+    return [...context.references, ...guesses].sort((a, b) => a.start - b.start);
   },
 
   rewrite({ text, edits }): string {
@@ -113,6 +126,20 @@ interface Context {
   readonly file: string;
   readonly text: string;
   readonly references: RawReference[];
+  /**
+   * Path-shaped string literals no known construct claimed.
+   *
+   * Kept separate until the walk finishes so they can be filtered against what the
+   * real constructs found — see `findReferences`.
+   */
+  readonly speculative: RawReference[];
+  /**
+   * Offsets of string literals a construct examined and *declined*.
+   *
+   * A decline is a decision, not an absence — `alt="/not.png"` is display text. The
+   * speculative string rule must not overturn it.
+   */
+  readonly handled: Set<number>;
 }
 
 /** Keys that hold position or comment data rather than child nodes. */
@@ -164,8 +191,59 @@ function collectFromNode(node: BabelNode, context: Context): void {
     case 'TaggedTemplateExpression':
       collectFromTaggedTemplate(node, context);
       return;
+    case 'StringLiteral':
+      collectSpeculativeString(node, context);
+      return;
     default:
   }
+}
+
+/**
+ * A path-shaped string literal that no construct above claimed.
+ *
+ * The adapter reads `import`, `require`, `import()`, JSX attributes, CSS-in-JS and
+ * `new URL(…, import.meta.url)`. Everything else was invisible — and that produced a
+ * **false `dead`** on astro-docs, where an asset is referenced by
+ * `path: './src/pages/open-graph/_images/docs-logo.png'` in an object literal. The
+ * sweep could not rescue it either: that file was read successfully and simply
+ * yielded no reference, so neither of its haystacks covered it.
+ *
+ * The asymmetry was indefensible on its own terms. `{ "file": "x.png" }` in
+ * `data.json` is a candidate; the identical string in `data.ts` was invisible.
+ *
+ * So these are emitted **speculative**, exactly as the JSON adapter emits its
+ * strings: one that resolves becomes a real link — which is strictly better than a
+ * hedge, because Phase 2 can then act on it — and one that does not is `discarded`
+ * silently, which is already the ruled behaviour for a guess.
+ */
+function collectSpeculativeString(node: StringLiteral, context: Context): void {
+  if (node.start === null || node.start === undefined) return;
+  if (node.end === null || node.end === undefined) return;
+
+  const start = node.start + 1;
+  const raw = context.text.slice(start, node.end - 1);
+  // An escaped string's decoded value differs in length from its text, so no range
+  // would point at the path. A guess is not worth an unrewritable reference.
+  if (raw !== node.value) return;
+
+  const { path } = splitPathSuffix(raw);
+  // Anything with a file extension is a candidate — the same bound the JSON adapter
+  // uses. Deciding what an *asset* extension is stays with the resolver, which is
+  // the one place that policy lives.
+  if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return;
+  // A module specifier never contains whitespace or a comma; neither does a path.
+  if (/[\s,]/.test(path)) return;
+
+  context.speculative.push({
+    file: context.file,
+    start,
+    end: start + path.length,
+    rawPath: path,
+    kind: 'string',
+    ceiling: 'high',
+    asserted: false,
+    note: 'a path-shaped string literal, guessed rather than asserted',
+  });
 }
 
 function collectFromImportDeclaration(node: ImportDeclaration, context: Context): void {
@@ -209,11 +287,23 @@ function isBundlerUrlConstruction(node: BabelNode): boolean {
 }
 
 function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
-  const name = node.name.type === 'JSXIdentifier' ? node.name.name : '';
-  if (!JSX_URL_ATTRIBUTES.has(name.toLowerCase())) return;
-
   const value = node.value;
   if (value === null || value === undefined) return;
+
+  // Every JSX attribute value is *examined* here, even one this function declines.
+  // `alt="/not.png"` is display text, and the speculative string rule would
+  // otherwise link and rewrite it — turning a deliberate decision into noise.
+  // Recording the examination is how a later pass knows not to second-guess it.
+  if (value.type === 'StringLiteral' && typeof value.start === 'number') {
+    context.handled.add(value.start + 1);
+  }
+  if (value.type === 'JSXExpressionContainer' && value.expression.type === 'StringLiteral') {
+    const literal = value.expression;
+    if (typeof literal.start === 'number') context.handled.add(literal.start + 1);
+  }
+
+  const name = node.name.type === 'JSXIdentifier' ? node.name.name : '';
+  if (!JSX_URL_ATTRIBUTES.has(name.toLowerCase())) return;
 
   // `srcSet` holds a candidate list, not a path. Left unsplit it produces two false
   // positives at once: the whole string resolves to nothing, and every image in it

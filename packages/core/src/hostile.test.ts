@@ -85,7 +85,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
     references: resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDir: 'public',
+      publicDirs: ['public'],
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),
@@ -105,7 +105,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
     graph,
     sweep,
     readFile: readFileText,
-    publicDir: 'public',
+    publicDirs: ['public'],
     ...(probes === undefined ? {} : { probes }),
   });
 

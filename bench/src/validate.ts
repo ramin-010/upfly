@@ -56,17 +56,39 @@ const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
 interface RepoSpec {
   readonly name: string;
   readonly sha: string;
-  /** Where a root-relative `/hero.png` is served from. */
-  readonly publicDir: string;
+  /**
+   * Every directory a root-relative `/hero.png` may be served from.
+   *
+   * A list because a monorepo has one per app — shadcn-ui has six, and resolving
+   * against a single one produced 93 false `broken` findings (R13).
+   */
+  readonly publicDirs: readonly string[];
 }
 
 const REPOS: readonly RepoSpec[] = [
-  { name: 'astro-docs', sha: 'cf14d7dd900c261c5c55079fca5e878945c9a96d', publicDir: 'public' },
-  { name: 'eleventy-docs', sha: '028e2555848ea8a08ece1ce268ee7d1335271427', publicDir: 'src' },
+  { name: 'astro-docs', sha: 'cf14d7dd900c261c5c55079fca5e878945c9a96d', publicDirs: ['public'] },
+  { name: 'eleventy-docs', sha: '028e2555848ea8a08ece1ce268ee7d1335271427', publicDirs: ['src'] },
   {
     name: 'shadcn-ui',
     sha: '3ba91b1cc83e1bbe4ab35a422ff2a694849c5048',
-    publicDir: 'apps/www/public',
+    // Every `public/` in the workspace, as auto-detection would find them. There
+    // are twelve, not the six a `-maxdepth 3` search turns up — the fixture apps
+    // under `packages/` have their own, and leaving those out reports their
+    // references broken.
+    publicDirs: [
+      'apps/v4/public',
+      'packages/shadcn/test/fixtures/frameworks/remix-indie-stack/public',
+      'packages/shadcn/test/fixtures/frameworks/remix/public',
+      'packages/shadcn/test/fixtures/frameworks/vite/public',
+      'packages/shadcn/test/fixtures/vite-with-tailwind/public',
+      'templates/astro-app/public',
+      'templates/astro-monorepo/apps/web/public',
+      'templates/next-app/public',
+      'templates/react-router-app/public',
+      'templates/start-app/public',
+      'templates/start-monorepo/apps/web/public',
+      'templates/vite-app/public',
+    ],
   },
 ];
 
@@ -128,7 +150,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
-    publicDir: repo.publicDir,
+    publicDirs: repo.publicDirs,
     excludedRoots: discovery.excludedRoots,
     exists: (path) => existsSync(path),
   });
@@ -144,7 +166,12 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   const { checked, failures } = await checkRanges(scanned.references, readFileText);
 
   // --- the audit and report, which (c) and (d) are reviews of ---------------------
-  const sweep = await sweepForMentions({ graph, readFile: readFileText });
+  const sweep = await sweepForMentions({
+    graph,
+    readFile: readFileText,
+    // Haystack (c): only read if the cheaper two leave something unexplained.
+    scannedFiles: discovery.sourceFiles,
+  });
   const probes = await probeAssets(
     graph.assets.map((node) => node.asset),
     { probe: await createSharpProbe(), formats: ['webp'], maxEncodedAssets: 100 },
@@ -153,7 +180,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
     graph,
     sweep,
     readFile: readFileText,
-    publicDir: repo.publicDir,
+    publicDirs: repo.publicDirs,
     probes,
   });
   const report = buildReport({ graph, audit: auditResult, discovery, sweep, probes });

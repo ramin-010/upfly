@@ -78,7 +78,7 @@ async function resolveTree(name: (typeof NAMES)[number]): Promise<Reference[]> {
   return resolveReferences(references, {
     root: discovered.root,
     assets: discovered.assets,
-    publicDir: PUBLIC_DIRS[name],
+    publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
     excludedRoots: discovered.excludedRoots,
     // The real port here: these are real trees, and a reference that would be
     // called broken deserves the one stat that proves it.
@@ -352,7 +352,7 @@ describe('framework fixtures', () => {
           graph,
           sweep: await sweepForMentions({ graph, readFile }),
           readFile,
-          publicDir: PUBLIC_DIRS[name],
+          publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
           ...(probed
             ? {
                 probes: await probeAssets(

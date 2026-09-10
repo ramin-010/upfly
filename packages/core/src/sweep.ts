@@ -46,7 +46,15 @@ export type MentionSource =
   /** In a file no adapter could read — an unclaimed extension, or a parse failure. */
   | 'unscanned-file'
   /** In a path we read but could not resolve: `dynamic`, alias-shaped, or speculative. */
-  | 'unresolved-reference';
+  | 'unresolved-reference'
+  /**
+   * In a file we *did* read, in a form no adapter understood.
+   *
+   * The last resort, and the one that costs a second pass over the source. A
+   * template literal in an object property parses fine and yields no reference,
+   * which is how an asset ends up confidently dead while being referenced.
+   */
+  | 'scanned-file';
 
 /** Evidence that an asset with no references may nonetheless be in use. */
 export interface Mention {
@@ -84,6 +92,20 @@ export interface SweepOptions {
   readonly graph: Graph;
   /** Same port `scan` takes. The sweep reads only what it must. */
   readonly readFile: ReadFilePort;
+  /**
+   * Files that *were* scanned, swept as a last resort.
+   *
+   * A scanned file can still hold a reference in a form no adapter understands —
+   * measured on astro-docs, `` `./_images/background-${dir}.png` `` in a `.ts` file
+   * is a template literal in an object property, which nothing reads. The file
+   * parsed fine and produced no reference, so neither of the other two haystacks
+   * covers it, and the asset was reported *confidently* dead.
+   *
+   * Deliberately last and deliberately optional: it doubles the sweep's read volume,
+   * and it only earns that when a repository still has zero-reference assets after
+   * the cheaper haystacks. `bench/` measures it (rule 16).
+   */
+  readonly scannedFiles?: readonly { readonly path: string; readonly relative: string }[];
   /**
    * Largest file the sweep will read, in bytes. Defaults to 2 MiB.
    *
@@ -124,8 +146,32 @@ export async function sweepForMentions(options: SweepOptions): Promise<SweepResu
 
   if (candidates.size === 0) return { mentions, skipped };
 
-  await sweepUnscannedFiles(options, candidates, mentions, skipped);
+  await sweepFiles(
+    options.graph.unscannedFiles,
+    'unscanned-file',
+    options,
+    candidates,
+    mentions,
+    skipped,
+  );
   await sweepUnresolvedReferences(options, candidates, mentions, skipped);
+
+  // Only what the cheaper haystacks did not explain. On a healthy repository this
+  // reads nothing at all, and on astro-docs it is the difference between two
+  // confidently-dead assets and two correctly-cited hedges.
+  const stillUnexplained = new Map(
+    [...candidates].filter(([, assets]) => assets.some((asset) => !mentions.has(asset))),
+  );
+  if (stillUnexplained.size > 0 && options.scannedFiles !== undefined) {
+    await sweepFiles(
+      options.scannedFiles,
+      'scanned-file',
+      options,
+      stillUnexplained,
+      mentions,
+      skipped,
+    );
+  }
 
   for (const list of mentions.values()) list.sort(byWhereThenQuote);
   return { mentions, skipped };
@@ -156,8 +202,10 @@ function candidateBasenames(graph: Graph): ReadonlyMap<string, readonly string[]
   return byBasename;
 }
 
-/** Haystack (a): the text of every file no adapter read. */
-async function sweepUnscannedFiles(
+/** Read a set of files and record every candidate basename they name. */
+async function sweepFiles(
+  files: readonly { readonly path: string; readonly relative: string }[],
+  source: MentionSource,
   options: SweepOptions,
   candidates: ReadonlyMap<string, readonly string[]>,
   mentions: Map<string, Mention[]>,
@@ -165,7 +213,7 @@ async function sweepUnscannedFiles(
 ): Promise<void> {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
-  for (const file of options.graph.unscannedFiles) {
+  for (const file of files) {
     let text: string;
     try {
       text = await options.readFile(file.path);
@@ -186,7 +234,7 @@ async function sweepUnscannedFiles(
       for (const asset of candidates.get(token.toLowerCase()) ?? []) {
         record(mentions, {
           asset,
-          source: 'unscanned-file',
+          source,
           where: `${file.relative}:${lineOf(text, index)}`,
           quote: token,
         });

@@ -155,8 +155,8 @@ export interface AuditOptions {
   readonly probes?: readonly AssetProbe[];
   /** Used only to turn a broken reference's offset into a line. */
   readonly readFile: ReadFilePort;
-  /** Public directory relative to the root, as the resolver was given it. */
-  readonly publicDir?: string;
+  /** Public directories relative to the root, as the resolver was given them. */
+  readonly publicDirs?: readonly string[];
   readonly thresholds?: AuditThresholds;
 }
 
@@ -196,10 +196,10 @@ const DEFAULT_THRESHOLDS = {
 /** Produce every finding the available evidence supports. */
 export async function audit(options: AuditOptions): Promise<AuditResult> {
   const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
-  const publicPrefix = normalisePublicDir(options.publicDir);
+  const publicPrefixes = normalisePublicDirs(options.publicDirs);
 
   const { findings: broken, unreadableSources } = await brokenFindings(options);
-  const dead = deadFindings(options, publicPrefix);
+  const dead = deadFindings(options, publicPrefixes);
   // `AssetProbe` measures pixels and `discover` measured bytes, so the two are
   // joined here — the one place that holds both — rather than by threading the
   // graph down into every size rule.
@@ -227,13 +227,13 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
  */
 function deadFindings(
   options: AuditOptions,
-  publicPrefix: string | null,
+  publicPrefixes: readonly string[],
 ): (DeadFinding | PossiblyDeadFinding)[] {
   const findings: (DeadFinding | PossiblyDeadFinding)[] = [];
 
   for (const node of unreferencedAssets(options.graph)) {
     const asset = node.asset.relative;
-    const inPublicDir = publicPrefix !== null && asset.startsWith(publicPrefix);
+    const inPublicDir = publicPrefixes.some((prefix) => asset.startsWith(prefix));
     const mentions = options.sweep.mentions.get(asset) ?? [];
     const [first, ...rest] = mentions;
 
@@ -362,10 +362,17 @@ function* opportunities(
   }
 }
 
-/** Trailing slash, or `null` when the public directory is the root itself. */
-function normalisePublicDir(publicDir: string | undefined): string | null {
-  if (publicDir === undefined || publicDir === '') return null;
-  return publicDir.endsWith('/') ? publicDir : `${publicDir}/`;
+/**
+ * Serving roots as path prefixes, with a trailing slash.
+ *
+ * A root of `''` — a plain static site serving from the project root — yields no
+ * prefix at all rather than one matching everything: marking every asset public
+ * would make the caveat meaningless.
+ */
+function normalisePublicDirs(publicDirs: readonly string[] | undefined): readonly string[] {
+  return (publicDirs ?? [])
+    .filter((publicDir) => publicDir !== '')
+    .map((publicDir) => (publicDir.endsWith('/') ? publicDir : `${publicDir}/`));
 }
 
 /**

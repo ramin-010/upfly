@@ -67,12 +67,22 @@ describe('javascriptAdapter', () => {
       expect(find("new URL('./img.png', import.meta.url);")[0]?.ceiling).toBe('high');
     });
 
-    it('ignores new URL without import.meta.url, which is a runtime URL', () => {
-      expect(paths("const u = new URL('./img.png');")).toEqual([]);
+    it('treats new URL without import.meta.url as a guess, not an assertion', () => {
+      // Not a bundled asset, so not `certain` — but a runtime URL still 404s if the
+      // file it names is converted and this line is not updated. Emitting it
+      // speculative gets both: it links when the path resolves, and it is discarded
+      // silently when it does not, so it can never become a false `broken`.
+      const [reference] = find("const u = new URL('./img.png');");
+
+      expect(reference?.rawPath).toBe('./img.png');
+      expect(reference?.asserted).toBe(false);
     });
 
-    it('ignores a require-like call that is not require', () => {
-      expect(paths("myRequire('./logo.png');")).toEqual([]);
+    it('treats a require-like call as a guess, not an assertion', () => {
+      const [reference] = find("myRequire('./logo.png');");
+
+      expect(reference?.rawPath).toBe('./logo.png');
+      expect(reference?.asserted).toBe(false);
     });
 
     it('emits bare specifiers, which the resolver drops by extension', () => {
@@ -452,8 +462,10 @@ describe('javascriptAdapter', () => {
       expect(paths('const u = new URL(name, import.meta.url);')).toEqual([]);
     });
 
-    it('ignores new URL whose second argument is not import.meta.url', () => {
-      expect(paths("const u = new URL('./a.png', base);")).toEqual([]);
+    it('does not assert a new URL whose second argument is not import.meta.url', () => {
+      const [reference] = find("const u = new URL('./a.png', base);");
+
+      expect(reference?.asserted).toBe(false);
     });
   });
 

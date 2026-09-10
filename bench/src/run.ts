@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDir: 'public',
+      publicDirs: ['public'],
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
 
   // --- 2. The sweep, which R8 requires be measured. ------------------------------
   const [sweep, sweepMs] = await timed('sweep', () =>
-    sweepForMentions({ graph, readFile: readFileText }),
+    sweepForMentions({ graph, readFile: readFileText, scannedFiles: discovery.sourceFiles }),
   );
 
   // --- 3. Probing: headers for everything, then encodes. -------------------------
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     ? []
     : await probeAssets(assets, { probe, formats: ['webp'], maxEncodedAssets: 200 });
   const [auditResult, auditMs] = await timed('audit', () =>
-    audit({ graph, sweep, readFile: readFileText, publicDir: 'public', probes: cappedProbes }),
+    audit({ graph, sweep, readFile: readFileText, publicDirs: ['public'], probes: cappedProbes }),
   );
   const [, reportMs] = await timed('report', () =>
     buildReport({ graph, audit: auditResult, discovery, sweep, probes: cappedProbes }),

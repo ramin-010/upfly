@@ -23,7 +23,18 @@ export type Confidence =
   | 'unsafe';
 
 /** The syntactic construct a reference was found in. */
-export type ReferenceKind = 'import' | 'attr' | 'css-url' | 'md' | 'json' | 'template';
+export type ReferenceKind =
+  | 'import'
+  | 'attr'
+  | 'css-url'
+  | 'md'
+  | 'json'
+  | 'template'
+  /**
+   * A path-shaped string literal in JavaScript or TypeScript, guessed rather than
+   * asserted — the same standing as a string in a JSON file.
+   */
+  | 'string';
 
 /**
  * What an adapter emits: everything that can be known from syntax alone.

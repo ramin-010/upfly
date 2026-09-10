@@ -304,6 +304,87 @@ describe('sweepForMentions', () => {
     });
   });
 
+  describe('haystack (c) — files we read but did not understand', () => {
+    it('rescues an asset named only by a construct no adapter reads', async () => {
+      // A template literal with no interpolation. It parses fine, no adapter reads
+      // it, and it is not a `StringLiteral` so the speculative rule does not see it
+      // either — so neither of the other haystacks covers it and the asset would be
+      // reported *confidently* dead.
+      const graph = graphOf({ assets: [asset('img/hero.png')] });
+      const source = ['export const config = {', '  banner: `/img/hero.png`,', '};'].join('\n');
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/gen.ts': source }),
+        scannedFiles: [{ path: '/repo/gen.ts', relative: 'gen.ts' }],
+      });
+
+      expect(result.mentions.get('img/hero.png')).toEqual([
+        {
+          asset: 'img/hero.png',
+          source: 'scanned-file',
+          where: 'gen.ts:2',
+          quote: 'hero.png',
+        },
+      ]);
+    });
+
+    it('cannot rescue a filename that is assembled at runtime, and should not pretend to', async () => {
+      // The honest limit of every basename sweep. `background-${dir}.png` never
+      // contains the string `background-ltr.png`, so there is nothing to find —
+      // measured on astro-docs, where two assets stay confidently dead for exactly
+      // this reason. Recording it as a test stops someone "fixing" the sweep for a
+      // case no sweep can reach.
+      const graph = graphOf({ assets: [asset('img/background-ltr.png')] });
+      const source = ['export const x = {', '  path: `./img/background-${dir}.png`,', '};'].join(
+        '\n',
+      );
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/gen.ts': source }),
+        scannedFiles: [{ path: '/repo/gen.ts', relative: 'gen.ts' }],
+      });
+
+      expect(result.mentions.size).toBe(0);
+    });
+
+    it('does not read scanned files when the cheaper haystacks explained everything', async () => {
+      // It doubles the sweep's read volume, so it only earns that when something is
+      // still unexplained. On a healthy repository it reads nothing at all.
+      const graph = graphOf({
+        assets: [asset('hero.png')],
+        unscannedFiles: [unscanned('page.vue')],
+      });
+      const readFile = vi.fn(files({ '/repo/page.vue': 'hero.png', '/repo/app.ts': 'hero.png' }));
+
+      await sweepForMentions({
+        graph,
+        readFile,
+        scannedFiles: [{ path: '/repo/app.ts', relative: 'app.ts' }],
+      });
+
+      expect(readFile).toHaveBeenCalledTimes(1);
+      expect(readFile).toHaveBeenCalledWith('/repo/page.vue');
+    });
+
+    it('reads nothing at all when every asset is referenced', async () => {
+      const graph = graphOf({
+        assets: [asset('used.png')],
+        references: [resolved('index.html', './used.png', 'used.png')],
+      });
+      const readFile = vi.fn(files({}));
+
+      await sweepForMentions({
+        graph,
+        readFile,
+        scannedFiles: [{ path: '/repo/app.ts', relative: 'app.ts' }],
+      });
+
+      expect(readFile).not.toHaveBeenCalled();
+    });
+  });
+
   describe('what it declines to read', () => {
     it('records a file it could not read rather than silently not hedging', async () => {
       // A silent skip here turns a hedge back into a confident `dead`, which is the

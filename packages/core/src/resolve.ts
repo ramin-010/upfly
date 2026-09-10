@@ -24,12 +24,21 @@ export interface ResolveOptions {
   /** Every image found on disk. Resolution is against this set, not the filesystem. */
   readonly assets: readonly Asset[];
   /**
-   * Directory a root-relative `/hero.png` is served from, relative to the root.
+   * Directories a root-relative `/hero.png` may be served from, relative to the root.
    *
-   * Defaults to `public`, which is right for Vite, Next and Astro. A plain static
-   * site serves from the root itself, which is `''`.
+   * Defaults to `['public']`, which is right for a single-app Vite, Next or Astro
+   * project. A plain static site serves from the root itself: `['']`.
+   *
+   * **A list, because a monorepo has more than one.** shadcn-ui has six, and a file
+   * under `apps/v4/` that references `/images/hero.png` means `apps/v4/public/`,
+   * not the one at the workspace root. Resolving that against a single serving root
+   * produced 93 false `broken` findings on it — and zero false `broken` is the
+   * phase's exit criterion.
+   *
+   * Order within the list does not decide precedence: the **nearest ancestor of the
+   * referencing file wins**, which is what a bundler does. See `candidatePaths`.
    */
-  readonly publicDir?: string;
+  readonly publicDirs?: readonly string[];
   /**
    * Directories the walk excluded, from `DiscoveryResult.excludedRoots`.
    *
@@ -69,7 +78,7 @@ export function resolveReferences(
   const context: ResolveContext = {
     index: new AssetIndex(options.assets),
     root: options.root,
-    publicDir: options.publicDir ?? 'public',
+    publicDirs: options.publicDirs ?? ['public'],
     excludedRoots: options.excludedRoots ?? [],
     exists: options.exists,
   };
@@ -86,7 +95,7 @@ export function resolveReferences(
 interface ResolveContext {
   readonly index: AssetIndex;
   readonly root: string;
-  readonly publicDir: string;
+  readonly publicDirs: readonly string[];
   readonly excludedRoots: readonly ExcludedRoot[];
   readonly exists: (absolutePath: string) => boolean;
 }
@@ -102,7 +111,7 @@ interface ResolveContext {
  * `url(inter.woff2)` into a `broken` finding.
  */
 function resolveOne(raw: RawReference, context: ResolveContext): Reference | null {
-  const { index, root, publicDir } = context;
+  const { index, root, publicDirs } = context;
   // 1. No static path at all.
   if (raw.ceiling === 'unsafe') {
     return unlinked(raw, 'dynamic');
@@ -110,7 +119,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 2. A pattern. Glob it; never let it fall through to `broken`.
   if (raw.ceiling === 'medium') {
-    const matches = index.matchPattern(raw.rawPath, raw, root, publicDir);
+    const matches = index.matchPattern(raw.rawPath, raw, root, publicDirs);
     const [first, ...rest] = matches;
     if (first === undefined) return unlinked(raw, 'dynamic');
     return {
@@ -127,7 +136,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   if (!isImageExtension(extensionOf(path))) return null;
 
   // 4. Points at an asset we found.
-  const target = index.lookup(path, raw, root, publicDir);
+  const target = index.lookup(path, raw, root, publicDirs);
   if (target !== null) {
     return { ...raw, resolution: 'resolved', confidence: raw.ceiling, resolvedPath: target };
   }
@@ -160,7 +169,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
  * exit criterion — the trade is not close.
  */
 function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
-  for (const candidate of candidatePaths(path, raw.file, context.root, context.publicDir)) {
+  for (const candidate of candidatePaths(path, raw.file, context.root, context.publicDirs)) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
       if (!candidate.startsWith(prefix)) continue;
@@ -228,8 +237,13 @@ class AssetIndex {
   }
 
   /** The asset a literal path names, or `null`. */
-  lookup(path: string, raw: RawReference, root: string, publicDir: string): string | null {
-    for (const candidate of candidatePaths(path, raw.file, root, publicDir)) {
+  lookup(
+    path: string,
+    raw: RawReference,
+    root: string,
+    publicDirs: readonly string[],
+  ): string | null {
+    for (const candidate of candidatePaths(path, raw.file, root, publicDirs)) {
       const match = this.byPath.get(candidate);
       if (match !== undefined) return match;
     }
@@ -247,12 +261,12 @@ class AssetIndex {
     rawPath: string,
     raw: RawReference,
     root: string,
-    publicDir: string,
+    publicDirs: readonly string[],
   ): readonly string[] {
     const { path } = splitPathSuffix(rawPath.replace(/\$\{[^}]*\}/g, HOLE));
     const matches: string[] = [];
 
-    for (const candidate of candidatePaths(path, raw.file, root, publicDir)) {
+    for (const candidate of candidatePaths(path, raw.file, root, publicDirs)) {
       const pattern = globRegex(candidate);
       for (const assetPath of this.ordered) {
         if (!pattern.test(assetPath)) continue;
@@ -269,27 +283,81 @@ class AssetIndex {
 /**
  * Where a path might live, in the order the build plan gives.
  *
- * A root-relative path is tried against the public directory first and the project
- * root second. Both are real serving roots in the wild — Next and Vite serve
- * `/hero.png` from `public/`, a plain static site serves it from the root — and
- * trying both can only turn a false `broken` into a correct link, never the reverse:
- * the file has to actually be there for a match to happen at all.
+ * A relative path resolves against the file. A **root-relative** one is tried
+ * against every serving root, and the order matters:
+ *
+ * 1. The serving root whose app directory is the **nearest ancestor** of the
+ *    referencing file. A monorepo has one `public/` per app, and `/images/hero.png`
+ *    inside `apps/v4/` means `apps/v4/public/` — that is what the bundler serving
+ *    that app does, and resolving it against a sibling app's public directory is
+ *    how 93 false `broken` findings happened on shadcn-ui.
+ * 2. The project root, because a plain static site serves `/hero.png` from there.
+ *
+ * A serving root that is **not** an ancestor of the referencing file is not tried at
+ * all — see `servingRootsFor`. That restraint is load-bearing rather than tidy:
+ * without it a monorepo links one app's reference to another app's asset.
  */
 function candidatePaths(
   path: string,
   fromFile: string,
   root: string,
-  publicDir: string,
+  publicDirs: readonly string[],
 ): readonly string[] {
   if (!path.startsWith('/')) {
     return [toPosix(resolvePath(dirname(fromFile), path))];
   }
 
   const withoutLeadingSlash = path.slice(1);
-  const candidates = [toPosix(resolvePath(root, publicDir, withoutLeadingSlash))];
+  const candidates: string[] = [];
+
+  for (const publicDir of servingRootsFor(publicDirs, fromFile, root)) {
+    const candidate = toPosix(resolvePath(root, publicDir, withoutLeadingSlash));
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+
   const fromRoot = toPosix(resolvePath(root, withoutLeadingSlash));
   if (!candidates.includes(fromRoot)) candidates.push(fromRoot);
   return candidates;
+}
+
+/**
+ * The serving roots that could plausibly serve *this* file, nearest first.
+ *
+ * **Only ancestors.** A serving root's app directory is its parent —
+ * `apps/v4/public` belongs to the app at `apps/v4` — and a file outside that app is
+ * not served by it. Trying every root regardless looked harmless ("more roots can
+ * only turn a false `broken` into a correct link") and is not: measured on
+ * shadcn-ui, it linked 23 references to **another app's asset**, including a
+ * fixture app's `/next.svg` to `apps/v4/public/next.svg`. Phase 2 would then rewrite
+ * that reference to point at a file the fixture app does not serve — silent
+ * corruption, which is the failure this project exists to prevent.
+ *
+ * The guarantee is only true when every root serves the same URL space. In a
+ * monorepo they do not, so proximity has to *filter*, not merely order.
+ *
+ * A single configured root is always an ancestor (its app directory is the project
+ * root), so the ordinary single-app case is unchanged.
+ */
+function servingRootsFor(
+  publicDirs: readonly string[],
+  fromFile: string,
+  root: string,
+): readonly string[] {
+  const file = toPosix(fromFile);
+  const projectRoot = toPosix(resolvePath(root));
+
+  const ancestors = publicDirs.flatMap((publicDir) => {
+    const served = toPosix(resolvePath(root, publicDir));
+    // `publicDir: ''` means the project root itself serves the URL space; its app
+    // directory is the root, not the root's parent.
+    const appDirectory = served === projectRoot ? projectRoot : toPosix(resolvePath(served, '..'));
+    if (file !== appDirectory && !file.startsWith(`${appDirectory}/`)) return [];
+    return [{ publicDir, depth: appDirectory.length }];
+  });
+
+  return ancestors
+    .sort((a, b) => b.depth - a.depth || compareStrings(a.publicDir, b.publicDir))
+    .map((entry) => entry.publicDir);
 }
 
 /**

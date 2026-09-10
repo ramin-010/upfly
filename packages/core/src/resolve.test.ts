@@ -196,11 +196,76 @@ describe('resolveReferences', () => {
       expect(linkedPaths(reference as Reference)).toEqual([join(ROOT, 'at-root.png')]);
     });
 
+    it('tries every serving root a monorepo has', () => {
+      // R13. shadcn-ui has six `public/` directories, and resolving a file under
+      // `apps/v4/` against a single one produced 93 false `broken` findings.
+      const monorepo = [asset('apps/v4/public/images/hero.png')];
+
+      const [resolved] = resolveReferences(
+        [raw({ rawPath: '/images/hero.png', file: join(ROOT, 'apps/v4/app/page.tsx') })],
+        {
+          root: ROOT,
+          assets: monorepo,
+          publicDirs: ['apps/www/public', 'apps/v4/public'],
+          exists: NOTHING_EXISTS,
+        },
+      );
+
+      expect(resolved?.resolution).toBe('resolved');
+    });
+
+    it('prefers the serving root nearest the referencing file', () => {
+      // Both exist and both match by name. A bundler serves the app the file
+      // belongs to; picking the other silently rewrites the wrong asset in Phase 2,
+      // which nothing downstream of here could catch.
+      const monorepo = [asset('apps/v4/public/logo.png'), asset('apps/www/public/logo.png')];
+
+      const [resolved] = resolveReferences(
+        [raw({ rawPath: '/logo.png', file: join(ROOT, 'apps/v4/app/page.tsx') })],
+        {
+          root: ROOT,
+          assets: monorepo,
+          // Deliberately listed with the wrong one first: order in the list must not
+          // decide precedence, proximity must.
+          publicDirs: ['apps/www/public', 'apps/v4/public'],
+          exists: NOTHING_EXISTS,
+        },
+      );
+
+      expect(resolved?.resolution === 'resolved' && toPosix(resolved.resolvedPath)).toBe(
+        toPosix(join(ROOT, 'apps/v4/public/logo.png')),
+      );
+    });
+
+    it('never links to a serving root that is not an ancestor', () => {
+      // The correction to R13's first version, and it was found by measuring rather
+      // than reasoning. "Trying more roots can only turn a false `broken` into a
+      // correct link" holds when every root serves the same URL space; a monorepo's
+      // do not. Trying them all linked 23 shadcn-ui references to *another app's*
+      // asset — a fixture app's `/next.svg` to `apps/v4/public/next.svg` — and
+      // Phase 2 would rewrite that to a file the fixture app does not serve.
+      const monorepo = [asset('apps/v4/public/next.svg')];
+
+      const [resolved] = resolveReferences(
+        [raw({ rawPath: '/next.svg', file: join(ROOT, 'packages/fixtures/next-app/page.tsx') })],
+        {
+          root: ROOT,
+          assets: monorepo,
+          publicDirs: ['apps/v4/public'],
+          exists: NOTHING_EXISTS,
+        },
+      );
+
+      // Broken is the honest answer: that app does not serve this URL. A false
+      // `broken` costs a user five minutes; a false link costs them a broken build.
+      expect(resolved?.resolution).toBe('broken');
+    });
+
     it('honours a configured public directory', () => {
       const references = resolveReferences([raw({ rawPath: '/assets/logo.png' })], {
         root: ROOT,
         assets: ASSETS,
-        publicDir: 'src',
+        publicDirs: ['src'],
         exists: NOTHING_EXISTS,
       });
       expect(references[0]?.resolution).toBe('resolved');
