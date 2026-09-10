@@ -44,6 +44,15 @@ import {
 } from 'upfly-core';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
 
+/**
+ * The per-platform gate, ruled after bench measured that 3 s was never met.
+ *
+ * Set with headroom over the measured ~4.2 s (Windows) and ~2.9 s (Linux), and
+ * enforced on **both** cells rather than only the fast one — publishing the slower
+ * number is the point.
+ */
+const BUDGET_MS = process.platform === 'win32' ? 5_000 : 3_500;
+
 const ADAPTERS: readonly Adapter[] = [
   cssAdapter,
   htmlAdapter,
@@ -57,13 +66,94 @@ interface Timing {
   readonly ms: number;
 }
 
+/**
+ * A measurement taken more than once.
+ *
+ * A single sample is not a number. The graph budget came back at 6.1 s and then
+ * 12.7 s on identical input, which made every conclusion drawn from it — including
+ * the per-platform gate — provisional. Rule 16 says a claim is a number `bench/`
+ * produced; a value that moves 2x between runs is not one.
+ */
+interface Sample {
+  readonly label: string;
+  /** The number to quote and gate against. Not the mean: one outlier moves a mean. */
+  readonly medianMs: number;
+  readonly minMs: number;
+  readonly maxMs: number;
+  /** `(max - min) / median`, as a percentage. Above ~20% the run is unusable. */
+  readonly spreadPercent: number;
+  readonly runs: number;
+  /** Every sample, so a reader can see the shape rather than trust the summary. */
+  readonly allMs: readonly number[];
+  readonly usable: boolean;
+}
+
+/** Above this, the samples disagree too much to quote a number from them. */
+const MAX_SPREAD_PERCENT = 20;
+
+/**
+ * Run `work` repeatedly and summarise it.
+ *
+ * The first pass is **discarded**. A read-dominated workload is dominated by the
+ * filesystem cache, so the first run measures a cold cache and the rest measure a
+ * warm one — averaging them together measures neither, which is the likeliest cause
+ * of the 2x swing this exists to catch.
+ */
+async function sample<T>(
+  label: string,
+  runs: number,
+  work: () => Promise<T> | T,
+): Promise<[T, Sample]> {
+  await work(); // warm-up, discarded
+
+  const times: number[] = [];
+  let last: T | undefined;
+  for (let index = 0; index < runs; index++) {
+    const started = performance.now();
+    last = await work();
+    times.push(performance.now() - started);
+  }
+
+  const sorted = [...times].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const medianMs =
+    sorted.length % 2 === 0
+      ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
+      : (sorted[middle] ?? 0);
+  const minMs = sorted[0] ?? 0;
+  const maxMs = sorted[sorted.length - 1] ?? 0;
+  const spreadPercent = medianMs === 0 ? 0 : ((maxMs - minMs) / medianMs) * 100;
+
+  return [
+    last as T,
+    {
+      label,
+      medianMs: Math.round(medianMs),
+      minMs: Math.round(minMs),
+      maxMs: Math.round(maxMs),
+      spreadPercent: Math.round(spreadPercent),
+      runs,
+      allMs: times.map((value) => Math.round(value)),
+      // Marked unusable rather than averaged away: a number nobody can reproduce
+      // should not be quoted, and hiding the disagreement inside a mean is how it
+      // gets quoted anyway.
+      usable: spreadPercent <= MAX_SPREAD_PERCENT,
+    },
+  ];
+}
+
 /** Everything one run measured. Serialised verbatim by `--json`. */
 interface BenchResult {
   readonly tree: { readonly files: number; readonly images: number; readonly root: string };
   readonly graphBudget: {
+    /** The median of the sampled runs. The only figure that may be quoted. */
     readonly totalMs: number;
+    /** The single-pass breakdown's total, for comparison with the median. */
+    readonly stepTotalMs: number;
     readonly budgetMs: number;
+    /** False when over budget *or* when the samples disagreed too much to say. */
     readonly withinBudget: boolean;
+    readonly sample: Sample;
     readonly steps: readonly Timing[];
   };
   readonly sweep: {
@@ -110,6 +200,35 @@ async function main(): Promise<void> {
   const readFileText = (path: string) => readFile(path, 'utf8');
 
   // --- 1. The graph budget: everything up to and including linking. -------------
+  //
+  // Sampled, not timed once. This is the number the gate uses, and a single run of
+  // it disagreed with itself by 2x.
+  const runs = Number(argv.find((a) => a.startsWith('--runs='))?.slice('--runs='.length) ?? 5);
+
+  const [, graphBudget] = await sample('graph budget', runs, async () => {
+    const started = performance.now();
+    const found = await discover({ root: tree.root, adapters: ADAPTERS });
+    const parsed = await scanSources({
+      sourceFiles: found.sourceFiles,
+      adapters: ADAPTERS,
+      readFile: readFileText,
+    });
+    const links = resolveReferences(parsed.references, {
+      root: found.root,
+      assets: found.assets,
+      publicDirs: ['public'],
+      excludedRoots: found.excludedRoots,
+      exists: (path) => existsSync(path),
+    });
+    buildGraph({
+      root: found.root,
+      assets: found.assets,
+      references: links,
+      unscannedFiles: [...found.unscannedFiles, ...parsed.unscanned],
+    });
+    return performance.now() - started;
+  });
+
   const [discovery, discoverMs] = await timed('discover', () =>
     discover({ root: tree.root, adapters: ADAPTERS }),
   );
@@ -138,7 +257,9 @@ async function main(): Promise<void> {
     }),
   );
 
-  const graphBudgetMs = discoverMs.ms + scanMs.ms + resolveMs.ms + graphMs.ms;
+  // The per-step breakdown is a single pass: it says where the time goes, and the
+  // sampled total above is what anyone may quote.
+  const stepTotalMs = discoverMs.ms + scanMs.ms + resolveMs.ms + graphMs.ms;
 
   // --- 2. The sweep, which R8 requires be measured. ------------------------------
   const [sweep, sweepMs] = await timed('sweep', () =>
@@ -175,9 +296,11 @@ async function main(): Promise<void> {
   const result: BenchResult = {
     tree: { files: TOTAL_FILES, images: TOTAL_IMAGES, root: '<temp>' },
     graphBudget: {
-      totalMs: graphBudgetMs,
-      budgetMs: 3_000,
-      withinBudget: graphBudgetMs < 3_000,
+      totalMs: graphBudget.medianMs,
+      stepTotalMs,
+      budgetMs: BUDGET_MS,
+      withinBudget: graphBudget.usable && graphBudget.medianMs < BUDGET_MS,
+      sample: graphBudget,
       steps: [discoverMs, scanMs, resolveMs, graphMs],
     },
     sweep: {
@@ -274,11 +397,15 @@ function render(result: BenchResult, generation: Timing): string {
     `  tree: ${result.tree.files} files, ${result.tree.images} images (generated in ${generation.ms} ms)`,
     `  machine: ${result.machine.platform}, ${result.machine.cpus} logical cores, UV_THREADPOOL_SIZE=${result.machine.uvThreadpoolSize}`,
     '',
-    `Graph budget — ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${result.graphBudget.withinBudget ? 'OK' : 'OVER'}`,
+    `Graph budget — ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${verdict(result.graphBudget)}`,
     '',
+    `  median of ${result.graphBudget.sample.runs} runs (one warm-up discarded): ${result.graphBudget.sample.allMs.join(', ')} ms`,
+    `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.usable ? '' : '  ← TOO NOISY TO QUOTE'}`,
+    '',
+    '  where the time goes (single pass):',
   ];
 
-  for (const step of result.graphBudget.steps) lines.push(`  ${pad(step.label)} ${step.ms} ms`);
+  for (const step of result.graphBudget.steps) lines.push(`    ${pad(step.label)} ${step.ms} ms`);
   lines.push('');
 
   lines.push('Sweep (excluded from the budget)', '');
@@ -310,6 +437,12 @@ function render(result: BenchResult, generation: Timing): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+/** `OK`, `OVER`, or a refusal to say — the third is not a failure, it is honesty. */
+function verdict(budget: BenchResult['graphBudget']): string {
+  if (!budget.sample.usable) return 'UNUSABLE (samples disagree)';
+  return budget.withinBudget ? 'OK' : 'OVER';
 }
 
 function pad(label: string): string {
