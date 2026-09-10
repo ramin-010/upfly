@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile as readFile_ } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -8,11 +8,15 @@ import { htmlAdapter } from './adapters/html.js';
 import { javascriptAdapter } from './adapters/javascript.js';
 import { jsonAdapter } from './adapters/json.js';
 import { markdownAdapter } from './adapters/markdown.js';
+import { audit } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph, unreferencedAssets } from './graph.js';
+import { createSharpProbe } from './probe-sharp.js';
+import { probeAssets } from './probe.js';
 import { isLinked } from './reference.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
+import type { ReadFilePort } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 
@@ -55,7 +59,7 @@ async function scan(name: string) {
   const scanned = await scanSources({
     sourceFiles: discovered.sourceFiles,
     adapters: ADAPTERS,
-    readFile: (path) => readFile(path, 'utf8'),
+    readFile: (path) => readFile_(path, 'utf8'),
   });
 
   // Kept separately from `scanSources`, which deliberately does not hold a whole
@@ -63,7 +67,7 @@ async function scan(name: string) {
   // fixture tree is small enough that a test can afford it.
   const sources = new Map<string, string>();
   for (const sourceFile of discovered.sourceFiles) {
-    sources.set(sourceFile.path, await readFile(sourceFile.path, 'utf8'));
+    sources.set(sourceFile.path, await readFile_(sourceFile.path, 'utf8'));
   }
 
   return { discovered, references: scanned.references, unscanned: scanned.unscanned, sources };
@@ -203,7 +207,7 @@ describe('framework fixtures', () => {
         const graph = await graphTree(name);
         const mentioned = new Set<string>();
         const haystack = [
-          ...(await Promise.all(graph.unscannedFiles.map((file) => readFile(file.path, 'utf8')))),
+          ...(await Promise.all(graph.unscannedFiles.map((file) => readFile_(file.path, 'utf8')))),
           // The second half, found by this very test on the eleventy tree and
           // raised as R10: a reference we *read* but could not resolve names no
           // asset, so an asset it may point at looks dead. `templated.png` is
@@ -275,7 +279,7 @@ describe('framework fixtures', () => {
       async function sweep(name: (typeof NAMES)[number]) {
         return sweepForMentions({
           graph: await graphTree(name),
-          readFile: (path) => readFile(path, 'utf8'),
+          readFile: (path) => readFile_(path, 'utf8'),
         });
       }
 
@@ -337,6 +341,114 @@ describe('framework fixtures', () => {
 
       it.each(NAMES)('%s: reads nothing it cannot account for', async (name) => {
         expect((await sweep(name)).skipped).toEqual([]);
+      });
+    });
+
+    describe('audited end to end', () => {
+      async function auditTree(name: (typeof NAMES)[number], probed = true) {
+        const graph = await graphTree(name);
+        const readFile: ReadFilePort = (path) => readFile_(path, 'utf8');
+        return audit({
+          graph,
+          sweep: await sweepForMentions({ graph, readFile }),
+          readFile,
+          publicDir: PUBLIC_DIRS[name],
+          ...(probed
+            ? {
+                probes: await probeAssets(
+                  graph.assets.map((node) => node.asset),
+                  { probe: await createSharpProbe(), formats: ['webp'] },
+                ),
+              }
+            : {}),
+        });
+      }
+
+      it.each(NAMES)(
+        '%s: reports no broken reference the fixture did not declare',
+        async (name) => {
+          // The exit criterion, now at the layer a user actually reads.
+          const result = await auditTree(name, false);
+          const broken = result.findings.filter((finding) => finding.kind === 'broken');
+
+          expect(
+            broken.filter((finding) => !finding.rawPath.includes('missing-on-purpose')),
+          ).toEqual([]);
+        },
+      );
+
+      it('cites the one deliberately broken reference at its line', async () => {
+        const result = await auditTree('plain-html', false);
+
+        expect(result.findings.filter((finding) => finding.kind === 'broken')).toEqual([
+          {
+            kind: 'broken',
+            // Verified against the fixture: the deliberate dangling reference lives
+            // in about.html, not index.html, and the citation lands on its line.
+            file: 'about.html',
+            line: 10,
+            where: 'about.html:10',
+            rawPath: 'images/missing-on-purpose.png',
+          },
+        ]);
+      });
+
+      it('reports astro-s three .astro-only assets as possibly-dead and one as dead', async () => {
+        const result = await auditTree('astro', false);
+        const dead = result.findings.filter((finding) => finding.kind === 'dead');
+        const hedged = result.findings.filter((finding) => finding.kind === 'possibly-dead');
+
+        expect(hedged.map((finding) => finding.asset)).toEqual([
+          'public/banner.png',
+          'public/favicon.png',
+          'src/assets/logo.png',
+        ]);
+        expect(dead.map((finding) => finding.asset)).toEqual(['public/never-used.png']);
+      });
+
+      it('counts a dead public asset for the caveat instead of hedging it', async () => {
+        // The rider: `never-used.png` is under `public/`, so it could in principle
+        // be referenced from outside the repo — but there is no evidence, so it
+        // stays `dead` and the report carries a count.
+        const result = await auditTree('astro', false);
+
+        expect(result.publicDirDeadCount).toBe(1);
+      });
+
+      it.each(['next-app', 'plain-html'] as const)(
+        '%s: every unreferenced asset is confidently dead',
+        async (name) => {
+          const result = await auditTree(name, false);
+
+          expect(result.findings.some((finding) => finding.kind === 'possibly-dead')).toBe(false);
+          expect(result.findings.some((finding) => finding.kind === 'dead')).toBe(true);
+        },
+      );
+
+      it('produces dead and broken findings without a probe at all', async () => {
+        // Three findings of four need no pixels — what makes `--no-probe` and a
+        // low encode cap safe rather than merely fast.
+        const result = await auditTree('plain-html', false);
+
+        expect(result.probed).toBe(false);
+        expect(result.findings.some((finding) => finding.kind === 'broken')).toBe(true);
+        expect(result.findings.some((finding) => finding.kind === 'dead')).toBe(true);
+      });
+
+      it('probes the real fixture images without inventing an opportunity', async () => {
+        // The fixture images are 1x1, so there is nothing to save. A finding here
+        // would mean the audit is estimating rather than measuring.
+        const result = await auditTree('plain-html');
+
+        expect(result.probed).toBe(true);
+        expect(result.findings.some((finding) => finding.kind === 'format-opportunity')).toBe(
+          false,
+        );
+        expect(result.findings.some((finding) => finding.kind === 'oversized')).toBe(false);
+      });
+
+      it.each(NAMES)('%s: accounts for every source it could not read', async (name) => {
+        expect((await auditTree(name, false)).unreadableSources).toEqual([]);
       });
     });
 

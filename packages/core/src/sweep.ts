@@ -34,9 +34,10 @@
  * otherwise be half a million substring searches.
  */
 
+import { citeReferences, lineOf } from './citation.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
-import { IMAGE_EXTENSIONS, compareStrings, relativePath } from './paths.js';
+import { IMAGE_EXTENSIONS, compareStrings } from './paths.js';
 import type { ReadFilePort } from './scan.js';
 import type { Reference } from './types.js';
 
@@ -197,9 +198,9 @@ async function sweepUnscannedFiles(
 /**
  * Haystack (b): paths we read but could not resolve.
  *
- * These cost no IO to search — the strings are already in the graph — but citing a
- * line does, so the source file is read once per file that actually produced a hit.
- * Both bounds hold: only assets with zero references, and only files that named one.
+ * Searching these costs no IO — the strings are already in the graph — but R10
+ * makes the citation mandatory, and a line costs a re-read. `citeReferences` does
+ * that once per file, and only for references that actually named a candidate.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -207,37 +208,32 @@ async function sweepUnresolvedReferences(
   mentions: Map<string, Mention[]>,
   skipped: SweepSkip[],
 ): Promise<void> {
-  const hits = new Map<string, { reference: Reference; asset: string; token: string }[]>();
+  const hits: { reference: Reference; asset: string }[] = [];
 
   for (const reference of unknownTargetReferences(options.graph)) {
     for (const [token] of tokens(reference.rawPath)) {
       for (const asset of candidates.get(token.toLowerCase()) ?? []) {
-        const list = hits.get(reference.file) ?? [];
-        list.push({ reference, asset, token });
-        hits.set(reference.file, list);
+        hits.push({ reference, asset });
       }
     }
   }
+  if (hits.length === 0) return;
 
-  for (const [file, found] of hits) {
-    const relative = relativePath(options.graph.root, file);
-    let text: string | null = null;
-    try {
-      text = await options.readFile(file);
-    } catch (error) {
-      // The citation loses its line, not its point. Recorded either way (rule 9).
-      skipped.push({ relative, reason: describe(error) });
-    }
+  const { citations, unreadable } = await citeReferences({
+    references: hits.map((hit) => hit.reference),
+    root: options.graph.root,
+    readFile: options.readFile,
+  });
+  // A file we cannot re-read loses the line, not the citation (rule 9).
+  skipped.push(...unreadable);
 
-    for (const hit of found) {
-      const line = text === null ? null : lineOf(text, hit.reference.start);
-      record(mentions, {
-        asset: hit.asset,
-        source: 'unresolved-reference',
-        where: line === null ? relative : `${relative}:${line}`,
-        quote: hit.reference.rawPath,
-      });
-    }
+  for (const hit of hits) {
+    record(mentions, {
+      asset: hit.asset,
+      source: 'unresolved-reference',
+      where: citations.get(hit.reference)?.where ?? '',
+      quote: hit.reference.rawPath,
+    });
   }
 }
 
@@ -266,15 +262,6 @@ function* tokens(text: string): Generator<[string, number]> {
     yield [match[0], match.index];
     match = pattern.exec(text);
   }
-}
-
-/** One-based line number of an offset. */
-function lineOf(text: string, offset: number): number {
-  let line = 1;
-  for (let index = 0; index < offset && index < text.length; index++) {
-    if (text[index] === '\n') line += 1;
-  }
-  return line;
 }
 
 function record(mentions: Map<string, Mention[]>, mention: Mention): void {

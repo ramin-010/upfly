@@ -1,3 +1,18 @@
+export { audit } from './audit.js';
+export type {
+  AuditOptions,
+  AuditResult,
+  AuditThresholds,
+  BrokenFinding,
+  DeadFinding,
+  Finding,
+  FormatOpportunityFinding,
+  OversizeDimension,
+  OversizedFinding,
+  PossiblyDeadFinding,
+} from './audit.js';
+export { citeReferences, lineOf } from './citation.js';
+export type { Citation, CitationOptions, CitationResult, UnreadableSource } from './citation.js';
 export { cssAdapter, findCssReferences } from './adapters/css.js';
 export { htmlAdapter } from './adapters/html.js';
 export { javascriptAdapter } from './adapters/javascript.js';
