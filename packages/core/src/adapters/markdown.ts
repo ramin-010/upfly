@@ -16,6 +16,7 @@
  */
 
 import { applyEdits } from '../edits.js';
+import { UpflyError } from '../errors.js';
 import type { Adapter, RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
 import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './reference-path.js';
@@ -64,7 +65,22 @@ export const markdownAdapter: Adapter = {
 
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
-    references.push(...htmlAdapter.findReferences({ file, text: masked }));
+    //
+    // R20: it can throw — a `<style>` block whose CSS will not parse reaches the CSS
+    // adapter through it — and everything collected above is correct regardless. The
+    // failure still propagates, so `scan` still reports the file as unparseable and
+    // rule 9 holds; what rides along is the references that were already found.
+    try {
+      references.push(...htmlAdapter.findReferences({ file, text: masked }));
+    } catch (error) {
+      if (error instanceof UpflyError) {
+        throw new UpflyError(error.code, error.message, [
+          ...references,
+          ...(error.partial as RawReference[]),
+        ]);
+      }
+      throw error;
+    }
 
     return references.sort((a, b) => a.start - b.start);
   },
@@ -143,6 +159,62 @@ function maskInactiveRegions(text: string): string {
   let masked = maskFencedBlocks(text);
   masked = maskPattern(masked, /<!--[\s\S]*?-->/g);
   masked = maskPattern(masked, /(`+)[\s\S]*?\1/g);
+  masked = maskUnclosedRawText(masked);
+  return masked;
+}
+
+/**
+ * HTML's raw-text elements, which consume everything until their closing tag.
+ *
+ * `<plaintext>` and `<xmp>` are obsolete and never close at all, which is exactly
+ * why they belong here: parse5 implements the real algorithm, not the polite subset.
+ */
+const RAW_TEXT_ELEMENTS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
+
+/**
+ * Blank a raw-text open tag that never closes.
+ *
+ * Markdown permits arbitrary HTML, so this adapter hands its text to the HTML
+ * adapter — and parse5 is a real HTML parser, which means `<script>` opens a
+ * **raw-text element** wherever it appears. Prose that merely *mentions* one, as
+ * `shadcn-ui/skills/migrate-radix-to-base/SKILL.md:67` does with *"retargeting onto a
+ * base-`<style>` variant"*, therefore swallows the entire rest of the document.
+ *
+ * Every layer is individually right. The masker correctly leaves prose alone;
+ * Markdown correctly permits raw HTML; parse5 correctly implements HTML. The
+ * **composition** is what is wrong, and it cost two things:
+ *
+ * - `<style>` hands the swallowed remainder to the CSS parser, which throws, and
+ *   every reference collected so far goes with it;
+ * - the other five swallow **silently**, so a raw `<img src>` later in the document
+ *   is dropped with no error and nothing in the report. A silent skip is a P0 under
+ *   rule 9, and that one is the more serious of the two.
+ *
+ * An open tag with no matching close cannot be an element the author meant — and
+ * CommonMark agrees: a raw-text *block* has to begin the line, while one mentioned
+ * mid-sentence is inline HTML. So it is blanked with spaces of identical length, the
+ * same device the fences and code spans use, and every offset after it stays exact.
+ */
+function maskUnclosedRawText(text: string): string {
+  let masked = text;
+
+  for (const element of RAW_TEXT_ELEMENTS) {
+    const open = new RegExp(`<${element}(?=[\\s/>])[^>]*>`, 'gi');
+    const close = new RegExp(`</${element}\\s*>`, 'i');
+
+    let match = open.exec(masked);
+    while (match !== null) {
+      const after = masked.slice(match.index + match[0].length);
+      if (!close.test(after)) {
+        masked =
+          masked.slice(0, match.index) +
+          blank(match[0]) +
+          masked.slice(match.index + match[0].length);
+      }
+      match = open.exec(masked);
+    }
+  }
+
   return masked;
 }
 

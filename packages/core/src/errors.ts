@@ -31,9 +31,30 @@ export type UpflyErrorCode =
 export class UpflyError extends Error {
   readonly code: UpflyErrorCode;
 
-  constructor(code: UpflyErrorCode, message: string) {
+  /**
+   * References the adapter had already found when it failed (R20).
+   *
+   * An adapter that reads a composite format finds things and *then* hits the part
+   * it cannot parse. The Markdown adapter collects every `![](hero.png)` before
+   * handing the same text to the HTML adapter, which hands a `<style>` block to the
+   * CSS adapter — so one unparseable stylesheet inside one Markdown file threw away
+   * every image reference in the document.
+   *
+   * ⚠️ **This is not permission to swallow the failure.** The throw still happens,
+   * `scan` still records the file as `parse-failed`, and the report still names it —
+   * rule 9 is untouched. What changes is that the references found *before* the
+   * failure survive it, because they are correct and losing them is what makes the
+   * asset look dead.
+   *
+   * Typed as `unknown[]` rather than `RawReference[]` so `errors.ts` stays free of
+   * a dependency on `types.ts`; `scan` narrows it at the single place it is read.
+   */
+  readonly partial: readonly unknown[];
+
+  constructor(code: UpflyErrorCode, message: string, partial: readonly unknown[] = []) {
     super(message);
     this.name = 'UpflyError';
     this.code = code;
+    this.partial = partial;
   }
 }

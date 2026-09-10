@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
 import { markdownAdapter } from './markdown.js';
 
@@ -230,6 +231,94 @@ describe('markdownAdapter', () => {
     it('is a no-op with no edits', () => {
       const source = '![a](./a.png)';
       expect(markdownAdapter.rewrite({ text: source, edits: [] })).toBe(source);
+    });
+  });
+
+  describe('raw-text elements mentioned in prose (R20)', () => {
+    // Markdown hands its text to the HTML adapter, and parse5 is a real HTML parser:
+    // `<script>` opens a **raw-text element** wherever it appears, so prose that
+    // merely mentions one swallows the rest of the document. Found on
+    // `shadcn-ui/skills/migrate-radix-to-base/SKILL.md:67` — "retargeting onto a
+    // base-<style> variant" — and in astro-docs's Korean config reference.
+    //
+    // Every layer is individually correct. The composition is what is wrong.
+
+    const TAGS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
+
+    it.each(TAGS)('does not swallow the document after a bare <%s> in prose', (tag) => {
+      // The dangerous half, and it is the *quiet* one: for five of these six there is
+      // no error at all. A raw `<img>` after the mention is simply gone — a silent
+      // skip, which rule 9 makes a P0.
+      const text = [
+        '# Guide',
+        '',
+        `prose mentioning a <${tag}> element.`,
+        '',
+        '<img src="./after.png" alt="a">',
+      ].join('\n');
+
+      const references = markdownAdapter.findReferences({ file: 'guide.md', text });
+
+      expect(references.map((reference) => reference.rawPath)).toContain('./after.png');
+    });
+
+    it('still reads a raw-text element that does close', () => {
+      // The mask keys on *unclosed*, so a real `<style>` block is untouched and the
+      // CSS inside it is still scanned. Without this the fix would be a silent skip
+      // of its own, in the other direction.
+      const text = [
+        '# Guide',
+        '',
+        '<style>',
+        '  .a { background: url(./in-css.png); }',
+        '</style>',
+      ].join('\n');
+
+      const references = markdownAdapter.findReferences({ file: 'guide.md', text });
+
+      expect(references.map((reference) => reference.rawPath)).toEqual(['./in-css.png']);
+    });
+
+    it('keeps the references it already found when the HTML hand-off throws', () => {
+      // A *closed* `<style>` whose CSS will not parse still throws, which is right —
+      // rule 9 wants the failure visible. What must not happen is the four images
+      // above it disappearing with it, which is what made the asset look dead.
+      const text = [
+        '# Guide',
+        '',
+        '![one](./one.png)',
+        '![two](./two.png)',
+        '',
+        '<style>',
+        '  a { color: ; ;; }} unclosed',
+        '</style>',
+      ].join('\n');
+
+      let thrown: unknown;
+      try {
+        markdownAdapter.findReferences({ file: 'guide.md', text });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(UpflyError);
+      expect((thrown as UpflyError).code).toBe('ADAPTER_PARSE_FAILED');
+      expect((thrown as UpflyError).partial.map((r) => (r as RawReference).rawPath)).toEqual([
+        './one.png',
+        './two.png',
+      ]);
+    });
+
+    it('leaves a mention inside a code span alone, as it always did', () => {
+      // The existing masker runs first, so a backticked `<style>` never reaches this
+      // rule at all. Asserted so a future change to the mask order shows up here.
+      const text = ['# Guide', '', 'use the `<style>` element', '', '![hero](./hero.png)'].join(
+        '\n',
+      );
+
+      expect(
+        markdownAdapter.findReferences({ file: 'guide.md', text }).map((r) => r.rawPath),
+      ).toEqual(['./hero.png']);
     });
   });
 });

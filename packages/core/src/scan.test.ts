@@ -226,6 +226,64 @@ describe('scanSources', () => {
       expect(result.unscanned[0]?.detail).not.toContain('E:');
     });
 
+    it('keeps the references an adapter found before it failed, and still reports it', async () => {
+      // R20, at the layer that matters. Both halves have to hold at once: the file
+      // is recorded as `parse-failed` so rule 9 is satisfied, **and** the references
+      // collected before the failure survive — they are correct, and dropping them
+      // is what made a referenced asset look dead.
+      //
+      // Before this, one `<style>` block of unparseable CSS inside a Markdown file
+      // discarded every `![](hero.png)` above it.
+      const partial: Adapter = {
+        ...css,
+        findReferences: ({ file }) => {
+          throw new UpflyError('ADAPTER_PARSE_FAILED', 'bad CSS in a style block', [
+            {
+              file,
+              start: 0,
+              end: 9,
+              rawPath: 'hero.png',
+              kind: 'md' as const,
+              ceiling: 'high' as const,
+              asserted: true,
+            },
+          ]);
+        },
+      };
+
+      const result = await scanSources({
+        sourceFiles: [sourceFile('guide.css', 'css')],
+        adapters: [partial],
+        readFile: filesystem({ '/repo/guide.css': 'anything' }),
+      });
+
+      expect(result.references.map((reference) => reference.rawPath)).toEqual(['hero.png']);
+      expect(result.unscanned.map((file) => [file.relative, file.reason])).toEqual([
+        ['guide.css', 'parse-failed'],
+      ]);
+    });
+
+    it('reports a failure carrying nothing exactly as it did before', async () => {
+      // The control. Every other adapter throws without a payload, and that path has
+      // to keep behaving identically — an empty `partial` must not become an excuse
+      // to report something that was never found.
+      const throwing: Adapter = {
+        ...css,
+        findReferences: () => {
+          throw new UpflyError('ADAPTER_PARSE_FAILED', 'unclosed block');
+        },
+      };
+
+      const result = await scanSources({
+        sourceFiles: [sourceFile('a.css', 'css')],
+        adapters: [throwing],
+        readFile: filesystem({ '/repo/a.css': 'a {' }),
+      });
+
+      expect(result.references).toEqual([]);
+      expect(result.unscanned[0]?.reason).toBe('parse-failed');
+    });
+
     it('survives an adapter throwing something that is not an UpflyError', async () => {
       // Adapters are the contribution surface. A bug in a community adapter must
       // not take down an audit of a repo that adapter barely touches — and it must

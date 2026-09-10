@@ -130,8 +130,14 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
     );
 
     for (const result of scanned) {
-      if (result.failure === null) references.push(...result.references);
-      else unscanned.push(result.failure);
+      // Both, not either. R20: an adapter for a composite format finds references and
+      // *then* meets the part it cannot parse, so a failure and a set of correct
+      // references are not alternatives. The `if/else` this replaces discarded them
+      // here even when `scanOne` had carefully preserved them one layer down — which
+      // is where the defect actually lived, and a test written against the adapter
+      // alone would never have reached it.
+      references.push(...result.references);
+      if (result.failure !== null) unscanned.push(result.failure);
       mentions.push(...result.mentions);
     }
   }
@@ -192,8 +198,14 @@ async function scanOne(
     // surface, and a bug in a community adapter must not take down an audit of a
     // repository that adapter barely touches. The message is carried into the
     // report, so a broken adapter is visible rather than merely survivable.
+    //
+    // R20: a composite format finds references and *then* meets the part it cannot
+    // parse — one `<style>` block with unparseable CSS inside a Markdown file threw
+    // away every `![](hero.png)` above it. Those are correct, so they are kept. The
+    // file is still recorded as `parse-failed` and still reaches the report: rule 9
+    // is about the failure being visible, not about discarding what was found.
     return {
-      references: [],
+      references: partialOf(error),
       failure: unscannedFile(file, 'parse-failed', describe(error)),
       mentions,
     };
@@ -238,6 +250,16 @@ function collectMentions(
   }
 
   return found;
+}
+
+/**
+ * References an adapter had already found when it failed.
+ *
+ * The single place `UpflyError.partial` is narrowed — it is typed `unknown[]` there
+ * so `errors.ts` need not depend on `types.ts`, and this is the one consumer.
+ */
+function partialOf(error: unknown): RawReference[] {
+  return error instanceof UpflyError ? [...(error.partial as RawReference[])] : [];
 }
 
 function unscannedFile(
