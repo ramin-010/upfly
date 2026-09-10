@@ -142,7 +142,12 @@ async function main(): Promise<void> {
 
   // --- 2. The sweep, which R8 requires be measured. ------------------------------
   const [sweep, sweepMs] = await timed('sweep', () =>
-    sweepForMentions({ graph, readFile: readFileText, scannedFiles: discovery.sourceFiles }),
+    sweepForMentions({
+      graph,
+      readFile: readFileText,
+      scannedFiles: discovery.sourceFiles,
+      publicDirs: ['public'],
+    }),
   );
 
   // --- 3. Probing: headers for everything, then encodes. -------------------------

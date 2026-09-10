@@ -196,6 +196,59 @@ describe('sweepForMentions', () => {
     });
   });
 
+  describe('a filename inside an absolute URL', () => {
+    it('hedges an asset under a serving root, which the URL could genuinely serve', async () => {
+      // astro-docs cites its own published assets as
+      // `https://docs.astro.build/assets/arc.webp`. Deleting `public/assets/arc.webp`
+      // really would break that URL, so the mention is evidence.
+      const graph = graphOf({
+        assets: [asset('public/assets/arc.webp')],
+        unscannedFiles: [unscanned('guide.njk')],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/guide.njk': 'See https://docs.astro.build/assets/arc.webp here' }),
+        publicDirs: ['public'],
+      });
+
+      expect(result.mentions.has('public/assets/arc.webp')).toBe(true);
+    });
+
+    it('ignores it for an asset outside every serving root', async () => {
+      // A URL cannot be serving `src/internal/arc.webp`, so the mention is noise —
+      // and §5.1(b)'s triage already treats a URL as never a candidate reference.
+      // Without this rule the sweep and the validation harness disagreed.
+      const graph = graphOf({
+        assets: [asset('src/internal/arc.webp')],
+        unscannedFiles: [unscanned('guide.njk')],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/guide.njk': 'See https://docs.astro.build/assets/arc.webp here' }),
+        publicDirs: ['public'],
+      });
+
+      expect(result.mentions.size).toBe(0);
+    });
+
+    it('still hedges a plain mention of an asset outside a serving root', async () => {
+      const graph = graphOf({
+        assets: [asset('src/internal/arc.webp')],
+        unscannedFiles: [unscanned('guide.njk')],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/guide.njk': '<img src="/internal/arc.webp">' }),
+        publicDirs: ['public'],
+      });
+
+      expect(result.mentions.has('src/internal/arc.webp')).toBe(true);
+    });
+  });
+
   describe('haystack (b) — paths we read but could not resolve', () => {
     it('rescues the eleventy case that R10 was raised for', async () => {
       // `templated.png` is named by a path in a file we parsed perfectly. The
@@ -329,12 +382,16 @@ describe('sweepForMentions', () => {
       ]);
     });
 
-    it('cannot rescue a filename that is assembled at runtime, and should not pretend to', async () => {
-      // The honest limit of every basename sweep. `background-${dir}.png` never
-      // contains the string `background-ltr.png`, so there is nothing to find —
-      // measured on astro-docs, where two assets stay confidently dead for exactly
-      // this reason. Recording it as a test stops someone "fixing" the sweep for a
-      // case no sweep can reach.
+    it('cannot rescue a filename that is assembled at runtime — the resolver must', async () => {
+      // The honest limit of every basename sweep: `background-${dir}.png` never
+      // contains the string `background-ltr.png`, so there is nothing to find.
+      //
+      // This asserts what the *sweep* cannot do, not that the finding is correct.
+      // The right tool is the resolver: a template carries a `medium` ceiling, the
+      // glob matches `background-*.png`, and `resolved-pattern` links every match.
+      // The first version of this test read as though the dead finding were right,
+      // which is how a limit of one mechanism gets mistaken for a limit of all of
+      // them.
       const graph = graphOf({ assets: [asset('img/background-ltr.png')] });
       const source = ['export const x = {', '  path: `./img/background-${dir}.png`,', '};'].join(
         '\n',

@@ -194,6 +194,9 @@ function collectFromNode(node: BabelNode, context: Context): void {
     case 'StringLiteral':
       collectSpeculativeString(node, context);
       return;
+    case 'TemplateLiteral':
+      collectSpeculativeTemplate(node, context);
+      return;
     default:
   }
 }
@@ -244,6 +247,34 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
     asserted: false,
     note: 'a path-shaped string literal, guessed rather than asserted',
   });
+}
+
+/**
+ * A path-shaped template literal that no construct above claimed.
+ *
+ * The sibling of `collectSpeculativeString`, and it was missed on the first pass —
+ * which cost two false `dead` findings on astro-docs. `` `./_images/background-${dir}.png` ``
+ * in an object property is not a string literal, so the speculative string rule did
+ * not see it, and no basename sweep ever could: the text `background-ltr.png` does
+ * not exist anywhere.
+ *
+ * But the right machinery already existed. A template carries a `medium` ceiling,
+ * the resolver globs it, and `resolved-pattern` links **every** match — so both
+ * files link, by a path built weeks earlier. The lesson is worth more than the fix:
+ * when one mechanism cannot reach a case, check whether a different existing one
+ * already does before calling the limit fundamental.
+ */
+function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): void {
+  if (node.start === null || node.start === undefined) return;
+  if (context.handled.has(node.start)) return;
+
+  // Bound it the same way the string rule is bounded: the static text has to look
+  // like a path with a file extension. `${x} items` is not a candidate.
+  const literal = node.quasis.map((quasi) => quasi.value.raw).join('');
+  if (extensionOf(splitPathSuffix(literal).path) === '') return;
+  if (/[\s,]/.test(literal)) return;
+
+  addTemplateReference(node, context, 'string', 'a path-shaped template literal', false);
 }
 
 function collectFromImportDeclaration(node: ImportDeclaration, context: Context): void {
@@ -347,6 +378,8 @@ function collectFromModuleSource(
 }
 
 function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Context): void {
+  // Claimed here, whatever this decides: a `styled.div` body is CSS, not a path.
+  if (typeof node.quasi.start === 'number') context.handled.add(node.quasi.start);
   if (!CSS_IN_JS_TAGS.has(rootIdentifierName(node.tag) ?? '')) return;
 
   const flattened = flattenTemplate(node.quasi, context.text);
@@ -520,6 +553,7 @@ function addTemplateReference(
   context: Context,
   kind: ReferenceKind,
   description: string,
+  asserted = true,
 ): void {
   const flattened = flattenTemplate(template, context.text);
   if (flattened === null) return;
@@ -538,6 +572,7 @@ function addTemplateReference(
       ? `${description}: a template literal with a static prefix; the resolver decides whether it names exactly one asset`
       : description,
     skipPathChecks: hasExpressions,
+    asserted,
   });
 }
 
@@ -551,19 +586,31 @@ function addReference(input: {
   note: string;
   /** Set when the text is not a plain path, so suffix splitting would be wrong. */
   skipPathChecks?: boolean;
+  /** `false` for a path-shaped guess, which can never become a `broken` finding. */
+  asserted?: boolean;
 }): void {
-  const { context, start, rawPath, kind, ceiling, note, skipPathChecks = false } = input;
+  const {
+    context,
+    start,
+    rawPath,
+    kind,
+    ceiling,
+    note,
+    skipPathChecks = false,
+    asserted = true,
+  } = input;
   if (rawPath === '') return;
+  const into = asserted ? context.references : context.speculative;
 
   if (skipPathChecks) {
-    context.references.push({
+    into.push({
       file: context.file,
       start,
       end: input.end,
       rawPath,
       kind,
       ceiling,
-      asserted: true,
+      asserted,
       note,
     });
     return;
@@ -574,7 +621,7 @@ function addReference(input: {
   const { path, suffix } = splitPathSuffix(rawPath);
   if (path === '') return;
 
-  context.references.push({
+  into.push({
     file: context.file,
     start,
     // The range covers the path alone, so a rewrite preserves any `?raw` or `?v=2`
@@ -583,7 +630,7 @@ function addReference(input: {
     rawPath: path,
     kind,
     ceiling,
-    asserted: true,
+    asserted,
     note: suffix === '' ? note : `${note}; query or fragment preserved: ${suffix}`,
   });
 }

@@ -26,7 +26,10 @@ const STRING = /"(?:[^"\\]|\\.)*"/dg;
 
 export const jsonAdapter: Adapter = {
   id: 'json',
-  extensions: ['.json'],
+  // `.webmanifest` is JSON, and a web app manifest is mostly icon paths — measured
+  // on shadcn-ui, whose `site.webmanifest` lists three icons that were otherwise
+  // swept as an *unread* file and hedged rather than linked.
+  extensions: ['.json', '.webmanifest'],
 
   findReferences({ file, text }): RawReference[] {
     const references: RawReference[] = [];

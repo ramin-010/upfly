@@ -171,6 +171,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
     readFile: readFileText,
     // Haystack (c): only read if the cheaper two leave something unexplained.
     scannedFiles: discovery.sourceFiles,
+    publicDirs: repo.publicDirs,
   });
   const probes = await probeAssets(
     graph.assets.map((node) => node.asset),

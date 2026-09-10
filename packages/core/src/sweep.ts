@@ -107,6 +107,17 @@ export interface SweepOptions {
    */
   readonly scannedFiles?: readonly { readonly path: string; readonly relative: string }[];
   /**
+   * Serving roots, as the resolver was given them.
+   *
+   * Used for one rule: a filename inside an **absolute URL** is evidence only for an
+   * asset under a serving root. `https://docs.astro.build/assets/arc.webp` can
+   * genuinely be `public/assets/arc.webp` being served, so deleting it would break
+   * that URL — but it cannot be an asset outside any public directory, and hedging
+   * on it there is noise. §5.1(b)'s triage already treats a URL as "never a
+   * candidate reference"; without this the sweep disagreed with it.
+   */
+  readonly publicDirs?: readonly string[];
+  /**
    * Largest file the sweep will read, in bytes. Defaults to 2 MiB.
    *
    * The unread set is mostly templates and config, but it also holds fonts, video
@@ -231,7 +242,9 @@ async function sweepFiles(
     }
 
     for (const [token, index] of tokens(text)) {
+      const inUrl = isInsideAbsoluteUrl(text, index);
       for (const asset of candidates.get(token.toLowerCase()) ?? []) {
+        if (inUrl && !isServed(asset, options.publicDirs)) continue;
         record(mentions, {
           asset,
           source,
@@ -298,6 +311,19 @@ function unknownTargetReferences(graph: Graph): readonly Reference[] {
     ...graph.byResolution['unresolved-alias'],
     ...graph.byResolution.discarded,
   ];
+}
+
+/** Whether this token sits inside an `http://` or `https://` URL. */
+function isInsideAbsoluteUrl(text: string, index: number): boolean {
+  const lineStart = text.lastIndexOf('\n', index) + 1;
+  return /https?:\/\/\S*$/.test(text.slice(lineStart, index));
+}
+
+/** Whether an asset lives under a serving root, so a URL could genuinely serve it. */
+function isServed(asset: string, publicDirs: readonly string[] | undefined): boolean {
+  return (publicDirs ?? []).some(
+    (publicDir) => publicDir === '' || asset === publicDir || asset.startsWith(`${publicDir}/`),
+  );
 }
 
 /** Every filename-shaped token in a string, with the offset it started at. */

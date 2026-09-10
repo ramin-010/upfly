@@ -17,7 +17,8 @@ function slices(text: string): string[] {
 describe('jsonAdapter', () => {
   it('claims the json extension', () => {
     expect(jsonAdapter.id).toBe('json');
-    expect(jsonAdapter.extensions).toEqual(['.json']);
+    // `.webmanifest` is JSON too, and a web app manifest is mostly icon paths.
+    expect(jsonAdapter.extensions).toEqual(['.json', '.webmanifest']);
   });
 
   describe('emits every path-shaped value as a speculative candidate', () => {
