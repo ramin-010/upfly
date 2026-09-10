@@ -25,8 +25,9 @@ implementation, and `execute` — which are the only places that touch the files
 lets the whole engine be tested without a disk.
 
 Two stages need one filesystem fact each without being filesystem modules, and both take it as
-an **injected port**: `scan` takes `readFile`, and `resolve` takes `exists`. A port keeps the
-count at three and keeps both modules unit-testable against an in-memory map.
+an **injected port**: `scan` takes `readFile`, and `resolve` takes `exists`. The probe stage takes
+the `ImageProbe` port the same way. A port keeps the count at three and keeps each stage
+unit-testable against an in-memory map.
 
 ```
 discover(fs) ──► assets[], sourceFiles[]      images, plus files claimed by an adapter
@@ -46,7 +47,9 @@ graph = buildGraph(assets, references, unscannedFiles) ──► asset ↔ refs,
         │  byResolution[]         every reference bucketed, so none can be lost
         │  unscannedFiles[]       both sources merged: unclaimed extensions and parse failures
         ▼
-probe(assets) ──► dimensions, candidate encoded sizes     (read-only, injected)
+probeAssets(assets, probe, formats) ──► dimensions, pages, measured encoded sizes
+        │  read-only port; header reads are free, encodes are not — hence `formats`
+        │  EXCLUDED from the 3 s budget (§3.4) and reported as its own number
         ▼
 audit(graph, probe) ──► findings    dead | possibly-dead / broken / oversized / opportunities
         ▼
@@ -398,6 +401,53 @@ A reference that links to a path outside the asset set throws `GRAPH_UNKNOWN_ASS
 happen in a single run — the resolver only ever returns paths it took from those very assets — but
 it can the moment references are resolved against a cached asset set, which is exactly what the
 editor integration will do. The quiet version of that bug is a phantom dead asset.
+
+## The probe — and why it has two methods
+
+Two of the four audit findings need pixels: `oversized` needs dimensions, and format opportunities
+must be **measured**, not guessed. `ImageProbe` is the port that provides them, injected like the
+resolver's `exists`; `createSharpProbe` is the implementation and one of the three modules that
+touches a disk. It is read-only and Phase 2's writing encoder extends it.
+
+The port is split into `metadata()` and `encodedBytes()` because the two cost wildly different
+amounts. Measured on sharp 0.35.4 / libvips 8.18.6 with noise-filled sources:
+
+| source | `metadata()` | webp | avif |
+|---|---|---|---|
+| 400×300 | 2 ms | 56 ms | 317 ms |
+| 1200×800 | 1 ms | 370 ms | 2 975 ms |
+| 2400×1600 | 1 ms | 2 620 ms | 9 026 ms |
+
+Reading a header is free and independent of pixel count; an encode is three orders of magnitude
+dearer and AVIF is roughly eight times WebP. A single combined `probe()` would make every caller pay
+for an encode to learn a width, so dimensions are always affordable and encoding is something a
+caller asks for by name — `formats` is required and has no default.
+
+### Animation is the trap
+
+Encoding an animated GIF the obvious way keeps **one frame**. Sharp's own ten-frame, 370×285 fixture
+encodes to 616 bytes that way, against 8 370 bytes for the real thing. Reported as a format
+opportunity that is a ~92% saving achievable only by destroying the image — a headline finding in the
+audit and a corrupted file when the rewrite acts on it.
+
+So `encodedBytes` takes `animated`, and `probeAssets` passes `pages > 1` from the metadata it already
+holds. And `metadata()` is deliberately a *plain* read: with `{ animated: true }` that same file
+reports 370×**2850**, every frame stacked into one strip, which would make an "oversized by
+dimensions" finding wrong by a factor of ten. The plain read gives one frame's dimensions and still
+reports `pages`, answering both questions in one pass.
+
+### Nothing throws for a bad image
+
+A zero-byte file, a truncated JPEG, a text file wearing a `.png` extension, a file that vanished
+mid-run — every one becomes an `AssetProbe` carrying `metadata: null` and a recorded reason. Sharp
+rejects for all of them and `failOn: 'none'` does not help, since it governs decode warnings rather
+than header parsing. Measurements not taken are listed with reasons for the same reason skipped
+references are: silence would read as "no opportunity here".
+
+Sharp is imported **lazily**. It is a native module, and the previous generation of this project
+shipped one built for a single platform and was broken everywhere else for months. A top-level import
+would load the binary the moment anything in `upfly-core` is imported, so `upfly audit --no-probe`
+would fail on a machine that needs no pixels at all.
 
 ## Offsets are UTF-16 code units
 

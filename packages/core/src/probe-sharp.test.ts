@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,8 +115,22 @@ describe('createSharpProbe', () => {
 
   it('measures an encode without writing anything', async () => {
     const path = await noisyJpeg('encode.jpg', 60, 40);
+    const before = await readdir(temp);
 
     const bytes = await probe.encodedBytes({ path, format: 'webp', animated: false });
+
+    expect(bytes).toBeGreaterThan(0);
+    // "Read-only" is the whole promise of this module, so it is asserted rather
+    // than assumed: an encode that reached a disk would leave a file behind.
+    expect(await readdir(temp)).toEqual(before);
+  });
+
+  it('measures an AVIF encode too', async () => {
+    // Deliberately tiny. AVIF is ~8x the cost of WebP (R11), so the point here is
+    // only that the format actually reaches libvips — the numbers live in `bench/`.
+    const path = await noisyJpeg('avif.jpg', 24, 16);
+
+    const bytes = await probe.encodedBytes({ path, format: 'avif', animated: false });
 
     expect(bytes).toBeGreaterThan(0);
   });
