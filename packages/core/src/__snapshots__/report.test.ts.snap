@@ -1,0 +1,635 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildReport > astro: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "public-dir-dead",
+      "count": 1,
+      "detail": [],
+      "message": "1 unreferenced image under the public directory may be linked from outside this repository",
+    },
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+    {
+      "code": "unscanned-extensions",
+      "count": 1,
+      "detail": [
+        ".astro — 1 file",
+      ],
+      "message": "1 file type had no adapter, so 1 file went unread",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "unscannedExtensions": [
+      {
+        "ext": ".astro",
+        "fileCount": 1,
+      },
+    ],
+    "unscannedFileCount": 1,
+  },
+  "findings": [
+    {
+      "asset": "public/never-used.png",
+      "bytes": 70,
+      "inPublicDir": true,
+      "kind": "dead",
+    },
+    {
+      "asset": "public/banner.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "public/banner.png",
+          "quote": "banner.png",
+          "source": "unscanned-file",
+          "where": "src/pages/index.astro:11",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "public/favicon.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "public/favicon.png",
+          "quote": "favicon.png",
+          "source": "unscanned-file",
+          "where": "src/pages/index.astro:7",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/assets/logo.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/assets/logo.png",
+          "quote": "logo.png",
+          "source": "unscanned-file",
+          "where": "src/pages/index.astro:2",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+  ],
+  "references": {
+    "byConfidence": {
+      "certain": 0,
+      "high": 3,
+      "medium": 0,
+      "unsafe": 0,
+    },
+    "byResolution": {
+      "broken": 0,
+      "discarded": 0,
+      "dynamic": 0,
+      "out-of-scope": 0,
+      "resolved": 3,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "discardedCount": 0,
+    "unsafe": [],
+  },
+  "skipped": [],
+  "summary": {
+    "assetBytes": 490,
+    "assets": 7,
+    "findings": {
+      "broken": 0,
+      "dead": 1,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 3,
+    },
+    "linkedReferences": 3,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 3,
+    "references": 3,
+    "sourceFiles": 4,
+  },
+  "version": 1,
+}
+`;
+
+exports[`buildReport > astro: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  7 images, 490 B
+  3 references across 4 source files — 3 linked
+  3 referenced, 4 not
+  images were not decoded (--no-probe), so savings are unknown
+
+Nothing was skipped.
+
+Findings — 4 items
+
+  unreferenced images (1)
+    public/never-used.png  70 B
+
+  possibly unreferenced (3) — named somewhere Upfly cannot read
+    public/banner.png  70 B
+      named in src/pages/index.astro:11: banner.png
+    public/favicon.png  70 B
+      named in src/pages/index.astro:7: favicon.png
+    src/assets/logo.png  70 B
+      named in src/pages/index.astro:2: logo.png
+
+Worth knowing
+
+  1 unreferenced image under the public directory may be linked from outside this repository
+  images were not decoded, so oversized assets and format opportunities are unknown
+  1 file type had no adapter, so 1 file went unread:
+    .astro — 1 file
+"
+`;
+
+exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "public-dir-dead",
+      "count": 1,
+      "detail": [],
+      "message": "1 unreferenced image under the public directory may be linked from outside this repository",
+    },
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+    {
+      "code": "unscanned-extensions",
+      "count": 2,
+      "detail": [
+        ".njk — 2 files",
+      ],
+      "message": "1 file type had no adapter, so 2 files went unread",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "unscannedExtensions": [
+      {
+        "ext": ".njk",
+        "fileCount": 2,
+      },
+    ],
+    "unscannedFileCount": 2,
+  },
+  "findings": [
+    {
+      "asset": "src/img/unused.png",
+      "bytes": 70,
+      "inPublicDir": true,
+      "kind": "dead",
+    },
+    {
+      "asset": "src/img/favicon.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/favicon.png",
+          "quote": "favicon.png",
+          "source": "unscanned-file",
+          "where": "src/_includes/base.njk:4",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/hero.jpg",
+      "bytes": 160,
+      "evidence": [
+        {
+          "asset": "src/img/hero.jpg",
+          "quote": "hero.jpg",
+          "source": "unscanned-file",
+          "where": "src/index.njk:6",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/logo.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/logo.png",
+          "quote": "logo.png",
+          "source": "unscanned-file",
+          "where": "src/index.njk:5",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/templated.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/templated.png",
+          "quote": "{{ site.url }}/img/templated.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/first.md:7",
+        },
+      ],
+      "inPublicDir": true,
+      "kind": "possibly-dead",
+    },
+  ],
+  "references": {
+    "byConfidence": {
+      "certain": 0,
+      "high": 3,
+      "medium": 0,
+      "unsafe": 1,
+    },
+    "byResolution": {
+      "broken": 0,
+      "discarded": 0,
+      "dynamic": 1,
+      "out-of-scope": 0,
+      "resolved": 3,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "discardedCount": 0,
+    "unsafe": [
+      {
+        "file": "src/posts/first.md",
+        "rawPath": "{{ site.url }}/img/templated.png",
+        "reason": "contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically",
+        "resolution": "dynamic",
+      },
+    ],
+  },
+  "skipped": [],
+  "summary": {
+    "assetBytes": 650,
+    "assets": 8,
+    "findings": {
+      "broken": 0,
+      "dead": 1,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 4,
+    },
+    "linkedReferences": 3,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 3,
+    "references": 4,
+    "sourceFiles": 4,
+  },
+  "version": 1,
+}
+`;
+
+exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  8 images, 650 B
+  4 references across 4 source files — 3 linked
+  3 referenced, 5 not
+  images were not decoded (--no-probe), so savings are unknown
+
+1 reference could not be resolved safely
+
+  src/posts/first.md  {{ site.url }}/img/templated.png
+    dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
+
+Findings — 5 items
+
+  unreferenced images (1)
+    src/img/unused.png  70 B
+
+  possibly unreferenced (4) — named somewhere Upfly cannot read
+    src/img/favicon.png  70 B
+      named in src/_includes/base.njk:4: favicon.png
+    src/img/hero.jpg  160 B
+      named in src/index.njk:6: hero.jpg
+    src/img/logo.png  70 B
+      named in src/index.njk:5: logo.png
+    src/img/templated.png  70 B
+      named in src/posts/first.md:7: {{ site.url }}/img/templated.png
+
+Worth knowing
+
+  1 unreferenced image under the public directory may be linked from outside this repository
+  images were not decoded, so oversized assets and format opportunities are unknown
+  1 file type had no adapter, so 2 files went unread:
+    .njk — 2 files
+"
+`;
+
+exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "public-dir-dead",
+      "count": 1,
+      "detail": [],
+      "message": "1 unreferenced image under the public directory may be linked from outside this repository",
+    },
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "unscannedExtensions": [],
+    "unscannedFileCount": 0,
+  },
+  "findings": [
+    {
+      "asset": "public/unreferenced.png",
+      "bytes": 70,
+      "inPublicDir": true,
+      "kind": "dead",
+    },
+  ],
+  "references": {
+    "byConfidence": {
+      "certain": 1,
+      "high": 10,
+      "medium": 0,
+      "unsafe": 0,
+    },
+    "byResolution": {
+      "broken": 0,
+      "discarded": 0,
+      "dynamic": 0,
+      "out-of-scope": 0,
+      "resolved": 11,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "discardedCount": 0,
+    "unsafe": [],
+  },
+  "skipped": [],
+  "summary": {
+    "assetBytes": 700,
+    "assets": 10,
+    "findings": {
+      "broken": 0,
+      "dead": 1,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 0,
+    },
+    "linkedReferences": 11,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 9,
+    "references": 11,
+    "sourceFiles": 7,
+  },
+  "version": 1,
+}
+`;
+
+exports[`buildReport > next-app: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  10 images, 700 B
+  11 references across 7 source files — 11 linked
+  9 referenced, 1 not
+  images were not decoded (--no-probe), so savings are unknown
+
+Nothing was skipped.
+
+Findings — 1 item
+
+  unreferenced images (1)
+    public/unreferenced.png  70 B
+
+Worth knowing
+
+  1 unreferenced image under the public directory may be linked from outside this repository
+  images were not decoded, so oversized assets and format opportunities are unknown
+"
+`;
+
+exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "unscannedExtensions": [],
+    "unscannedFileCount": 0,
+  },
+  "findings": [
+    {
+      "file": "about.html",
+      "kind": "broken",
+      "line": 10,
+      "rawPath": "images/missing-on-purpose.png",
+      "where": "about.html:10",
+    },
+    {
+      "asset": "images/never-referenced.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+    {
+      "asset": "images/removed.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+  ],
+  "references": {
+    "byConfidence": {
+      "certain": 0,
+      "high": 10,
+      "medium": 0,
+      "unsafe": 1,
+    },
+    "byResolution": {
+      "broken": 1,
+      "discarded": 0,
+      "dynamic": 0,
+      "out-of-scope": 0,
+      "resolved": 10,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "discardedCount": 0,
+    "unsafe": [],
+  },
+  "skipped": [],
+  "summary": {
+    "assetBytes": 1040,
+    "assets": 11,
+    "findings": {
+      "broken": 1,
+      "dead": 2,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 0,
+    },
+    "linkedReferences": 10,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 9,
+    "references": 11,
+    "sourceFiles": 3,
+  },
+  "version": 1,
+}
+`;
+
+exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  11 images, 1 KB
+  11 references across 3 source files — 10 linked
+  9 referenced, 2 not
+  images were not decoded (--no-probe), so savings are unknown
+
+Nothing was skipped.
+
+Findings — 3 items
+
+  broken references (1) — these point at nothing
+    about.html:10  images/missing-on-purpose.png
+
+  unreferenced images (2)
+    images/never-referenced.png  70 B
+    images/removed.png  70 B
+
+Worth knowing
+
+  images were not decoded, so oversized assets and format opportunities are unknown
+"
+`;
+
+exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+    {
+      "code": "unscanned-extensions",
+      "count": 1,
+      "detail": [
+        ".svg — 1 file",
+      ],
+      "message": "1 file type had no adapter, so 1 file went unread",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "unscannedExtensions": [
+      {
+        "ext": ".svg",
+        "fileCount": 1,
+      },
+    ],
+    "unscannedFileCount": 1,
+  },
+  "findings": [
+    {
+      "asset": "src/assets/orphan.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+  ],
+  "references": {
+    "byConfidence": {
+      "certain": 2,
+      "high": 10,
+      "medium": 0,
+      "unsafe": 0,
+    },
+    "byResolution": {
+      "broken": 0,
+      "discarded": 0,
+      "dynamic": 0,
+      "out-of-scope": 0,
+      "resolved": 12,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "discardedCount": 0,
+    "unsafe": [],
+  },
+  "skipped": [],
+  "summary": {
+    "assetBytes": 1063,
+    "assets": 11,
+    "findings": {
+      "broken": 0,
+      "dead": 1,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 0,
+    },
+    "linkedReferences": 12,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 10,
+    "references": 12,
+    "sourceFiles": 5,
+  },
+  "version": 1,
+}
+`;
+
+exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  11 images, 1.1 KB
+  12 references across 5 source files — 12 linked
+  10 referenced, 1 not
+  images were not decoded (--no-probe), so savings are unknown
+
+Nothing was skipped.
+
+Findings — 1 item
+
+  unreferenced images (1)
+    src/assets/orphan.png  70 B
+
+Worth knowing
+
+  images were not decoded, so oversized assets and format opportunities are unknown
+  1 file type had no adapter, so 1 file went unread:
+    .svg — 1 file
+"
+`;

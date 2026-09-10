@@ -46,6 +46,19 @@ export type {
   ProbeSkip,
   ProbeSkipCode,
 } from './probe.js';
+export { renderReport } from './report-human.js';
+export { REPORT_SCHEMA_VERSION, buildReport } from './report.js';
+export type {
+  Caveat,
+  CoverageReport,
+  ReferenceReport,
+  Report,
+  ReportInput,
+  ReportSummary,
+  SkipStage,
+  SkippedItem,
+  UnsafeReferenceEntry,
+} from './report.js';
 export { resolveReferences } from './resolve.js';
 export type { ResolveOptions } from './resolve.js';
 export { scanSources } from './scan.js';
