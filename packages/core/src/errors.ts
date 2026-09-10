@@ -14,7 +14,13 @@ export type UpflyErrorCode =
    * adapter set than discovery used. Loud because the quiet alternative is a file
    * going unread and an asset silently looking dead.
    */
-  | 'ADAPTER_NOT_REGISTERED';
+  | 'ADAPTER_NOT_REGISTERED'
+  /**
+   * A reference linked to a path that is not in the asset set — references resolved
+   * against one asset set and graphed against another. Loud because the quiet
+   * version of this bug is a phantom dead asset.
+   */
+  | 'GRAPH_UNKNOWN_ASSET';
 
 /**
  * All errors the engine throws deliberately.

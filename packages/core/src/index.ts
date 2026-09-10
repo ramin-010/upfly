@@ -17,6 +17,8 @@ export type { DiscoverOptions } from './discover.js';
 export { applyEdits, validateEdits } from './edits.js';
 export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './reference.js';
+export { buildGraph, unreferencedAssets } from './graph.js';
+export type { AssetNode, BuildGraphInput, Graph } from './graph.js';
 export { resolveReferences } from './resolve.js';
 export type { ResolveOptions } from './resolve.js';
 export { scanSources } from './scan.js';
