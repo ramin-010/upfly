@@ -53,7 +53,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 
 /** Bumped when the tree's shape changes, so an old one is never silently reused. */
-const TREE_VERSION = 3;
+const TREE_VERSION = 4;
 
 export const TOTAL_FILES = 10_000;
 export const TOTAL_IMAGES = 2_000;
@@ -73,21 +73,50 @@ const BUCKETS = [
 ] as const;
 
 /**
- * Source file sizes, as measured across the three §5.1(c) repositories.
+ * Source file sizes, **per extension**, as eleven measured quantiles.
  *
- * Weighted by file count they average ~5 080 bytes with a ~1 850 median, which is a
- * long right tail rather than a spread — half the files are small and a handful are
- * enormous (`shadcn-ui` holds a 1.1 MB source file). Buckets rather than a
- * continuous distribution because the tree has to be reproducible from a seed, and
- * because a table is something a reader can check against the measurement above.
+ * ⚠️ A single global distribution was the second calibration error, and it was
+ * worse than it looks. Real repositories size files by *kind*: `.tsx` has a 1 718
+ * median while `.ts` has 2 482 and `.mdx` 2 861, and the mix is 38% `.tsx`. Applying
+ * one curve to all of them gave every `.tsx` file **3.3× too many bytes** — which is
+ * why `.tsx` came out as 57% of parse time on the generated tree while real `.tsx`
+ * files are the *small* ones.
+ *
+ * So these are not a model. They are p0, p10 … p90, p99 measured across the three
+ * §5.1(c) repositories — 8 813 files — and a draw interpolates between them. A table
+ * a reader can check against `notes/validation/` beats a curve that has to be
+ * believed.
  */
-const SIZE_BUCKETS = [
-  { share: 0.55, min: 200, max: 2_000 },
-  { share: 0.28, min: 2_000, max: 7_000 },
-  { share: 0.13, min: 7_000, max: 18_000 },
-  { share: 0.035, min: 18_000, max: 60_000 },
-  { share: 0.005, min: 60_000, max: 300_000 },
-] as const;
+const SIZE_QUANTILES = new Map<string, readonly number[]>([
+  // n=3325 mean=4080
+  ['.tsx', [20, 448, 703, 1019, 1359, 1718, 2208, 3063, 4191, 7073, 32133]],
+  // n=605 mean=6559
+  ['.ts', [0, 206, 515, 1047, 1615, 2482, 3870, 6356, 9797, 18332, 48700]],
+  // n=156 mean=1244
+  ['.js', [80, 111, 174, 197, 227, 448, 623, 904, 1171, 3063, 13073]],
+  // n=2905 mean=6662
+  ['.mdx', [127, 567, 728, 980, 1423, 2861, 4758, 7312, 10513, 16771, 50683]],
+  // n=308 mean=4767
+  ['.md', [80, 370, 619, 1044, 1464, 2339, 2962, 4476, 6915, 11990, 31925]],
+  // n=1363 mean=3852
+  ['.json', [2, 168, 231, 309, 550, 889, 1523, 2498, 3244, 5850, 60063]],
+  // n=117 mean=7213
+  ['.css', [24, 24, 37, 62, 347, 632, 912, 1769, 4387, 15971, 77209]],
+]);
+
+/**
+ * Kinds the three repositories barely contain, so there is nothing to measure.
+ *
+ * `.html` has five instances across all three and `.scss`, `.vue` and `.yaml` none
+ * at all — they are here for adapter and sweep coverage, not for realism, and
+ * borrowing a neighbouring curve is more honest than inventing one.
+ */
+const BORROWED_QUANTILES = new Map<string, string>([
+  ['.scss', '.css'],
+  ['.html', '.md'],
+  ['.vue', '.tsx'],
+  ['.yaml', '.json'],
+]);
 
 /**
  * Source formats, blended across the three repositories by file count.
@@ -97,18 +126,18 @@ const SIZE_BUCKETS = [
  * are the coverage floor described in the header.
  */
 const SOURCE_KINDS = [
-  { extension: '.tsx', weight: 30 },
-  { extension: '.mdx', weight: 25 },
+  { extension: '.tsx', weight: 34 },
+  { extension: '.mdx', weight: 30 },
   { extension: '.json', weight: 14 },
-  { extension: '.ts', weight: 8 },
-  { extension: '.md', weight: 5 },
-  { extension: '.css', weight: 4 },
-  { extension: '.js', weight: 3 },
-  { extension: '.scss', weight: 3 },
-  { extension: '.html', weight: 3 },
-  // Unclaimed on purpose: without these the sweep has nothing to read, and the
-  // rule that decides `dead` against `possibly-dead` would go unmeasured.
-  { extension: '.vue', weight: 3 },
+  { extension: '.ts', weight: 7 },
+  { extension: '.md', weight: 3 },
+  { extension: '.js', weight: 2 },
+  { extension: '.css', weight: 2 },
+  // Coverage floor. The measured mix has almost none of these, and without them
+  // two adapters go unmeasured and the sweep has nothing unread to search.
+  { extension: '.scss', weight: 2 },
+  { extension: '.html', weight: 2 },
+  { extension: '.vue', weight: 2 },
   { extension: '.yaml', weight: 2 },
 ] as const;
 
@@ -234,7 +263,7 @@ async function writeSources(root: string, images: readonly string[]): Promise<vo
 
     const path = join(root, directory, `file-${index}${kind}`);
     const body = sourceText(kind, directory, referenceable, random, unreferenced);
-    await writeFile(path, padTo(body, kind, targetSize(random), random));
+    await writeFile(path, padTo(body, kind, targetSize(kind, random), random));
     written += 1;
   }
 }
@@ -259,15 +288,27 @@ function directoryFor(index: number, random: () => number): string {
   return segments.join('/');
 }
 
-/** One draw from the measured size distribution. */
-function targetSize(random: () => number): number {
-  const roll = random();
-  let seen = 0;
-  for (const bucket of SIZE_BUCKETS) {
-    seen += bucket.share;
-    if (roll <= seen) return Math.floor(bucket.min + random() * (bucket.max - bucket.min));
-  }
-  return 1_000;
+/**
+ * One draw from that extension's measured distribution.
+ *
+ * Interpolating between the quantiles rather than picking one keeps the tree from
+ * containing exactly eleven distinct file sizes, which would be its own artefact.
+ */
+function targetSize(extension: string, random: () => number): number {
+  const key = BORROWED_QUANTILES.get(extension) ?? extension;
+  const quantiles = SIZE_QUANTILES.get(key);
+  if (quantiles === undefined) return 1_000;
+
+  // The last point is p99, so the top 1% is drawn from the p90–p99 span rather than
+  // extrapolated past it: the real maxima are single files (one 1.1 MB `.tsx`) and
+  // reproducing them would put a handful of outliers in charge of the median.
+  const position = random() * (quantiles.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.min(lower + 1, quantiles.length - 1);
+  const from = quantiles[lower] ?? 0;
+  const to = quantiles[upper] ?? from;
+
+  return Math.max(64, Math.floor(from + (to - from) * (position - lower)));
 }
 
 /**
@@ -318,19 +359,49 @@ function filler(extension: string, unit: number, random: () => number): string {
       return `${word()}${unit}:\n  ${word()}: ${unit}\n  ${word()}: ${word()}`;
     case '.tsx':
       return [
+        '/**',
+        ` * ${sentence(word)}`,
+        ' *',
+        ` * ${sentence(word)}`,
+        ' */',
         `export function Part${unit}({ ${word()} }: { ${word()}: string }) {`,
         `  const ${word()}${unit} = ${unit} * 2;`,
-        `  return <div className="p-${unit}">{${word()}}</div>;`,
+        '  return (',
+        `    <section className="panel-${unit}">`,
+        `      <p>${sentence(word)}</p>`,
+        `      <span>{${word()}}</span>`,
+        '    </section>',
+        '  );',
         '}',
       ].join('\n');
     default:
       return [
+        `/** ${sentence(word)} */`,
         `export function helper${unit}(${word()}: number): number {`,
+        `  // ${sentence(word)}`,
         `  const ${word()}${unit} = ${word()} * ${unit + 1};`,
         `  return ${word()}${unit} + ${unit};`,
         '}',
       ].join('\n');
   }
+}
+
+/**
+ * A line of prose, for filler that has to add **bytes without AST nodes**.
+ *
+ * ⚠️ This is the third calibration axis, and it was wrong too. Measured, generated
+ * `.tsx` came out at **233.7 AST nodes per KB against real code's 120.3** — so even
+ * once the byte counts matched, the tree was handing Babel nearly twice the work per
+ * byte. Real components are mostly comments, prose inside JSX, long string literals
+ * and blank lines; a wall of tiny declarations is not what a repository looks like.
+ *
+ * A comment costs bytes and no nodes. A sentence inside JSX is one `JSXText` node
+ * however long it runs. Both are how real files get their bytes, so both are how
+ * this gets its own — and there is no version of this where the tree is finally
+ * "representative": there is only the next axis nobody has checked yet.
+ */
+function sentence(word: () => string): string {
+  return `${word()} ${word()} ${word()} ${word()} ${word()} ${word()} ${word()} ${word()}`;
 }
 
 /** Identifier-safe filler words. Real code is words, not `xxxxx`. */
