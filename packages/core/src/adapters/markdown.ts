@@ -95,7 +95,7 @@ function collectMatches(
 
 function addReference(raw: string, start: number, file: string, references: RawReference[]): void {
   if (raw === '') return;
-  if (isExternalUrl(raw)) return;
+  if (isExternalUrl(raw, 'md')) return;
 
   const reason = templateExpressionReason(raw);
   if (reason !== null) {

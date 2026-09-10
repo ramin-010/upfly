@@ -81,6 +81,30 @@ describe('javascriptAdapter', () => {
     });
   });
 
+  describe('Node subpath imports', () => {
+    it('keeps a #-prefixed import instead of dropping it as a fragment', () => {
+      // A leading `#` is a document fragment nearly everywhere, but in a module
+      // specifier it is a Node subpath import. Dropping it here made it vanish from
+      // every report under no reason at all — a silent skip, which is a P0.
+      expect(paths("import logo from '#assets/logo.png';")).toEqual(['#assets/logo.png']);
+    });
+
+    it('keeps it for require and dynamic import too', () => {
+      expect(paths("const a = require('#assets/a.png');")).toEqual(['#assets/a.png']);
+      expect(paths("const b = import('#assets/b.png');")).toEqual(['#assets/b.png']);
+    });
+
+    it('still drops a fragment in a JSX attribute, which is not a specifier', () => {
+      // Keyed on `kind`, not on which adapter emitted it: the same adapter produces
+      // both, and only `kind === 'import'` marks a module-specifier position.
+      expect(paths('<img src="#anchor" />')).toEqual([]);
+    });
+
+    it('still drops a fragment in CSS-in-JS', () => {
+      expect(paths('const H = styled.div`fill: url(#gradient);`;')).toEqual([]);
+    });
+  });
+
   describe('TypeScript', () => {
     it('reads a .ts file', () => {
       const source = "import logo from './logo.png';\nconst x: string = logo;";

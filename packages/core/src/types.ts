@@ -89,6 +89,16 @@ export type Resolution =
    * the set shown to users as "N references I couldn't safely rewrite".
    */
   | 'dynamic'
+  /**
+   * Points at a real file the engine deliberately does not index.
+   *
+   * Its own outcome because none of the others can carry it honestly: `discarded` is
+   * speculative-and-silent while this is asserted, `dynamic` means no static path
+   * exists while this one is perfectly static, and folding it into `resolved` would
+   * let Phase 2 rewrite it — breaking a reference that currently works, since the
+   * target was never converted.
+   */
+  | 'out-of-scope'
   /** A real literal path that points at nothing — a finding. */
   | 'broken'
   /** A path-shaped guess that did not resolve. Counted, never a finding. */
@@ -126,7 +136,16 @@ export type Reference =
       readonly resolvedPaths: readonly [string, ...string[]];
     })
   | (RawReference & {
-      readonly resolution: Exclude<Resolution, 'resolved' | 'resolved-pattern'>;
+      readonly resolution: 'out-of-scope';
+      /** The target is known, but it is never rewritten. */
+      readonly confidence: 'unsafe';
+      /** Where it points. We know exactly; we simply do not index it. */
+      readonly resolvedPath: string;
+      /** Which rule excluded the target, rendered verbatim in the report. */
+      readonly exclusionReason: string;
+    })
+  | (RawReference & {
+      readonly resolution: Exclude<Resolution, 'resolved' | 'resolved-pattern' | 'out-of-scope'>;
       /** Nothing unresolved is ever rewritten, whatever its syntax promised. */
       readonly confidence: 'unsafe';
       readonly resolvedPath: null;
@@ -210,6 +229,23 @@ export interface SkippedEntry {
   readonly detail: string;
 }
 
+/**
+ * A directory the walk refused to descend into, and the rule that stopped it.
+ *
+ * Recorded because the resolver needs it: a reference into an excluded directory
+ * points at a file that really is there, so calling it `broken` is a false positive.
+ * The likeliest case is not `node_modules` but a user who puts `legacy/` in
+ * `.upflyignore` while `legacy/` is still referenced.
+ */
+export interface ExcludedRoot {
+  /** Absolute path with native separators. */
+  readonly path: string;
+  /** Path relative to the project root, POSIX-separated. */
+  readonly relative: string;
+  /** The rule that excluded it, phrased for a report. */
+  readonly reason: string;
+}
+
 /** Everything a single filesystem walk found. */
 export interface DiscoveryResult {
   /** Absolute, resolved project root. */
@@ -227,4 +263,11 @@ export interface DiscoveryResult {
   readonly ignoredCount: number;
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
+  /**
+   * Directories the walk did not descend into, with the rule that excluded each.
+   *
+   * The resolver prefix-tests references against these so that a path into an
+   * excluded directory is reported as `out-of-scope` rather than `broken`.
+   */
+  readonly excludedRoots: readonly ExcludedRoot[];
 }

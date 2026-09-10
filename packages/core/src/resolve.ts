@@ -16,7 +16,7 @@
 import { dirname, resolve as resolvePath } from 'node:path';
 import { splitPathSuffix } from './adapters/reference-path.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
-import type { Asset, RawReference, Reference } from './types.js';
+import type { Asset, ExcludedRoot, RawReference, Reference } from './types.js';
 
 export interface ResolveOptions {
   /** Absolute project root, as returned by `discover`. */
@@ -30,6 +30,28 @@ export interface ResolveOptions {
    * site serves from the root itself, which is `''`.
    */
   readonly publicDir?: string;
+  /**
+   * Directories the walk excluded, from `DiscoveryResult.excludedRoots`.
+   *
+   * A reference into one of these points at a file that really is there, so calling
+   * it `broken` is a false positive — and the likeliest case is not `node_modules`
+   * but a user who ignores `legacy/` while it is still referenced.
+   */
+  readonly excludedRoots?: readonly ExcludedRoot[];
+  /**
+   * Whether a path exists on disk. Required, not optional.
+   *
+   * This is the resolver's only contact with a filesystem, injected rather than
+   * imported so the module stays pure and testable against a fake — the same shape
+   * as the `ImageProbe` port. It is consulted **only** for a reference that is about
+   * to be called broken, a set that should number in the tens, and it is what stops
+   * an asset excluded by a file-level ignore rule (`*.png`) from being reported as
+   * missing when it is sitting right there.
+   *
+   * Required because a default would let a call site keep the false `broken`
+   * silently, which is the failure this exists to remove.
+   */
+  readonly exists: (absolutePath: string) => boolean;
 }
 
 /**
@@ -44,16 +66,29 @@ export function resolveReferences(
   rawReferences: readonly RawReference[],
   options: ResolveOptions,
 ): Reference[] {
-  const index = new AssetIndex(options.assets);
-  const publicDir = options.publicDir ?? 'public';
+  const context: ResolveContext = {
+    index: new AssetIndex(options.assets),
+    root: options.root,
+    publicDir: options.publicDir ?? 'public',
+    excludedRoots: options.excludedRoots ?? [],
+    exists: options.exists,
+  };
   const resolved: Reference[] = [];
 
   for (const raw of rawReferences) {
-    const reference = resolveOne(raw, index, options.root, publicDir);
+    const reference = resolveOne(raw, context);
     if (reference !== null) resolved.push(reference);
   }
 
   return resolved;
+}
+
+interface ResolveContext {
+  readonly index: AssetIndex;
+  readonly root: string;
+  readonly publicDir: string;
+  readonly excludedRoots: readonly ExcludedRoot[];
+  readonly exists: (absolutePath: string) => boolean;
 }
 
 /**
@@ -66,12 +101,8 @@ export function resolveReferences(
  * with no extension to test — and behind the resolution test it would turn every
  * `url(inter.woff2)` into a `broken` finding.
  */
-function resolveOne(
-  raw: RawReference,
-  index: AssetIndex,
-  root: string,
-  publicDir: string,
-): Reference | null {
+function resolveOne(raw: RawReference, context: ResolveContext): Reference | null {
+  const { index, root, publicDir } = context;
   // 1. No static path at all.
   if (raw.ceiling === 'unsafe') {
     return unlinked(raw, 'dynamic');
@@ -90,12 +121,7 @@ function resolveOne(
     };
   }
 
-  // `#` opens a fragment in the middle of a path but is an alias prefix at the
-  // start of one, so a leading `#` must survive the split — otherwise
-  // `#assets/logo.png` becomes an empty path and vanishes at the next rung.
-  const { path } = raw.rawPath.startsWith('#')
-    ? { path: raw.rawPath }
-    : splitPathSuffix(raw.rawPath);
+  const { path } = splitPathSuffix(raw.rawPath);
 
   // 3. Not a file we track. Dropped entirely, with no report line.
   if (!isImageExtension(extensionOf(path))) return null;
@@ -106,17 +132,59 @@ function resolveOne(
     return { ...raw, resolution: 'resolved', confidence: raw.ceiling, resolvedPath: target };
   }
 
-  // 5. Alias-shaped. Phase 2 teaches the resolver tsconfig paths and Vite aliases;
+  // 5. Points at a real file we deliberately do not index.
+  const excluded = outOfScope(path, raw, context);
+  if (excluded !== null) return excluded;
+
+  // 6. Alias-shaped. Phase 2 teaches the resolver tsconfig paths and Vite aliases;
   //    until then these are their own bucket, never a finding.
   if (isAliasShaped(path, raw.kind)) {
     return unlinked(raw, 'unresolved-alias');
   }
 
-  // 6. The author said this was an asset and it points at nothing.
+  // 7. The author said this was an asset and it points at nothing.
   if (raw.asserted) return unlinked(raw, 'broken');
 
-  // 7. A path-shaped string that turned out not to be a path. Counted, not a finding.
+  // 8. A path-shaped string that turned out not to be a path. Counted, not a finding.
   return unlinked(raw, 'discarded');
+}
+
+/**
+ * Whether this path lands on a file the engine chose not to index.
+ *
+ * Two ways to be out of scope. The first is being under a directory the walk pruned,
+ * which `discover` recorded along with the rule responsible. The second is the
+ * fallback: the path is under no recorded root but the file is there anyway, which
+ * happens when a *file-level* ignore rule such as `*.png` excluded it. That costs one
+ * `stat` per would-be-broken reference, and zero false `broken` findings is the whole
+ * exit criterion — the trade is not close.
+ */
+function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
+  for (const candidate of candidatePaths(path, raw.file, context.root, context.publicDir)) {
+    for (const excluded of context.excludedRoots) {
+      const prefix = `${toPosix(excluded.path)}/`;
+      if (!candidate.startsWith(prefix)) continue;
+      return {
+        ...raw,
+        resolution: 'out-of-scope',
+        confidence: 'unsafe',
+        resolvedPath: candidate,
+        exclusionReason: excluded.reason,
+      };
+    }
+
+    if (context.exists(candidate)) {
+      return {
+        ...raw,
+        resolution: 'out-of-scope',
+        confidence: 'unsafe',
+        resolvedPath: candidate,
+        exclusionReason: 'resolved outside the indexed asset set',
+      };
+    }
+  }
+
+  return null;
 }
 
 function unlinked(

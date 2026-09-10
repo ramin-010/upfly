@@ -36,6 +36,9 @@ export function linkedPaths(reference: Reference): readonly string[] {
       return [reference.resolvedPath];
     case 'resolved-pattern':
       return reference.resolvedPaths;
+    case 'out-of-scope':
+    // Deliberately not linked: the target exists but is not in the asset set, so it
+    // is neither rewritten nor capable of being a dead asset.
     case 'dynamic':
     case 'broken':
     case 'discarded':

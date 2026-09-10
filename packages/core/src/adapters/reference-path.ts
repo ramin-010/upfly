@@ -6,6 +6,8 @@
  * an adapter is allowed to do.
  */
 
+import type { ReferenceKind } from '../types.js';
+
 /**
  * A URL scheme: a letter followed by letters, digits, `+`, `-` or `.`, then a colon.
  *
@@ -24,13 +26,23 @@ const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
  * Adapters drop these rather than reporting them. That is not a silent skip: they
  * were never candidate asset references, and reporting `url(data:image/png;base64,…)`
  * as a broken reference would be actively wrong.
+ *
+ * `kind` is required rather than defaulted, because a leading `#` means two opposite
+ * things depending on where it appears and a default would let a call site keep the
+ * wrong one silently. In a module specifier — `kind === 'import'` — `#internal/a.png`
+ * is a Node subpath import and one of the alias forms the resolver handles; anywhere
+ * else it is a document fragment. Dropping a subpath import here would make it vanish
+ * from every report under no reason at all, which is the rule 9 failure this argument
+ * exists to prevent.
  */
-export function isExternalUrl(rawPath: string): boolean {
+export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
   if (rawPath.startsWith('#')) {
-    // One exception: `#{…}` opens a SCSS interpolation, so `#{$dir}/hero.png` is a
-    // path the preprocessor builds, not a fragment. Treating it as a fragment would
-    // drop it entirely, and a reference we silently discard is worse than one we
-    // report as unsafe — the caller can see the second and act on it.
+    // A module specifier starting with `#` is an alias, not a fragment.
+    if (kind === 'import') return false;
+    // One exception elsewhere: `#{…}` opens a SCSS interpolation, so
+    // `#{$dir}/hero.png` is a path the preprocessor builds. Treating it as a
+    // fragment would drop it entirely, and a reference we silently discard is worse
+    // than one we report as unsafe — the caller can see the second and act on it.
     return !rawPath.startsWith('#{');
   }
   return rawPath.startsWith('//') || URL_SCHEME.test(rawPath);
@@ -46,9 +58,13 @@ export function isExternalUrl(rawPath: string): boolean {
  * produce a false broken finding.
  */
 export function splitPathSuffix(rawPath: string): { path: string; suffix: string } {
-  const index = rawPath.search(/[?#]/);
+  // A suffix follows something, so a `#` in first position is not one — it is the
+  // alias prefix of a Node subpath import, and splitting there would leave an empty
+  // path that vanishes at the next check. A leading `?` has no such reading.
+  const from = rawPath.startsWith('#') ? 1 : 0;
+  const index = rawPath.slice(from).search(/[?#]/);
   if (index === -1) return { path: rawPath, suffix: '' };
-  return { path: rawPath.slice(0, index), suffix: rawPath.slice(index) };
+  return { path: rawPath.slice(0, from + index), suffix: rawPath.slice(from + index) };
 }
 
 /** Template syntaxes that build a path at render time, and what to call each one. */

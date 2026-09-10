@@ -248,7 +248,7 @@ function addEntityEscapedReference(range: { start: number; end: number }, contex
 
 function addAttributeReference(raw: string, start: number, context: Context): void {
   if (raw === '') return;
-  if (isExternalUrl(raw)) return;
+  if (isExternalUrl(raw, 'attr')) return;
 
   const reason = templateExpressionReason(raw);
   if (reason !== null) {

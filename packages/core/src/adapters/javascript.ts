@@ -479,7 +479,7 @@ function addReference(input: {
     return;
   }
 
-  if (isExternalUrl(rawPath)) return;
+  if (isExternalUrl(rawPath, kind)) return;
 
   const { path, suffix } = splitPathSuffix(rawPath);
   if (path === '') return;

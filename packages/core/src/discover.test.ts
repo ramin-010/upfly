@@ -139,6 +139,31 @@ describe('discover', () => {
     expect(result.ignoredCount).toBe(3);
   });
 
+  it('records each excluded directory with the rule that excluded it', async () => {
+    const root = await makeTree({
+      '.upflyignore': 'legacy/\n',
+      'node_modules/pkg/a.png': '',
+      'legacy/old.png': '',
+      'keep.png': '',
+    });
+
+    const result = await discover({ root, adapters });
+
+    // The likeliest real case is not node_modules but a user who ignores `legacy/`
+    // while it is still referenced. Recording the rule is what lets the report say
+    // *why* an asset went missing.
+    expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
+      ['legacy', "the ignore rule 'legacy/'"],
+      ['node_modules', "a build or version-control directory named 'node_modules'"],
+    ]);
+  });
+
+  it('leaves excludedRoots empty when nothing was excluded', async () => {
+    const root = await makeTree({ 'a.png': '', 'src/b.png': '' });
+
+    expect((await discover({ root, adapters })).excludedRoots).toEqual([]);
+  });
+
   it('applies extraIgnores as if appended to the ignore file', async () => {
     const root = await makeTree({ 'a.png': '', 'temp/b.png': '' });
 
@@ -344,6 +369,7 @@ describe('discover', () => {
       sourceFiles: [],
       ignoredCount: 0,
       skipped: [],
+      excludedRoots: [],
     });
   });
 

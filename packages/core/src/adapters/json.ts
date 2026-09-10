@@ -70,7 +70,7 @@ function isObjectKey(text: string, afterString: number): boolean {
 
 function addCandidate(raw: string, start: number, file: string, references: RawReference[]): void {
   if (raw === '') return;
-  if (isExternalUrl(raw)) return;
+  if (isExternalUrl(raw, 'json')) return;
 
   const { path } = splitPathSuffix(raw);
   if (path === '') return;

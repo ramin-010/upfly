@@ -20,7 +20,14 @@ import { join, resolve as resolvePath } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
 import { UpflyError } from './errors.js';
 import { compareStrings, extensionOf, isImageExtension, relativePath } from './paths.js';
-import type { Adapter, Asset, DiscoveryResult, SkippedEntry, SourceFile } from './types.js';
+import type {
+  Adapter,
+  Asset,
+  DiscoveryResult,
+  ExcludedRoot,
+  SkippedEntry,
+  SourceFile,
+} from './types.js';
 
 /**
  * Directory names never descended into, matched by name at any depth.
@@ -85,6 +92,7 @@ interface WalkState {
   readonly assetCandidates: AssetCandidate[];
   readonly sourceFiles: SourceFile[];
   readonly skipped: SkippedEntry[];
+  readonly excludedRoots: ExcludedRoot[];
   ignoredCount: number;
 }
 
@@ -104,6 +112,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     assetCandidates: [],
     sourceFiles: [],
     skipped: [],
+    excludedRoots: [],
     ignoredCount: 0,
   };
   const rules = await loadIgnoreRules(root, options, state);
@@ -117,6 +126,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     sourceFiles: state.sourceFiles.sort(byRelativePath),
     ignoredCount: state.ignoredCount,
     skipped: state.skipped.sort(byRelativePath),
+    excludedRoots: state.excludedRoots.sort(byRelativePath),
   };
 }
 
@@ -159,18 +169,37 @@ function mapExtensionsToAdapters(adapters: readonly Adapter[]): ReadonlyMap<stri
   return claimed;
 }
 
+/**
+ * The compiled ignore matcher, plus the patterns it was built from.
+ *
+ * The patterns are kept so that an excluded directory can name the rule that
+ * excluded it. `ignore` reports *whether* a path matches but not *which* pattern
+ * did, and "excluded by some rule you wrote" is a much worse report line than
+ * "excluded by `legacy/`" when someone is working out why their asset vanished.
+ */
+interface IgnoreRules {
+  readonly matcher: Ignore;
+  readonly patterns: readonly string[];
+}
+
 async function loadIgnoreRules(
   root: string,
   options: DiscoverOptions,
   state: WalkState,
-): Promise<Ignore> {
+): Promise<IgnoreRules> {
+  const patterns: string[] = [];
   const rules = ignore();
-  if (options.extraIgnores !== undefined) rules.add([...options.extraIgnores]);
+  if (options.extraIgnores !== undefined) {
+    rules.add([...options.extraIgnores]);
+    patterns.push(...options.extraIgnores);
+  }
 
   const fileName = options.ignoreFile ?? IGNORE_FILE_NAME;
   const filePath = join(root, fileName);
   try {
-    rules.add(await readFile(filePath, 'utf8'));
+    const contents = await readFile(filePath, 'utf8');
+    rules.add(contents);
+    patterns.push(...usablePatterns(contents));
   } catch (error) {
     // Having no ignore file is the normal case, not something to report.
     const code = errnoCode(error);
@@ -183,12 +212,51 @@ async function loadIgnoreRules(
       });
     }
   }
-  return rules;
+  return { matcher: rules, patterns };
+}
+
+/**
+ * Why this directory is excluded, or `null` if it is not.
+ *
+ * `ignore` matches a `build/`-style pattern only when the path it is given ends in a
+ * slash; testing 'build' returns false and we would descend into it.
+ */
+function exclusionReasonFor(name: string, relative: string, rules: IgnoreRules): string | null {
+  if (DEFAULT_IGNORED_DIRECTORY_SET.has(name)) {
+    return `a build or version-control directory named '${name}'`;
+  }
+  if (!rules.matcher.ignores(`${relative}/`)) return null;
+
+  const pattern = excludingPattern(rules, `${relative}/`);
+  return pattern === null ? 'an ignore rule' : `the ignore rule '${pattern}'`;
+}
+
+/** Pattern lines from an ignore file, minus blanks and comments. */
+function usablePatterns(contents: string): string[] {
+  return contents
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+}
+
+/**
+ * Which pattern excluded this path.
+ *
+ * Gitignore semantics are last-match-wins, so the last matching pattern is the one
+ * that decided. Only ever called for a path already known to be excluded, and only
+ * for directories, so the cost is a handful of matches per run.
+ */
+function excludingPattern(rules: IgnoreRules, relative: string): string | null {
+  let matched: string | null = null;
+  for (const pattern of rules.patterns) {
+    if (ignore().add(pattern).ignores(relative)) matched = pattern;
+  }
+  return matched;
 }
 
 interface WalkInput {
   readonly root: string;
-  readonly rules: Ignore;
+  readonly rules: IgnoreRules;
   readonly claimedExtensions: ReadonlyMap<string, string>;
   readonly concurrency: number;
   readonly state: WalkState;
@@ -265,10 +333,13 @@ function classifyEntry(
   }
 
   if (entry.isDirectory()) {
-    // `ignore` matches a `build/`-style pattern only when the path it is given ends
-    // in a slash; testing 'build' returns false and we would descend into it.
-    if (DEFAULT_IGNORED_DIRECTORY_SET.has(entry.name) || input.rules.ignores(`${relative}/`)) {
+    const reason = exclusionReasonFor(entry.name, relative, input.rules);
+    if (reason !== null) {
       input.state.ignoredCount += 1;
+      // Recorded, not merely counted: the resolver prefix-tests references against
+      // these so that a path into an excluded directory is reported as
+      // `out-of-scope` rather than as a broken reference that does not exist.
+      input.state.excludedRoots.push({ path, relative, reason });
       return;
     }
     nextLevel.push(path);
@@ -285,7 +356,7 @@ function classifyEntry(
     return;
   }
 
-  if (input.rules.ignores(relative)) {
+  if (input.rules.matcher.ignores(relative)) {
     input.state.ignoredCount += 1;
     return;
   }

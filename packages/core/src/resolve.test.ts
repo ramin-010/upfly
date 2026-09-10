@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { toPosix } from './paths.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { resolveReferences } from './resolve.js';
 import type { Asset, RawReference, Reference } from './types.js';
@@ -35,6 +36,14 @@ const ASSETS: readonly Asset[] = [
   asset('at-root.png'),
 ];
 
+/**
+ * The default `exists` port: nothing exists beyond the asset set.
+ *
+ * Injected rather than imported so the resolver stays pure — the same shape as the
+ * `ImageProbe` port — and so a test can decide exactly what is on the disk.
+ */
+const NOTHING_EXISTS = (): boolean => false;
+
 function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReference {
   return {
     file: join(ROOT, 'src', 'App.jsx'),
@@ -48,7 +57,11 @@ function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReferen
 }
 
 function resolveOne(overrides: Partial<RawReference> & { rawPath: string }): Reference | undefined {
-  return resolveReferences([raw(overrides)], { root: ROOT, assets: ASSETS })[0];
+  return resolveReferences([raw(overrides)], {
+    root: ROOT,
+    assets: ASSETS,
+    exists: NOTHING_EXISTS,
+  })[0];
 }
 
 describe('resolveReferences', () => {
@@ -136,14 +149,20 @@ describe('resolveReferences', () => {
     ])('%s produces no reference at all', (_name, rawPath) => {
       // Not a skip under rule 9: it was never a candidate asset reference, and
       // counting every font in a stylesheet would be pure noise.
-      expect(resolveReferences([raw({ rawPath })], { root: ROOT, assets: ASSETS })).toEqual([]);
+      expect(
+        resolveReferences([raw({ rawPath })], {
+          root: ROOT,
+          assets: ASSETS,
+          exists: NOTHING_EXISTS,
+        }),
+      ).toEqual([]);
     });
 
     it('drops them before the broken test, which is the point', () => {
       // Behind the resolution test, every `url(inter.woff2)` becomes a finding.
       const references = resolveReferences(
         [raw({ rawPath: './inter.woff2', kind: 'css-url' }), raw({ rawPath: './assets/logo.png' })],
-        { root: ROOT, assets: ASSETS },
+        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
       );
       expect(references.map((reference) => reference.resolution)).toEqual(['resolved']);
     });
@@ -182,6 +201,7 @@ describe('resolveReferences', () => {
         root: ROOT,
         assets: ASSETS,
         publicDir: 'src',
+        exists: NOTHING_EXISTS,
       });
       expect(references[0]?.resolution).toBe('resolved');
     });
@@ -237,6 +257,96 @@ describe('resolveReferences', () => {
     });
   });
 
+  describe('rung 5 — a path into an excluded directory is out-of-scope, not broken', () => {
+    const EXCLUDED = [
+      {
+        path: join(ROOT, 'legacy'),
+        relative: 'legacy',
+        reason: "the ignore rule 'legacy/'",
+      },
+    ];
+
+    function resolveWithExclusions(
+      rawPath: string,
+      exists: (path: string) => boolean = () => false,
+    ) {
+      return resolveReferences([raw({ rawPath, kind: 'css-url' })], {
+        root: ROOT,
+        assets: ASSETS,
+        excludedRoots: EXCLUDED,
+        exists,
+      })[0];
+    }
+
+    it('names the rule that excluded the target', () => {
+      // The user ignored `legacy/` and is still referencing it. A broken finding
+      // here would be a false positive, and the exit criterion allows none.
+      const reference = resolveWithExclusions('../legacy/old.png');
+
+      expect(reference?.resolution).toBe('out-of-scope');
+      expect(reference?.exclusionReason).toBe("the ignore rule 'legacy/'");
+    });
+
+    it('knows exactly where it points', () => {
+      const reference = resolveWithExclusions('../legacy/old.png');
+      expect(reference?.resolvedPath).toBe(toPosix(join(ROOT, 'legacy/old.png')));
+    });
+
+    it('is never linked, so it cannot be rewritten and cannot be a dead asset', () => {
+      const reference = resolveWithExclusions('../legacy/old.png') as Reference;
+      expect(isLinked(reference)).toBe(false);
+      expect(linkedPaths(reference)).toEqual([]);
+      expect(reference.confidence).toBe('unsafe');
+    });
+
+    it('falls back to the filesystem for a file-level ignore rule', () => {
+      // `*.png` in .upflyignore excludes a file without pruning any directory, so
+      // there is no excluded root to match. The file is still sitting right there.
+      const target = toPosix(join(ROOT, 'src/hidden.png'));
+      const reference = resolveWithExclusions('./hidden.png', (path) => path === target);
+
+      expect(reference?.resolution).toBe('out-of-scope');
+      expect(reference?.exclusionReason).toBe('resolved outside the indexed asset set');
+    });
+
+    it('is still broken when the file genuinely is not there', () => {
+      expect(resolveWithExclusions('./nowhere.png')?.resolution).toBe('broken');
+    });
+
+    it('consults the filesystem only for a reference about to be called broken', () => {
+      // One stat per would-be-broken reference, never per reference.
+      const asked: string[] = [];
+      resolveReferences(
+        [
+          raw({ rawPath: './assets/logo.png' }),
+          raw({ rawPath: './assets/hero.jpg' }),
+          raw({ rawPath: './missing.png' }),
+        ],
+        {
+          root: ROOT,
+          assets: ASSETS,
+          exists: (path) => {
+            asked.push(path);
+            return false;
+          },
+        },
+      );
+
+      expect(asked).toEqual([toPosix(join(ROOT, 'src/missing.png'))]);
+    });
+
+    it('takes precedence over the alias bucket', () => {
+      const reference = resolveReferences([raw({ rawPath: '@/legacy/old.png' })], {
+        root: ROOT,
+        assets: ASSETS,
+        excludedRoots: EXCLUDED,
+        exists: (path) => path === toPosix(join(ROOT, 'src/@/legacy/old.png')),
+      })[0];
+
+      expect(reference?.resolution).toBe('out-of-scope');
+    });
+  });
+
   describe('rung 6 — an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });
@@ -281,7 +391,7 @@ describe('resolveReferences', () => {
           raw({ rawPath: './a.png', asserted: false, kind: 'json' }),
           raw({ rawPath: './b.png', asserted: false, kind: 'json' }),
         ],
-        { root: ROOT, assets: ASSETS },
+        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
       );
       expect(references.every((reference) => reference.resolution === 'discarded')).toBe(true);
     });
@@ -326,9 +436,9 @@ describe('resolveReferences', () => {
   describe('is pure and deterministic', () => {
     it('returns the same result for the same input', () => {
       const input = [raw({ rawPath: './assets/logo.png' }), raw({ rawPath: './missing.png' })];
-      expect(resolveReferences(input, { root: ROOT, assets: ASSETS })).toEqual(
-        resolveReferences(input, { root: ROOT, assets: ASSETS }),
-      );
+      expect(
+        resolveReferences(input, { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS }),
+      ).toEqual(resolveReferences(input, { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS }));
     });
 
     it('preserves input order', () => {
@@ -338,7 +448,7 @@ describe('resolveReferences', () => {
           raw({ rawPath: './missing.png' }),
           raw({ rawPath: './assets/hero.jpg' }),
         ],
-        { root: ROOT, assets: ASSETS },
+        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
       );
       expect(references.map((reference) => reference.rawPath)).toEqual([
         './assets/logo.png',
@@ -352,10 +462,12 @@ describe('resolveReferences', () => {
       const a = resolveReferences([raw({ rawPath: './images/${n}.png', ceiling: 'medium' })], {
         root: ROOT,
         assets: ASSETS,
+        exists: NOTHING_EXISTS,
       });
       const b = resolveReferences([raw({ rawPath: './images/${n}.png', ceiling: 'medium' })], {
         root: ROOT,
         assets: shuffled,
+        exists: NOTHING_EXISTS,
       });
       expect(linkedPaths(a[0] as Reference)).toEqual(linkedPaths(b[0] as Reference));
     });
@@ -368,13 +480,16 @@ describe('resolveReferences', () => {
     });
 
     it('handles an empty input', () => {
-      expect(resolveReferences([], { root: ROOT, assets: ASSETS })).toEqual([]);
+      expect(resolveReferences([], { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS })).toEqual(
+        [],
+      );
     });
 
     it('handles a project with no assets', () => {
       const references = resolveReferences([raw({ rawPath: './assets/logo.png' })], {
         root: ROOT,
         assets: [],
+        exists: NOTHING_EXISTS,
       });
       expect(references[0]?.resolution).toBe('broken');
     });

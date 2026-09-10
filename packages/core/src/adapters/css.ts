@@ -224,7 +224,7 @@ function addReference(input: {
 }): void {
   const { text, start, file, references } = input;
   if (text === '') return;
-  if (isExternalUrl(text)) return;
+  if (isExternalUrl(text, 'css-url')) return;
 
   const reason = dynamicReason(text);
   if (reason !== null) {
