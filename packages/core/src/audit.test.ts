@@ -420,7 +420,51 @@ describe('audit', () => {
       ]);
     });
 
-    it('ignores a saving too small in percent', async () => {
+    it('reports a big file that shrinks only a little', async () => {
+      // The correction: 9% of 8 MB is 720 KB, very likely the largest single win
+      // in the repository. A percentage-only rule hides exactly this finding.
+      const result = await audit({
+        graph: graphOf({
+          assets: [asset('hero.jpg', 8_000_000)],
+          references: [resolved('a.html', './hero.jpg', 'hero.jpg')],
+        }),
+        sweep: NO_SWEEP,
+        readFile: files(),
+        probes: [probe('hero.jpg', { encoded: [{ format: 'webp', bytes: 7_280_000 }] })],
+      });
+
+      // It is also `oversized` at 8 MB, which is correct and not what this asserts.
+      expect(result.findings.filter((finding) => finding.kind === 'format-opportunity')).toEqual([
+        {
+          kind: 'format-opportunity',
+          asset: 'hero.jpg',
+          from: 'png',
+          to: 'webp',
+          bytes: 8_000_000,
+          wouldBe: 7_280_000,
+          savedBytes: 720_000,
+          savedPercent: 9,
+        },
+      ]);
+    });
+
+    it('reports a small file that shrinks a lot', async () => {
+      // The other arm: 60% of 100 KB is where the percentage is the meaningful
+      // number and the byte count alone would not clear the absolute arm.
+      const result = await audit({
+        graph: graphOf({
+          assets: [asset('logo.png', 100_000)],
+          references: [resolved('a.html', './logo.png', 'logo.png')],
+        }),
+        sweep: NO_SWEEP,
+        readFile: files(),
+        probes: [probe('logo.png', { encoded: [{ format: 'webp', bytes: 40_000 }] })],
+      });
+
+      expect(kinds(result.findings)).toEqual(['format-opportunity']);
+    });
+
+    it('ignores a saving that clears neither arm', async () => {
       const result = await audit({
         graph: graphOf({
           assets: [asset('hero.png', 100_000)],

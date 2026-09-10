@@ -112,15 +112,30 @@ export interface AuditThresholds {
   readonly maxWidth?: number;
   /** Pixels. Defaults to 4 000. */
   readonly maxHeight?: number;
-  /** Smallest saving worth reporting, in whole percent. Defaults to 10. */
-  readonly minSavingPercent?: number;
   /**
-   * Smallest saving worth reporting, in bytes. Defaults to 1 024.
+   * Absolute floor: nothing smaller than this is ever reported. Defaults to 1 KiB.
    *
-   * A 40% saving on a 200-byte icon is 80 bytes. Reporting it is noise that
-   * pushes the findings people can act on further down the page.
+   * A 40% saving on a 200-byte icon is 80 bytes. Reporting it is noise that pushes
+   * the findings people can act on further down the page.
    */
   readonly minSavingBytes?: number;
+  /**
+   * Relative arm, in whole percent. Defaults to 10.
+   *
+   * Catches small files that shrink a lot, where the percentage is the meaningful
+   * number and the byte count never will be.
+   */
+  readonly minSavingPercent?: number;
+  /**
+   * Absolute arm, in bytes. Defaults to 100 000.
+   *
+   * Catches big files that shrink a little. **Percentage is a bad proxy for value
+   * once a file is large**: an 8 MB asset that shrinks 9% saves 720 KB and is very
+   * likely the single biggest win in the repository, yet a percentage-only rule
+   * hides it. The two arms are an `or` under the floor's `and`, so neither kind of
+   * win can be lost.
+   */
+  readonly largeSavingBytes?: number;
 }
 
 export interface AuditOptions {
@@ -163,12 +178,19 @@ export interface AuditResult {
   readonly probed: boolean;
 }
 
+/**
+ * Product judgement, not measurements — so they are documented defaults rather than
+ * settled numbers, and §5.1(c)/(d) validates them against real repositories by
+ * recording the finding distribution and asking whether a threshold produced noise
+ * or hid something. Config overrides all of them (§1.2).
+ */
 const DEFAULT_THRESHOLDS = {
   maxBytes: 500_000,
   maxWidth: 4_000,
   maxHeight: 4_000,
-  minSavingPercent: 10,
   minSavingBytes: 1_024,
+  minSavingPercent: 10,
+  largeSavingBytes: 100_000,
 } as const;
 
 /** Produce every finding the available evidence supports. */
@@ -312,12 +334,20 @@ function* opportunities(
 
   for (const encoded of probe.encoded) {
     const savedBytes = bytes - encoded.bytes;
-    if (savedBytes < thresholds.minSavingBytes) continue;
 
     // Floored whole percent: a report number, and one that two runs agree on
     // without anyone reasoning about float formatting.
     const savedPercent = Math.floor((savedBytes / bytes) * 100);
-    if (savedPercent < thresholds.minSavingPercent) continue;
+
+    // Floor AND (relative OR absolute). The floor kills icon noise; the two arms
+    // catch the two unlike kinds of win — a small file that shrinks a lot, and a
+    // large one that shrinks a little. Requiring both arms would drop a 720 KB
+    // saving on an 8 MB asset for shrinking "only" 9%, which is the finding a
+    // user most wants to see.
+    if (savedBytes < thresholds.minSavingBytes) continue;
+    if (savedPercent < thresholds.minSavingPercent && savedBytes < thresholds.largeSavingBytes) {
+      continue;
+    }
 
     yield {
       kind: 'format-opportunity',
