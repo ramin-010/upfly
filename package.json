@@ -17,6 +17,7 @@
     "format": "biome format --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "bench": "pnpm --filter upfly-bench run bench",
+    "bench:gate": "pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3",
     "validate": "pnpm --filter upfly-bench run validate",
     "changeset": "changeset",
     "version-packages": "changeset version",

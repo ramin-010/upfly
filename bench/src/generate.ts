@@ -5,6 +5,35 @@
  * images**. Everything about the tree is derived from a seed, so two runs on two
  * machines measure the same work and a number can be compared to last week's.
  *
+ * ⚠️ **RECALIBRATED 2026-09-10 against the three §5.1(c) repositories, because the
+ * first version was measuring almost nothing.** Its source files averaged **179
+ * bytes**. Measured on the real trees:
+ *
+ * | | source files | mean | median | p90 | total | depth |
+ * |---|---|---|---|---|---|---|
+ * | `astro-docs` | 2 681 | 6 666 | 2 346 | 16 771 | 17.9 MB | 5.6 |
+ * | `eleventy-docs` | 733 | 2 002 | 294 | 4 408 | 1.5 MB | 2.7 |
+ * | `shadcn-ui` | 5 406 | 4 704 | 1 850 | 9 146 | 25.4 MB | 5.2 |
+ * | **bench, before** | 7 521 | **179** | **181** | **224** | **1.3 MB** | **2.0** |
+ *
+ * So the tree had the right *file count* and about **1/30th of the bytes**. Since
+ * `scan` is ~87% of the budget and reading is most of that, the benchmark was timing
+ * seven thousand file opens against almost no content — which is exactly why
+ * `shadcn-ui` cost 5.8 s at 5 814 files where this needed 10 000 for the same wall
+ * clock. A gate calibrated on it was rule 16 satisfied in letter and broken in
+ * spirit.
+ *
+ * Three things now come from that table rather than from a guess: the **size
+ * distribution** (long-tailed, aimed at a ~1 900 median and ~5 000 mean), the
+ * **directory depth** (~5, not 2), and the **extension mix**, blended across the
+ * three repositories weighted by file count — `.tsx` and `.mdx` dominate, and the
+ * old tree contained no `.mdx` at all.
+ *
+ * The mix keeps a deliberate minimum of `.css`, `.scss`, `.html`, `.vue` and
+ * `.yaml` that the blend alone would have dropped: without them the CSS and HTML
+ * adapters go unmeasured and the sweep has nothing unread to search, so its cost
+ * would read as zero. That deviation is a choice, not an oversight.
+ *
  * **It is generated into the OS temp directory, never into the workspace.** The v2
  * VS Code extension watches every folder named `public` inside the workspace and
  * converts what lands there in place, deleting the original — it destroyed 19
@@ -24,13 +53,13 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 
 /** Bumped when the tree's shape changes, so an old one is never silently reused. */
-const TREE_VERSION = 2;
+const TREE_VERSION = 3;
 
 export const TOTAL_FILES = 10_000;
 export const TOTAL_IMAGES = 2_000;
 
 /**
- * The size mix.
+ * The image size mix.
  *
  * Deliberately long-tailed rather than uniform: most repositories are mostly icons
  * with a handful of heavy hero images, and the encode cap selects **largest first**,
@@ -43,20 +72,48 @@ const BUCKETS = [
   { name: 'hero', width: 2_400, height: 1_600, format: 'jpeg', count: 10 },
 ] as const;
 
-/** Source formats, in the proportions a real project has them. */
+/**
+ * Source file sizes, as measured across the three §5.1(c) repositories.
+ *
+ * Weighted by file count they average ~5 080 bytes with a ~1 850 median, which is a
+ * long right tail rather than a spread — half the files are small and a handful are
+ * enormous (`shadcn-ui` holds a 1.1 MB source file). Buckets rather than a
+ * continuous distribution because the tree has to be reproducible from a seed, and
+ * because a table is something a reader can check against the measurement above.
+ */
+const SIZE_BUCKETS = [
+  { share: 0.55, min: 200, max: 2_000 },
+  { share: 0.28, min: 2_000, max: 7_000 },
+  { share: 0.13, min: 7_000, max: 18_000 },
+  { share: 0.035, min: 18_000, max: 60_000 },
+  { share: 0.005, min: 60_000, max: 300_000 },
+] as const;
+
+/**
+ * Source formats, blended across the three repositories by file count.
+ *
+ * `astro-docs` is 96% `.mdx`, `shadcn-ui` 61% `.tsx` and 18% `.json`, `eleventy-docs`
+ * 47% `.json` and 31% `.md`. The first four weights below are that blend; the rest
+ * are the coverage floor described in the header.
+ */
 const SOURCE_KINDS = [
   { extension: '.tsx', weight: 30 },
-  { extension: '.ts', weight: 25 },
-  { extension: '.css', weight: 12 },
-  { extension: '.scss', weight: 6 },
-  { extension: '.html', weight: 8 },
-  { extension: '.md', weight: 8 },
-  { extension: '.json', weight: 5 },
+  { extension: '.mdx', weight: 25 },
+  { extension: '.json', weight: 14 },
+  { extension: '.ts', weight: 8 },
+  { extension: '.md', weight: 5 },
+  { extension: '.css', weight: 4 },
+  { extension: '.js', weight: 3 },
+  { extension: '.scss', weight: 3 },
+  { extension: '.html', weight: 3 },
   // Unclaimed on purpose: without these the sweep has nothing to read, and the
   // rule that decides `dead` against `possibly-dead` would go unmeasured.
-  { extension: '.vue', weight: 4 },
+  { extension: '.vue', weight: 3 },
   { extension: '.yaml', weight: 2 },
 ] as const;
+
+/** Measured median depth is 5.2–5.6 on the two large repos; the old tree was 2. */
+const DIRECTORY_DEPTH = 5;
 
 export interface GeneratedTree {
   readonly root: string;
@@ -164,18 +221,133 @@ async function writeSources(root: string, images: readonly string[]): Promise<vo
 
   const unreferenced = images.slice(Math.floor(images.length * 0.9));
   const kinds = expandWeights();
+  const made = new Set<string>();
   let written = 0;
 
   for (let index = 0; written < sources; index++) {
     const kind = kinds[index % kinds.length] ?? '.ts';
-    const directory = `src/module-${Math.floor(index / 40)}`;
-    await mkdir(join(root, directory), { recursive: true });
+    const directory = directoryFor(index, random);
+    if (!made.has(directory)) {
+      await mkdir(join(root, directory), { recursive: true });
+      made.add(directory);
+    }
 
     const path = join(root, directory, `file-${index}${kind}`);
-    await writeFile(path, sourceText(kind, directory, referenceable, random, unreferenced));
+    const body = sourceText(kind, directory, referenceable, random, unreferenced);
+    await writeFile(path, padTo(body, kind, targetSize(random), random));
     written += 1;
   }
 }
+
+/**
+ * A path five directories deep, which is what the measurement found.
+ *
+ * Depth is not cosmetic here: the walker recurses per level and `relativePath` runs
+ * per reported path, so a tree two deep understates both. The fan-out is chosen to
+ * keep directories to a plausible size rather than one file each.
+ */
+function directoryFor(index: number, random: () => number): string {
+  const segments = ['src'];
+  let scope = index;
+  for (let level = 1; level < DIRECTORY_DEPTH; level++) {
+    scope = Math.floor(scope / (level === 1 ? 1_600 : 8));
+    segments.push(`${['area', 'module', 'group', 'unit'][level - 1] ?? 'dir'}-${scope}`);
+  }
+  // A little jitter so directories are not all exactly the same size, which is what
+  // makes a real tree's `readdir` costs uneven.
+  if (random() < 0.15) segments.push('internal');
+  return segments.join('/');
+}
+
+/** One draw from the measured size distribution. */
+function targetSize(random: () => number): number {
+  const roll = random();
+  let seen = 0;
+  for (const bucket of SIZE_BUCKETS) {
+    seen += bucket.share;
+    if (roll <= seen) return Math.floor(bucket.min + random() * (bucket.max - bucket.min));
+  }
+  return 1_000;
+}
+
+/**
+ * Grow a file to its target size with content the parser still has to read.
+ *
+ * ⚠️ Padding with a comment block would be cheaper to parse than real code, and
+ * parsing is a sixth of the budget — so filler that the tokeniser skips would put
+ * the bytes back while leaving that sixth understated. Each kind is padded with
+ * more of what it already is.
+ */
+function padTo(body: string, extension: string, target: number, random: () => number): string {
+  const parts = [body];
+  let size = body.length;
+  let unit = 0;
+
+  while (size < target) {
+    const chunk = filler(extension, unit, random);
+    parts.push(chunk);
+    size += chunk.length;
+    unit += 1;
+  }
+
+  // JSON is emitted with its object left open so that padding can append members;
+  // it has to be closed here or 14% of the tree becomes `ADAPTER_PARSE_FAILED` and
+  // the benchmark measures the error path instead of the parse path.
+  if (extension === '.json') parts.push('}');
+
+  return `${parts.join('\n')}\n`;
+}
+
+function filler(extension: string, unit: number, random: () => number): string {
+  const word = () => WORDS[Math.floor(random() * WORDS.length)] ?? 'value';
+
+  switch (extension) {
+    case '.css':
+    case '.scss':
+      return `.rule-${unit} { color: #${(unit * 7919) % 1000}; margin: ${unit % 12}px; padding: ${unit % 5}px ${unit % 9}px; }`;
+    case '.html':
+      return `  <section class="s-${unit}"><h2>${word()} ${word()}</h2><p>${word()} ${word()} ${word()} ${word()}.</p></section>`;
+    case '.md':
+    case '.mdx':
+      return `\n## ${word()} ${word()}\n\n${word()} ${word()} ${word()} ${word()} ${word()} ${word()}, ${word()} ${word()} ${word()}.\n`;
+    case '.json':
+      return `,\n  "${word()}${unit}": { "${word()}": ${unit}, "${word()}": "${word()}-${unit}" }`;
+    case '.vue':
+      return `<script>export const v${unit} = { ${word()}: ${unit} };</script>`;
+    case '.yaml':
+      return `${word()}${unit}:\n  ${word()}: ${unit}\n  ${word()}: ${word()}`;
+    case '.tsx':
+      return [
+        `export function Part${unit}({ ${word()} }: { ${word()}: string }) {`,
+        `  const ${word()}${unit} = ${unit} * 2;`,
+        `  return <div className="p-${unit}">{${word()}}</div>;`,
+        '}',
+      ].join('\n');
+    default:
+      return [
+        `export function helper${unit}(${word()}: number): number {`,
+        `  const ${word()}${unit} = ${word()} * ${unit + 1};`,
+        `  return ${word()}${unit} + ${unit};`,
+        '}',
+      ].join('\n');
+  }
+}
+
+/** Identifier-safe filler words. Real code is words, not `xxxxx`. */
+const WORDS = [
+  'value',
+  'result',
+  'config',
+  'handler',
+  'render',
+  'source',
+  'target',
+  'buffer',
+  'context',
+  'element',
+  'record',
+  'entry',
+] as const;
 
 function expandWeights(): string[] {
   const kinds: string[] = [];
@@ -224,17 +396,22 @@ function sourceText(
         '</body></html>',
       ].join('\n');
     case '.md':
+    case '.mdx':
       return ['# Title', '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`].join('\n');
     case '.json':
-      return `${JSON.stringify({ icon: `/${pick()}`, name: 'thing', main: './index.js' }, null, 2)}\n`;
+      // Opened rather than closed: `padTo` appends `,\n "key": …` members, so the
+      // brace is added by `writeSources` at the end. A malformed JSON file would be
+      // an `ADAPTER_PARSE_FAILED` on 14% of the tree and would measure the error
+      // path instead of the parse path.
+      return `{\n  "icon": "/${pick()}",\n  "name": "thing",\n  "main": "./index.js"`;
     case '.vue':
       // No adapter reads this, so it feeds the sweep rather than the graph — and it
       // names an image nothing else references, so the sweep actually finds
       // something. Measuring a sweep that never records a hit would measure the
       // cost of looking without the cost of finding.
-      return `<template><img src="/${pickUnreferenced()}"></template>\n`;
+      return `<template><img src="/${pickUnreferenced()}"></template>`;
     case '.yaml':
-      return `image: /${pickUnreferenced()}\ntitle: thing\n`;
+      return `image: /${pickUnreferenced()}\ntitle: thing`;
     case '.tsx':
       return [
         `import hero from '${up}${pick()}';`,

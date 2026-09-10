@@ -43,15 +43,25 @@ import {
   sweepForMentions,
 } from 'upfly-core';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
+import { type InvocationSample, sampleAcrossInvocations } from './invocations.js';
 
 /**
- * The per-platform gate, ruled after bench measured that 3 s was never met.
+ * The per-platform gate.
  *
- * Set with headroom over the measured ~4.2 s (Windows) and ~2.9 s (Linux), and
- * enforced on **both** cells rather than only the fast one — publishing the slower
- * number is the point.
+ * ⚠️ **These two numbers are stale and are kept only so the output has something to
+ * compare against.** They were set from the pre-recalibration tree, whose source
+ * files averaged 179 bytes against a measured 4 704–6 666 in real repositories — so
+ * they are a budget for reading 1.3 MB, not the 46.7 MB a 10 000-file tree actually
+ * holds. On the recalibrated tree the graph takes ~17.4 s on this machine.
+ *
+ * The replacement must come from **CI**, not from here: a laptop running an editor,
+ * a phase chat and a browser is not a controlled environment. `UPFLY_BENCH_BUDGET_MS`
+ * overrides them so the workflow can set the number once CI has produced one, and
+ * `--measure-only` reports without failing until it has.
  */
-const BUDGET_MS = process.platform === 'win32' ? 5_000 : 3_500;
+const BUDGET_MS = Number(
+  process.env.UPFLY_BENCH_BUDGET_MS ?? (process.platform === 'win32' ? 5_000 : 3_500),
+);
 
 const ADAPTERS: readonly Adapter[] = [
   cssAdapter,
@@ -196,8 +206,73 @@ async function timed<T>(label: string, work: () => Promise<T> | T): Promise<[T, 
   return [value, { label, ms: Math.round(performance.now() - started) }];
 }
 
+/**
+ * The across-invocation report.
+ *
+ * Both spreads are shown, because they answer different questions and conflating
+ * them is what made the old number quotable when it should not have been: the
+ * internal figure says whether one process agreed with itself, and the headline says
+ * whether two processes did.
+ */
+function renderInvocations(
+  sample: InvocationSample,
+  invocations: number,
+  runsEach: number,
+): string {
+  const verdict = !sample.usable
+    ? 'UNUSABLE (invocations disagree)'
+    : sample.medianMs <= BUDGET_MS
+      ? 'within budget'
+      : 'OVER';
+
+  return [
+    '',
+    'upfly-core bench — graph budget across separate invocations',
+    '',
+    `  ${invocations} invocations x median of ${runsEach} runs, on ${platform()} with ${cpus().length} cores`,
+    `  UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}`,
+    '',
+    `  headline: ${sample.medianMs} ms of ${BUDGET_MS} ms  ${verdict}`,
+    `  per invocation: ${sample.medians.join(', ')} ms`,
+    `  spread between invocations: ${sample.spreadPercent}% (min ${sample.minMs}, max ${sample.maxMs})`,
+    `  spread inside each: ${sample.internalSpreadPercent.map((value) => `${value}%`).join(', ')}`,
+    '',
+    sample.usable
+      ? ''
+      : '  ⚠️ The invocations disagree by more than 20%, so no number here may be quoted.\n     A gate that flips on which invocation you ran is not a gate — set it from CI.\n',
+  ].join('\n');
+}
+
 async function main(): Promise<void> {
   const fresh = argv.includes('--fresh');
+
+  // --- The gate mode: sample across separate invocations, not within one. --------
+  //
+  // Ruled after three consecutive invocations reported medians 17% apart while each
+  // was internally tight to 4-6%. The in-process sampler controls the filesystem
+  // cache; it cannot control the process. This spawns children, so it must run
+  // before the work below rather than alongside it.
+  const invocations = Number(
+    argv.find((a) => a.startsWith('--invocations='))?.slice('--invocations='.length) ?? 0,
+  );
+  if (invocations > 0) {
+    await generateTree({ fresh });
+    const runsEach = Number(
+      argv.find((a) => a.startsWith('--runs='))?.slice('--runs='.length) ?? 5,
+    );
+    const across = await sampleAcrossInvocations(invocations, runsEach);
+    stdout.write(renderInvocations(across, invocations, runsEach));
+
+    // `--measure-only` is what CI runs until a gate number exists that CI itself
+    // produced. Reporting a number is useful; failing a build against a number
+    // measured on somebody's laptop is not.
+    if (argv.includes('--measure-only')) {
+      stdout.write('  (measure-only: not gating, so this cannot fail the build)\n\n');
+      exit(0);
+    }
+    exit(across.usable && across.medianMs <= BUDGET_MS ? 0 : 1);
+  }
+
   const json = argv.includes('--json');
   // The graph budget is the number CI watches on every push; the probe numbers cost
   // minutes and are wanted far less often.
