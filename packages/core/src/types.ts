@@ -70,8 +70,16 @@ export interface RawReference {
  * audit, the report and the planner would each have to tell apart again.
  */
 export type Resolution =
-  /** Points at an asset on disk. The only kind linked into the graph. */
+  /** Points at exactly one asset. */
   | 'resolved'
+  /**
+   * A `medium` template that glob-matched one or more assets.
+   *
+   * Separate from `resolved` because it carries several paths, and because Phase 2
+   * must treat it differently: a pattern is only safe to rewrite if *every* asset it
+   * matches converts to the same target extension.
+   */
+  | 'resolved-pattern'
   /**
    * The ceiling was already `unsafe`, so there was never a static path to resolve.
    *
@@ -93,10 +101,14 @@ export type Resolution =
  *
  * A union rather than a flat `resolution` field beside a nullable path, because it
  * makes `{ resolution: 'resolved', resolvedPath: null }` unrepresentable and lets
- * TypeScript narrow `resolvedPath` to `string` as soon as a consumer checks the
- * discriminator — no non-null assertions anywhere downstream.
+ * TypeScript narrow the payload as soon as a consumer checks the discriminator — no
+ * non-null assertions anywhere downstream.
  *
- * Keeping it separate from `RawReference` also means an adapter cannot produce a
+ * Ask `isLinked()` rather than comparing `resolution` by hand: there are two linked
+ * outcomes, and testing for only one of them is a false negative the compiler cannot
+ * see.
+ *
+ * Keeping this separate from `RawReference` also means an adapter cannot produce a
  * resolved reference even by accident: only the resolver can widen one.
  */
 export type Reference =
@@ -107,7 +119,14 @@ export type Reference =
       readonly resolvedPath: string;
     })
   | (RawReference & {
-      readonly resolution: Exclude<Resolution, 'resolved'>;
+      readonly resolution: 'resolved-pattern';
+      /** Only a `medium` ceiling can reach the glob branch, so the type says so. */
+      readonly confidence: 'medium';
+      /** Every asset the pattern matched. Non-empty by construction. */
+      readonly resolvedPaths: readonly [string, ...string[]];
+    })
+  | (RawReference & {
+      readonly resolution: Exclude<Resolution, 'resolved' | 'resolved-pattern'>;
       /** Nothing unresolved is ever rewritten, whatever its syntax promised. */
       readonly confidence: 'unsafe';
       readonly resolvedPath: null;

@@ -8,7 +8,9 @@ import { javascriptAdapter } from './adapters/javascript.js';
 import { jsonAdapter } from './adapters/json.js';
 import { markdownAdapter } from './adapters/markdown.js';
 import { discover } from './discover.js';
-import type { Adapter, RawReference } from './types.js';
+import { isLinked } from './reference.js';
+import { resolveReferences } from './resolve.js';
+import type { Adapter, RawReference, Reference } from './types.js';
 
 /**
  * The framework fixtures, exercised end to end through `discover` and the adapters.
@@ -32,6 +34,17 @@ const ADAPTERS: readonly Adapter[] = [
 const BY_ID = new Map(ADAPTERS.map((adapter) => [adapter.id, adapter]));
 
 const NAMES = ['vite-react', 'next-app', 'astro', 'plain-html', 'eleventy'] as const;
+
+/** Where each tree serves a root-relative `/hero.png` from. */
+const PUBLIC_DIRS: Record<(typeof NAMES)[number], string> = {
+  'vite-react': 'public',
+  'next-app': 'public',
+  astro: 'public',
+  // A plain static site serves from the project root itself.
+  'plain-html': '',
+  // Eleventy passes `src/img` through to `/img`.
+  eleventy: 'src',
+};
 
 async function scan(name: string) {
   const root = join(FIXTURES, name);
@@ -83,6 +96,58 @@ describe('framework fixtures', () => {
       expect(text).toBeDefined();
       expect(text?.slice(reference.start, reference.end)).toBe(reference.rawPath);
     }
+  });
+
+  describe('resolved against the assets that exist', () => {
+    async function resolveTree(name: (typeof NAMES)[number]): Promise<Reference[]> {
+      const { discovered, references } = await scan(name);
+      return resolveReferences(references, {
+        root: discovered.root,
+        assets: discovered.assets,
+        publicDir: PUBLIC_DIRS[name],
+      });
+    }
+
+    it.each(NAMES)('%s: no reference is wrongly reported broken', async (name) => {
+      // The shape of the phase's exit criterion, at fixture scale. Every `broken`
+      // here must be one the fixture declares in its own filename.
+      const broken = (await resolveTree(name))
+        .filter((reference) => reference.resolution === 'broken')
+        .map((reference) => reference.rawPath);
+
+      expect(broken.filter((path) => !path.includes('missing-on-purpose'))).toEqual([]);
+    });
+
+    it.each(NAMES)('%s: links assets', async (name) => {
+      const resolved = (await resolveTree(name)).filter(isLinked);
+      expect(resolved.length).toBeGreaterThan(0);
+    });
+
+    it('keeps the one deliberately broken reference, so the check has teeth', async () => {
+      const broken = (await resolveTree('plain-html')).filter(
+        (reference) => reference.resolution === 'broken',
+      );
+      expect(broken.map((reference) => reference.rawPath)).toEqual([
+        'images/missing-on-purpose.png',
+      ]);
+    });
+
+    it('reports a templated eleventy path as dynamic rather than broken', async () => {
+      const dynamic = (await resolveTree('eleventy')).filter(
+        (reference) => reference.resolution === 'dynamic',
+      );
+      expect(dynamic.map((reference) => reference.rawPath)).toEqual([
+        '{{ site.url }}/img/templated.png',
+      ]);
+    });
+
+    it('drops non-asset references rather than reporting them', async () => {
+      // vite-react references `.css`, `.jsx` and `.svg`; only the svg is tracked.
+      const { references } = await scan('vite-react');
+      const resolved = await resolveTree('vite-react');
+      expect(resolved.length).toBeLessThan(references.length);
+      expect(resolved.every((reference) => reference.rawPath.includes('.css'))).toBe(false);
+    });
   });
 
   it('covers the adapters the compatibility matrix claims', async () => {
