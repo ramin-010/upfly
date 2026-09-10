@@ -224,7 +224,7 @@ function sourceText(
         '</body></html>',
       ].join('\n');
     case '.md':
-      return [`# Title`, '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`].join('\n');
+      return ['# Title', '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`].join('\n');
     case '.json':
       return `${JSON.stringify({ icon: `/${pick()}`, name: 'thing', main: './index.js' }, null, 2)}\n`;
     case '.vue':
