@@ -93,9 +93,11 @@ export const javascriptAdapter: Adapter = {
     } catch (error) {
       // Returning [] would report a file we could not read as having no references,
       // which is a silent skip and a P0 bug under rule 9.
+      const detail = error instanceof Error ? error.message : String(error);
       throw new UpflyError(
         'ADAPTER_PARSE_FAILED',
-        `Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`,
+        // No `${file}` — see the note in `css.ts`. The report already names it.
+        `Could not parse: ${templateSourceReason(text) ?? detail}`,
       );
     }
 
@@ -121,6 +123,44 @@ export const javascriptAdapter: Adapter = {
     return applyEdits(text, edits);
   },
 };
+
+/**
+ * Whether a file that will not parse is a **template** wearing a code extension.
+ *
+ * `eleventy-docs/src/_includes/snippets/pagination/**` are ten `.js` and `.cjs`
+ * files that open with `{% raw %}` — Nunjucks source, carrying a JavaScript
+ * extension because Eleventy includes them as text. Failing to parse them is
+ * correct. Saying **"Unexpected token (1:1)"** is not: it tells a reader their
+ * JavaScript is broken, when the file was never JavaScript.
+ *
+ * Deliberately only consulted **after** the parser has already failed, and only on
+ * the first non-blank line. Anything looser would start second-guessing Babel about
+ * files that parse perfectly well — a `.js` file may legitimately contain `{%` in a
+ * string, and it is not this function's business unless the parse has already
+ * failed on it.
+ */
+function templateSourceReason(text: string): string | null {
+  const firstLine =
+    text
+      .split('\n')
+      .find((line) => line.trim() !== '')
+      ?.trim() ?? '';
+
+  for (const [opener, syntax] of TEMPLATE_OPENERS) {
+    if (firstLine.startsWith(opener)) {
+      return `this looks like ${syntax} template source rather than JavaScript — it begins with \`${opener}\``;
+    }
+  }
+  return null;
+}
+
+/** Openers that mark a file as template source, and what to call each. */
+const TEMPLATE_OPENERS: readonly (readonly [string, string])[] = [
+  ['{%', 'Nunjucks, Jinja or Liquid'],
+  ['{{', 'Handlebars, Mustache or Vue'],
+  ['<%', 'EJS or ERB'],
+  ['---', 'a frontmatter-prefixed'],
+];
 
 interface Context {
   readonly file: string;

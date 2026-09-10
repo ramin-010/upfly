@@ -177,10 +177,38 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
     const location = child.sourceCodeLocation;
     if (location === undefined || location === null) continue;
 
+    const css = context.text.slice(location.startOffset, location.endOffset);
+
+    // ⚠️ A `<style>` block whose body is a **template** is not CSS yet (R25 #5).
+    // `eleventy-docs/src/docs/data-js.md:133` holds `<style>` followed by
+    // `{% if myProject.environment == "production" %}`, and PostCSS dies on the `%`
+    // — taking the whole document's references with it. R20 masks *unclosed*
+    // raw-text tags and deliberately leaves closed ones scanned, so this is the gap
+    // that fix left, and it is not exotic: Eleventy, Jekyll, Hugo, Nunjucks and
+    // Liquid all inline conditional CSS exactly this way.
+    //
+    // The detector already exists and is already what the report prints elsewhere
+    // for a templated path, so this reuses it rather than inventing a second
+    // opinion about what a template looks like.
+    const templated = templateExpressionReason(css);
+    if (templated !== null) {
+      context.references.push({
+        file: context.file,
+        start: location.startOffset,
+        end: location.endOffset,
+        rawPath: css,
+        kind: 'css-url',
+        ceiling: 'unsafe',
+        asserted: false,
+        note: `a <style> block built by a template, so its CSS is not final: ${templated}`,
+      });
+      continue;
+    }
+
     context.references.push(
       ...findCssReferences({
         file: context.file,
-        text: context.text.slice(location.startOffset, location.endOffset),
+        text: css,
         baseOffset: location.startOffset,
       }),
     );

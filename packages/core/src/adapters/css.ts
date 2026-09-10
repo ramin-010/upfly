@@ -81,7 +81,11 @@ export function findCssReferences(input: {
     // swallow: returning [] here would silently claim the file has no references.
     throw new UpflyError(
       'ADAPTER_PARSE_FAILED',
-      `Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`,
+      // No `${file}`: `scan` records the path in its own field and the report
+      // prints it immediately before this message, so interpolating it here put the
+      // filename on every line twice. R20's scrub in `unscannedFile` stays as the
+      // net for community adapters that do interpolate one.
+      `Could not parse: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 

@@ -547,4 +547,55 @@ describe('javascriptAdapter', () => {
       expect(find('const key = `user:${id}`;')).toEqual([]);
     });
   });
+
+  describe('a template wearing a code extension (R25 #4)', () => {
+    // `eleventy-docs/src/_includes/snippets/pagination/**` are ten `.js` and `.cjs`
+    // files opening with `{% raw %}` — Nunjucks source that Eleventy includes as
+    // text. Failing to parse them is correct. "Unexpected token (1:1)" is not: it
+    // tells a reader their JavaScript is broken when the file was never JavaScript.
+
+    it.each([
+      ['{% raw %}', 'Nunjucks, Jinja or Liquid'],
+      // `{{ title }}` on its own is *valid* JavaScript — nested blocks around an
+      // expression — so it parses and never reaches this message at all. A real
+      // Handlebars file opens with a helper, and `#` is what Babel rejects.
+      ['{{#each items}}', 'Handlebars, Mustache or Vue'],
+      ['<% if (x) { %>', 'EJS or ERB'],
+    ])('names the syntax when a file starts with %s', (opener, syntax) => {
+      let message = '';
+      try {
+        javascriptAdapter.findReferences({
+          file: '/p/snippet.js',
+          text: `${opener}
+body`,
+        });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+
+      expect(message).toContain(syntax);
+      expect(message).not.toContain('Unexpected token');
+    });
+
+    it('leaves the parser message alone when the file is just broken JavaScript', () => {
+      // The control. This only runs after Babel has already failed, and it must not
+      // start guessing about ordinary syntax errors.
+      let message = '';
+      try {
+        javascriptAdapter.findReferences({ file: '/p/broken.js', text: 'const x = ;;;' });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+
+      expect(message).not.toContain('template source');
+    });
+
+    it('says nothing about a file that parses, however it starts', () => {
+      // `{{` inside a valid file is not this function's business — it is consulted
+      // only after a parse failure, so a working file never reaches it.
+      expect(() =>
+        javascriptAdapter.findReferences({ file: '/p/ok.js', text: 'const t = `{{ x }}`;' }),
+      ).not.toThrow();
+    });
+  });
 });

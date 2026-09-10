@@ -323,4 +323,51 @@ describe('htmlAdapter', () => {
       expect(htmlAdapter.rewrite({ text: source, edits: [] })).toBe(source);
     });
   });
+
+  // `String.fromCharCode(10)` rather than an escape: this harness eats a backslash
+  // in transit and turns `join('\n')` into a join on a literal newline. Third time
+  // this session — the construction beats remembering.
+  const NEWLINE = String.fromCharCode(10);
+
+  describe('a <style> block built by a template (R25 #5)', () => {
+    // `eleventy-docs/src/docs/data-js.md:133` holds `<style>` then
+    // `{% if myProject.environment == "production" %}`. PostCSS dies on the `%`, and
+    // before R20 that took the whole document's references with it. R20 masks
+    // *unclosed* raw-text tags and deliberately leaves closed ones scanned, so this
+    // is the gap that fix left — and Eleventy, Jekyll, Hugo, Nunjucks and Liquid all
+    // inline conditional CSS exactly this way.
+
+    it('does not hand template syntax to the CSS parser', () => {
+      const text = [
+        '<style>',
+        '{% if env == "production" %}',
+        '  .a { background: url(./hero.png); }',
+        '{% endif %}',
+        '</style>',
+      ].join(NEWLINE);
+
+      expect(() => htmlAdapter.findReferences({ file: '/p/page.html', text })).not.toThrow();
+    });
+
+    it('reports it as unsafe rather than dropping it', () => {
+      // Rule 9: the block is declined, so it is declined out loud. The reason is the
+      // same one the report already prints for a templated path.
+      const text = ['<style>', '{% if x %}.a{}{% endif %}', '</style>'].join(NEWLINE);
+      const references = htmlAdapter.findReferences({ file: '/p/page.html', text });
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toContain('built by a template');
+    });
+
+    it('still scans a <style> block that is ordinary CSS', () => {
+      // The control, and the over-fix this is closest to: a plain block must still
+      // have its url() read.
+      const text = ['<style>', '  .a { background: url(./hero.png); }', '</style>'].join(NEWLINE);
+
+      expect(
+        htmlAdapter.findReferences({ file: '/p/page.html', text }).map((r) => r.rawPath),
+      ).toEqual(['./hero.png']);
+    });
+  });
 });

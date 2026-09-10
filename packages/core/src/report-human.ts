@@ -133,14 +133,16 @@ function skippedSection(report: Report): string[] {
   const lines: string[] = [];
 
   if (skipped.length > 0) {
-    // "could not handle" was false for 134 of `astro-docs`' 140 (R21): those were
-    // determinations — a vector, a file already in the target format — filed as
-    // failures. They are a caveat now, and what is left here really is what went
-    // wrong, so the heading can say so plainly.
-    lines.push(`Skipped — ${count(skipped.length, 'thing')} Upfly could not do`, '');
+    // ⚠️ Neutral on purpose. "could not handle" was false for 134 of astro-docs'
+    // 140 (R21) — determinations filed as failures — and the obvious replacement,
+    // "could not do", is false in the same way for what remains: shadcn-ui's 80 are
+    // a **deliberate cap** and the sweep's are a size limit. Upfly did not do them;
+    // only some of them are things it could not do. Each row carries its own
+    // reason, so the heading does not need to characterise them all.
+    lines.push(`Skipped — ${count(skipped.length, 'thing')}, each with its reason`, '');
     for (const [stage, items] of groupByStage(skipped)) {
       lines.push(`  ${STAGE_LABEL[stage]}:`);
-      for (const item of items) lines.push(`    ${item.what} — ${item.reason}`);
+      lines.push(...collapseByReason(items));
       lines.push('');
     }
   }
@@ -509,6 +511,46 @@ function caveatSection(report: Report): string[] {
     for (const detail of caveat.detail) lines.push(`    ${detail}`);
   }
   lines.push('');
+  return lines;
+}
+
+/** Above this many items sharing one reason, the reason is lifted above them. */
+const REPEAT_LIMIT = 3;
+
+/**
+ * Items sharing a reason, with the reason said once and every name kept.
+ *
+ * `--probe-all` appeared **81 times** in `shadcn-ui`'s report — once on each of 80
+ * capped assets, plus the caveat — which is the wall the 126 repeated SVG lines
+ * made.
+ *
+ * ⚠️ The first version of this fix dropped the names and printed only a count, and
+ * that was wrong for the case right next to it: `eleventy-docs` has ten `.js` files
+ * that are really Nunjucks templates, and *which ten* is the actionable part — a
+ * reader renames those or configures them. The capped assets and the template files
+ * differ in whether the individual identity matters, which is not something a count
+ * threshold can tell.
+ *
+ * So the sentence moves up and the names stay under it. Eighty short lines instead
+ * of eighty long identical ones, and nothing is lost from either the page or the
+ * JSON.
+ */
+function collapseByReason(items: readonly SkippedItem[]): string[] {
+  const byReason = new Map<string, SkippedItem[]>();
+  for (const item of items) {
+    byReason.set(item.reason, [...(byReason.get(item.reason) ?? []), item]);
+  }
+
+  const lines: string[] = [];
+  for (const [reason, group] of byReason) {
+    if (group.length > REPEAT_LIMIT) {
+      lines.push(`    ${count(group.length, 'file')} — ${reason}`);
+      for (const item of group) lines.push(`      ${item.what}`);
+      continue;
+    }
+    for (const item of group) lines.push(`    ${item.what} — ${item.reason}`);
+  }
+
   return lines;
 }
 

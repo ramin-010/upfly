@@ -401,6 +401,76 @@ describe('buildReport', () => {
   // newline in the source. Known trap, documented in STATE.md's Gotchas.
   const NEWLINE = String.fromCharCode(10);
 
+  describe('one sentence, said once (R25 #3)', () => {
+    // `--probe-all` appeared 81 times in shadcn-ui's report: once on each of 80
+    // capped assets plus the caveat. Same wall as the 126 SVG lines.
+    const ROOT = '/repo';
+
+    function reportWithCapped(n: number) {
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: true,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        probes: Array.from({ length: n }, (_, index) => ({
+          relative: `img${index}.png`,
+          metadata: { width: 10, height: 10, format: 'png' as const, pages: 1 },
+          encoded: [],
+          skipped: [
+            {
+              measurement: 'webp' as const,
+              code: 'beyond-encode-cap' as const,
+              reason: 'not among the 100 largest assets measured (run with --probe-all)',
+            },
+          ],
+        })),
+      });
+    }
+
+    it('says a shared reason once, with a count', () => {
+      const text = renderReport(reportWithCapped(80));
+
+      expect(text).toContain('80 files — webp: not among the 100 largest');
+      // Three places, each saying something different: the collapsed skip line, the
+      // caveat, and the headline's floor clause. Was 81 — once per capped asset.
+      expect(text.match(/--probe-all/g)).toHaveLength(3);
+    });
+
+    it('keeps every name under the collapsed reason, not just a count', () => {
+      // ⚠️ The first version of this dropped the names, which was wrong for the
+      // case beside it: eleventy-docs has ten `.js` files that are really Nunjucks
+      // templates, and *which ten* is the actionable part. The sentence moves up;
+      // the names stay.
+      const text = renderReport(reportWithCapped(80));
+
+      expect(text).toContain('img0.png');
+      expect(text).toContain('img79.png');
+      expect(reportWithCapped(80).skipped).toHaveLength(80);
+    });
+
+    it('still names them individually when there are only a few', () => {
+      // Three lines are easier to read than a count you have to go and look up.
+      const text = renderReport(reportWithCapped(2));
+
+      expect(text).toContain('img0.png');
+      expect(text).toContain('img1.png');
+    });
+  });
+
   describe('the headline says what to act on, and says when it is a floor (R21 #4, R25 #2)', () => {
     /**
      * §5.1(d)'s criterion is whether the numbers are obvious in ten seconds, and
@@ -713,7 +783,7 @@ describe('buildReport', () => {
 
       expect(text).toContain('too large to search for asset filenames');
       expect(text).not.toContain('could not be searched');
-      expect(text).toContain('Upfly could not do');
+      expect(text).toContain('each with its reason');
     });
   });
 
