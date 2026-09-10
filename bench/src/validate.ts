@@ -44,6 +44,7 @@ import {
   scanSources,
   sweepForMentions,
 } from 'upfly-core';
+import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = [
   cssAdapter,
@@ -136,6 +137,8 @@ interface RepoResult {
   /** Whatever proved the absolute-path check wrong, so a failure names itself. */
   readonly absolutePathEvidence: string[];
   readonly unaccounted: Unaccounted[];
+  /** §5.1(d), the automated half: a verdict per finding, from an independent oracle. */
+  readonly verified: VerifyResult;
   readonly report: Report;
   readonly human: string;
 }
@@ -253,6 +256,9 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   // --- (b) the false-negative sweep -----------------------------------------------
   const unaccounted = await falseNegativeSweep(root, first.graph, first.references);
 
+  // --- (d) every broken opened, every dead grepped, by something that is not us ----
+  const verified = await verifyFindings(root, first.report, repo.publicDirs);
+
   return {
     repo,
     files:
@@ -269,6 +275,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
     noAbsolutePath,
     absolutePathEvidence,
     unaccounted,
+    verified,
     report: first.report,
     human: first.human,
   };
@@ -300,10 +307,18 @@ function checkNoAbsolutePath(
   const posixRoot = root.replaceAll('\\', '/');
   if (serialised.includes(posixRoot)) evidence.push(`JSON contains the POSIX root: ${posixRoot}`);
 
-  // A literal backslash in any string value. Every path in the report is meant to be
-  // POSIX-relative, so there is no honest reason for one to be there.
-  const backslash = serialised.match(/"[^"]*\\\\[^"]*"/)?.[0];
-  if (backslash !== undefined) evidence.push(`JSON has a backslashed path: ${backslash}`);
+  // A Windows absolute path, which always opens with a drive letter or a UNC pair.
+  //
+  // ⚠️ NOT "any string containing a backslash", which is what this checked first and
+  // what `report.test.ts` still checks on the fixtures. On `shadcn-ui` that fired on a
+  // raw path the engine reported exactly as its author wrote it, in a CSS-in-JS
+  // template — the engine being right. The property is *no absolute path*, and a lone
+  // backslash is not evidence of one. It survives on the fixtures only because no
+  // fixture source contains a backslash.
+  const windowsAbsolute = serialised.match(/[A-Za-z]:\\\\/)?.[0];
+  if (windowsAbsolute !== undefined) {
+    evidence.push(`JSON has a Windows absolute path: ${windowsAbsolute}`);
+  }
 
   // A drive letter must not be preceded by another letter, or every `https://` in a
   // documentation repository matches on the `s:/`. `report.test.ts` uses the looser
@@ -515,16 +530,14 @@ async function writeArtifacts(outDir: string, result: RepoResult): Promise<void>
 /**
  * The worksheet for §5.1(c) and (d).
  *
- * Deliberately not a summary. The protocol says a human opens every `broken`
- * finding and greps every dead asset before believing it, so this gives one line
- * per thing to check and the exact command to check it with.
+ * Deliberately not a summary, and no longer a list of commands either. §5.1(d) was
+ * amended because the first version of this file produced **601 checkboxes with the
+ * grep already written out** — so `verify.ts` runs them and this reports the
+ * verdicts, expanding only what a person actually has to decide.
  */
 function worksheet(result: RepoResult): string {
-  const { repo, report } = result;
+  const { repo } = result;
   const root = `${VALIDATION_ROOT}/${repo.name}`;
-  const broken = report.findings.filter((finding) => finding.kind === 'broken');
-  const dead = report.findings.filter((finding) => finding.kind === 'dead');
-  const hedged = report.findings.filter((finding) => finding.kind === 'possibly-dead');
   const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null);
 
   const lines = [
@@ -533,63 +546,21 @@ function worksheet(result: RepoResult): string {
     `Repo \`${repo.name}\` at \`${repo.sha}\`.`,
     `Root: \`${root}\``,
     '',
-    '**One false `broken` fails the gate.** Open every one below and confirm the path really',
-    'points at nothing. Grep every dead asset before believing it.',
+    'Every `broken` finding has been opened and every `dead` asset grepped **by machine**, against',
+    'an oracle that does not use the engine — its own directory index and its own grep, over the',
+    `whole tree including pruned and ignored directories. ${verdictHeadline(result.verified)}`,
+    '',
+    '**What is left for you is below: the ambiguous items and the judgement calls.** A verdict of',
+    '*confirmed-genuine* means the oracle looked and found nothing; spot-check a few rather than',
+    'reproducing them.',
     '',
     '---',
     '',
-    `## 1. Broken references — ${broken.length} to open`,
-    '',
   ];
 
-  if (broken.length === 0) {
-    lines.push('_None reported._', '');
-  } else {
-    for (const finding of broken) {
-      if (finding.kind !== 'broken') continue;
-      lines.push(
-        `- [ ] \`${finding.where}\` → \`${finding.rawPath}\``,
-        '      ```sh',
-        `      sed -n '${Math.max(1, (finding.line ?? 1) - 2)},${(finding.line ?? 1) + 2}p' "${root}/${finding.file}"`,
-        `      ls -la "${root}/$(dirname "${finding.file}")/${finding.rawPath}" 2>/dev/null || echo "does not exist"`,
-        '      ```',
-      );
-    }
-    lines.push('');
-  }
-
-  lines.push(`## 2. Dead assets — ${dead.length} to grep`, '');
-  if (dead.length === 0) {
-    lines.push('_None reported._', '');
-  } else {
-    for (const finding of dead) {
-      if (finding.kind !== 'dead') continue;
-      lines.push(
-        `- [ ] \`${finding.asset}\`${finding.inPublicDir ? '  *(under the public dir)*' : ''}`,
-        '      ```sh',
-        `      grep -rn --binary-files=without-match "${basename(finding.asset)}" "${root}" \\`,
-        '        --exclude-dir=.git --exclude-dir=node_modules | head',
-        '      ```',
-      );
-    }
-    lines.push('');
-  }
-
-  lines.push(
-    `## 3. Possibly-dead — ${hedged.length} hedged, with the evidence already cited`,
-    '',
-    'These are *not* claims that the asset is unused. Each names where its filename appears',
-    'in something Upfly could not read. Spot-check a few: the citation should be real.',
-    '',
-  );
-  for (const finding of hedged.slice(0, 25)) {
-    if (finding.kind !== 'possibly-dead') continue;
-    lines.push(
-      `- \`${finding.asset}\` — named in ${finding.evidence.map((m) => m.where).join(', ')}`,
-    );
-  }
-  if (hedged.length > 25) lines.push(`- …and ${hedged.length - 25} more, in the JSON report.`);
-  lines.push('');
+  lines.push(...verdictSection('broken', '1. Broken references', result.verified));
+  lines.push(...verdictSection('dead', '2. Dead assets', result.verified));
+  lines.push(...verdictSection('possibly-dead', '3. Possibly-dead citations', result.verified));
 
   lines.push(
     `## 4. §5.1(b) false-negative sweep — ${needsHuman.length} hits need a decision`,
@@ -625,6 +596,100 @@ function worksheet(result: RepoResult): string {
   return `${lines.join('\n')}\n`;
 }
 
+/** One line saying whether anything failed the gate, before any detail. */
+function verdictHeadline(verified: VerifyResult): string {
+  const wrong = verified.items.filter((item) => item.verdict === 'confirmed-false').length;
+  const unclear = verified.items.filter((item) => item.verdict === 'ambiguous').length;
+
+  if (wrong > 0) {
+    return `**${wrong} finding(s) came back confirmed-false — the gate is not passed.**`;
+  }
+  return unclear === 0
+    ? `All ${verified.items.length} came back confirmed-genuine.`
+    : `None came back false; ${unclear} are ambiguous and need you.`;
+}
+
+/**
+ * One finding kind, ordered by how much attention it needs.
+ *
+ * `confirmed-false` first because one of those fails the gate, then `ambiguous`
+ * because those are the actual work, then `confirmed-genuine` collapsed to a list —
+ * expanding 120 items a machine already checked is how a worksheet becomes 601
+ * checkboxes nobody reads.
+ */
+function verdictSection(
+  kind: ItemVerdict['kind'],
+  title: string,
+  verified: VerifyResult,
+): string[] {
+  const items = verified.items.filter((item) => item.kind === kind);
+  const lines = [`## ${title} — ${items.length}`, ''];
+
+  if (items.length === 0) {
+    lines.push('_None reported._', '');
+    return lines;
+  }
+
+  for (const verdict of ['confirmed-false', 'ambiguous'] as const) {
+    const group = items.filter((item) => item.verdict === verdict);
+    if (group.length === 0) continue;
+
+    lines.push(
+      verdict === 'confirmed-false'
+        ? `### ⚠️ ${group.length} confirmed FALSE — the oracle disagrees with the engine`
+        : `### ${group.length} ambiguous — your call`,
+      '',
+    );
+    // Same `group` means same decision. Rendering it once is the difference between
+    // three judgement calls and twenty identical checkboxes.
+    const buckets = new Map<string, typeof group>();
+    for (const item of group) {
+      const key = item.group ?? item.subject;
+      buckets.set(key, [...(buckets.get(key) ?? []), item]);
+    }
+
+    for (const [key, bucket] of buckets) {
+      const first = bucket[0];
+      if (first === undefined) continue;
+
+      if (bucket.length === 1) {
+        lines.push(`- [ ] \`${first.subject}\``);
+        for (const line of first.evidence) lines.push(`      ${line}`);
+        continue;
+      }
+
+      lines.push(`- [ ] \`${key}\` — ${bucket.length} references, one decision`);
+      for (const line of first.evidence) lines.push(`      ${line}`);
+      lines.push('', '      Affected:');
+      for (const item of bucket) lines.push(`        ${item.subject.split(' \u2192 ')[0] ?? ''}`);
+    }
+    lines.push('');
+  }
+
+  const genuine = items.filter((item) => item.verdict === 'confirmed-genuine');
+  if (genuine.length > 0) {
+    lines.push(
+      `### ${genuine.length} confirmed genuine — checked, nothing found`,
+      '',
+      'Spot-check two or three against the method rather than repeating the check.',
+      '',
+    );
+    for (const item of genuine.slice(0, 15)) lines.push(`- \`${item.subject}\``);
+    if (genuine.length > 15) lines.push(`- …and ${genuine.length - 15} more.`);
+    lines.push('');
+  }
+
+  return lines;
+}
+
+/** Verdict tallies, so a false finding is visible without opening the worksheet. */
+function verdictCounts(verified: VerifyResult): string {
+  const of = (verdict: ItemVerdict['verdict']) =>
+    verified.items.filter((item) => item.verdict === verdict).length;
+
+  return `${of('confirmed-genuine')} genuine, ${of('confirmed-false')} FALSE, ${of('ambiguous')} ambiguous`;
+}
+
 function summarise(result: RepoResult): string {
   const counts = result.report.summary.findings;
   const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null).length;
@@ -637,6 +702,7 @@ function summarise(result: RepoResult): string {
     ...(result.absolutePathEvidence.length === 0
       ? []
       : result.absolutePathEvidence.map((line) => `      ! ${line}`)),
+    `  (d) verdicts: ${verdictCounts(result.verified)}  (oracle indexed ${result.verified.filesIndexed}, grepped ${result.verified.filesGrepped})`,
     `  (g) graph: ${result.graphMs} ms`,
     `  findings: broken ${counts.broken}, dead ${counts.dead}, possibly-dead ${counts['possibly-dead']}, oversized ${counts.oversized}, opportunities ${counts['format-opportunity']}`,
     '',
