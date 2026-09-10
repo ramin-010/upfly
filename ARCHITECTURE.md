@@ -24,20 +24,27 @@ implementation, and `execute` — which are the only places that touch the files
 `audit` is pure: it takes the graph and an injected probe and returns findings. That is what
 lets the whole engine be tested without a disk.
 
+Two stages need one filesystem fact each without being filesystem modules, and both take it as
+an **injected port**: `scan` takes `readFile`, and `resolve` takes `exists`. A port keeps the
+count at three and keeps both modules unit-testable against an in-memory map.
+
 ```
 discover(fs) ──► assets[], sourceFiles[]      images, plus files claimed by an adapter
         │        excludedRoots[]              each pruned directory + the rule that pruned it
         │        skipped[]                    symlinks, unreadable entries, with reasons
+        │        unscannedFiles[]             files no adapter claimed — kept with their paths
         ▼
-adapters.findReferences(file) ──► rawReferences[]
+scan(sourceFiles, adapters, readFile) ──► rawReferences[], unscanned[]
         │  syntax only: { file, start, end, rawPath, kind, ceiling, asserted }
+        │  a file that will not parse becomes a reported entry, never an exception
         ▼
 resolve(rawReferences, assets, excludedRoots, exists) ──► references[]
         │  an eight-rung ladder producing one of seven outcomes
         │  final confidence = ceiling if it resolved, otherwise `unsafe`
         ▼
-graph = link(assets, references)      asset → refs, ref → asset, via isLinked()
-        │                             unscannedExtensions[] — formats no adapter claimed
+graph = buildGraph(assets, references, unscannedFiles) ──► asset ↔ refs, via isLinked()
+        │  byResolution[]         every reference bucketed, so none can be lost
+        │  unscannedFiles[]       both sources merged: unclaimed extensions and parse failures
         ▼
 probe(assets) ──► dimensions, candidate encoded sizes     (read-only, injected)
         ▼
@@ -193,16 +200,39 @@ candidate asset, so declining it is not declining to do work, and counting fonts
 
 An asset referenced only from a `.vue`, `.svelte`, `.astro` or `.njk` file has zero references
 for a reason that has nothing to do with the asset: no adapter reads that format yet. Calling it
-dead is a false positive we manufactured ourselves.
+dead is a false positive we manufactured ourselves. The `astro` fixture has three of them —
+`logo.png`, `favicon.png` and `banner.png` are all referenced from `index.astro`, and every one
+would otherwise be reported dead.
 
-So the graph records `unscannedExtensions: { ext, fileCount }[]` — every extension present in the
-project that no adapter claimed — and **while that list is non-empty, every dead finding is
-reported as `possibly-dead`**, naming the extensions and their counts. `dead` is reserved for a
-repository where every file was claimed, which is the only case where zero references really
-means zero references.
+The obvious rule — hedge globally whenever some extension went unread — degenerates. Measured on
+this repository, the unread list is `.astro`, `.njk`, `.yaml`, `.yml`, three dotfiles and
+`LICENSE`. It is never empty on a real project, so `dead` would never fire, and a label that
+always fires carries no information. A curated allowlist of "extensions that can reference an
+image" is the other wrong answer: it is a place to be wrong in the direction that ships a false
+`dead`.
 
-It costs one counter, and it is what makes shipping before the long-tail adapters honest rather
-than merely early.
+**So the hedge is per-asset.** `discover` records every file it did not read *with its path*, and
+`scan` adds every file it could not parse. For each asset with zero references, the audit sweeps
+that text for the asset's filename — one pass building a set of names, not one pass per asset:
+
+- **A hit → `possibly-dead`**, and the report names the file: *"`hero.png` — referenced in
+  `config.yaml`, which Upfly cannot parse."* That is actionable; a global hedge is not.
+- **No hit → `dead`**, confidently.
+
+`unscannedExtensions` is still reported. It stops being the trigger and becomes what it should
+always have been: a coverage statement, and how a user finds out they want an adapter.
+
+Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
+and a container** — `<image href>`, `<use href>` and a `<style>` block inside one are all real
+references and no adapter reads them — so `.svg` is recorded as unread even though it is also an
+asset. And **a reference we read but could not resolve names no asset**: eleventy's
+`![](({{ site.url }}/img/templated.png)` is `dynamic`, so `templated.png` links to nothing and
+looks dead while being demonstrably alive — the same manufactured false positive arriving from
+the other direction. Whether those unresolved paths join the swept text is **raised and awaiting
+a ruling** (R10 in `../notes/STATE.md`); the fixture suite already asserts what the
+recommendation asks for. Directories the user *excluded* are deliberately not
+swept: an ignore rule is an instruction, not a gap in our coverage, and the report carries one
+global caveat line naming them instead.
 
 ## Adapters — the contribution surface
 
@@ -273,8 +303,9 @@ Two places where the same character means opposite things, both settled by `kind
 
 ## Discovery
 
-`discover` walks the project once and returns two lists: image assets, and the source files some
-adapter has claimed by extension. It is the first of the three modules allowed to touch a disk.
+`discover` walks the project once and returns three lists: image assets, the source files some
+adapter has claimed by extension, and the files nobody claimed. It is the first of the three
+modules allowed to touch a disk.
 
 It is a hand-written breadth-first walker rather than a glob library, for one reason:
 **the performance budget is won by pruning, not by matching.** A repository's `node_modules`
@@ -316,6 +347,57 @@ a path matches but not *which* pattern did, and "excluded by some rule you wrote
 report line than "excluded by `legacy/`" when someone is working out where their asset went. The
 resolver prefix-tests references against these to produce `out-of-scope` instead of a false
 `broken`.
+
+It records what it **did not read**, too. Every file no adapter claimed lands in `unscannedFiles`
+with its path, which is what the audit sweeps to decide `dead` against `possibly-dead`. Ignored
+and pruned entries are deliberately absent — an ignore rule is an instruction, not a gap in our
+coverage — and neither is the ignore file itself, which we obviously did read.
+
+## Scanning — one place that owns adapter failure
+
+`scan` reads each source file and hands the text to the adapter that claimed it. It exists
+because nothing owned that loop, and because the adapters throw.
+
+`css` and `javascript` raise `ADAPTER_PARSE_FAILED` when a file will not parse. That is right —
+returning `[]` would report a file full of references as clean — but a throw nobody catches means
+**one unparseable `.scss` in a five-thousand-file repository kills the whole audit**, and the
+real-world validation repos will contain one. So `scan` catches it into a reported entry carrying
+the file and the parser's message, and that entry feeds the same per-asset sweep as a file no
+adapter claimed. The two are the same condition: we did not learn what the file references.
+
+It catches *every* throw, not only ours. Adapters are the contribution surface, and a bug in a
+community adapter must not take down an audit of a repository that adapter barely touches — while
+still being visible in the report rather than merely survived.
+
+`readFile` is injected. That keeps the count of filesystem-touching modules at three, and it means
+the module that owns error handling for every adapter is exercised against an in-memory file map
+instead of a directory full of deliberately broken files. It deliberately does not return the file
+texts: holding a whole repository's source in memory to save a later re-read trades a bounded cost
+for an unbounded one.
+
+## The graph
+
+`buildGraph` is pure. It links each reference to the assets it resolved to — **through
+`linkedPaths`, never by comparing `resolution`** — and returns an `AssetNode` per asset alongside
+`byResolution`, every reference bucketed by outcome.
+
+That bucketing is a correctness device, not a convenience. It is a `Record<Resolution, …>` literal,
+so an eighth outcome fails to compile *here* rather than quietly vanishing from the report — the
+same guarantee `linkedPaths` gets from its `never`-typed default. A reference cannot go missing
+from the report without also going missing from a bucket, which makes rule 9 mechanical instead of
+remembered.
+
+**Ordering is by POSIX-relative path, not by `Reference.file`.** `file` is an absolute native path,
+and `/` (0x2F) and `\` (0x5C) fall on opposite sides of the alphanumerics: sorting it puts
+`dir/a.html` before `dirZ.html` on Linux and *after* it on Windows. Rule 11 — same inputs,
+byte-identical report — would then be quietly false, and nobody would notice until two people
+compared reports. The test for it only has teeth on Windows, because on POSIX the relative path is
+a suffix of the absolute one and the two implementations cannot disagree.
+
+A reference that links to a path outside the asset set throws `GRAPH_UNKNOWN_ASSET`. That cannot
+happen in a single run — the resolver only ever returns paths it took from those very assets — but
+it can the moment references are resolved against a cached asset set, which is exactly what the
+editor integration will do. The quiet version of that bug is a phantom dead asset.
 
 ## Offsets are UTF-16 code units
 
