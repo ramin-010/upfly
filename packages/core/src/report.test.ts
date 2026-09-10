@@ -57,6 +57,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     sourceFiles: discovery.sourceFiles,
     adapters: ADAPTERS,
     readFile: readFileText,
+    assetBasenames: basenamesOf(discovery.assets),
   });
 
   const graph = buildGraph({
@@ -99,6 +100,13 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
 }
 
 const NAMES = ['vite-react', 'next-app', 'astro', 'plain-html', 'eleventy'] as const;
+
+/** Lowercased asset basenames, for the mention pass `scan` does while reading. */
+function basenamesOf(assets: readonly { relative: string }[]): Set<string> {
+  return new Set(
+    assets.map((asset) => asset.relative.slice(asset.relative.lastIndexOf('/') + 1).toLowerCase()),
+  );
+}
 
 describe('buildReport', () => {
   it('declares its schema version', async () => {

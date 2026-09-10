@@ -24,7 +24,9 @@
  * Phase 2 — reads each file at the moment it edits it anyway.
  */
 
+import { lineOf } from './citation.js';
 import { UpflyError } from './errors.js';
+import { imageFilenamePattern } from './paths.js';
 import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /**
@@ -37,12 +39,41 @@ import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.j
  */
 export type ReadFilePort = (absolutePath: string) => Promise<string>;
 
+/**
+ * An asset filename found in a file's text, in a form no adapter turned into a
+ * reference.
+ *
+ * Collected **here**, while the text is already in memory, rather than by re-reading
+ * every source file later. The audit's `possibly-dead` sweep needs it, and reading
+ * 7,521 files a second time to get it cost 12 s against a fraction of a second for
+ * one regex pass over text we are already holding.
+ */
+export interface ScannedMention {
+  /** Lowercased asset basename, e.g. `hero.png`. */
+  readonly basename: string;
+  /** POSIX-relative path of the file it appeared in. */
+  readonly relative: string;
+  /** One-based line. */
+  readonly line: number;
+  /** The token exactly as written, so the report can quote it. */
+  readonly quote: string;
+}
+
 export interface ScanOptions {
   /** Files to read, as returned by `discover`. Output order follows this order. */
   readonly sourceFiles: readonly SourceFile[];
   /** The same adapters `discover` was given. Each `adapterId` must be among them. */
   readonly adapters: readonly Adapter[];
   readonly readFile: ReadFilePort;
+  /**
+   * Lowercased basenames of every asset `discover` found.
+   *
+   * Supplied so the token pass can be done here, for free, instead of by a second
+   * read of the whole tree. A superset of what the audit needs — which assets are
+   * *unreferenced* is not known until the graph exists — so the sweep intersects
+   * later. Omit it and no mentions are collected.
+   */
+  readonly assetBasenames?: ReadonlySet<string>;
   /** Files read in parallel. Defaults to 16. */
   readonly concurrency?: number;
 }
@@ -58,6 +89,13 @@ export interface ScanResult {
    * references, so an asset named only there must not be reported as dead.
    */
   readonly unscanned: readonly UnscannedFile[];
+  /**
+   * Asset filenames seen in the text but not turned into references.
+   *
+   * Empty unless `assetBasenames` was given. This is the audit's third haystack,
+   * gathered as a side effect of a read that had to happen anyway.
+   */
+  readonly mentions: readonly ScannedMention[];
 }
 
 /** How many files are read at once. IO-bound, so higher than the core count. */
@@ -77,6 +115,7 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
 
   const references: RawReference[] = [];
   const unscanned: UnscannedFile[] = [];
+  const mentions: ScannedMention[] = [];
   const files = options.sourceFiles;
 
   for (let index = 0; index < files.length; index += concurrency) {
@@ -85,16 +124,19 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
     // depend on which read finished first. Rule 11 needs that to be true by
     // construction rather than by a sort applied afterwards.
     const scanned = await Promise.all(
-      batch.map((file) => scanOne(file, adapterFor(file, byId), options.readFile)),
+      batch.map((file) =>
+        scanOne(file, adapterFor(file, byId), options.readFile, options.assetBasenames),
+      ),
     );
 
     for (const result of scanned) {
       if (result.failure === null) references.push(...result.references);
       else unscanned.push(result.failure);
+      mentions.push(...result.mentions);
     }
   }
 
-  return { references, unscanned };
+  return { references, unscanned, mentions };
 }
 
 function adapterFor(file: SourceFile, byId: ReadonlyMap<string, Adapter>): Adapter {
@@ -112,12 +154,14 @@ interface ScannedFile {
   readonly references: readonly RawReference[];
   /** `null` when the file was read and parsed. */
   readonly failure: UnscannedFile | null;
+  readonly mentions: readonly ScannedMention[];
 }
 
 async function scanOne(
   file: SourceFile,
   adapter: Adapter,
   readFile: ReadFilePort,
+  assetBasenames: ReadonlySet<string> | undefined,
 ): Promise<ScannedFile> {
   let text: string;
   try {
@@ -125,18 +169,75 @@ async function scanOne(
   } catch (error) {
     // A file that vanished or became unreadable between the walk and the read.
     // §5.1(e) requires exactly this to degrade rather than crash.
-    return { references: [], failure: unscannedFile(file, 'unreadable', describe(error)) };
+    return {
+      references: [],
+      failure: unscannedFile(file, 'unreadable', describe(error)),
+      mentions: [],
+    };
   }
 
+  // One pass over text already in memory. Done before the adapter runs so that a
+  // file which fails to parse still contributes its mentions — that file is exactly
+  // the one whose references we do not know.
+  const mentions = collectMentions(file, text, assetBasenames);
+
   try {
-    return { references: adapter.findReferences({ file: file.path, text }), failure: null };
+    return {
+      references: adapter.findReferences({ file: file.path, text }),
+      failure: null,
+      mentions,
+    };
   } catch (error) {
     // Every throw, not only `ADAPTER_PARSE_FAILED`. Adapters are the contribution
     // surface, and a bug in a community adapter must not take down an audit of a
     // repository that adapter barely touches. The message is carried into the
     // report, so a broken adapter is visible rather than merely survivable.
-    return { references: [], failure: unscannedFile(file, 'parse-failed', describe(error)) };
+    return {
+      references: [],
+      failure: unscannedFile(file, 'parse-failed', describe(error)),
+      mentions,
+    };
   }
+}
+
+/**
+ * Every asset filename this text names.
+ *
+ * A superset of what the audit will use: which assets are unreferenced is not known
+ * until the graph exists, so this collects mentions of *any* asset and the sweep
+ * intersects. Cheap enough to always do — the text is in hand, and the alternative
+ * measured at twelve seconds.
+ */
+function collectMentions(
+  file: SourceFile,
+  text: string,
+  assetBasenames: ReadonlySet<string> | undefined,
+): ScannedMention[] {
+  if (assetBasenames === undefined || assetBasenames.size === 0) return [];
+
+  const found: ScannedMention[] = [];
+  const seen = new Set<string>();
+  const pattern = imageFilenamePattern();
+
+  let match = pattern.exec(text);
+  while (match !== null) {
+    const token = match[0];
+    const basename = token.toLowerCase();
+    // One mention per basename per file: a hundred repeats of the same name are one
+    // piece of evidence, and the report cites a place rather than a count.
+    if (assetBasenames.has(basename) && !seen.has(basename)) {
+      seen.add(basename);
+      found.push({
+        basename,
+        relative: file.relative,
+        line: lineOf(text, match.index),
+        quote: token,
+      });
+    }
+    match = pattern.exec(text);
+  }
+
+  return found;
 }
 
 function unscannedFile(

@@ -37,8 +37,8 @@
 import { citeReferences, lineOf } from './citation.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
-import { IMAGE_EXTENSIONS, compareStrings } from './paths.js';
-import type { ReadFilePort } from './scan.js';
+import { compareStrings, imageFilenamePattern } from './paths.js';
+import type { ReadFilePort, ScannedMention } from './scan.js';
 import type { Reference } from './types.js';
 
 /** Where an asset's name turned up. */
@@ -93,19 +93,21 @@ export interface SweepOptions {
   /** Same port `scan` takes. The sweep reads only what it must. */
   readonly readFile: ReadFilePort;
   /**
-   * Files that *were* scanned, swept as a last resort.
+   * Asset filenames `scan` saw in files it *did* read, from `ScanResult.mentions`.
    *
-   * A scanned file can still hold a reference in a form no adapter understands —
-   * measured on astro-docs, `` `./_images/background-${dir}.png` `` in a `.ts` file
-   * is a template literal in an object property, which nothing reads. The file
-   * parsed fine and produced no reference, so neither of the other two haystacks
-   * covers it, and the asset was reported *confidently* dead.
+   * A scanned file can still hold a reference in a form no adapter understands — a
+   * template literal in an object property parses fine and yields no reference — so
+   * the file was read, produced nothing, and neither of the other haystacks covers
+   * it.
    *
-   * Deliberately last and deliberately optional: it doubles the sweep's read volume,
-   * and it only earns that when a repository still has zero-reference assets after
-   * the cheaper haystacks. `bench/` measures it (rule 16).
+   * **Collected during the scan rather than by re-reading.** The first version read
+   * every source file a second time and cost 12 s against 1 s; `scan` already holds
+   * the text, so one regex pass there is a fraction of a second. That the cost is
+   * now small is what lets this stay always-on: `dead` means *this filename appears
+   * nowhere in your codebase*, and a claim that only holds when a flag is passed is
+   * not that claim.
    */
-  readonly scannedFiles?: readonly { readonly path: string; readonly relative: string }[];
+  readonly scannedMentions?: readonly ScannedMention[];
   /**
    * Serving roots, as the resolver was given them.
    *
@@ -131,19 +133,6 @@ export interface SweepOptions {
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
- * Matches a filename-shaped token ending in a tracked image extension.
- *
- * Built from `IMAGE_EXTENSIONS` so the tracked-format policy stays in one place —
- * adding AVIF or SVG support later must not require remembering this file. The
- * character class deliberately excludes `/`, so `{{ site.url }}/img/hero.png`
- * yields `hero.png` and nothing longer.
- */
-function filenamePattern(): RegExp {
-  const extensions = IMAGE_EXTENSIONS.map((extension) => extension.slice(1).replace(/\W/g, '\\$&'));
-  return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
-}
-
-/**
  * Sweep both haystacks for the names of assets nothing references.
  *
  * Does no IO at all when every asset is referenced, which is the common case on a
@@ -167,21 +156,18 @@ export async function sweepForMentions(options: SweepOptions): Promise<SweepResu
   );
   await sweepUnresolvedReferences(options, candidates, mentions, skipped);
 
-  // Only what the cheaper haystacks did not explain. On a healthy repository this
-  // reads nothing at all, and on astro-docs it is the difference between two
-  // confidently-dead assets and two correctly-cited hedges.
-  const stillUnexplained = new Map(
-    [...candidates].filter(([, assets]) => assets.some((asset) => !mentions.has(asset))),
-  );
-  if (stillUnexplained.size > 0 && options.scannedFiles !== undefined) {
-    await sweepFiles(
-      options.scannedFiles,
-      'scanned-file',
-      options,
-      stillUnexplained,
-      mentions,
-      skipped,
-    );
+  // Only what the cheaper haystacks left unexplained. Costs no IO — `scan` gathered
+  // these while it had the text open.
+  for (const mention of options.scannedMentions ?? []) {
+    for (const asset of candidates.get(mention.basename) ?? []) {
+      if (mentions.has(asset)) continue;
+      record(mentions, {
+        asset,
+        source: 'scanned-file',
+        where: `${mention.relative}:${mention.line}`,
+        quote: mention.quote,
+      });
+    }
   }
 
   for (const list of mentions.values()) list.sort(byWhereThenQuote);
@@ -330,7 +316,7 @@ function isServed(asset: string, publicDirs: readonly string[] | undefined): boo
 function* tokens(text: string): Generator<[string, number]> {
   // A fresh RegExp per call: a `g`-flagged literal carries `lastIndex` between
   // calls, which would make results depend on what was scanned before them.
-  const pattern = filenamePattern();
+  const pattern = imageFilenamePattern();
   let match = pattern.exec(text);
   while (match !== null) {
     yield [match[0], match.index];

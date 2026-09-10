@@ -78,6 +78,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
     sourceFiles: discovery.sourceFiles,
     adapters: ADAPTERS,
     readFile: readFileText,
+    assetBasenames: basenamesOf(discovery.assets),
   });
   const graph = buildGraph({
     root: discovery.root,
@@ -121,6 +122,13 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
 }
 
 const isWindows = process.platform === 'win32';
+
+/** Lowercased asset basenames, for the mention pass `scan` does while reading. */
+function basenamesOf(assets: readonly { relative: string }[]): Set<string> {
+  return new Set(
+    assets.map((asset) => asset.relative.slice(asset.relative.lastIndexOf('/') + 1).toLowerCase()),
+  );
+}
 
 describe('§5.1(e) hostile inputs', () => {
   it('survives a zero-byte image and says why it could not measure it', async () => {

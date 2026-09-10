@@ -21,6 +21,7 @@ import { basename, join, relative } from 'node:path';
 import { argv, stdout } from 'node:process';
 import {
   type Adapter,
+  type Asset,
   type Graph,
   IMAGE_EXTENSIONS,
   type Reference,
@@ -92,6 +93,13 @@ const REPOS: readonly RepoSpec[] = [
   },
 ];
 
+/** Lowercased asset basenames, for the mention pass `scan` does while reading. */
+function basenamesOf(assets: readonly Asset[]): Set<string> {
+  return new Set(
+    assets.map((asset) => asset.relative.slice(asset.relative.lastIndexOf('/') + 1).toLowerCase()),
+  );
+}
+
 /** A grep hit the graph did not link — the raw material of §5.1(b). */
 interface Unaccounted {
   readonly asset: string;
@@ -146,6 +154,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
     sourceFiles: discovery.sourceFiles,
     adapters: ADAPTERS,
     readFile: readFileText,
+    assetBasenames: basenamesOf(discovery.assets),
   });
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
@@ -170,7 +179,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
     graph,
     readFile: readFileText,
     // Haystack (c): only read if the cheaper two leave something unexplained.
-    scannedFiles: discovery.sourceFiles,
+    scannedMentions: scanned.mentions,
     publicDirs: repo.publicDirs,
   });
   const probes = await probeAssets(

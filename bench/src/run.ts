@@ -182,6 +182,13 @@ interface BenchResult {
   };
 }
 
+/** Lowercased asset basenames, for the mention pass `scan` does while reading. */
+function basenamesOf(assets: readonly Asset[]): Set<string> {
+  return new Set(
+    assets.map((asset) => asset.relative.slice(asset.relative.lastIndexOf('/') + 1).toLowerCase()),
+  );
+}
+
 /** Time one step. Returns both the value and how long it took. */
 async function timed<T>(label: string, work: () => Promise<T> | T): Promise<[T, Timing]> {
   const started = performance.now();
@@ -212,6 +219,7 @@ async function main(): Promise<void> {
       sourceFiles: found.sourceFiles,
       adapters: ADAPTERS,
       readFile: readFileText,
+      assetBasenames: basenamesOf(found.assets),
     });
     const links = resolveReferences(parsed.references, {
       root: found.root,
@@ -266,7 +274,7 @@ async function main(): Promise<void> {
     sweepForMentions({
       graph,
       readFile: readFileText,
-      scannedFiles: discovery.sourceFiles,
+      scannedMentions: scanned.mentions,
       publicDirs: ['public'],
     }),
   );

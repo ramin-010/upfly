@@ -235,6 +235,80 @@ describe('scanSources', () => {
     });
   });
 
+  describe('asset mentions, gathered while the text is in memory', () => {
+    it('records an asset filename no adapter turned into a reference', async () => {
+      // The audit's third haystack. Collected here rather than by re-reading the
+      // tree later, which measured 12 s against a fraction of a second.
+      const result = await scanSources({
+        sourceFiles: [sourceFile('config.html', 'html')],
+        adapters,
+        readFile: filesystem({
+          '/repo/config.html': ['a', 'b `/img/hero.png`', 'c'].join('\n'),
+        }),
+        assetBasenames: new Set(['hero.png']),
+      });
+
+      expect(result.mentions).toEqual([
+        { basename: 'hero.png', relative: 'config.html', line: 2, quote: 'hero.png' },
+      ]);
+    });
+
+    it('records nothing when no basenames were supplied', async () => {
+      const result = await scanSources({
+        sourceFiles: [sourceFile('a.html', 'html')],
+        adapters,
+        readFile: filesystem({ '/repo/a.html': 'hero.png' }),
+      });
+
+      expect(result.mentions).toEqual([]);
+    });
+
+    it('records one mention per basename per file', async () => {
+      // A hundred repeats of a name are one piece of evidence, and the report cites
+      // a place rather than a count.
+      const result = await scanSources({
+        sourceFiles: [sourceFile('a.html', 'html')],
+        adapters,
+        readFile: filesystem({ '/repo/a.html': 'hero.png hero.png hero.png' }),
+        assetBasenames: new Set(['hero.png']),
+      });
+
+      expect(result.mentions).toHaveLength(1);
+    });
+
+    it('still records mentions from a file that failed to parse', async () => {
+      // That file is precisely the one whose references we do not know, so its
+      // mentions are the evidence that matters most.
+      const throwing: Adapter = {
+        ...css,
+        findReferences: () => {
+          throw new UpflyError('ADAPTER_PARSE_FAILED', 'unclosed block');
+        },
+      };
+
+      const result = await scanSources({
+        sourceFiles: [sourceFile('broken.css', 'css')],
+        adapters: [throwing],
+        readFile: filesystem({ '/repo/broken.css': 'a { background: url(hero.png) ' }),
+        assetBasenames: new Set(['hero.png']),
+      });
+
+      expect(result.unscanned[0]?.reason).toBe('parse-failed');
+      expect(result.mentions[0]?.basename).toBe('hero.png');
+    });
+
+    it('ignores a filename that is not an asset', async () => {
+      const result = await scanSources({
+        sourceFiles: [sourceFile('a.html', 'html')],
+        adapters,
+        readFile: filesystem({ '/repo/a.html': 'other.png' }),
+        assetBasenames: new Set(['hero.png']),
+      });
+
+      expect(result.mentions).toEqual([]);
+    });
+  });
+
   it('throws when a file names an adapter that was not supplied', async () => {
     // A wiring mistake, not a data problem: scanning with a different adapter set
     // than discovery used. Silently skipping the file would make its assets look
@@ -250,6 +324,6 @@ describe('scanSources', () => {
   it('scans nothing without complaint', async () => {
     const result = await scanSources({ sourceFiles: [], adapters, readFile: filesystem({}) });
 
-    expect(result).toEqual({ references: [], unscanned: [] });
+    expect(result).toEqual({ references: [], unscanned: [], mentions: [] });
   });
 });

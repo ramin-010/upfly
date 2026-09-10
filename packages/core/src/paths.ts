@@ -76,3 +76,21 @@ export function compareStrings(a: string, b: string): number {
   if (a > b) return 1;
   return 0;
 }
+
+/**
+ * Matches a filename-shaped token ending in a tracked image extension.
+ *
+ * Built from `IMAGE_EXTENSIONS` so the tracked-format policy stays in one place —
+ * adding a format later must not require remembering the two callers. The character
+ * class deliberately excludes `/`, so `{{ site.url }}/img/hero.png` yields
+ * `hero.png` and nothing longer.
+ *
+ * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses,
+ * which would make results depend on what was scanned before them.
+ */
+export function imageFilenamePattern(): RegExp {
+  const extensions = IMAGE_EXTENSIONS.map((extension) =>
+    extension.slice(1).replace(/[^A-Za-z0-9]/g, '\\$&'),
+  );
+  return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
+}

@@ -369,7 +369,7 @@ describe('sweepForMentions', () => {
       const result = await sweepForMentions({
         graph,
         readFile: files({ '/repo/gen.ts': source }),
-        scannedFiles: [{ path: '/repo/gen.ts', relative: 'gen.ts' }],
+        scannedMentions: [{ basename: 'hero.png', relative: 'gen.ts', line: 2, quote: 'hero.png' }],
       });
 
       expect(result.mentions.get('img/hero.png')).toEqual([
@@ -406,39 +406,36 @@ describe('sweepForMentions', () => {
       expect(result.mentions.size).toBe(0);
     });
 
-    it('does not read scanned files when the cheaper haystacks explained everything', async () => {
-      // It doubles the sweep's read volume, so it only earns that when something is
-      // still unexplained. On a healthy repository it reads nothing at all.
+    it('prefers the cheaper haystack when both name the asset', async () => {
+      // An unread file is stronger evidence than a mention in a file we understood,
+      // and citing both would say the same thing twice.
       const graph = graphOf({
         assets: [asset('hero.png')],
         unscannedFiles: [unscanned('page.vue')],
       });
-      const readFile = vi.fn(files({ '/repo/page.vue': 'hero.png', '/repo/app.ts': 'hero.png' }));
 
-      await sweepForMentions({
+      const result = await sweepForMentions({
         graph,
-        readFile,
-        scannedFiles: [{ path: '/repo/app.ts', relative: 'app.ts' }],
+        readFile: files({ '/repo/page.vue': 'hero.png' }),
+        scannedMentions: [{ basename: 'hero.png', relative: 'app.ts', line: 3, quote: 'hero.png' }],
       });
 
-      expect(readFile).toHaveBeenCalledTimes(1);
-      expect(readFile).toHaveBeenCalledWith('/repo/page.vue');
+      expect(result.mentions.get('hero.png')?.map((m) => m.source)).toEqual(['unscanned-file']);
     });
 
-    it('reads nothing at all when every asset is referenced', async () => {
-      const graph = graphOf({
-        assets: [asset('used.png')],
-        references: [resolved('index.html', './used.png', 'used.png')],
-      });
+    it('costs no filesystem read of its own', async () => {
+      // The whole point of moving it into `scan`: re-reading 7,521 files cost 12 s.
+      const graph = graphOf({ assets: [asset('hero.png')] });
       const readFile = vi.fn(files({}));
 
-      await sweepForMentions({
+      const result = await sweepForMentions({
         graph,
         readFile,
-        scannedFiles: [{ path: '/repo/app.ts', relative: 'app.ts' }],
+        scannedMentions: [{ basename: 'hero.png', relative: 'app.ts', line: 3, quote: 'hero.png' }],
       });
 
       expect(readFile).not.toHaveBeenCalled();
+      expect(result.mentions.get('hero.png')?.[0]?.where).toBe('app.ts:3');
     });
   });
 
