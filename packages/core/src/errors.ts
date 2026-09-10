@@ -8,7 +8,13 @@ export type UpflyErrorCode =
   /** Two adapters claim the same file extension, so the winner would be arbitrary. */
   | 'ADAPTER_EXTENSION_CONFLICT'
   /** An adapter could not parse a file it was handed. Never swallowed: see rule 9. */
-  | 'ADAPTER_PARSE_FAILED';
+  | 'ADAPTER_PARSE_FAILED'
+  /**
+   * A file names an adapter that was not supplied — scanning with a different
+   * adapter set than discovery used. Loud because the quiet alternative is a file
+   * going unread and an asset silently looking dead.
+   */
+  | 'ADAPTER_NOT_REGISTERED';
 
 /**
  * All errors the engine throws deliberately.
