@@ -129,10 +129,11 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
 exports[`buildReport > astro: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  7 images, 490 B
-  3 references across 4 source files — 3 linked
-  3 referenced, 4 not
-  images were not decoded (--no-probe), so savings are unknown
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 4 source files and found 7 images, 490 B in total
+  3 of 3 references resolve, and they point at 3 of those images
+  the other 4 images have no reference Upfly could follow
 
 Nothing was skipped.
 
@@ -311,10 +312,11 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
 exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  8 images, 650 B
-  4 references across 4 source files — 3 linked
-  3 referenced, 5 not
-  images were not decoded (--no-probe), so savings are unknown
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 4 source files and found 8 images, 650 B in total
+  3 of 4 references resolve, and they point at 3 of those images
+  the other 5 images have no reference Upfly could follow
 
 1 reference could not be resolved safely
 
@@ -428,10 +430,11 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
 exports[`buildReport > next-app: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  10 images, 700 B
-  11 references across 7 source files — 11 linked
-  9 referenced, 1 not
-  images were not decoded (--no-probe), so savings are unknown
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 7 source files and found 10 images, 700 B in total
+  11 of 11 references resolve, and they point at 9 of those images
+  the other 1 image have no reference Upfly could follow
 
 Nothing was skipped.
 
@@ -528,10 +531,11 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
 exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  11 images, 1 KB
-  11 references across 3 source files — 10 linked
-  9 referenced, 2 not
-  images were not decoded (--no-probe), so savings are unknown
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 3 source files and found 11 images, 1 KB in total
+  10 of 11 references resolve, and they point at 9 of those images
+  the other 2 images have no reference Upfly could follow
 
 Nothing was skipped.
 
@@ -629,10 +633,11 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
 exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  11 images, 1.1 KB
-  12 references across 5 source files — 12 linked
-  10 referenced, 1 not
-  images were not decoded (--no-probe), so savings are unknown
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 5 source files and found 11 images, 1.1 KB in total
+  12 of 12 references resolve, and they point at 10 of those images
+  the other 1 image have no reference Upfly could follow
 
 Nothing was skipped.
 

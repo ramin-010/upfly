@@ -396,6 +396,118 @@ describe('buildReport', () => {
     });
   });
 
+  // Built with `String.fromCharCode` rather than an escape: this harness eats a
+  // backslash in transit, which turned `split('\n')` into a split on a literal
+  // newline in the source. Known trap, documented in STATE.md's Gotchas.
+  const NEWLINE = String.fromCharCode(10);
+
+  describe('the headline says what to act on, and says when it is a floor (R21 #4, R25 #2)', () => {
+    /**
+     * §5.1(d)'s criterion is whether the numbers are obvious in ten seconds, and
+     * this is the only text that gets ten seconds. It failed twice: two overlapping
+     * counts with no stated relationship, and the savings figure — the one line
+     * anybody wants — placed fourth while being a **floor** that said so only in a
+     * caveat forty lines below.
+     *
+     * Three of the four branches below are unreachable from every fixture, because
+     * `reportFor` runs them all with `probed: false`. Same trigger as the skipped
+     * section and the size section: when every fixture shares a value for the thing
+     * under test, the fixtures cannot test it.
+     */
+    const ROOT = '/repo';
+
+    function headlineOf(over: {
+      probed?: boolean;
+      saving?: number;
+      capped?: number;
+      assets?: number;
+    }) {
+      const assetCount = over.assets ?? 10;
+      const assets = Array.from({ length: assetCount }, (_, index) => ({
+        path: `${ROOT}/img${index}.png`,
+        relative: `img${index}.png`,
+        extension: '.png',
+        bytes: 100,
+      }));
+      const probes = Array.from({ length: over.capped ?? 0 }, (_, index) => ({
+        relative: `img${index}.png`,
+        metadata: { width: 10, height: 10, format: 'png' as const, pages: 1 },
+        encoded: [],
+        skipped: [
+          {
+            measurement: 'webp' as const,
+            code: 'beyond-encode-cap' as const,
+            reason: 'beyond the cap',
+          },
+        ],
+      }));
+
+      const report = buildReport({
+        graph: buildGraph({ root: ROOT, assets, references: [], unscannedFiles: [] }),
+        audit: {
+          findings:
+            over.saving === undefined
+              ? []
+              : [
+                  {
+                    kind: 'format-opportunity' as const,
+                    asset: 'img0.png',
+                    from: 'png',
+                    to: 'webp' as const,
+                    bytes: 1_000_000,
+                    wouldBe: 1_000_000 - over.saving,
+                    savedBytes: over.saving,
+                    savedPercent: 50,
+                  },
+                ],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: over.probed ?? true,
+        },
+        discovery: {
+          root: ROOT,
+          assets,
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        ...(probes.length > 0 ? { probes } : {}),
+      });
+
+      return renderReport(report).split(NEWLINE)[2] ?? '';
+    }
+
+    it('leads with the savings, not with the file counts', () => {
+      expect(headlineOf({ saving: 4_200_000 })).toContain('4.2 MB of savings');
+    });
+
+    it('says the number is incomplete when the cap left images unmeasured', () => {
+      // R25 #2. shadcn-ui had 80 of 195 unmeasured, and the report presented its
+      // total as if it were the total. The count goes in the same sentence.
+      const line = headlineOf({ saving: 4_200_000, capped: 3, assets: 10 });
+
+      expect(line).toContain('so far');
+      expect(line).toContain('3 of 10 images went unmeasured');
+      expect(line).toContain('--probe-all');
+    });
+
+    it('says plainly that it measured everything when it did', () => {
+      expect(headlineOf({ saving: 4_200_000, assets: 10 })).toContain(
+        'measured across all 10 images',
+      );
+    });
+
+    it('distinguishes "no savings" from "not measured"', () => {
+      // Two very different statements that both used to render as an absent line.
+      expect(headlineOf({ assets: 10 })).toContain('no savings found');
+      expect(headlineOf({ probed: false })).toContain('savings not measured');
+    });
+  });
+
   describe('one image, one size story (R21)', () => {
     /**
      * `oversized` and `format-opportunity` are two measurements of the same file,

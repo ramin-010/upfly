@@ -37,26 +37,63 @@ export function renderReport(report: Report): string {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
+/**
+ * The first six lines, and the only ones that reliably get read.
+ *
+ * §5.1(d) asks whether the numbers are obvious within ten seconds, and this is the
+ * text that gets the ten seconds. It failed that twice over (R21 #4, R25 #2):
+ *
+ * - `132 references across 2 681 source files — 13 linked` sat directly above
+ *   `5 referenced, 150 not`, two overlapping counts with **no stated relationship**.
+ *   Nothing on the page let a reader work out that the 13 resolving references point
+ *   at 5 distinct images; they had to guess whether `13` and `5` were the same thing
+ *   counted differently.
+ * - `4.2 MB of measured savings available` — the one line anybody actually wants —
+ *   was **fourth**, and it was a **floor** that did not say so. The encode cap left
+ *   80 of shadcn-ui's 195 images unmeasured, and the only mention of that sat forty
+ *   lines below in a caveat.
+ *
+ * So: **the first line is what a reader can act on, and everything under it is
+ * provenance.** A number that is a floor says so in the same sentence — a footnote
+ * elsewhere in the document is how "4.2 MB" gets quoted as if it were the total.
+ */
 function headline(report: Report): string[] {
   const { summary } = report;
   const unreferenced = summary.assets - summary.referencedAssets;
+  const capped = report.caveats.find((caveat) => caveat.code === 'encode-capped')?.count ?? 0;
 
-  const lines = [
+  return [
     'Upfly audit',
     '',
-    `  ${count(summary.assets, 'image')}, ${bytes(summary.assetBytes)}`,
-    `  ${count(summary.references, 'reference')} across ${count(summary.sourceFiles, 'source file')} — ${summary.linkedReferences} linked`,
-    `  ${summary.referencedAssets} referenced, ${unreferenced} not`,
+    `  ${savingsLine(summary, capped)}`,
+    '',
+    `  scanned ${count(summary.sourceFiles, 'source file')} and found ${count(summary.assets, 'image')}, ${bytes(summary.assetBytes)} in total`,
+    `  ${summary.linkedReferences} of ${count(summary.references, 'reference')} resolve, and they point at ${summary.referencedAssets} of those images`,
+    `  the other ${count(unreferenced, 'image')} have no reference Upfly could follow`,
+    '',
   ];
+}
 
-  if (summary.potentialSavingBytes > 0) {
-    lines.push(`  ${bytes(summary.potentialSavingBytes)} of measured savings available`);
-  } else if (!summary.probed) {
-    lines.push('  images were not decoded (--no-probe), so savings are unknown');
+/**
+ * What a reader can act on, in one sentence including its own caveat.
+ *
+ * Four cases, and the third is the one that matters: a capped run has measured *some*
+ * of the images, so its number is a lower bound and has to be readable as one. It
+ * deliberately does not say "floor" or "lower bound" — it says how many were left
+ * out, which is the fact underneath the jargon and the thing that tells a reader what
+ * to do next.
+ */
+function savingsLine(summary: Report['summary'], capped: number): string {
+  if (!summary.probed) {
+    return 'savings not measured — images were not decoded (--no-probe)';
   }
-
-  lines.push('');
-  return lines;
+  if (capped > 0) {
+    return `${bytes(summary.potentialSavingBytes)} of savings found so far — ${capped} of ${count(summary.assets, 'image')} went unmeasured, so there may be more (--probe-all)`;
+  }
+  if (summary.potentialSavingBytes === 0) {
+    return `no savings found, and every one of ${count(summary.assets, 'image')} was measured`;
+  }
+  return `${bytes(summary.potentialSavingBytes)} of savings, measured across all ${count(summary.assets, 'image')}`;
 }
 
 /**
