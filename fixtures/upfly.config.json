@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "watchTargets": [],
+  "storageMode": "in-place",
+  "maxFileSize": 20000000,
+  "inPlaceKeepOriginal": true
+}

@@ -36,7 +36,7 @@ describe('javascriptAdapter fixtures', () => {
       { path: '../images/frame.png', ceiling: 'high', slice: '../images/frame.png' },
       { path: '../images/frame-hover.png', ceiling: 'high', slice: '../images/frame-hover.png' },
       { path: '/static/inline.png', ceiling: 'high', slice: '/static/inline.png' },
-      { path: '/static/inline@2x.png 2x', ceiling: 'high', slice: '/static/inline@2x.png 2x' },
+      { path: '/static/inline@2x.png', ceiling: 'high', slice: '/static/inline@2x.png' },
       {
         path: '/generated/${slug}-wide.png',
         ceiling: 'medium',

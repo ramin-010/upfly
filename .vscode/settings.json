@@ -1,0 +1,21 @@
+{
+  // Belt and braces only — the file that actually stops the v2 Upfly extension is
+  // `fixtures/upfly.config.json`. This setting alone does nothing, because the
+  // extension reads VS Code settings only when `upfly.useGlobalSettings` is true and
+  // that defaults to false; with no project config it falls back to its own built-in
+  // defaults instead. Setting this as well costs nothing and helps anyone who has
+  // flipped that flag.
+  //
+  // Why it matters: the extension's defaults are watchTargets ["public"], format
+  // "webp", storageMode "in-place", inPlaceKeepOriginal false. Any image written
+  // into a folder named `public` is converted to WebP in place, the original is
+  // deleted, and no reference is updated.
+  //
+  // That is what happened to the framework fixtures on 2026-09-10, seconds after
+  // they were generated: 19 images in three `public/` directories were converted,
+  // leaving 17 references pointing at files that no longer existed. The fixtures
+  // deliberately model an *unoptimized* project, which is exactly what the watcher
+  // eats — and it is the clearest possible demonstration of why v3 exists.
+  "upfly.enabled": false,
+  "upfly.useGlobalSettings": true
+}

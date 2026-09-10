@@ -17,7 +17,12 @@ import { applyEdits } from '../edits.js';
 import { UpflyError } from '../errors.js';
 import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
-import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './reference-path.js';
+import {
+  isExternalUrl,
+  parseSrcset,
+  splitPathSuffix,
+  templateExpressionReason,
+} from './reference-path.js';
 
 type ParsedNode = DefaultTreeAdapterMap['node'];
 type ParsedElement = DefaultTreeAdapterMap['element'];
@@ -226,42 +231,6 @@ function attributeValueRange(
     return { start: startOffset + index + 1, end: startOffset + attribute.length - 1 };
   }
   return { start: startOffset + index, end: endOffset };
-}
-
-/**
- * Split a `srcset` into its candidate URLs, following the HTML parsing rules.
- *
- * Splitting on commas alone is wrong twice over: a descriptor (`1x`, `800w`) follows
- * each URL, and a URL may itself end in a comma when its descriptor is omitted.
- */
-function parseSrcset(value: string): { url: string; offset: number }[] {
-  const candidates: { url: string; offset: number }[] = [];
-  let index = 0;
-
-  while (index < value.length) {
-    while (index < value.length && /[\s,]/.test(value.charAt(index))) index += 1;
-    if (index >= value.length) break;
-
-    const start = index;
-    while (index < value.length && !/\s/.test(value.charAt(index))) index += 1;
-
-    // Trailing commas belong to the separator, not to the URL.
-    let end = index;
-    let hadTrailingComma = false;
-    while (end > start && value.charAt(end - 1) === ',') {
-      end -= 1;
-      hadTrailingComma = true;
-    }
-
-    if (end > start) candidates.push({ url: value.slice(start, end), offset: start });
-
-    // With no trailing comma a descriptor follows, and it runs to the next comma.
-    if (!hadTrailingComma) {
-      while (index < value.length && value.charAt(index) !== ',') index += 1;
-    }
-  }
-
-  return candidates;
 }
 
 function addEntityEscapedReference(range: { start: number; end: number }, context: Context): void {

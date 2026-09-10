@@ -78,3 +78,44 @@ export function templateExpressionReason(rawPath: string): string | null {
   }
   return null;
 }
+
+/**
+ * Split a `srcset` into its candidate URLs, following the HTML parsing rules.
+ *
+ * Shared by the HTML and JavaScript adapters, because JSX `srcSet` holds exactly
+ * the same syntax. Emitting it unsplit produces two false positives at once: the
+ * whole string resolves to nothing (a `broken` finding), and every image in it
+ * but the first gains no reference at all and looks dead.
+ *
+ * Splitting on commas alone is wrong twice over: a descriptor (`1x`, `800w`) follows
+ * each URL, and a URL may itself end in a comma when its descriptor is omitted.
+ */
+export function parseSrcset(value: string): { url: string; offset: number }[] {
+  const candidates: { url: string; offset: number }[] = [];
+  let index = 0;
+
+  while (index < value.length) {
+    while (index < value.length && /[\s,]/.test(value.charAt(index))) index += 1;
+    if (index >= value.length) break;
+
+    const start = index;
+    while (index < value.length && !/\s/.test(value.charAt(index))) index += 1;
+
+    // Trailing commas belong to the separator, not to the URL.
+    let end = index;
+    let hadTrailingComma = false;
+    while (end > start && value.charAt(end - 1) === ',') {
+      end -= 1;
+      hadTrailingComma = true;
+    }
+
+    if (end > start) candidates.push({ url: value.slice(start, end), offset: start });
+
+    // With no trailing comma a descriptor follows, and it runs to the next comma.
+    if (!hadTrailingComma) {
+      while (index < value.length && value.charAt(index) !== ',') index += 1;
+    }
+  }
+
+  return candidates;
+}

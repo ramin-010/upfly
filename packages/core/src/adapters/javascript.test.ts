@@ -118,7 +118,7 @@ describe('javascriptAdapter', () => {
   describe('JSX attributes', () => {
     const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
       ['src string', '<img src="/hero.png" />', ['/hero.png']],
-      ['srcSet string', '<img srcSet="/a.png 1x" />', ['/a.png 1x']],
+      ['srcSet string', '<img srcSet="/a.png 1x" />', ['/a.png']],
       ['poster', '<video poster="/p.png" />', ['/p.png']],
       ['src in an expression container', '<img src={"/hero.png"} />', ['/hero.png']],
       [
@@ -133,6 +133,24 @@ describe('javascriptAdapter', () => {
 
     it.each(cases)('%s', (_name, source, expected) => {
       expect(paths(source)).toEqual([...expected]);
+    });
+
+    it('splits srcSet into candidates, as the HTML adapter does', () => {
+      // Left unsplit this is two false positives: the whole string resolves to
+      // nothing, and every image but the first gains no reference and looks dead.
+      const source = '<img srcSet="/a.png 1x, /b.png 2x" />';
+      expect(paths(source)).toEqual(['/a.png', '/b.png']);
+      expect(slices(source)).toEqual(['/a.png', '/b.png']);
+    });
+
+    it('rewrites one srcSet candidate without disturbing the others', () => {
+      const source = '<img srcSet="/a.png 1x, /b.png 2x" />';
+      const second = find(source)[1];
+      const rewritten = javascriptAdapter.rewrite({
+        text: source,
+        edits: [{ start: second?.start ?? 0, end: second?.end ?? 0, replacement: '/b.webp' }],
+      });
+      expect(rewritten).toBe('<img srcSet="/a.png 1x, /b.webp 2x" />');
     });
 
     it('marks a JSX string attribute as high', () => {

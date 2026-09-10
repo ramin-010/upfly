@@ -28,7 +28,7 @@ import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
-import { isExternalUrl, splitPathSuffix } from './reference-path.js';
+import { isExternalUrl, parseSrcset, splitPathSuffix } from './reference-path.js';
 
 /**
  * Which babel plugins each extension needs.
@@ -215,15 +215,20 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
   const value = node.value;
   if (value === null || value === undefined) return;
 
+  // `srcSet` holds a candidate list, not a path. Left unsplit it produces two false
+  // positives at once: the whole string resolves to nothing, and every image in it
+  // but the first gains no reference and looks dead.
+  const isSrcSet = name.toLowerCase() === 'srcset';
+
   if (value.type === 'StringLiteral') {
-    addLiteralReference(value, context, 'high', 'attr', `JSX ${name}`);
+    addLiteralReference(value, context, 'high', 'attr', `JSX ${name}`, isSrcSet);
     return;
   }
 
   if (value.type === 'JSXExpressionContainer') {
     const expression = value.expression;
     if (expression.type === 'StringLiteral') {
-      addLiteralReference(expression, context, 'high', 'attr', `JSX ${name}`);
+      addLiteralReference(expression, context, 'high', 'attr', `JSX ${name}`, isSrcSet);
       return;
     }
     if (expression.type === 'TemplateLiteral') {
@@ -367,6 +372,8 @@ function addLiteralReference(
   ceiling: Confidence,
   kind: ReferenceKind,
   description: string,
+  /** Treat the value as a `srcset` candidate list rather than a single path. */
+  isSrcSet = false,
 ): void {
   if (literal.start === null || literal.start === undefined) return;
   if (literal.end === null || literal.end === undefined) return;
@@ -389,6 +396,21 @@ function addLiteralReference(
       note: `${description}: the string contains escape sequences, so its path text cannot be located exactly`,
       skipPathChecks: true,
     });
+    return;
+  }
+
+  if (isSrcSet) {
+    for (const candidate of parseSrcset(raw)) {
+      addReference({
+        context,
+        start: start + candidate.offset,
+        end: start + candidate.offset + candidate.url.length,
+        rawPath: candidate.url,
+        kind,
+        ceiling,
+        note: description,
+      });
+    }
     return;
   }
 
