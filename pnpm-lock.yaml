@@ -27,6 +27,15 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)
 
+  bench:
+    dependencies:
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4(@types/node@22.20.1)
+      upfly-core:
+        specifier: workspace:*
+        version: link:../packages/core
+
   fixtures/astro: {}
 
   fixtures/eleventy: {}

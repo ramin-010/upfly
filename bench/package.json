@@ -1,0 +1,16 @@
+{
+  "name": "upfly-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Performance measurements for upfly-core. Every number in the README comes from here.",
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "bench": "tsc --build && node dist/run.js"
+  },
+  "dependencies": {
+    "sharp": "^0.35.4",
+    "upfly-core": "workspace:*"
+  }
+}
