@@ -13,6 +13,7 @@ import { buildGraph, unreferencedAssets } from './graph.js';
 import { isLinked } from './reference.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
+import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 
 /**
@@ -269,6 +270,75 @@ describe('framework fixtures', () => {
         expect((await graphTree(name)).unscannedExtensions).toEqual([]);
       },
     );
+
+    describe('the sweep that decides dead against possibly-dead', () => {
+      async function sweep(name: (typeof NAMES)[number]) {
+        return sweepForMentions({
+          graph: await graphTree(name),
+          readFile: (path) => readFile(path, 'utf8'),
+        });
+      }
+
+      it('rescues the three astro assets that only index.astro references', async () => {
+        // Haystack (a). No adapter reads `.astro`, so all three have zero
+        // references for a reason that has nothing to do with the assets.
+        const { mentions } = await sweep('astro');
+
+        expect([...mentions.keys()].sort()).toEqual([
+          'public/banner.png',
+          'public/favicon.png',
+          'src/assets/logo.png',
+        ]);
+        expect(mentions.get('public/banner.png')?.[0]?.where).toBe('src/pages/index.astro:11');
+      });
+
+      it('leaves astro-s deliberately dead asset confidently dead', async () => {
+        // The other half, and the reason a per-asset hedge is worth the work:
+        // `never-used.png` is in the same tree and is not rescued.
+        const { mentions } = await sweep('astro');
+
+        expect(mentions.has('public/never-used.png')).toBe(false);
+      });
+
+      it('rescues the eleventy asset R10 was raised for, citing file and line', async () => {
+        // Haystack (b). `first.md` parsed perfectly; the reference is `dynamic`,
+        // so it links nothing and the asset looked confidently dead.
+        const { mentions } = await sweep('eleventy');
+
+        expect(mentions.get('src/img/templated.png')).toEqual([
+          {
+            asset: 'src/img/templated.png',
+            source: 'unresolved-reference',
+            where: 'src/posts/first.md:7',
+            quote: '{{ site.url }}/img/templated.png',
+          },
+        ]);
+      });
+
+      it('rescues the eleventy assets that only .njk templates reference', async () => {
+        const { mentions } = await sweep('eleventy');
+
+        expect(mentions.get('src/img/logo.png')?.[0]?.where).toBe('src/index.njk:5');
+        expect(mentions.get('src/img/favicon.png')?.[0]?.where).toBe('src/_includes/base.njk:4');
+        expect(mentions.has('src/img/unused.png')).toBe(false);
+      });
+
+      it.each(['next-app', 'plain-html'] as const)(
+        '%s: every unreferenced asset stays confidently dead',
+        async (name) => {
+          // Fully scanned trees, and nothing unresolved names these — so `dead`
+          // is reachable, which is the whole point of amending the global hedge.
+          const { mentions, skipped } = await sweep(name);
+
+          expect(mentions.size).toBe(0);
+          expect(skipped).toEqual([]);
+        },
+      );
+
+      it.each(NAMES)('%s: reads nothing it cannot account for', async (name) => {
+        expect((await sweep(name)).skipped).toEqual([]);
+      });
+    });
 
     it('links a CSS-only reference, so the asset is not dead', async () => {
       // `unused-in-css.png` is named for the trap: unused in JSX, referenced from a

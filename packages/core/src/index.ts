@@ -34,6 +34,8 @@ export { resolveReferences } from './resolve.js';
 export type { ResolveOptions } from './resolve.js';
 export { scanSources } from './scan.js';
 export type { ReadFilePort, ScanOptions, ScanResult } from './scan.js';
+export { sweepForMentions } from './sweep.js';
+export type { Mention, MentionSource, SweepOptions, SweepResult, SweepSkip } from './sweep.js';
 export type { UpflyErrorCode } from './errors.js';
 export {
   IMAGE_EXTENSIONS,
