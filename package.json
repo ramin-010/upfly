@@ -17,6 +17,7 @@
     "format": "biome format --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "bench": "pnpm --filter upfly-bench run bench",
+    "validate": "pnpm --filter upfly-bench run validate",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"
