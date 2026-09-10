@@ -45,6 +45,7 @@ import {
   scanSources,
   sweepForMentions,
 } from 'upfly-core';
+import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = [
@@ -103,16 +104,6 @@ function basenamesOf(assets: readonly Asset[]): Set<string> {
   );
 }
 
-/** A grep hit the graph did not link — the raw material of §5.1(b). */
-interface Unaccounted {
-  readonly asset: string;
-  readonly file: string;
-  readonly line: number;
-  readonly text: string;
-  /** Why it is probably fine, or `null` when it genuinely needs a human. */
-  readonly explanation: string | null;
-}
-
 /** One complete pass over a repository, from the walk to the rendered report. */
 interface PipelineResult {
   readonly discovery: Awaited<ReturnType<typeof discover>>;
@@ -137,7 +128,7 @@ interface RepoResult {
   readonly noAbsolutePath: boolean;
   /** Whatever proved the absolute-path check wrong, so a failure names itself. */
   readonly absolutePathEvidence: string[];
-  readonly unaccounted: Unaccounted[];
+  readonly unaccounted: Triaged[];
   /** §5.1(d), the automated half: a verdict per finding, from an independent oracle. */
   readonly verified: VerifyResult;
   readonly report: Report;
@@ -392,7 +383,7 @@ async function falseNegativeSweep(
   root: string,
   graph: Graph,
   references: readonly Reference[],
-): Promise<Unaccounted[]> {
+): Promise<Triaged[]> {
   const assetsByBasename = new Map<string, string[]>();
   for (const node of graph.assets) {
     const key = basename(node.asset.relative).toLowerCase();
@@ -408,7 +399,7 @@ async function falseNegativeSweep(
   }
 
   const claimed = new Set(ADAPTERS.flatMap((adapter) => [...adapter.extensions]));
-  const unaccounted: Unaccounted[] = [];
+  const unaccounted: Triaged[] = [];
   const pattern = new RegExp(
     `[\\w@.\\-]+\\.(?:${IMAGE_EXTENSIONS.map((extension) => extension.slice(1)).join('|')})\\b`,
     'gi',
@@ -435,14 +426,17 @@ async function falseNegativeSweep(
         if (linked.has(`${absolute}\u0000${absolute}`)) continue;
         if (linked.has(`${file}\u0000${absolute}`)) continue;
 
-        const line = lineText(text, match.index);
-        unaccounted.push({
-          asset,
-          file: relative(root, file).replaceAll('\\', '/'),
-          line: lineOf(text, match.index),
-          text: line,
-          explanation: explain(extension, claimed, line, match[0]),
-        });
+        unaccounted.push(
+          triage(
+            {
+              asset,
+              file: relative(root, file).replaceAll('\\', '/'),
+              line: lineOf(text, match.index),
+              text: lineText(text, match.index),
+            },
+            claimed,
+          ),
+        );
       }
       match = pattern.exec(text);
     }
@@ -451,42 +445,6 @@ async function falseNegativeSweep(
   return unaccounted.sort(
     (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.asset.localeCompare(b.asset),
   );
-}
-
-/**
- * Why a hit is probably fine, or `null` when a person has to decide.
- *
- * Only the `null` ones are real §5.1(b) work. Everything else is a known gap that
- * `possibly-dead` already covers, or a file kind that was never a candidate.
- */
-function explain(
-  extension: string,
-  claimed: ReadonlySet<string>,
-  line: string,
-  token: string,
-): string | null {
-  if (!claimed.has(extension)) {
-    return `no adapter reads ${extension} — covered by unscannedExtensions and possibly-dead`;
-  }
-
-  // An absolute URL is not a reference to a file in this repository. Documentation
-  // repos are full of them — astro-docs cites its own published assets by URL — and
-  // leaving them in buries the hits that actually need a decision.
-  const before = line.slice(0, Math.max(0, line.indexOf(token)));
-  if (/https?:\/\/\S*$/.test(before)) {
-    return 'part of an absolute URL, which was never a candidate reference';
-  }
-
-  // A documentation example rather than a live reference: an import statement being
-  // shown to a reader, or a fenced snippet of what to type.
-  if (
-    (extension === '.md' || extension === '.mdx') &&
-    /^\s*(?:import\b|<|\||\$|npm\b|npx\b|pnpm\b|#)/.test(line)
-  ) {
-    return 'inside a documentation example, not a live reference';
-  }
-
-  return null;
 }
 
 async function* walk(directory: string): AsyncGenerator<string> {
@@ -536,6 +494,7 @@ async function writeArtifacts(outDir: string, result: RepoResult): Promise<void>
   );
   await writeFile(join(outDir, `${name}.report.txt`), result.human, 'utf8');
   await writeFile(join(outDir, `${name}.review.md`), worksheet(result), 'utf8');
+  await writeFile(join(outDir, `${name}.sweep.md`), sweepLog(result), 'utf8');
 }
 
 /**
@@ -577,22 +536,32 @@ function worksheet(result: RepoResult): string {
     `## 4. §5.1(b) false-negative sweep — ${needsHuman.length} hits need a decision`,
     '',
     `Grepped the whole repo for every asset filename. ${result.unaccounted.length} hits were not`,
-    `linked by the graph; ${result.unaccounted.length - needsHuman.length} are in file types no`,
-    'adapter reads, which `possibly-dead` already covers. The rest are below: each is either a',
-    'genuine adapter miss (fix it, add a fixture) or correctly out of scope (write down which).',
+    `linked by the graph, and ${result.unaccounted.length - needsHuman.length} were explained`,
+    'mechanically — a file type no adapter reads, an absolute URL, a commented-out line, prose, or a',
+    'line naming a different file that shares a basename. The rest are below, **grouped by shape so',
+    'the same decision is made once**.',
+    '',
+    'The question for each: **if this image were renamed, would this line break?** If yes it is a',
+    'miss and needs an adapter fix plus a fixture. If no, write down why.',
     '',
   );
+
   if (needsHuman.length === 0) {
     lines.push('_Nothing unaccounted for in a file an adapter claims._', '');
   } else {
-    for (const entry of needsHuman.slice(0, 60)) {
-      lines.push(
-        `- [ ] \`${entry.file}:${entry.line}\` mentions \`${entry.asset}\``,
-        `      \`${entry.text}\``,
-      );
+    for (const group of groupResidue(needsHuman)) {
+      lines.push(`### ${group.label}`, '');
+      // Every one of them. The previous version stopped at 60 and said "…and N
+      // more", which is a silent skip inside the pass that exists to find silent
+      // skips; the full list also lives in `<repo>.sweep.md`.
+      for (const entry of group.entries) {
+        lines.push(
+          `- [ ] \`${entry.file}:${entry.line}\` → \`${entry.asset}\``,
+          `      \`${entry.text}\``,
+        );
+      }
+      lines.push('');
     }
-    if (needsHuman.length > 60) lines.push(`- …and ${needsHuman.length - 60} more.`);
-    lines.push('');
   }
 
   lines.push(
@@ -724,6 +693,120 @@ function verdictCounts(verified: VerifyResult): string {
     verified.items.filter((item) => item.verdict === verdict).length;
 
   return `${of('confirmed-genuine')} genuine, ${of('confirmed-false')} FALSE, ${of('ambiguous')} ambiguous`;
+}
+
+/** One judgement call, and everything it covers. */
+interface ResidueGroup {
+  readonly label: string;
+  readonly entries: Triaged[];
+}
+
+/**
+ * The residue, collapsed to the decisions it actually contains.
+ *
+ * Two passes, because one key cannot do it and measuring showed why. Grouping by
+ * **citing file** collapses astro-docs' 120 hits — every one of them
+ * `src/data/logos.ts` — into a single decision; grouping by **asset** would explode
+ * the same 120 back out, since they name 120 different logos. And the reverse holds
+ * for the long tail: astro-docs' remaining 14 hits are one sentence in one document
+ * translated into fourteen languages, and shadcn-ui's 36 JSON ones are two assets
+ * across a generated registry. One hit each, same decision every time.
+ *
+ * So: files carrying several hits group by file; whatever is left over — one hit per
+ * file — groups by the asset and shape those hits share. 228 items become 25
+ * questions, and this is the third place in this phase where the fix for "a wall of
+ * near-identical items" was to group by what they have in common rather than to cap
+ * the list.
+ */
+function groupResidue(entries: readonly Triaged[]): ResidueGroup[] {
+  const byFile = new Map<string, Triaged[]>();
+  for (const entry of entries) {
+    byFile.set(entry.file, [...(byFile.get(entry.file) ?? []), entry]);
+  }
+
+  const groups: ResidueGroup[] = [];
+  const singles: Triaged[] = [];
+
+  for (const [file, group] of byFile) {
+    if (group.length > 1) {
+      groups.push({
+        label: `\`${file}\` — ${group.length} hits (${shapesIn(group)})`,
+        entries: group,
+      });
+    } else if (group[0] !== undefined) {
+      singles.push(group[0]);
+    }
+  }
+
+  const byAsset = new Map<string, Triaged[]>();
+  for (const entry of singles) {
+    const key = `${entry.asset}\u0000${entry.shape ?? ''}`;
+    byAsset.set(key, [...(byAsset.get(key) ?? []), entry]);
+  }
+
+  for (const group of byAsset.values()) {
+    const first = group[0];
+    if (first === undefined) continue;
+    groups.push({
+      label:
+        group.length === 1
+          ? `\`${first.file}\` — 1 hit (${first.shape ?? ''})`
+          : `\`${first.asset}\` — named once in each of ${group.length} files (${first.shape ?? ''})`,
+      entries: group,
+    });
+  }
+
+  return groups.sort(
+    (a, b) => b.entries.length - a.entries.length || a.label.localeCompare(b.label),
+  );
+}
+
+/** The shapes present in a group, so the label still says what kind of line it is. */
+function shapesIn(entries: readonly Triaged[]): string {
+  const shapes = [...new Set(entries.map((entry) => entry.shape ?? 'unclassified'))].sort();
+  return shapes.join(', ');
+}
+
+/** Every hit and what triage made of it — the audit trail for §5.1(b) itself. */
+function sweepLog(result: RepoResult): string {
+  const lines = [
+    `# ${result.repo.name} — §5.1(b) sweep, every hit`,
+    '',
+    `${result.unaccounted.length} grep hits the graph did not link. This is the complete list,`,
+    'including the ones triage explained — so the triage rules themselves can be reviewed rather',
+    'than trusted.',
+    '',
+  ];
+
+  const explained = result.unaccounted.filter((entry) => entry.explanation !== null);
+  const byReason = new Map<string, number>();
+  for (const entry of explained) {
+    const reason = entry.explanation ?? '';
+    byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  }
+
+  lines.push(`## Explained — ${explained.length}`, '');
+  for (const [reason, count] of [...byReason].sort((a, b) => b[1] - a[1])) {
+    lines.push(`- ${count} × ${reason}`);
+  }
+  lines.push('');
+
+  for (const entry of explained) {
+    lines.push(`- \`${entry.file}:${entry.line}\` → \`${entry.asset}\` — ${entry.explanation}`);
+  }
+  lines.push('');
+
+  const residue = result.unaccounted.filter((entry) => entry.explanation === null);
+  lines.push(`## Needs a decision — ${residue.length}`, '');
+  for (const group of groupResidue(residue)) {
+    lines.push(`### ${group.label}`, '');
+    for (const entry of group.entries) {
+      lines.push(`- \`${entry.file}:${entry.line}\` → \`${entry.asset}\``, `  \`${entry.text}\``);
+    }
+    lines.push('');
+  }
+
+  return `${lines.join('\n')}\n`;
 }
 
 function summarise(result: RepoResult): string {

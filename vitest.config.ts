@@ -2,7 +2,15 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/test/**/*.test.ts'],
+    // `bench/` is included because `triage.ts` decides which §5.1(b) hits a person
+    // never sees. A wrong 'explained' there hides a false negative inside the pass
+    // built to find false negatives, which is the one outcome nothing downstream
+    // looks at again. Coverage stays scoped to `core` below.
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'packages/*/test/**/*.test.ts',
+      'bench/src/**/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
