@@ -274,9 +274,15 @@ describe('§5.1(e) hostile inputs', () => {
 
     const { report } = await runEverything(root);
 
-    expect(report.summary.assets).toBe(created ? 1 : 0);
-    // Whatever happened, nothing was lost silently.
-    expect(report.version).toBe(1);
+    // If the OS refused the path there is nothing here to test, and a green tick
+    // would say §5.1(e) covered a case it never reached. `report.version` was the
+    // fallback assertion and it is a constant — it cannot fail on any input.
+    if (!created) {
+      expect.fail('the OS refused a 375-character path, so this case did not run');
+    }
+
+    expect(report.summary.assets).toBe(1);
+    expect(report.summary.findings.dead + report.summary.findings['possibly-dead']).toBe(1);
   });
 
   it('reports every one of them together without crashing', async () => {
@@ -297,8 +303,17 @@ describe('§5.1(e) hostile inputs', () => {
 
     // One genuinely broken reference, and it is the one that is genuinely broken.
     expect(report.findings.filter((finding) => finding.kind === 'broken')).toHaveLength(1);
-    // The unparseable stylesheet is reported, not swallowed.
-    expect(report.skipped.some((item) => item.stage === 'scan')).toBe(true);
+    // The unparseable stylesheet is reported, not swallowed — and named, so this
+    // still fails if the stylesheet starts parsing and something else takes its
+    // place in the scan bucket. (`unread.vue` cannot: an unclaimed extension is
+    // coverage rather than failure and `collectSkips` filters it out.)
+    expect(report.skipped).toContainEqual(
+      expect.objectContaining({
+        what: 'broken.scss',
+        stage: 'scan',
+        reason: expect.stringContaining('parse-failed'),
+      }),
+    );
     // And the report still renders.
     expect(text).toContain('Upfly audit');
   });
