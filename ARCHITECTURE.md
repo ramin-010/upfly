@@ -59,7 +59,10 @@ validate(plan)                     overlaps, writability, conflicting plans
         ▼
 execute(plan) ──► manifest         encode → temp, then write, then edit, then manifest
         ▼
-report(...) ──► human | json
+buildReport(graph, audit, discovery, sweep, probes) ──► Report
+        │  versioned JSON (public API) · every path POSIX-relative · no timestamps
+        ▼
+renderReport(report) ──► text     numbers, then the SKIPPED list, then findings
 ```
 
 ## Confidence tiers — the core idea
@@ -536,6 +539,43 @@ somebody else's decode time. Both are bounded by `--concurrency` (default `os.cp
 number rather than a feeling. Per the project rules, **any performance claim in the README must
 come from a number `bench/` produced in CI** — the previous generation of this project shipped
 unmeasured claims, and we are not repeating that.
+
+## The report
+
+The JSON is public API and carries `version`. It is snapshot-tested over all five fixture trees, so a
+schema change shows up as a diff somebody has to approve rather than as tests that still pass.
+
+**No absolute path reaches it.** Half the data upstream carries an absolute `path` beside a POSIX
+`relative` — `SkippedEntry`, `ExcludedRoot`, `UnscannedFile`, `Reference.file` — and the validation
+protocol runs the same repository from two working directories and requires byte-identical output.
+Projecting to the relative form is the report's job, and the guard is a test that serialises the
+report and greps it for the root. It is one forgotten projection away from being false.
+
+Everything declined, from every stage, lands in **one flat `skipped` list** rather than five
+per-stage ones. Rule 9 is easier to keep when there is a single place to append to.
+
+Two calls about references are worth knowing:
+
+- The unsafe bucket — `dynamic`, `unresolved-alias`, `out-of-scope` — is **listed in full**. It is
+  the "N references I couldn't safely rewrite" number, and it is the honesty that earns trust for
+  everything else on the page.
+- `discarded` is **counted, not listed**. A real repository produces thousands of them from lockfiles
+  and i18n bundles, and listing them buries everything else. The count is still there, because it is
+  what tells a user the JSON adapter has started eating something real.
+
+### The human renderer prints the skipped list before the findings
+
+That ordering is deliberate and slightly uncomfortable: it puts what the tool could *not* do above
+what it found. A limitation printed after eighty findings is a limitation nobody reads, and the
+previous generation of this project lost trust by failing quietly.
+
+Nothing in it uses `toLocaleString` or `Intl`. Locale-dependent formatting would render `1,5 MB` on
+some machines, which breaks the byte-identical rule exactly the way `localeCompare` would — so bytes
+are formatted by hand. Colour is the CLI's business, since that is the layer that knows about TTYs
+and `NO_COLOR`.
+
+Caveats carry their own count and a `detail` list. "No adapter reads these file types" is a shrug;
+`.astro — 1 file` is how someone finds out which adapter they want.
 
 ## Package layout
 
