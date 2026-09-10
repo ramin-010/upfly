@@ -48,7 +48,7 @@ const PUBLIC_DIRS: Record<string, string> = {
   eleventy: 'src',
 };
 
-async function reportFor(name: string, probed = false): Promise<Report> {
+async function reportFor(name: string, probed = false, includeDiscarded = false): Promise<Report> {
   const root = join(FIXTURES, name);
   const discovery = await discover({ root, adapters: ADAPTERS });
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -93,6 +93,7 @@ async function reportFor(name: string, probed = false): Promise<Report> {
     audit: auditResult,
     discovery,
     sweep,
+    includeDiscarded,
     ...(probes === undefined ? {} : { probes }),
   });
 }
@@ -181,6 +182,95 @@ describe('buildReport', () => {
 
       expect(report.coverage.unscannedExtensions).toEqual([{ ext: '.njk', fileCount: 2 }]);
       expect(report.caveats.map((caveat) => caveat.code)).toContain('unscanned-extensions');
+    });
+  });
+
+  describe('discarded candidates', () => {
+    // Every fixture tree has zero discarded candidates, so these are hand-built.
+    // A fixture-only test here would pass while asserting nothing — the guard
+    // would simply never fire, which is the vacuous-test trap in miniature.
+    const ROOT = '/repo';
+
+    function discardedGraph() {
+      const reference = {
+        file: `${ROOT}/package.json`,
+        start: 10,
+        end: 26,
+        rawPath: 'assets/logo.png',
+        kind: 'json' as const,
+        ceiling: 'high' as const,
+        asserted: false,
+        resolution: 'discarded' as const,
+        confidence: 'unsafe' as const,
+        resolvedPath: null,
+      };
+      return buildGraph({ root: ROOT, assets: [], references: [reference], unscannedFiles: [] });
+    }
+
+    function reportOf(includeDiscarded: boolean) {
+      return buildReport({
+        graph: discardedGraph(),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        includeDiscarded,
+      });
+    }
+
+    it('counts them but does not list them by default', () => {
+      const report = reportOf(false);
+
+      expect(report.references.discardedCount).toBe(1);
+      // `null`, not `[]`: an empty array would read as "there were none", which is
+      // the same class of lie as silence reading as "no opportunity here".
+      expect(report.references.discarded).toBeNull();
+    });
+
+    it('lists them when asked, so the promise in §1.1 is real', () => {
+      // The JSON adapter is deliberately generous. If it ever starts eating
+      // genuine references, the count says something is wrong and only the list
+      // says what — and that is not debuggable from an integer.
+      const report = reportOf(true);
+
+      expect(report.references.discarded).toEqual([
+        {
+          file: 'package.json',
+          rawPath: 'assets/logo.png',
+          resolution: 'discarded',
+          reason: 'a path-shaped string that resolved to nothing',
+        },
+      ]);
+    });
+
+    it('names the flag that actually produces the list', () => {
+      // Pointing a user at `--json` gave them a bare integer. A message that sends
+      // someone where the data is not costs more trust than no message would.
+      const text = renderReport(reportOf(false));
+
+      expect(text).toContain('1 path-shaped string was not an asset reference');
+      expect(text).toContain('--include-discarded');
+      expect(text).not.toContain('use --json to inspect');
+    });
+
+    it('shows them in the human output too when the flag was given', () => {
+      // Otherwise the flag appears to do nothing unless `--json` is passed with it.
+      const text = renderReport(reportOf(true));
+
+      expect(text).toContain('package.json  assets/logo.png');
+      expect(text).not.toContain('--include-discarded');
     });
   });
 

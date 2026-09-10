@@ -72,7 +72,11 @@ const STAGE_LABEL: Record<SkipStage, string> = {
  */
 function skippedSection(report: Report): string[] {
   const { skipped, references } = report;
-  if (skipped.length === 0 && references.unsafe.length === 0) {
+  // The discarded count belongs to this guard too. Leaving it out made the line
+  // below unreachable on exactly the common case — a clean repository with no
+  // skips and no unsafe references, but a `package.json` full of path-shaped
+  // strings. Every fixture tree has zero of those, so nothing caught it.
+  if (skipped.length === 0 && references.unsafe.length === 0 && references.discardedCount === 0) {
     return ['Nothing was skipped.', ''];
   }
 
@@ -97,10 +101,20 @@ function skippedSection(report: Report): string[] {
   }
 
   if (references.discardedCount > 0) {
-    lines.push(
-      `${references.discardedCount} path-shaped strings were not asset references (use --json to inspect)`,
-      '',
-    );
+    // Name the flag that actually produces the list. `--json` alone gives a bare
+    // integer, and pointing someone at data that is not there costs more trust
+    // than saying nothing would.
+    const verb =
+      references.discardedCount === 1 ? 'was not an asset reference' : 'were not asset references';
+    const hint = references.discarded === null ? ' (use --include-discarded to list them)' : '';
+    lines.push(`${count(references.discardedCount, 'path-shaped string')} ${verb}${hint}`, '');
+
+    // Asked for explicitly, so shown — the flag would otherwise appear to do
+    // nothing unless `--json` were passed alongside it.
+    for (const entry of references.discarded ?? []) {
+      lines.push(`  ${entry.file}  ${entry.rawPath}`);
+    }
+    if (references.discarded !== null) lines.push('');
   }
 
   return lines;

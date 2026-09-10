@@ -60,7 +60,7 @@ export interface ReportSummary {
 }
 
 /** One reference the engine declined to link, listed rather than merely counted. */
-export interface UnsafeReferenceEntry {
+export interface ReferenceEntry {
   /** POSIX-relative source file. */
   readonly file: string;
   readonly rawPath: string;
@@ -80,16 +80,27 @@ export interface ReferenceReport {
    * report — it is exactly the set surfaced as "N references I couldn't safely
    * rewrite". `broken` is not here: it is a finding, with a line number.
    */
-  readonly unsafe: readonly UnsafeReferenceEntry[];
+  readonly unsafe: readonly ReferenceEntry[];
   /**
    * Speculative path-shaped strings that did not resolve.
    *
-   * Counted rather than listed: a large repository produces thousands from
-   * lockfiles and i18n bundles, and listing them would bury everything else. Not a
-   * silent skip — the count is right here, and it is what tells a user the JSON
-   * adapter has started eating something real.
+   * Counted rather than listed by default: a large repository produces thousands
+   * from lockfiles and i18n bundles, and listing them would bury everything else.
    */
   readonly discardedCount: number;
+  /**
+   * The discarded candidates themselves, when `includeDiscarded` asked for them.
+   *
+   * `null` — not `[]` — when they were not requested, because an empty array would
+   * read as "there were none", which is the same class of lie as silence reading
+   * as "no opportunity here".
+   *
+   * The list has to be reachable for a specific reason: the JSON adapter is
+   * deliberately generous, so if it ever starts eating genuine references the
+   * count tells you something is wrong while only the list tells you *what*. You
+   * cannot debug that from an integer, and §1.1 promises these are inspectable.
+   */
+  readonly discarded: readonly ReferenceEntry[] | null;
 }
 
 /** What the engine did not read, and what it refused to enter. */
@@ -156,6 +167,14 @@ export interface ReportInput {
   readonly sweep: SweepResult;
   /** Absent for a `--no-probe` run. */
   readonly probes?: readonly AssetProbe[];
+  /**
+   * Include the discarded candidates in full. Off by default (`--include-discarded`).
+   *
+   * Off because the list is usually thousands of lockfile strings; available
+   * because a count alone cannot tell you *which* reference the JSON adapter
+   * started eating.
+   */
+  readonly includeDiscarded?: boolean;
 }
 
 /** Build the report. Pure, and the only place that decides what the public shape is. */
@@ -166,7 +185,7 @@ export function buildReport(input: ReportInput): Report {
     version: REPORT_SCHEMA_VERSION,
     summary: summarise(input, findings),
     findings,
-    references: referenceReport(input.graph),
+    references: referenceReport(input.graph, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
     caveats: caveats(input),
@@ -206,7 +225,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
   };
 }
 
-function referenceReport(graph: Graph): ReferenceReport {
+function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceReport {
   const byResolution: Record<Resolution, number> = {
     resolved: graph.byResolution.resolved.length,
     'resolved-pattern': graph.byResolution['resolved-pattern'].length,
@@ -220,7 +239,7 @@ function referenceReport(graph: Graph): ReferenceReport {
   const byConfidence: Record<Confidence, number> = { certain: 0, high: 0, medium: 0, unsafe: 0 };
   for (const reference of graph.references) byConfidence[reference.confidence] += 1;
 
-  const unsafe: UnsafeReferenceEntry[] = [];
+  const unsafe: ReferenceEntry[] = [];
   for (const reference of graph.references) {
     if (
       reference.resolution !== 'dynamic' &&
@@ -240,7 +259,16 @@ function referenceReport(graph: Graph): ReferenceReport {
     });
   }
 
-  return { byResolution, byConfidence, unsafe, discardedCount: byResolution.discarded };
+  const discarded = includeDiscarded
+    ? graph.byResolution.discarded.map((reference) => ({
+        file: relativePath(graph.root, reference.file),
+        rawPath: reference.rawPath,
+        resolution: reference.resolution,
+        reason: reference.note ?? 'a path-shaped string that resolved to nothing',
+      }))
+    : null;
+
+  return { byResolution, byConfidence, unsafe, discardedCount: byResolution.discarded, discarded };
 }
 
 function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {

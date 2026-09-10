@@ -57,7 +57,7 @@ export type {
   ReportSummary,
   SkipStage,
   SkippedItem,
-  UnsafeReferenceEntry,
+  ReferenceEntry,
 } from './report.js';
 export { resolveReferences } from './resolve.js';
 export type { ResolveOptions } from './resolve.js';
