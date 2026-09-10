@@ -18,8 +18,9 @@
  * knows about TTYs and `NO_COLOR`.
  */
 
+import { staticExtensionOf } from './adapters/reference-path.js';
 import type { Finding } from './audit.js';
-import { compareStrings } from './paths.js';
+import { compareStrings, isImageExtension } from './paths.js';
 import type { Report, SkipStage, SkippedItem } from './report.js';
 import type { MentionSource } from './sweep.js';
 
@@ -94,10 +95,32 @@ function skippedSection(report: Report): string[] {
   }
 
   if (references.unsafe.length > 0) {
+    // Listed only when the path could still name an image; counted otherwise (R21).
+    //
+    // The resolver drops what a static suffix rules out — `${name}.tsx` needs no
+    // resolution — so what arrives here is either "shows an image extension" or
+    // "shows no extension at all". The second kind is genuinely unknowable:
+    // `/view/${style}/${name}` could be anything, and with no extension it can never
+    // glob to an asset either. Printing fifty of those buries the eight a person
+    // could act on, and one counted line satisfies rule 9 without the wall.
+    const listed = references.unsafe.filter((entry) => showsAnImageFilename(entry.rawPath));
+    const counted = references.unsafe.length - listed.length;
+
     lines.push(`${count(references.unsafe.length, 'reference')} could not be resolved safely`, '');
-    for (const entry of references.unsafe) {
+    for (const entry of listed) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
       lines.push(`    ${entry.resolution} — ${entry.reason}`);
+    }
+    if (counted > 0) {
+      // Phrased to sidestep verb agreement rather than to get it right: this file
+      // has shipped "1 file were not read" and "1 path-shaped string were not an
+      // asset reference" already, and a noun phrase cannot have the bug. Reads the
+      // same at 1 and at 52.
+      lines.push(
+        listed.length === 0
+          ? '  none with a filename to check — each builds its path at runtime'
+          : `  plus ${counted} with no filename to check — each builds its path at runtime`,
+      );
     }
     lines.push('');
   }
@@ -136,6 +159,24 @@ function skippedSection(report: Report): string[] {
   }
 
   return lines;
+}
+
+/**
+ * Does this raw path show an image filename a person could go and check?
+ *
+ * Named for what it tests rather than for the decision it feeds. The first draft was
+ * `couldBeAnImage`, whose doc claimed it was also true for a path showing no
+ * extension — which is the opposite of what the code does, and a path with a hole
+ * where the filename should be genuinely *could* be an image. Both the name and the
+ * comment described a different function from the one underneath them.
+ *
+ * The real question is narrower and answerable: is there a filename here to look at?
+ * A path that shows one gets listed; one that does not gets counted, because there is
+ * nothing for a reader to do with it.
+ */
+function showsAnImageFilename(rawPath: string): boolean {
+  const extension = staticExtensionOf(rawPath);
+  return extension !== '' && isImageExtension(extension);
 }
 
 function findingsSection(report: Report): string[] {

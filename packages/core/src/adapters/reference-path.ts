@@ -49,6 +49,42 @@ export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
 }
 
 /**
+ * Every templating hole this project recognises, as one pattern.
+ *
+ * `${…}` (JS and Liquid-ish), `{{…}}` (Jekyll, Hugo, Eleventy), `{%…%}` (Nunjucks,
+ * Jinja) and `#{…}` (SCSS). Kept beside the reference helpers because the resolver
+ * globs exactly these and so must anything reasoning about the static parts.
+ */
+const TEMPLATE_HOLE = /\$\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}|#\{[^}]*\}/g;
+
+/**
+ * The file extension a templated path shows **statically**, or `''` when a hole
+ * hides it.
+ *
+ * `components/ui/${name}.tsx` shows `.tsx` — no resolution needed, the suffix is
+ * right there — while `/view/${style}/${name}` shows nothing and `hero.${ext}` shows
+ * nothing either, because the hole *is* the extension.
+ *
+ * This exists so the report can stop showing people a bucket of things that are
+ * provably not images. It is deliberately **not** the resolver's rung 3: that tests a
+ * fully static path and its position is pinned by tests in both directions — ahead of
+ * the ceiling checks it swallows `url($hero)`, behind the asset lookup it turns every
+ * `url(inter.woff2)` into a broken finding. This is a different question asked of a
+ * different set of references.
+ */
+export function staticExtensionOf(rawPath: string): string {
+  const { path } = splitPathSuffix(rawPath);
+  const flattened = path.replace(TEMPLATE_HOLE, '*');
+  const extension = flattened.slice(flattened.lastIndexOf('.'));
+
+  if (!extension.startsWith('.')) return '';
+  // A hole inside the extension means we cannot know it: `hero.${ext}` could be
+  // anything, including a `.png`, so it must stay unknown rather than be ruled out.
+  if (extension.includes('*') || extension.includes('/')) return '';
+  return extension.toLowerCase();
+}
+
+/**
  * Split a trailing `?query` or `#fragment` off a path.
  *
  * `hero.png?v=2` names the file `hero.png`; the suffix is a cache-buster the

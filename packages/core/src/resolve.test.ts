@@ -660,4 +660,58 @@ describe('resolveReferences', () => {
       expect(references[0]?.resolution).toBe('broken');
     });
   });
+
+  describe('a dynamic path whose static suffix rules out an image (R21)', () => {
+    /**
+     * `34 references could not be resolved safely` listed 106 entries with no image
+     * among them — and that bucket is what §1.1 shows a user as "references I
+     * couldn't safely rewrite". On `shadcn-ui`, 127 of 187 carried a statically
+     * visible non-image extension.
+     *
+     * The suffix is right there, so no resolution is needed to rule these out. They
+     * are dropped exactly as rung 3 drops `url(inter.woff2)`: never a candidate
+     * asset, so declining one is not a skip under rule 9.
+     */
+
+    it.each([
+      'components/ui/${name}.tsx',
+      'registry/${style}/${name}.json',
+      '${siteConfig.url}/rss.xml',
+      'src/${dir}/notes.md',
+      'backup/${name}.bak',
+    ])('drops %s', (rawPath) => {
+      expect(resolveOne({ rawPath, ceiling: 'medium' })).toBeUndefined();
+    });
+
+    it.each(['images/${name}.png', '{{ site.url }}/img/hero.jpg', './assets/${slug}.svg'])(
+      'keeps %s, which could still be an asset',
+      (rawPath) => {
+        // Not asserted as `dynamic` specifically: one of these glob-matches a real
+        // fixture asset and comes back `resolved-pattern`, which is a better outcome
+        // than the one being tested for. What matters is that it survives.
+        expect(resolveOne({ rawPath, ceiling: 'medium' })).toBeDefined();
+      },
+    );
+
+    it('keeps a path with no static extension at all — unknown is not ruled out', () => {
+      // `/view/${style}/${name}` shows nothing, so nothing can be concluded. It is
+      // counted rather than listed by the report, but it must survive resolution.
+      expect(resolveOne({ rawPath: '/view/${style}/${name}', ceiling: 'medium' })?.resolution).toBe(
+        'dynamic',
+      );
+    });
+
+    it('keeps a hole that IS the extension', () => {
+      // `hero.${ext}` could be `hero.png`. Ruling it out on the strength of `.*`
+      // would be the over-fix, and it is the one this rule is closest to.
+      expect(resolveOne({ rawPath: 'hero.${ext}', ceiling: 'medium' })?.resolution).toBe('dynamic');
+    });
+
+    it('does not swallow url($hero), which is what pins rung 3 in place', () => {
+      // ⚠️ The reason this is a separate mechanism rather than moving the extension
+      // filter up the ladder. `$hero` has no static extension, so it is unknown
+      // rather than ruled out, and it must still be reported as dynamic.
+      expect(resolveOne({ rawPath: '$hero', ceiling: 'unsafe' })?.resolution).toBe('dynamic');
+    });
+  });
 });

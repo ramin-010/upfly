@@ -14,7 +14,7 @@
  */
 
 import { dirname, resolve as resolvePath } from 'node:path';
-import { splitPathSuffix } from './adapters/reference-path.js';
+import { splitPathSuffix, staticExtensionOf } from './adapters/reference-path.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
@@ -114,14 +114,16 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   const { index, root, publicDirs } = context;
   // 1. No static path at all.
   if (raw.ceiling === 'unsafe') {
-    return unlinked(raw, 'dynamic');
+    return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
   }
 
   // 2. A pattern. Glob it; never let it fall through to `broken`.
   if (raw.ceiling === 'medium') {
     const { matches, via } = index.matchPattern(raw.rawPath, raw, root, publicDirs);
     const [first, ...rest] = matches;
-    if (first === undefined) return unlinked(raw, 'dynamic');
+    if (first === undefined) {
+      return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
+    }
     return {
       ...raw,
       resolution: 'resolved-pattern',
@@ -201,6 +203,29 @@ function outOfScope(path: string, raw: RawReference, context: ResolveContext): R
   }
 
   return null;
+}
+
+/**
+ * A reference whose **statically visible** suffix rules out an image.
+ *
+ * `components/ui/${name}.tsx` needs no resolution: the extension is right there and
+ * it is not one we track. Dropped exactly as rung 3 drops `url(inter.woff2)`, and for
+ * the same reason — it was never a candidate asset, so declining it is not a skip
+ * under rule 9.
+ *
+ * Found by §5.1(d)'s cold read. `34 references could not be resolved safely` listed
+ * 106 entries with **no image among them**, and that bucket is what §1.1 shows a user
+ * as *"references I couldn't safely rewrite"*. On `shadcn-ui`, **127 of 187** carried
+ * a static non-image extension: `.json` ×74, `.tsx` ×18, `.ts` ×11, `.bak` ×4.
+ *
+ * ⚠️ **Not the same as moving rung 3 earlier**, which is pinned by a test in both
+ * directions and would swallow `url($hero)`. `$hero` shows no static extension at
+ * all, so it stays — unknown is not the same as ruled out, and the difference is the
+ * whole point.
+ */
+function provablyNotAnAsset(raw: RawReference): boolean {
+  const extension = staticExtensionOf(raw.rawPath);
+  return extension !== '' && !isImageExtension(extension);
 }
 
 function unlinked(

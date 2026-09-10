@@ -396,6 +396,89 @@ describe('buildReport', () => {
     });
   });
 
+  describe('the unsafe bucket lists what can be checked (R21)', () => {
+    // Hand-built, and it has to be: the only fixture with an unsafe reference has
+    // exactly one, and it *shows a filename*, so the counted branch below is
+    // unreachable from every fixture tree. That is the same trap as the discarded
+    // line and the encode cap — a new branch that no fixture can reach looks tested
+    // and is not.
+    const ROOT = '/repo';
+
+    function dynamicReference(file: string, rawPath: string, start: number) {
+      return {
+        file: `${ROOT}/${file}`,
+        start,
+        end: start + rawPath.length,
+        rawPath,
+        kind: 'string' as const,
+        ceiling: 'unsafe' as const,
+        asserted: true,
+        resolution: 'dynamic' as const,
+        confidence: 'unsafe' as const,
+        resolvedPath: null,
+      };
+    }
+
+    function reportWith(rawPaths: readonly string[]) {
+      return buildReport({
+        graph: buildGraph({
+          root: ROOT,
+          assets: [],
+          references: rawPaths.map((rawPath, index) =>
+            dynamicReference('app.ts', rawPath, index * 100),
+          ),
+          unscannedFiles: [],
+        }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+      });
+    }
+
+    it('lists the ones showing a filename somebody could go and look at', () => {
+      const text = renderReport(reportWith(['${base}/hero.png', '/img/${slug}.jpg']));
+
+      expect(text).toContain('${base}/hero.png');
+      expect(text).toContain('/img/${slug}.jpg');
+    });
+
+    it('counts the ones with no filename instead of listing them', () => {
+      // `/view/${style}/${name}` shows nothing to check, and with no extension it
+      // can never glob to an asset either. Fifty of these buried the eight a person
+      // could act on — shadcn-ui listed 187 entries of which 8 named an image.
+      const text = renderReport(
+        reportWith(['${base}/hero.png', '/view/${style}/${name}', '/api/${id}']),
+      );
+
+      expect(text).toContain('${base}/hero.png');
+      expect(text).not.toContain('/view/');
+      expect(text).toContain('plus 2 with no filename to check');
+    });
+
+    it('still reports the full count in the heading — rule 9 survives the collapse', () => {
+      // The whole risk of this change: a list that quietly shrinks. The heading has
+      // to keep covering everything, listed or not.
+      const text = renderReport(reportWith(['/view/${style}/${name}', '/api/${id}']));
+
+      expect(text).toContain('2 references could not be resolved safely');
+      expect(text).toContain('none with a filename to check');
+    });
+  });
+
   describe('discarded candidates', () => {
     // Every fixture tree has zero discarded candidates, so these are hand-built.
     // A fixture-only test here would pass while asserting nothing — the guard
