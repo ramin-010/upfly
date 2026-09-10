@@ -106,10 +106,26 @@ function skippedSection(report: Report): string[] {
     // Name the flag that actually produces the list. `--json` alone gives a bare
     // integer, and pointing someone at data that is not there costs more trust
     // than saying nothing would.
-    const verb =
-      references.discardedCount === 1 ? 'was not an asset reference' : 'were not asset references';
+    // ⚠️ It says *did not resolve*, not "was not a reference" — which is what it
+    // said, and which the data contradicts. On `astro-docs`, **117 of the 118**
+    // discarded strings name a file that genuinely is an asset in that repository:
+    // `src/data/logos.ts` holds `{ file: 'gitbook.svg' }` a hundred and seventeen
+    // times, joined to a base directory at runtime. They are asset references. They
+    // simply do not resolve as written.
+    //
+    // Worse, the old wording contradicted the same report a page later: those
+    // identical strings are the R10 haystack's evidence, so the findings section
+    // cites them as proof an asset is alive while this line called them not
+    // references at all. Second time a confident sentence in this renderer was false
+    // about the majority of what it described, and the same file caused both.
+    // No singular/plural branch any more: "did not resolve" agrees either way,
+    // where "was/were not an asset reference" needed one. The verb-agreement bug
+    // this file has already had twice is now unreachable here rather than fixed.
     const hint = references.discarded === null ? ' (use --include-discarded to list them)' : '';
-    lines.push(`${count(references.discardedCount, 'path-shaped string')} ${verb}${hint}`, '');
+    lines.push(
+      `${count(references.discardedCount, 'path-shaped string')} did not resolve to an asset${hint}`,
+      '',
+    );
 
     // Asked for explicitly, so shown — the flag would otherwise appear to do
     // nothing unless `--json` were passed alongside it.

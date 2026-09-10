@@ -467,12 +467,28 @@ describe('buildReport', () => {
       ]);
     });
 
+    it('says the strings did not resolve, never that they were not references', () => {
+      // The line read "N path-shaped strings were not asset references". Measured on
+      // `astro-docs`, **117 of its 118** name a file that genuinely is an asset in
+      // that repository — `src/data/logos.ts` holds `{ file: 'gitbook.svg' }` a
+      // hundred and seventeen times, joined to a base directory at runtime.
+      //
+      // It also contradicted the same report a page later: those identical strings
+      // are the R10 haystack's evidence, so the findings section cites them as proof
+      // an asset is alive while this line called them not references at all.
+      const text = renderReport(reportOf(false));
+
+      expect(text).toContain('did not resolve to an asset');
+      expect(text).not.toContain('not an asset reference');
+      expect(text).not.toContain('not asset references');
+    });
+
     it('names the flag that actually produces the list', () => {
       // Pointing a user at `--json` gave them a bare integer. A message that sends
       // someone where the data is not costs more trust than no message would.
       const text = renderReport(reportOf(false));
 
-      expect(text).toContain('1 path-shaped string was not an asset reference');
+      expect(text).toContain('1 path-shaped string did not resolve to an asset');
       expect(text).toContain('--include-discarded');
       expect(text).not.toContain('use --json to inspect');
     });
