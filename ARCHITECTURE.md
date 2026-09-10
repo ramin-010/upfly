@@ -421,7 +421,34 @@ amounts. Measured on sharp 0.35.4 / libvips 8.18.6 with noise-filled sources:
 Reading a header is free and independent of pixel count; an encode is three orders of magnitude
 dearer and AVIF is roughly eight times WebP. A single combined `probe()` would make every caller pay
 for an encode to learn a width, so dimensions are always affordable and encoding is something a
-caller asks for by name — `formats` is required and has no default.
+caller asks for by name — `formats` is required and has no default, because the default belongs to
+config, where locked decision 3 already put it: **webp**, with AVIF opt-in via `--format avif`. The
+audit measures the format it would actually convert to; measuring one the tool would not produce is
+work nobody asked for.
+
+### The cap is a count, not a threshold or a deadline
+
+Even at WebP alone, two thousand images is twelve minutes, and `audit` is meant to be the fast
+read-only command. So `maxEncodedAssets` bounds how many assets are encoded — and the two obvious
+alternatives are both wrong:
+
+- **A byte threshold bounds nothing.** Encode cost tracks pixel count, not file size, so a threshold
+  does no work at all on a repository of three thousand large images — precisely the "large public
+  directory" that the validation protocol requires us to test against.
+- **A duration budget would break rule 11.** Byte-identical output for the same inputs means a slow
+  machine must not measure fewer assets than a fast one.
+
+Selection is largest source first, ties broken by path, so *which* assets are measured is a
+deterministic function of the repository. Assets that could never be encoded — a vector, or one
+already in every requested format — leave the running before the cap applies, so they cannot occupy
+a slot they will not use. A byte or pixel floor can sit underneath as a secondary filter; the count
+is what bounds.
+
+What makes this safe is that it degrades exactly **one** of the four findings. `dead` and `broken`
+need no probe at all, and `oversized` needs only the ~1 ms header read, which still happens for every
+asset however low the cap goes. Everything past the cap is reported as unmeasured, with a count, a
+reason and the flag that lifts it — silence would read as "no opportunity here". The default comes
+from `bench/` rather than a guess, like the concurrency number.
 
 ### Animation is the trap
 
@@ -429,6 +456,10 @@ Encoding an animated GIF the obvious way keeps **one frame**. Sharp's own ten-fr
 encodes to 616 bytes that way, against 8 370 bytes for the real thing. Reported as a format
 opportunity that is a ~92% saving achievable only by destroying the image — a headline finding in the
 audit and a corrupted file when the rewrite acts on it.
+
+The asymmetry is the thing to remember: **`encodedBytes` must pass `animated` and `metadata()` must
+not**, and getting either backwards produces a confidently wrong number in opposite directions — a
+phantom 92% saving, or an image reported ten times too tall.
 
 So `encodedBytes` takes `animated`, and `probeAssets` passes `pages > 1` from the metadata it already
 holds. And `metadata()` is deliberately a *plain* read: with `{ animated: true }` that same file
