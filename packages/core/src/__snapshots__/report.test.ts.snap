@@ -77,6 +77,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 6,
     "references": 7,
+    "savingQuality": {},
     "sourceFiles": 5,
   },
   "unusedVectors": {
@@ -84,7 +85,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 2,
+  "version": 3,
 }
 `;
 
@@ -264,6 +265,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 3,
     "references": 4,
+    "savingQuality": {},
     "sourceFiles": 4,
   },
   "unusedVectors": {
@@ -271,7 +273,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 2,
+  "version": 3,
 }
 `;
 
@@ -399,6 +401,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 9,
     "references": 11,
+    "savingQuality": {},
     "sourceFiles": 8,
   },
   "unusedVectors": {
@@ -406,7 +409,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 2,
+  "version": 3,
 }
 `;
 
@@ -512,6 +515,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 9,
     "references": 11,
+    "savingQuality": {},
     "sourceFiles": 3,
   },
   "unusedVectors": {
@@ -519,7 +523,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 2,
+  "version": 3,
 }
 `;
 
@@ -637,6 +641,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 10,
     "references": 12,
+    "savingQuality": {},
     "sourceFiles": 5,
   },
   "unusedVectors": {
@@ -644,7 +649,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 307,
     "count": 1,
   },
-  "version": 2,
+  "version": 3,
 }
 `;
 

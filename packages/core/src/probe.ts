@@ -57,6 +57,16 @@ export interface ImageMetadata {
  */
 export interface ImageProbe {
   /**
+   * The quality each format is encoded at, by this probe.
+   *
+   * Here rather than on `ProbeOptions` because the same object both measures and
+   * writes. `audit` reports what this probe measured and `optimize` writes what this
+   * probe encodes, so there is no second setting for them to drift apart on: if the
+   * number is wrong, both are wrong together, which is the honest failure rather
+   * than the one where audit advertises a product optimize does not ship.
+   */
+  readonly quality: Readonly<Record<EncodeFormat, number>>;
+  /**
    * Header-only read.
    *
    * Must report the dimensions of **one frame**, not of every frame stacked
@@ -74,6 +84,20 @@ export interface ImageProbe {
     readonly path: string;
     readonly format: EncodeFormat;
     readonly animated: boolean;
+  }): Promise<number>;
+  /**
+   * Encode to a file instead of to a byte count, and report the bytes written.
+   *
+   * The writing half of the same port, so the encode `optimize` performs is built by
+   * the same code that built the one `audit` measured. Anything that has to be got
+   * right once - the plain metadata read, honouring `animated`, the quality above -
+   * is got right for both at the same time.
+   */
+  encodeToFile(input: {
+    readonly path: string;
+    readonly format: EncodeFormat;
+    readonly animated: boolean;
+    readonly destination: string;
   }): Promise<number>;
 }
 
@@ -104,7 +128,39 @@ export interface ProbeSkip {
 export interface EncodedSize {
   readonly format: EncodeFormat;
   readonly bytes: number;
+  /**
+   * The quality this byte count was produced at.
+   *
+   * Carried on the measurement rather than looked up beside it, so a saving cannot
+   * be written down anywhere without the setting that produced it. A 95% saving at
+   * quality 50 and a 44% saving at quality 90 are both true and describe different
+   * products, so the number alone does not mean anything.
+   */
+  readonly quality: number;
 }
+
+/**
+ * The quality each format is encoded at, chosen by measurement.
+ *
+ * See notes/validation/encode-quality.md for the run these came from: 30 images
+ * sampled deterministically from the five validation repositories, scored on both
+ * bytes saved and how far the decoded pixels moved from the original.
+ *
+ * webp 80 is the highest setting in the measured grid at which no sampled image grew,
+ * and it holds every lossless source above 36 dB. Raising it does not rescue the two
+ * worst cases, which are already-lossy JPEGs sitting near 34 dB whatever we do; it
+ * only taxes the other 28 images, costing 10 points of median saving between 80 and
+ * 90 to buy 1 dB on a case that was never ours to fix.
+ *
+ * avif 75 rather than 80, because AVIF is a more efficient encoder and the same
+ * number does not mean the same thing on both scales. At 75 it clears every sampled
+ * image of the 35 dB mark with room to spare while still saving about as much as webp
+ * does at 80.
+ */
+export const DEFAULT_ENCODE_QUALITY: Readonly<Record<EncodeFormat, number>> = Object.freeze({
+  webp: 80,
+  avif: 75,
+});
 
 /** Everything measured about one asset. */
 export interface AssetProbe {
@@ -273,6 +329,7 @@ async function probeOne(
     try {
       encoded.push({
         format,
+        quality: options.probe.quality[format],
         bytes: await options.probe.encodedBytes({
           path: asset.path,
           format,

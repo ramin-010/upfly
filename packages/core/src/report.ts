@@ -32,7 +32,7 @@ import {
   isVectorExtension,
   relativePath,
 } from './paths.js';
-import type { AssetProbe, ProbeSkipCode } from './probe.js';
+import type { AssetProbe, EncodeFormat, ProbeSkipCode } from './probe.js';
 import { isLinked } from './reference.js';
 import type { Mention, SweepResult } from './sweep.js';
 import type {
@@ -64,7 +64,7 @@ import type {
  * the report schema, and it belongs to package versioning. Bumping here for an
  * addition would train readers to ignore the number.
  */
-export const REPORT_SCHEMA_VERSION = 2;
+export const REPORT_SCHEMA_VERSION = 3;
 
 /** The numbers people screenshot. */
 export interface ReportSummary {
@@ -84,6 +84,18 @@ export interface ReportSummary {
    * otherwise be counted twice and the headline number would be a fiction.
    */
   readonly potentialSavingBytes: number;
+  /**
+   * The encode quality each measured format was produced at.
+   *
+   * Derived from the measurements themselves rather than from configuration, so it
+   * always describes the run that produced `potentialSavingBytes` even if the
+   * configuration changed afterwards. Empty when nothing was probed.
+   *
+   * A saving without this is not a figure. The same image saves 95% at quality 50
+   * and 44% at quality 90, and a reader who is not told which cannot know what they
+   * are being offered.
+   */
+  readonly savingQuality: Readonly<Partial<Record<EncodeFormat, number>>>;
   /** `false` when the run was `--no-probe`; oversized and opportunities are absent. */
   readonly probed: boolean;
 }
@@ -491,9 +503,11 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
   // Best per asset, not the sum of every measurement: an asset measured against
   // both webp and avif would otherwise be counted twice.
   const bestSaving = new Map<string, number>();
+  const savingQuality: Partial<Record<EncodeFormat, number>> = {};
   for (const finding of findings) {
     if (finding.kind !== 'format-opportunity') continue;
     bestSaving.set(finding.asset, Math.max(bestSaving.get(finding.asset) ?? 0, finding.savedBytes));
+    savingQuality[finding.to] = finding.quality;
   }
 
   return {
@@ -507,6 +521,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
     referencedAssets: input.graph.assets.filter((node) => node.references.length > 0).length,
     findings: counts,
     potentialSavingBytes: [...bestSaving.values()].reduce((total, bytes) => total + bytes, 0),
+    savingQuality,
     probed: input.audit.probed,
   };
 }

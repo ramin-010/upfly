@@ -490,6 +490,7 @@ describe('buildReport', () => {
       saving?: number;
       capped?: number;
       assets?: number;
+      alsoAvif?: boolean;
     }) {
       const assetCount = over.assets ?? 10;
       const assets = Array.from({ length: assetCount }, (_, index) => ({
@@ -520,6 +521,7 @@ describe('buildReport', () => {
               : [
                   {
                     kind: 'format-opportunity' as const,
+                    quality: 80,
                     asset: 'img0.png',
                     from: 'png',
                     to: 'webp' as const,
@@ -528,6 +530,21 @@ describe('buildReport', () => {
                     savedBytes: over.saving,
                     savedPercent: 50,
                   },
+                  ...(over.alsoAvif
+                    ? [
+                        {
+                          kind: 'format-opportunity' as const,
+                          quality: 75,
+                          asset: 'img0.png',
+                          from: 'png',
+                          to: 'avif' as const,
+                          bytes: 1_000_000,
+                          wouldBe: 1_000_000 - over.saving,
+                          savedBytes: over.saving,
+                          savedPercent: 50,
+                        },
+                      ]
+                    : []),
                 ],
           publicDirDeadCount: 0,
           conventionLinked: [],
@@ -552,6 +569,20 @@ describe('buildReport', () => {
 
     it('leads with the savings, not with the file counts', () => {
       expect(headlineOf({ saving: 4_200_000 })).toContain('4.2 MB of savings');
+    });
+
+    it('states the quality the saving was measured at', () => {
+      // A saving without its quality is not a figure: the same images give 95% at
+      // quality 50 and 44% at quality 90. The report used to open with a headline
+      // like "166.3 MB of savings found so far" and name no quality anywhere in the
+      // file, so a reader could not tell which product they were being offered.
+      expect(headlineOf({ saving: 4_200_000 })).toContain('of savings at webp quality 80,');
+    });
+
+    it('names every format when more than one was measured', () => {
+      expect(headlineOf({ saving: 4_200_000, alsoAvif: true })).toContain(
+        'at avif quality 75 and webp quality 80,',
+      );
     });
 
     it('says the number is incomplete when the cap left images unmeasured', () => {
@@ -625,6 +656,7 @@ describe('buildReport', () => {
     };
     const opportunity: Finding = {
       kind: 'format-opportunity',
+      quality: 80,
       asset: 'src/assets/landing-page-book.png',
       bytes: 551_000,
       from: 'png',

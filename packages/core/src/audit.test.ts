@@ -404,12 +404,13 @@ describe('audit', () => {
         }),
         sweep: NO_SWEEP,
         readFile: files(),
-        probes: [probe('hero.png', { encoded: [{ format: 'webp', bytes: 40_000 }] })],
+        probes: [probe('hero.png', { encoded: [{ format: 'webp', bytes: 40_000, quality: 80 }] })],
       });
 
       expect(result.findings).toEqual([
         {
           kind: 'format-opportunity',
+          quality: 80,
           asset: 'hero.png',
           from: 'png',
           to: 'webp',
@@ -431,13 +432,16 @@ describe('audit', () => {
         }),
         sweep: NO_SWEEP,
         readFile: files(),
-        probes: [probe('hero.jpg', { encoded: [{ format: 'webp', bytes: 7_280_000 }] })],
+        probes: [
+          probe('hero.jpg', { encoded: [{ format: 'webp', bytes: 7_280_000, quality: 80 }] }),
+        ],
       });
 
       // It is also `oversized` at 8 MB, which is correct and not what this asserts.
       expect(result.findings.filter((finding) => finding.kind === 'format-opportunity')).toEqual([
         {
           kind: 'format-opportunity',
+          quality: 80,
           asset: 'hero.jpg',
           from: 'png',
           to: 'webp',
@@ -459,7 +463,7 @@ describe('audit', () => {
         }),
         sweep: NO_SWEEP,
         readFile: files(),
-        probes: [probe('logo.png', { encoded: [{ format: 'webp', bytes: 40_000 }] })],
+        probes: [probe('logo.png', { encoded: [{ format: 'webp', bytes: 40_000, quality: 80 }] })],
       });
 
       expect(kinds(result.findings)).toEqual(['format-opportunity']);
@@ -473,7 +477,7 @@ describe('audit', () => {
         }),
         sweep: NO_SWEEP,
         readFile: files(),
-        probes: [probe('hero.png', { encoded: [{ format: 'webp', bytes: 95_000 }] })],
+        probes: [probe('hero.png', { encoded: [{ format: 'webp', bytes: 95_000, quality: 80 }] })],
       });
 
       expect(result.findings).toEqual([]);
@@ -489,7 +493,7 @@ describe('audit', () => {
         }),
         sweep: NO_SWEEP,
         readFile: files(),
-        probes: [probe('icon.png', { encoded: [{ format: 'webp', bytes: 120 }] })],
+        probes: [probe('icon.png', { encoded: [{ format: 'webp', bytes: 120, quality: 80 }] })],
       });
 
       expect(result.findings).toEqual([]);
@@ -527,8 +531,8 @@ describe('audit', () => {
         probes: [
           probe('hero.png', {
             encoded: [
-              { format: 'avif', bytes: 20_000 },
-              { format: 'webp', bytes: 40_000 },
+              { format: 'avif', bytes: 20_000, quality: 80 },
+              { format: 'webp', bytes: 40_000, quality: 80 },
             ],
           }),
         ],

@@ -98,6 +98,15 @@ export interface FormatOpportunityFinding {
   readonly savedBytes: number;
   /** Whole percent, floored — a report number, not a float to compare against. */
   readonly savedPercent: number;
+  /**
+   * The encode quality this saving was measured at.
+   *
+   * A saving without it is not a figure: the same image gives 95% at quality 50 and
+   * 44% at quality 90, and those describe two different products. Carried from the
+   * measurement rather than looked up, so the number and its setting cannot come
+   * apart on the way to the report.
+   */
+  readonly quality: number;
 }
 
 export type Finding =
@@ -392,6 +401,7 @@ function* opportunities(
       asset: probe.relative,
       from: probe.metadata?.format ?? 'unknown',
       to: encoded.format,
+      quality: encoded.quality,
       bytes,
       wouldBe: encoded.bytes,
       savedBytes,

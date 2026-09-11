@@ -135,12 +135,29 @@ function savingsLine(summary: Report['summary'], capped: number): string {
     return 'savings not measured — images were not decoded (--no-probe)';
   }
   if (capped > 0) {
-    return `${bytes(summary.potentialSavingBytes)} of savings found so far — ${capped} of ${count(summary.assets, 'image')} went unmeasured, so there may be more (--probe-all)`;
+    return `${bytes(summary.potentialSavingBytes)} of savings found so far${atQuality(summary)} — ${capped} of ${count(summary.assets, 'image')} went unmeasured, so there may be more (--probe-all)`;
   }
   if (summary.potentialSavingBytes === 0) {
     return `no savings found, and every one of ${count(summary.assets, 'image')} was measured`;
   }
-  return `${bytes(summary.potentialSavingBytes)} of savings, measured across all ${count(summary.assets, 'image')}`;
+  return `${bytes(summary.potentialSavingBytes)} of savings${atQuality(summary)}, measured across all ${count(summary.assets, 'image')}`;
+}
+
+/**
+ * The quality a saving was measured at, phrased to sit inside the sentence.
+ *
+ * ⚠️ The report used to open with a headline like "166.3 MB of savings found so far"
+ * and name no quality anywhere in the file. The same images save 95% at quality 50
+ * and 44% at quality 90, so that sentence was not a measurement a reader could act
+ * on; it was a number whose meaning depended on a setting they could not see.
+ *
+ * Reads the qualities out of the report rather than out of configuration, so it
+ * describes the run that produced the bytes beside it.
+ */
+function atQuality(summary: Report['summary']): string {
+  const entries = Object.entries(summary.savingQuality).sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length === 0) return '';
+  return ` at ${entries.map(([format, quality]) => `${format} quality ${quality}`).join(' and ')}`;
 }
 
 /**

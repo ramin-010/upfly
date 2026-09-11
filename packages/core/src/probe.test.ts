@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type EncodeFormat, type ImageProbe, probeAssets } from './probe.js';
+import {
+  DEFAULT_ENCODE_QUALITY,
+  type EncodeFormat,
+  type ImageProbe,
+  probeAssets,
+} from './probe.js';
 import type { Asset } from './types.js';
 
 /**
@@ -29,6 +34,8 @@ interface FakeOptions {
 
 function fakeProbe(options: FakeOptions = {}): ImageProbe {
   return {
+    quality: DEFAULT_ENCODE_QUALITY,
+    encodeToFile: async () => 0,
     metadata: async () => {
       if (options.metadataFails !== undefined) throw new Error(options.metadataFails);
       return {
@@ -64,7 +71,9 @@ describe('probeAssets', () => {
       formats: ['webp'],
     });
 
-    expect(result?.encoded).toEqual([{ format: 'webp', bytes: 300 }]);
+    expect(result?.encoded).toEqual([
+      { format: 'webp', bytes: 300, quality: DEFAULT_ENCODE_QUALITY.webp },
+    ]);
   });
 
   it('measures nothing when asked for nothing, and still reads the header', async () => {
@@ -212,6 +221,8 @@ describe('probeAssets', () => {
 
     it('survives a port that throws something that is not an Error', async () => {
       const probe: ImageProbe = {
+        quality: DEFAULT_ENCODE_QUALITY,
+        encodeToFile: async () => 0,
         metadata: async () => {
           throw 'nope';
         },
@@ -225,6 +236,8 @@ describe('probeAssets', () => {
 
     it('lets one unreadable asset not stop the others', async () => {
       const probe: ImageProbe = {
+        quality: DEFAULT_ENCODE_QUALITY,
+        encodeToFile: async () => 0,
         metadata: async (path) => {
           if (path.endsWith('bad.png')) throw new Error('unsupported image format');
           return { width: 10, height: 10, format: 'png', pages: 1 };
@@ -356,6 +369,8 @@ describe('probeAssets', () => {
         asset(`img${String(index).padStart(2, '0')}.png`),
       );
       const probe: ImageProbe = {
+        quality: DEFAULT_ENCODE_QUALITY,
+        encodeToFile: async () => 0,
         metadata: async (path) => {
           // Later assets resolve sooner, so an order-dependent bug would surface.
           await new Promise((done) => setTimeout(done, path.includes('img00') ? 15 : 0));
@@ -375,6 +390,8 @@ describe('probeAssets', () => {
       let active = 0;
       let peak = 0;
       const probe: ImageProbe = {
+        quality: DEFAULT_ENCODE_QUALITY,
+        encodeToFile: async () => 0,
         metadata: async () => {
           active += 1;
           peak = Math.max(peak, active);
