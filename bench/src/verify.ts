@@ -82,6 +82,13 @@ interface RepoIndex {
   readonly files: ReadonlySet<string>;
   readonly hitsByToken: ReadonlyMap<string, readonly Hit[]>;
   readonly hitsByStem: ReadonlyMap<string, readonly Hit[]>;
+  /**
+   * Lowercased text of every grepped file, for the literal fallback below.
+   *
+   * Held in memory on purpose: it is the only way to answer "does this exact name appear"
+   * for a basename the tokeniser cannot represent, and a bench tool can afford it.
+   */
+  readonly lowerTexts: ReadonlyMap<string, string>;
   readonly unreadable: readonly string[];
   readonly filesIndexed: number;
   readonly filesGrepped: number;
@@ -249,6 +256,70 @@ function candidatePaths(
   return [...new Set(candidates)].filter((candidate) => !candidate.startsWith('..'));
 }
 
+/** Characters the oracle's tokeniser can represent: its class, plus the space it spans. */
+const TOKENISABLE = /^[\w@.\- ]+$/;
+
+/**
+ * The fallback for a basename the tokeniser cannot represent at all.
+ *
+ * ⚠️ **A different search strategy on purpose, not a wider regex.** `WhatsApp Image
+ * 2026-03-11 at 1.29.35 PM (1).webp` contains parentheses, which are not in the oracle's
+ * character class — so no token is produced, the lookup finds nothing, and `verifyDead`
+ * concludes *confirmed-genuine* having checked nothing. That verdict is not evidence, and
+ * it is the shape that made §5.1(j) read 0.0% when **4 of those assets were referenced**.
+ *
+ * Widening the class was the wrong fix twice over: parentheses are delimiters in unquoted
+ * CSS `url(…)` and bare Markdown `![](…)`, and every widening so far has cost more than it
+ * bought. A literal case-insensitive substring search **cannot have a tokenisation hole**,
+ * because it does no tokenising. It runs only for names the index provably cannot hold —
+ * measured at 10 of 553 on `RBU-Website` — so its cost is bounded by that count rather
+ * than by the corpus.
+ *
+ * ⚠️ **This is also the answer to "how would we know".** The index will always have some
+ * character it cannot represent; what matters is that a name it cannot represent takes a
+ * different road rather than falling through to a confident verdict.
+ *
+ * Returns `null` when the name *is* tokenisable, so the ordinary path runs unchanged.
+ */
+function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
+  const name = posix.basename(asset);
+  if (TOKENISABLE.test(name)) return null;
+
+  const needle = name.toLowerCase();
+  const found: string[] = [];
+  for (const [file, text] of index.lowerTexts) {
+    if (file === asset) continue;
+    const at = text.indexOf(needle);
+    if (at === -1) continue;
+    const line = text.slice(0, at).split('\n').length;
+    found.push(`  ${file}:${line}`);
+    if (found.length >= 5) break;
+  }
+
+  if (found.length === 0) {
+    return {
+      kind: 'dead',
+      subject: asset,
+      verdict: 'confirmed-genuine',
+      evidence: [
+        'the filename contains a character the token index cannot represent, so it was',
+        'searched for literally across every grepped file, and appears in none of them.',
+      ],
+    };
+  }
+
+  return {
+    kind: 'dead',
+    subject: asset,
+    verdict: 'confirmed-false',
+    evidence: [
+      `the exact filename appears in ${found.length} place(s), found by literal search`,
+      'because the token index cannot represent it:',
+      ...found,
+    ],
+  };
+}
+
 /**
  * §5.1(d): every `dead` asset, grepped across the whole repository.
  *
@@ -258,6 +329,9 @@ function candidatePaths(
  * under a different extension.
  */
 function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
+  const literal = literalHits(asset, index);
+  if (literal !== null) return literal;
+
   const name = posix.basename(asset).toLowerCase();
   const stem = name.slice(0, name.lastIndexOf('.'));
 
@@ -426,6 +500,7 @@ async function buildIndex(root: string): Promise<RepoIndex> {
   const files = new Set<string>();
   const hitsByToken = new Map<string, Hit[]>();
   const hitsByStem = new Map<string, Hit[]>();
+  const lowerTexts = new Map<string, string>();
   const unreadable: string[] = [];
   let filesGrepped = 0;
 
@@ -472,6 +547,7 @@ async function buildIndex(root: string): Promise<RepoIndex> {
       continue;
     }
     filesGrepped += 1;
+    lowerTexts.set(rel, text.toLowerCase());
 
     const lineStarts = offsetsOfLines(text);
     pattern.lastIndex = 0;
@@ -499,7 +575,15 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     }
   }
 
-  return { files, hitsByToken, hitsByStem, unreadable, filesIndexed: files.size, filesGrepped };
+  return {
+    files,
+    hitsByToken,
+    hitsByStem,
+    lowerTexts,
+    unreadable,
+    filesIndexed: files.size,
+    filesGrepped,
+  };
 }
 
 /**

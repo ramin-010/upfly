@@ -671,6 +671,52 @@ body`,
     });
 
     /**
+     * Parentheses, which the first version of this fix left out (R26 follow-up).
+     *
+     * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` is a phone screenshot plus the
+     * suffix every browser appends to a duplicate download — the commonest way a
+     * non-developer gets an image into a repository. Measured on `RBU-Website`: **9 images
+     * carry a paren and 4 were referenced and reported `dead` anyway**, which is why
+     * §5.1(j) reads 0.7% rather than 0.0%.
+     *
+     * ⚠️ **Fixed only for the bare string literal, which is already a quoted context.** In
+     * unquoted CSS `url(…)` and bare Markdown `![](…)` a paren is the closing delimiter,
+     * and admitting it there breaks the parse — both have quoted and angle forms that
+     * carry such a name correctly. Measured: of twelve reference positions only this one
+     * lost a paren path.
+     */
+    it.each([
+      [
+        'a browser duplicate-download suffix',
+        'const a = ["/img/Photo (1).webp"];',
+        '/img/Photo (1).webp',
+      ],
+      [
+        'a WhatsApp export, spaces and parens together',
+        'const a = ["/e/WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp"];',
+        '/e/WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp',
+      ],
+      ['parens with no space at all', 'const a = ["/img/photo(2).png"];', '/img/photo(2).png'],
+    ])('finds %s', (_name, source, expected) => {
+      expect(paths(source)).toEqual([expected]);
+      expect(slices(source)).toEqual([expected]);
+    });
+
+    it('does not let the paren widening admit a function call', () => {
+      // The end anchor is what keeps the widening safe: this ends on `)` rather than on an
+      // extension, so it is not a filename and the spaced rule rejects it.
+      expect(find('const s = "url(hero one.png)";')).toEqual([]);
+      expect(find('const s = "call(a b.png) later";')).toEqual([]);
+
+      // ⚠️ Deliberately NOT asserting that `"url(hero.png)"` is rejected. Without a space it
+      // never reaches the spaced rule at all — it is emitted as a speculative guess, as it
+      // was before this change, and the resolver discards it because nothing of that name
+      // exists. An earlier draft of this test claimed otherwise and was simply wrong about
+      // the code; the behaviour is unchanged by the paren widening, which is the property
+      // worth pinning.
+    });
+
+    /**
      * ⚠️ The known limit, pinned deliberately rather than fixed.
      *
      * A bare spaced filename with no separator is indistinguishable from the UI labels

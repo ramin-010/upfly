@@ -341,11 +341,28 @@ function plausiblePathShape(path: string): boolean {
  * one, so `` `/gallery/Firing Practice ${n}.webp` `` arrives here as
  * `/gallery/Firing Practice *.webp`.
  *
+ * ⚠️ **`(` and `)` are here, and only here — this is a per-syntax fix, not a global one.**
+ * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` is what a phone screenshot plus a
+ * browser's duplicate-download suffix produces, and it is the commonest way a
+ * non-developer gets an image into a repository. Measured on `RBU-Website`: **9 images
+ * carry a paren and 4 of them were referenced and reported `dead` anyway** — 0.7% of 553.
+ *
+ * A string literal is already a quoted context, so a paren inside it is an ordinary
+ * character. **It is not one everywhere else**: in unquoted CSS `url(…)` and in bare
+ * Markdown `![](…)` a paren is the closing delimiter, and admitting it there breaks the
+ * parse rather than widening it. Both of those have quoted and angle-bracket forms that
+ * already carry such a name correctly, so nothing is lost by leaving them alone. Measured:
+ * of twelve reference positions, **only the bare string literal lost a paren path**.
+ *
+ * The end anchor is what keeps this safe. `"url(hero.png)"` as a bare JS string ends on
+ * `)`, not on an extension, so it is still rejected — the widening admits filenames, not
+ * function calls.
+ *
  * Note that `extensionOf` cannot do this job: `extname('see ./old.png for details')`
  * returns `'.png for details'`, which is non-empty, so the extension check upstream was
  * satisfied by prose all along — the old whitespace ban was what had been hiding it.
  */
-const SPACED_PATH = /^[\w@.\-/*]+(?: [\w@.\-/*]+)*\.[A-Za-z0-9]+$/;
+const SPACED_PATH = /^[\w@.\-/*()]+(?: [\w@.\-/*()]+)*\.[A-Za-z0-9]+$/;
 
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;
