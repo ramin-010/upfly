@@ -16,10 +16,10 @@ import postcss, { type Declaration, type Root } from 'postcss';
 import lessParser from 'postcss-less';
 import scssParser from 'postcss-scss';
 import valueParser, { type Node as ValueNode } from 'postcss-value-parser';
-import { applyEdits } from '../edits.js';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
 import type { Adapter, RawReference } from '../types.js';
+import { defineAdapter } from './define.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
 
 /**
@@ -99,18 +99,14 @@ export function findCssReferences(input: {
   return references.sort((a, b) => a.start - b.start);
 }
 
-export const cssAdapter: Adapter = {
+export const cssAdapter: Adapter = defineAdapter({
   id: 'css',
   extensions: ['.css', '.scss', '.less'],
 
   findReferences({ file, text }): RawReference[] {
     return findCssReferences({ file, text, extension: extensionOf(file) });
   },
-
-  rewrite({ text, edits }): string {
-    return applyEdits(text, edits);
-  },
-};
+});
 
 /**
  * PostCSS keeps the author's original text in `raws.<field>.raw` whenever it differs

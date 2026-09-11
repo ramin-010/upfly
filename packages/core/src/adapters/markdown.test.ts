@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
-import { markdownAdapter } from './markdown.js';
+import { markdownAdapter, maskInactiveRegions } from './markdown.js';
 
 function find(text: string, file = '/project/README.md'): RawReference[] {
   return markdownAdapter.findReferences({ file, text });
@@ -408,5 +408,52 @@ describe('markdownAdapter', () => {
 
       expect(find(text).map((reference) => reference.rawPath)).toEqual(['./real.png']);
     });
+  });
+});
+
+describe('maskInactiveRegions, now that it is exported (R34)', () => {
+  it('preserves length exactly, so an offset into one indexes the other', () => {
+    const text = ['prose `code` more', '', '```js', 'const x = 1;', '```', ''].join('\n');
+
+    expect(maskInactiveRegions(text)).toHaveLength(text.length);
+  });
+
+  it('preserves every newline, so line numbers survive masking', () => {
+    const text = ['a', '```', 'b', 'c', '```', 'd'].join('\n');
+    const countNewlines = (value: string) => [...value].filter((c) => c === '\n').length;
+
+    expect(countNewlines(maskInactiveRegions(text))).toBe(countNewlines(text));
+  });
+
+  it('masks an import inside a fence — the defect this export exists to prevent', () => {
+    // Documentation teaching a reader how to write an import is not an import.
+    // Counting these produced 25 alias-shaped references where there were 11.
+    const text = ['```astro', "import stars from '~/stars/docline.png';", '```'].join('\n');
+
+    expect(maskInactiveRegions(text)).not.toContain('docline.png');
+  });
+
+  it('masks a fence whose lines end CRLF', () => {
+    // A line-anchored `$` does not match before `\r`, which is how a fenced-block
+    // count once came back as 0 of 124. Same input as the test above, CRLF endings.
+    const text = ['```astro', "import stars from '~/stars/docline.png';", '```'].join('\r\n');
+
+    expect(maskInactiveRegions(text)).not.toContain('docline.png');
+  });
+
+  it('leaves text outside a fence alone — the control', () => {
+    // Proves the four assertions above can fail: a masker that blanked everything
+    // would satisfy every `not.toContain` while being useless.
+    const text = [
+      "import real from './kept.png';",
+      '',
+      '```',
+      "import fenced from './gone.png';",
+      '```',
+    ].join('\n');
+    const masked = maskInactiveRegions(text);
+
+    expect(masked).toContain('./kept.png');
+    expect(masked).not.toContain('./gone.png');
   });
 });

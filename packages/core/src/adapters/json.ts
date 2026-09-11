@@ -16,15 +16,15 @@
  * report, while a missed one costs a broken build after the image is rewritten.
  */
 
-import { applyEdits } from '../edits.js';
 import { extensionOf } from '../paths.js';
 import type { Adapter, RawReference } from '../types.js';
+import { defineAdapter } from './define.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
 
 /** A JSON string literal, including its quotes. The `d` flag gives exact offsets. */
 const STRING = /"(?:[^"\\]|\\.)*"/dg;
 
-export const jsonAdapter: Adapter = {
+export const jsonAdapter: Adapter = defineAdapter({
   id: 'json',
   // `.webmanifest` is JSON, and a web app manifest is mostly icon paths — measured
   // on shadcn-ui, whose `site.webmanifest` lists three icons that were otherwise
@@ -56,11 +56,7 @@ export const jsonAdapter: Adapter = {
 
     return references.sort((a, b) => a.start - b.start);
   },
-
-  rewrite({ text, edits }): string {
-    return applyEdits(text, edits);
-  },
-};
+});
 
 function isObjectKey(text: string, afterString: number): boolean {
   for (let index = afterString; index < text.length; index += 1) {

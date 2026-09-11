@@ -17,7 +17,7 @@ export { cssAdapter, findCssReferences } from './adapters/css.js';
 export { htmlAdapter } from './adapters/html.js';
 export { javascriptAdapter } from './adapters/javascript.js';
 export { jsonAdapter } from './adapters/json.js';
-export { markdownAdapter } from './adapters/markdown.js';
+export { markdownAdapter, maskInactiveRegions } from './adapters/markdown.js';
 export {
   isExternalUrl,
   splitPathSuffix,

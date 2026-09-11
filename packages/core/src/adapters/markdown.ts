@@ -15,9 +15,9 @@
  * HTML, and `<picture>` blocks with `srcset` turn up in real READMEs.
  */
 
-import { applyEdits } from '../edits.js';
 import { UpflyError } from '../errors.js';
 import type { Adapter, RawReference } from '../types.js';
+import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
 import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './reference-path.js';
 
@@ -51,7 +51,7 @@ const DEFINITION = new RegExp(
   'gdm',
 );
 
-export const markdownAdapter: Adapter = {
+export const markdownAdapter: Adapter = defineAdapter({
   id: 'markdown',
   extensions: ['.md', '.mdx', '.markdown'],
 
@@ -84,11 +84,7 @@ export const markdownAdapter: Adapter = {
 
     return references.sort((a, b) => a.start - b.start);
   },
-
-  rewrite({ text, edits }): string {
-    return applyEdits(text, edits);
-  },
-};
+});
 
 function collectMatches(
   pattern: RegExp,
@@ -149,13 +145,26 @@ function addReference(raw: string, start: number, file: string, references: RawR
  *
  * Newlines survive so that line-anchored patterns still see the right structure,
  * and every other masked character becomes a space so that offsets are unchanged.
+ * The returned string has exactly the same length as the input, so an offset into
+ * one indexes the other — which is what makes it safe to search the masked text and
+ * report positions in the original.
  *
  * Indented (four-space) code blocks are deliberately *not* masked: telling one apart
  * from a continuation line inside a list needs a real block parser, and guessing
  * wrong would blank out a real reference — a false negative, which is the worse
  * failure of the two.
+ *
+ * ⚠️ **Exported because a masker nobody can reach is a bug generator (R34).** Anything
+ * that searches Markdown for a token has to mask first: an `import` or an `<img src>`
+ * inside a ``` fence is documentation *about* code, not code. While this was
+ * module-private, every consumer either reimplemented the test or skipped it, and
+ * skipping it has now produced the same defect three times — in `bench/`'s triage,
+ * where a proxy rule mis-explained 5 of 124 hits, and in a Phase 2 probe that counted
+ * 25 alias-shaped references where there were 11, the 14 extras being fenced examples
+ * naming files that do not exist in the repository. **Call this instead of writing the
+ * test again.**
  */
-function maskInactiveRegions(text: string): string {
+export function maskInactiveRegions(text: string): string {
   let masked = maskFencedBlocks(text);
   masked = maskPattern(masked, /<!--[\s\S]*?-->/g);
   masked = maskPattern(masked, /(`+)[\s\S]*?\1/g);

@@ -24,11 +24,11 @@ import type {
   TaggedTemplateExpression,
   TemplateLiteral,
 } from '@babel/types';
-import { applyEdits } from '../edits.js';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
+import { defineAdapter } from './define.js';
 import { isExternalUrl, parseSrcset, splitPathSuffix } from './reference-path.js';
 
 /**
@@ -87,7 +87,7 @@ const CSS_IN_JS_TAGS: ReadonlySet<string> = new Set([
   'injectGlobal',
 ]);
 
-export const javascriptAdapter: Adapter = {
+export const javascriptAdapter: Adapter = defineAdapter({
   id: 'javascript',
   extensions: ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'],
 
@@ -137,11 +137,7 @@ export const javascriptAdapter: Adapter = {
 
     return [...context.references, ...guesses].sort((a, b) => a.start - b.start);
   },
-
-  rewrite({ text, edits }): string {
-    return applyEdits(text, edits);
-  },
-};
+});
 
 /**
  * Whether a file that will not parse is a **template** wearing a code extension.

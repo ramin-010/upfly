@@ -13,10 +13,10 @@
  */
 
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
-import { applyEdits } from '../edits.js';
 import { UpflyError } from '../errors.js';
 import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
+import { defineAdapter } from './define.js';
 import {
   isExternalUrl,
   parseSrcset,
@@ -68,7 +68,7 @@ const SRCSET_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
   ['source', ['srcset']],
 ]);
 
-export const htmlAdapter: Adapter = {
+export const htmlAdapter: Adapter = defineAdapter({
   id: 'html',
   extensions: ['.html', '.htm'],
 
@@ -81,11 +81,7 @@ export const htmlAdapter: Adapter = {
     walk(document, { file, text, references });
     return references.sort((a, b) => a.start - b.start);
   },
-
-  rewrite({ text, edits }): string {
-    return applyEdits(text, edits);
-  },
-};
+});
 
 interface Context {
   readonly file: string;
