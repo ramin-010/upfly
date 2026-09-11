@@ -34,6 +34,10 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'n
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
+// The one place this file touches the engine, and it is the subject rather than an
+// instrument. The build and the link check stay engine-free on purpose: the value of
+// a framework build as an oracle is that it is somebody else's idea of a reference.
+import { optimizeTree } from './engine-run.js';
 
 const FIXTURES_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 
@@ -642,6 +646,54 @@ async function runMutation(fixture: FixtureSpec, mutation: Mutation): Promise<Ro
   return rows;
 }
 
+/**
+ * The exit criterion itself: optimise a fixture, then check what it produced.
+ *
+ * R43's rewrite of the criterion is `optimize --apply` on all fixtures followed by
+ * BOTH the build passing AND a link check over the emitted tree finding nothing
+ * broken. The link check is the primary of the two: measured across the 16
+ * (fixture, reference class) pairs, the build sees 3 and the link check sees 13.
+ *
+ * The instruments are the ones the baseline and the negative controls already use, on
+ * trees materialised the same way, which is R44's condition. Nothing here is a
+ * second, gentler check written for our own transaction to pass.
+ */
+async function runOptimized(fixture: FixtureSpec): Promise<string[]> {
+  const failures: string[] = [];
+  const root = await materialise(fixture);
+
+  try {
+    const result = await optimizeTree(root);
+
+    if (result.refusal !== null) {
+      stdout.write(`  optimize    REFUSED  ${result.refusal.code}\n`);
+      failures.push(`${fixture.name}/optimize refused: ${result.refusal.reason}`);
+      return failures;
+    }
+
+    stdout.write(
+      `  optimize    ${result.plan.conversions.length} converted, ${result.plan.rewrites.length} rewritten, ${result.plan.declined.length} declined\n`,
+    );
+
+    // A run that changed nothing cannot demonstrate that changing things is safe, so
+    // it is reported rather than passed. A green criterion over an untouched tree is
+    // the gate-that-never-ran problem R42 exists about.
+    if (result.plan.conversions.length === 0) {
+      failures.push(`${fixture.name}: optimize converted nothing, so this proves nothing`);
+    }
+
+    for (const [instrument, outcome] of await check(root, fixture)) {
+      const ok = outcome.verdict === 'intact';
+      stdout.write(`  optimized ${instrument.padEnd(11)} ${ok ? 'intact' : 'BROKEN'}\n`);
+      if (!ok) failures.push(`${fixture.name}/${instrument}: ${outcome.detail}`);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+
+  return failures;
+}
+
 async function main(): Promise<void> {
   const only = argv.find((argument) => argument.startsWith('--fixture='))?.split('=')[1];
   const selected = only ? FIXTURES.filter((f) => f.name === only) : FIXTURES;
@@ -653,6 +705,22 @@ async function main(): Promise<void> {
 
   const rows: Row[] = [];
   const baselineFailures: string[] = [];
+
+  // The exit criterion on its own. The calibration below it, the baseline plus every
+  // negative control, is what makes the criterion mean anything, but it is slow and
+  // does not change between runs, so iterating on the criterion need not repeat it.
+  if (argv.includes('--optimize')) {
+    const failures: string[] = [];
+    for (const fixture of selected) {
+      stdout.write(`\n${fixture.name}\n`);
+      failures.push(...(await runBaseline(fixture)));
+      failures.push(...(await runOptimized(fixture)));
+    }
+
+    stdout.write(failures.length === 0 ? '\nEXIT CRITERION MET\n' : '\nEXIT CRITERION FAILED\n');
+    for (const failure of failures) stdout.write(`  ${failure}\n`);
+    exit(failures.length === 0 ? 0 : 1);
+  }
 
   for (const fixture of selected) {
     stdout.write(`\n${fixture.name}\n`);
