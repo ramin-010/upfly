@@ -113,8 +113,9 @@ criterion, so this is where most of the design pressure lands.
 Five cases refuse to fit:
 
 - `import logo from '@/assets/logo.png'` is asserted and will not resolve, because alias
-  resolution (tsconfig `paths`, Vite `resolve.alias`) does not land until Phase 2. That import
-  is everywhere in Next and Vite projects.
+  resolution (tsconfig `paths`, Vite `resolve.alias`) only resolves it when the project actually
+  declares that alias and the declaration can be read **statically**. That import is everywhere in
+  Next and Vite projects, and what is left over still must not be called broken.
 - `url($hero)` never had a static path at all. A literal path pointing at nothing is a real,
   actionable finding; a path the preprocessor builds is simply not knowable, and nobody typed a
   wrong path.
@@ -133,7 +134,9 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 5 | under an excluded root, or exists on disk | `out-of-scope` | `../legacy/old.png` |
-| 6 | alias-shaped | `unresolved-alias` | `@/assets/logo.png` |
+| 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
+| 6 | alias-shaped, nothing matched | `unresolved-alias` | `@/assets/logo.png` |
+| 6b | a package specifier | `out-of-scope` | `@11ty/logo/img/logo.png` |
 | 7 | asserted | `broken` | `./missing.png` — a real finding |
 | 8 | otherwise | `discarded` | a path-shaped string in `package.json` |
 
@@ -236,6 +239,40 @@ and whether the planner may rewrite this class is deliberately left open rather 
 The counts reach the JSON as `references.byResolvedVia`. Before that they existed only inside the
 resolver, which meant no consumer could tell a guess from an ordinary resolution and the planner
 would have had nothing to cite when it declined one — and a silent decline is a rule 9 P0.
+
+### Aliases are read, never executed
+
+`@/assets/logo.png` resolves only if the project declares that alias somewhere the engine can read
+**without running anything**. `loadAliases` parses `tsconfig`/`jsconfig` `paths` (following `extends`,
+including by name into `node_modules`) and `vite.config.*` `resolve.alias`, and hands the resolver a
+map; the resolver stays pure.
+
+🔴 **A config is read statically or not at all, and that is a hard line rather than a trade-off.**
+Every `resolve.alias` in the validation corpus is `'@': path.resolve(__dirname, './src')` — a
+JavaScript expression. Evaluating it would mean **executing a config file from a repository the user
+did not write**, in a tool they ran to save bytes. No byte saving buys that. Where the static read
+cannot see a value, the alias is reported as unreadable **with its file and line**, because a
+limitation a user can see is worth more than a resolution they cannot trust.
+
+Two details that are easy to get wrong:
+
+- **`tsconfig.json` is JSONC.** Comments and trailing commas are legal and common, and `JSON.parse`
+  throws on both. It is parsed with `@babel/parser` — a JSONC document *is* a JavaScript object
+  literal — rather than by stripping comments with a regex, which would be "never regex JavaScript"
+  wearing a different extension. Values are read off the AST, never reconstructed into an object.
+- **A tsconfig key and a Vite key mean different things.** `"@/*"` is a pattern whose `*` says
+  "prefix"; a Vite string key is *always* a prefix replacement, so `{'@': './src'}` turns
+  `@/x.png` into `./src/x.png`. Treating the Vite form as an exact match resolves nothing at all.
+
+Aliases are scoped to the directory of the config that declared them. `shadcn-ui` has roughly twenty
+configs all defining `@/*`, and without scoping every one of them would offer a candidate for every
+reference in the workspace.
+
+⚠️ **A package specifier is not an alias** (rung 6b). `@11ty/logo/img/logo.png` names a file inside
+`node_modules`, which the walk prunes — so no alias configuration will ever resolve it, and leaving
+it in `unresolved-alias` would promise a resolution that is never coming. `unresolved-alias` means
+*"we expect to resolve this once aliases land"*: it is a promise, not a description. The two shapes
+differ by one character — `@/…` has an empty scope, which no registry permits.
 
 ### Non-asset extensions are the resolver's business
 
