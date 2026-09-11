@@ -12,6 +12,8 @@
  * somebody asks for a probe keeps that escape hatch real.
  */
 
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { EncodeFormat, ImageMetadata, ImageProbe } from './probe.js';
 import { DEFAULT_ENCODE_QUALITY } from './probe.js';
 
@@ -83,6 +85,12 @@ export async function createSharpProbe(
     },
 
     async encodeToFile({ path, format, animated, destination }): Promise<number> {
+      // The staged tree mirrors the project tree, so a destination is routinely
+      // several directories deep inside a run directory that did not exist a moment
+      // ago. sharp reports that as "unable to open for write", which reads like a
+      // permissions problem and is not one. A port that writes a file owns getting
+      // somewhere to write it.
+      await mkdir(dirname(destination), { recursive: true });
       const { size } = await encoder(path, format, animated).toFile(destination);
       return size;
     },
