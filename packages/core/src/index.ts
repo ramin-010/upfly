@@ -104,6 +104,7 @@ export type {
 export { expandAlias, loadAliases } from './aliases.js';
 export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './aliases.js';
 export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
+export { CONVENTIONAL_SERVING_ROOT_NAMES, detectServingRoots } from './serving-roots.js';
 export type { ResolveOptions, ServingRoots } from './resolve.js';
 export { scanSources } from './scan.js';
 export type { ReadFilePort, ScanOptions, ScanResult } from './scan.js';
