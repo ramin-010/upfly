@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyEdits, validateEdits } from './edits.js';
+import { applyEdits, invertEdits, validateEdits } from './edits.js';
 import { UpflyError } from './errors.js';
 import type { Edit } from './types.js';
 
@@ -130,5 +130,63 @@ describe('validateEdits', () => {
 
   it('surfaces the same failures as applyEdits, before anything is written', () => {
     expect(() => validateEdits('abc', [edit(0, 2, 'x'), edit(1, 3, 'y')])).toThrow(UpflyError);
+  });
+});
+
+describe('invertEdits', () => {
+  it('turns the rewritten text back into the original', () => {
+    const source = 'a "./logo.png" b "./hero.jpg" c';
+    const edits = [edit(3, 13, './logo.webp'), edit(17, 28, './hero.webp')];
+    const after = applyEdits(source, edits);
+
+    expect(after).not.toBe(source);
+    expect(applyEdits(after, invertEdits(source, edits))).toBe(source);
+  });
+
+  it('round-trips over many generated edit sets', () => {
+    // Seeded rather than random so a failure is reproducible from the output alone.
+    let seed = 20260911;
+    const next = (limit: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % limit;
+    };
+
+    let nonEmpty = 0;
+    for (let round = 0; round < 200; round++) {
+      const source = 'abcdefghijklmnopqrstuvwxyz'.slice(0, 6 + next(20));
+      const edits: Edit[] = [];
+
+      // Walk left to right leaving at least one character between edits, so the
+      // generated set is always valid and the test exercises inversion rather than
+      // rediscovering that overlapping edits are rejected.
+      let cursor = 0;
+      while (cursor < source.length) {
+        const start = cursor + next(3);
+        const end = Math.min(start + 1 + next(3), source.length);
+        if (start >= end) break;
+        edits.push(edit(start, end, 'X'.repeat(next(4))));
+        cursor = end + 1;
+      }
+      if (edits.length === 0) continue;
+
+      const after = applyEdits(source, edits);
+      const inverse = invertEdits(source, edits);
+
+      // Skip the sets whose inverse is genuinely ambiguous: a deletion adjacent to
+      // another edit inverts to two edits sharing a start. `prepare` refuses those
+      // rather than applying them, so they are not a property this can assert.
+      let applicable = true;
+      try {
+        validateEdits(after, inverse);
+      } catch {
+        applicable = false;
+      }
+      if (!applicable) continue;
+
+      nonEmpty += 1;
+      expect(applyEdits(after, inverse), `round ${round}, source ${source}`).toBe(source);
+    }
+
+    expect(nonEmpty).toBeGreaterThan(50);
   });
 });

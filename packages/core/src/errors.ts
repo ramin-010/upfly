@@ -20,7 +20,19 @@ export type UpflyErrorCode =
    * against one asset set and graphed against another. Loud because the quiet
    * version of this bug is a phantom dead asset.
    */
-  | 'GRAPH_UNKNOWN_ASSET';
+  | 'GRAPH_UNKNOWN_ASSET'
+  /**
+   * A plan failed its checks before anything was written. The tree is untouched, and
+   * the message names the operation and what was wrong with it.
+   */
+  | 'TRANSACTION_PLAN_INVALID'
+  /**
+   * A file an undo would have rewritten no longer matches either the state the run
+   * found or the state it left. Something else changed it, so nothing is reverted.
+   */
+  | 'TRANSACTION_FOREIGN_CHANGE'
+  /** A manifest written by a build whose schema this one does not understand. */
+  | 'MANIFEST_VERSION_UNSUPPORTED';
 
 /**
  * All errors the engine throws deliberately.

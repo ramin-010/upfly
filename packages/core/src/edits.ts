@@ -33,6 +33,38 @@ export function applyEdits(source: string, edits: readonly Edit[]): string {
 }
 
 /**
+ * Build the edits that turn `applyEdits(source, edits)` back into `source`.
+ *
+ * Undo needs to restore a file without keeping a copy of it. Each replacement lands
+ * at a known offset in the new text, so the reverse edit is that range put back to
+ * the text it replaced, and the text it replaced is a path string rather than a
+ * whole file.
+ *
+ * The caller must check the result is applyable before relying on it: two adjacent
+ * edits where the first deletes text can invert to two edits sharing a start offset,
+ * which `applyEdits` refuses. Finding that out during undo would be finding it out
+ * far too late, so the transaction validates the inverse while planning.
+ */
+export function invertEdits(source: string, edits: readonly Edit[]): Edit[] {
+  const ordered = validateEdits(source, edits);
+  const inverse: Edit[] = [];
+
+  // Offsets in the new text drift from offsets in the old by the length change of
+  // every edit before them, so the shift is accumulated left to right.
+  let shift = 0;
+  for (const edit of ordered) {
+    const start = edit.start + shift;
+    inverse.push({
+      start,
+      end: start + edit.replacement.length,
+      replacement: source.slice(edit.start, edit.end),
+    });
+    shift += edit.replacement.length - (edit.end - edit.start);
+  }
+  return inverse;
+}
+
+/**
  * Check a set of edits against a source string and return them sorted ascending.
  *
  * Exported because the planner validates a whole run's edits before anything is
