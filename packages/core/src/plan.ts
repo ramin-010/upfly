@@ -17,6 +17,7 @@ import type { Declined } from './manifest.js';
 import { extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
+import type { ServingRoots } from './resolve.js';
 import type { Edit, Reference } from './types.js';
 
 /** What happens to the original when a public asset is converted. */
@@ -30,13 +31,16 @@ export type PublicPolicy =
  * Whether a root-relative path that resolved against the project root may be edited.
  *
  * A root-relative reference on a plain static site is the ordinary case and resolves
- * against the project root because there is no serving root to configure. The same
- * resolution on a project that *does* configure a serving root is different: the path
- * missed the configured root and happened to exist at the project root, which may be
- * coincidence rather than a link.
+ * against the project root because there is no serving root to declare. The same
+ * resolution on a project that *does* declare one is different: the path missed the
+ * declared root and happened to exist at the project root, which may be coincidence
+ * rather than a link.
  *
  * `when-no-serving-root` is the default because it separates those two on the fact
- * that distinguishes them rather than on a preference.
+ * that distinguishes them rather than on a preference. It keys on whether the project
+ * DECLARED a serving root, not on whether the resolver used one: a convention guess is
+ * not a statement, and declining a link on the strength of a choice nobody made would
+ * be the same mistake in the other direction.
  */
 export type RootLinkPolicy = 'when-no-serving-root' | 'always' | 'never';
 
@@ -56,8 +60,14 @@ export interface PlanInput {
    * definition no reference points at it that we can see.
    */
   readonly hedged: ReadonlySet<string>;
-  /** True when the project configures a serving root. Decides the root-link case. */
-  readonly servingRootConfigured: boolean;
+  /**
+   * The serving roots the resolver used, carrying whether the project declared them.
+   *
+   * The same value the resolver was given, not a boolean derived beside it, so the
+   * planner cannot be told the project declared a serving root while the resolver
+   * resolved against a guess.
+   */
+  readonly servingRoots: ServingRoots;
   readonly rootLinkPolicy?: RootLinkPolicy;
 }
 
@@ -347,7 +357,7 @@ function rewriteRefusal(
   }
   if (reference.resolvedVia === 'project-root') {
     const policy = input.rootLinkPolicy ?? 'when-no-serving-root';
-    if (policy === 'never' || (policy === 'when-no-serving-root' && input.servingRootConfigured)) {
+    if (policy === 'never' || (policy === 'when-no-serving-root' && input.servingRoots.declared)) {
       return 'the path is root-relative and missed the configured serving root, so its existing at the project root may be coincidence rather than a link';
     }
   }

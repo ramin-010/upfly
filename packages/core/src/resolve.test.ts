@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from './paths.js';
 import { isLinked, linkedPaths } from './reference.js';
-import { resolveReferences } from './resolve.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 /**
@@ -84,6 +84,7 @@ function resolveOne(overrides: Partial<RawReference> & { rawPath: string }): Ref
   return resolveReferences([raw(overrides)], {
     root: ROOT,
     assets: ASSETS,
+    servingRoots: CONVENTIONAL_SERVING_ROOTS,
     exists: NOTHING_EXISTS,
   })[0];
 }
@@ -177,6 +178,7 @@ describe('resolveReferences', () => {
         resolveReferences([raw({ rawPath })], {
           root: ROOT,
           assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
           exists: NOTHING_EXISTS,
         }),
       ).toEqual([]);
@@ -186,7 +188,12 @@ describe('resolveReferences', () => {
       // Behind the resolution test, every `url(inter.woff2)` becomes a finding.
       const references = resolveReferences(
         [raw({ rawPath: './inter.woff2', kind: 'css-url' }), raw({ rawPath: './assets/logo.png' })],
-        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
       );
       expect(references.map((reference) => reference.resolution)).toEqual(['resolved']);
     });
@@ -230,7 +237,7 @@ describe('resolveReferences', () => {
         {
           root: ROOT,
           assets: monorepo,
-          publicDirs: ['apps/www/public', 'apps/v4/public'],
+          servingRoots: { declared: true, dirs: ['apps/www/public', 'apps/v4/public'] },
           exists: NOTHING_EXISTS,
         },
       );
@@ -251,7 +258,7 @@ describe('resolveReferences', () => {
           assets: monorepo,
           // Deliberately listed with the wrong one first: order in the list must not
           // decide precedence, proximity must.
-          publicDirs: ['apps/www/public', 'apps/v4/public'],
+          servingRoots: { declared: true, dirs: ['apps/www/public', 'apps/v4/public'] },
           exists: NOTHING_EXISTS,
         },
       );
@@ -275,7 +282,7 @@ describe('resolveReferences', () => {
         {
           root: ROOT,
           assets: monorepo,
-          publicDirs: ['apps/v4/public'],
+          servingRoots: { declared: true, dirs: ['apps/v4/public'] },
           exists: NOTHING_EXISTS,
         },
       );
@@ -289,7 +296,7 @@ describe('resolveReferences', () => {
       const references = resolveReferences([raw({ rawPath: '/assets/logo.png' })], {
         root: ROOT,
         assets: ASSETS,
-        publicDirs: ['src'],
+        servingRoots: { declared: true, dirs: ['src'] },
         exists: NOTHING_EXISTS,
       });
       expect(references[0]?.resolution).toBe('resolved');
@@ -333,7 +340,12 @@ describe('resolveReferences', () => {
             ceiling: 'high',
           }),
         ],
-        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
       );
 
       expect(resolved?.resolution).toBe('resolved');
@@ -360,7 +372,12 @@ describe('resolveReferences', () => {
             file: join(ROOT, 'src/pages/deep/handler.ts'),
           }),
         ],
-        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
       );
 
       expect(resolved?.resolution).toBe('broken');
@@ -376,7 +393,7 @@ describe('resolveReferences', () => {
       const [resolved] = resolveReferences([raw({ rawPath: '/banner.png' })], {
         root: ROOT,
         assets: ASSETS,
-        publicDirs: ['public'],
+        servingRoots: { declared: true, dirs: ['public'] },
         exists: NOTHING_EXISTS,
       });
 
@@ -389,7 +406,7 @@ describe('resolveReferences', () => {
       const [resolved] = resolveReferences([raw({ rawPath: '/at-root.png' })], {
         root: ROOT,
         assets: ASSETS,
-        publicDirs: ['public'],
+        servingRoots: { declared: true, dirs: ['public'] },
         exists: NOTHING_EXISTS,
       });
 
@@ -407,12 +424,17 @@ describe('resolveReferences', () => {
       const [rootRelative] = resolveReferences([raw({ rawPath: '/at-root.png' })], {
         root: ROOT,
         assets: ASSETS,
-        publicDirs: ['public'],
+        servingRoots: { declared: true, dirs: ['public'] },
         exists: NOTHING_EXISTS,
       });
       const [speculative] = resolveReferences(
         [raw({ rawPath: './at-root.png', asserted: false, ceiling: 'high' })],
-        { root: ROOT, assets: ASSETS, publicDirs: ['public'], exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: { declared: true, dirs: ['public'] },
+          exists: NOTHING_EXISTS,
+        },
       );
 
       const viaOf = (reference: Reference | undefined): string | null =>
@@ -490,6 +512,7 @@ describe('resolveReferences', () => {
       return resolveReferences([raw({ rawPath, kind: 'css-url' })], {
         root: ROOT,
         assets: ASSETS,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
         excludedRoots: EXCLUDED,
         exists,
       })[0];
@@ -546,6 +569,7 @@ describe('resolveReferences', () => {
         {
           root: ROOT,
           assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
           exists: (path) => {
             asked.push(path);
             return false;
@@ -561,6 +585,7 @@ describe('resolveReferences', () => {
         root: ROOT,
         assets: ASSETS,
         excludedRoots: EXCLUDED,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
         exists: (path) => path === toPosix(join(ROOT, 'src/@/legacy/old.png')),
       })[0];
 
@@ -612,7 +637,12 @@ describe('resolveReferences', () => {
           raw({ rawPath: './a.png', asserted: false, kind: 'json' }),
           raw({ rawPath: './b.png', asserted: false, kind: 'json' }),
         ],
-        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
       );
       expect(references.every((reference) => reference.resolution === 'discarded')).toBe(true);
     });
@@ -658,8 +688,20 @@ describe('resolveReferences', () => {
     it('returns the same result for the same input', () => {
       const input = [raw({ rawPath: './assets/logo.png' }), raw({ rawPath: './missing.png' })];
       expect(
-        resolveReferences(input, { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS }),
-      ).toEqual(resolveReferences(input, { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS }));
+        resolveReferences(input, {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        }),
+      ).toEqual(
+        resolveReferences(input, {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        }),
+      );
     });
 
     it('preserves input order', () => {
@@ -669,7 +711,12 @@ describe('resolveReferences', () => {
           raw({ rawPath: './missing.png' }),
           raw({ rawPath: './assets/hero.jpg' }),
         ],
-        { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS },
+        {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
       );
       expect(references.map((reference) => reference.rawPath)).toEqual([
         './assets/logo.png',
@@ -683,11 +730,13 @@ describe('resolveReferences', () => {
       const a = resolveReferences([raw({ rawPath: './images/${n}.png', ceiling: 'medium' })], {
         root: ROOT,
         assets: ASSETS,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
         exists: NOTHING_EXISTS,
       });
       const b = resolveReferences([raw({ rawPath: './images/${n}.png', ceiling: 'medium' })], {
         root: ROOT,
         assets: shuffled,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
         exists: NOTHING_EXISTS,
       });
       expect(linkedPaths(a[0] as Reference)).toEqual(linkedPaths(b[0] as Reference));
@@ -701,15 +750,21 @@ describe('resolveReferences', () => {
     });
 
     it('handles an empty input', () => {
-      expect(resolveReferences([], { root: ROOT, assets: ASSETS, exists: NOTHING_EXISTS })).toEqual(
-        [],
-      );
+      expect(
+        resolveReferences([], {
+          root: ROOT,
+          assets: ASSETS,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        }),
+      ).toEqual([]);
     });
 
     it('handles a project with no assets', () => {
       const references = resolveReferences([raw({ rawPath: './assets/logo.png' })], {
         root: ROOT,
         assets: [],
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
         exists: NOTHING_EXISTS,
       });
       expect(references[0]?.resolution).toBe('broken');
@@ -768,5 +823,32 @@ describe('resolveReferences', () => {
       // rather than ruled out, and it must still be reported as dynamic.
       expect(resolveOne({ rawPath: '$hero', ceiling: 'unsafe' })?.resolution).toBe('dynamic');
     });
+  });
+});
+
+describe('serving roots carry where they came from', () => {
+  it('marks the convention guess as undeclared', () => {
+    // If this ever flips to true, every policy keyed on whether the project declared
+    // a serving root silently changes meaning, and nothing else would notice.
+    expect(CONVENTIONAL_SERVING_ROOTS.declared).toBe(false);
+    expect([...CONVENTIONAL_SERVING_ROOTS.dirs]).toEqual(['public']);
+  });
+
+  it('resolves against the guess exactly as it would against a declaration', () => {
+    // The provenance changes what a consumer may conclude, never where a path lands.
+    const guessed = resolveReferences([raw({ rawPath: '/logo.png' })], {
+      root: ROOT,
+      assets: ASSETS,
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      exists: NOTHING_EXISTS,
+    });
+    const declared = resolveReferences([raw({ rawPath: '/logo.png' })], {
+      root: ROOT,
+      assets: ASSETS,
+      servingRoots: { dirs: ['public'], declared: true },
+      exists: NOTHING_EXISTS,
+    });
+
+    expect(guessed).toEqual(declared);
   });
 });

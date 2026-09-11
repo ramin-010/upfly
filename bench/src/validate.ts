@@ -23,10 +23,12 @@ import { argv, chdir, cwd, stdout } from 'node:process';
 import {
   type Adapter,
   type Asset,
+  CONVENTIONAL_SERVING_ROOTS,
   type Graph,
   IMAGE_EXTENSIONS,
   type Reference,
   type Report,
+  type ServingRoots,
   audit,
   buildGraph,
   buildReport,
@@ -59,6 +61,25 @@ interface RepoSpec {
    * against a single one produced 93 false `broken` findings (R13).
    */
   readonly publicDirs: readonly string[];
+  /**
+   * Run this entry with no configuration at all, as a first-time user would.
+   *
+   * `publicDirs` is then ignored and the convention guess applies, marked as a guess.
+   * Added because every other entry in this list is hand-tuned, so the corpus could
+   * not see what a stranger's first run produces.
+   */
+  readonly unconfigured?: boolean;
+}
+
+/**
+ * How this run is named in the artefacts.
+ *
+ * Separate from `name`, which is the directory on disk, because one repository can
+ * appear twice under two configurations and the two runs must not write over each
+ * other's reports.
+ */
+function labelOf(repo: RepoSpec): string {
+  return repo.unconfigured === true ? `${repo.name}-unconfigured` : repo.name;
 }
 
 const REPOS: readonly RepoSpec[] = [
@@ -94,6 +115,17 @@ const REPOS: readonly RepoSpec[] = [
     name: 'railsgirls-com',
     sha: 'fa2b63c48381a04f354d976efe2fdd1d35078b9e',
     publicDirs: [''],
+  },
+  {
+    // The same repository, met the way a stranger meets it. Hand-written static HTML
+    // with no `public/` directory, so the convention guess matches nothing and every
+    // root-relative path falls through to the project root. That is the bucket the
+    // configured entry above cannot produce, and it is the one a first run always
+    // hits, because a first run has no configuration by definition.
+    name: 'railsgirls-com',
+    sha: 'fa2b63c48381a04f354d976efe2fdd1d35078b9e',
+    publicDirs: [''],
+    unconfigured: true,
   },
   {
     // R27/R28's other half: messy filenames reached through JSX and SCSS rather than
@@ -160,7 +192,7 @@ async function main(): Promise<void> {
   const results: RepoResult[] = [];
   for (const repo of REPOS) {
     if (only !== undefined && repo.name !== only) continue;
-    stdout.write(`\n=== ${repo.name} ===\n`);
+    stdout.write(`\n=== ${labelOf(repo)} ===\n`);
     const result = await validateRepo(repo, probed);
     results.push(result);
     await writeArtifacts(outDir, result);
@@ -197,7 +229,9 @@ function partialSummary(
   only: string | undefined,
   probed: boolean,
 ): string {
-  const absent = REPOS.filter((repo) => !results.some((result) => result.repo.name === repo.name));
+  const absent = REPOS.filter(
+    (repo) => !results.some((result) => labelOf(result.repo) === labelOf(repo)),
+  );
   const reasons: string[] = [];
   if (only !== undefined) {
     reasons.push(
@@ -232,6 +266,21 @@ function partialSummary(
  * `deterministic: true` while the written JSON differed by 318 lines. Determinism
  * has to be measured over the whole pipeline or it is not measured at all.
  */
+/**
+ * The serving roots one run resolves against.
+ *
+ * Every repository here has hand-tuned serving roots, which means the corpus has
+ * validated the CONFIGURED experience five times and the unconfigured one never. A
+ * first run always has no configuration, so the unconfigured case is what everybody
+ * meets first. `unconfigured` runs a repo the way a stranger would meet it: the
+ * convention guess, marked as a guess.
+ */
+function servingRootsFor(repo: RepoSpec): ServingRoots {
+  return repo.unconfigured === true
+    ? CONVENTIONAL_SERVING_ROOTS
+    : { dirs: repo.publicDirs, declared: true };
+}
+
 async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -255,7 +304,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
-    publicDirs: repo.publicDirs,
+    servingRoots: servingRootsFor(repo),
     excludedRoots: discovery.excludedRoots,
     aliases,
     exists: (path) => existsSync(path),
@@ -681,7 +730,7 @@ function lineText(text: string, offset: number): string {
 
 /** Per-repo artefacts: the report, and the worksheet (c) and (d) are worked through. */
 async function writeArtifacts(outDir: string, result: RepoResult): Promise<void> {
-  const name = result.repo.name;
+  const name = labelOf(result.repo);
   await writeFile(
     join(outDir, `${name}.report.json`),
     `${JSON.stringify(result.report, null, 2)}\n`,
@@ -706,7 +755,7 @@ function worksheet(result: RepoResult): string {
   const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null);
 
   const lines = [
-    `# ${repo.name} — §5.1(c)/(d) review worksheet`,
+    `# ${labelOf(repo)} — §5.1(c)/(d) review worksheet`,
     '',
     `Repo \`${repo.name}\` at \`${repo.sha}\`.`,
     `Root: \`${root}\``,
@@ -762,7 +811,7 @@ function worksheet(result: RepoResult): string {
   lines.push(
     '## 5. Read the report as a stranger',
     '',
-    `\`${repo.name}.report.txt\` is the human output. §5.1(d): if the numbers are not obvious in`,
+    `\`${labelOf(repo)}.report.txt\` is the human output. §5.1(d): if the numbers are not obvious in`,
     'ten seconds, or the skipped list reads as noise, the report has failed even with a correct',
     'graph behind it.',
     '',
@@ -974,7 +1023,7 @@ function shapesIn(entries: readonly Triaged[]): string {
 /** Every hit and what triage made of it — the audit trail for §5.1(b) itself. */
 function sweepLog(result: RepoResult): string {
   const lines = [
-    `# ${result.repo.name} — §5.1(b) sweep, every hit`,
+    `# ${labelOf(result.repo)} — §5.1(b) sweep, every hit`,
     '',
     `${result.unaccounted.length} grep hits the graph did not link. This is the complete list,`,
     'including the ones triage explained — so the triage rules themselves can be reviewed rather',

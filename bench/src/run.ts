@@ -289,7 +289,7 @@ async function main(): Promise<void> {
     const links = resolveReferences(parsed.references, {
       root: found.root,
       assets: found.assets,
-      publicDirs: ['public'],
+      servingRoots: { dirs: ['public'], declared: true },
       excludedRoots: found.excludedRoots,
       exists: (path) => existsSync(path),
     });
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
     resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDirs: ['public'],
+      servingRoots: { dirs: ['public'], declared: true },
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),

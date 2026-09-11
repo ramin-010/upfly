@@ -103,8 +103,8 @@ export type {
 } from './report.js';
 export { expandAlias, loadAliases } from './aliases.js';
 export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './aliases.js';
-export { resolveReferences } from './resolve.js';
-export type { ResolveOptions } from './resolve.js';
+export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
+export type { ResolveOptions, ServingRoots } from './resolve.js';
 export { scanSources } from './scan.js';
 export type { ReadFilePort, ScanOptions, ScanResult } from './scan.js';
 export { conventionLinkFor, detectConventionRoots } from './conventions.js';

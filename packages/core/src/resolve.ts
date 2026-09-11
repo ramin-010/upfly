@@ -20,27 +20,63 @@ import { expandAlias } from './aliases.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
+/**
+ * Serving roots, and whether the project declared them or we guessed.
+ *
+ * The two travel together because separating them cost real rewrites. A root-relative
+ * path that misses a serving root and happens to exist at the project root means two
+ * different things depending on where that root came from: if the project declared it,
+ * the miss is suspicious; if we guessed it from a framework convention, the miss says
+ * nothing at all, because the project never claimed to serve from there.
+ *
+ * The resolver used to default a missing list to `['public']` silently, which erased
+ * exactly that difference. Downstream, "the user chose public/" and "we guessed
+ * public/" became the same value, so a policy keyed on whether a serving root was
+ * configured would have declined links on the strength of a choice nobody made. A
+ * hand-written static site has no `public/` directory at all, and a first run always
+ * has no configuration, so that is the ordinary first experience rather than an edge.
+ *
+ * One value with both halves means a caller cannot supply the dirs without also
+ * saying where they came from.
+ *
+ * **`dirs` is a list, because a monorepo has more than one.** shadcn-ui has six, and a
+ * file under `apps/v4/` that references `/images/hero.png` means `apps/v4/public/`,
+ * not the one at the workspace root. Resolving that against a single serving root
+ * produced 93 false `broken` findings on it. Order does not decide precedence: the
+ * nearest ancestor of the referencing file wins, which is what a bundler does.
+ */
+export interface ServingRoots {
+  /** Relative to the project root. A plain static site serves from the root: `['']`. */
+  readonly dirs: readonly string[];
+  /** True when the project declared these; false when they are a convention guess. */
+  readonly declared: boolean;
+}
+
+/**
+ * What to assume when the project has told us nothing.
+ *
+ * Right for a single-app Vite, Next or Astro project and wrong for a hand-written
+ * static site, which is why it is marked as undeclared rather than passed off as a
+ * statement. Every caller that reaches for this is visibly guessing.
+ */
+export const CONVENTIONAL_SERVING_ROOTS: ServingRoots = Object.freeze({
+  dirs: Object.freeze(['public']) as readonly string[],
+  declared: false,
+});
+
 export interface ResolveOptions {
   /** Absolute project root, as returned by `discover`. */
   readonly root: string;
   /** Every image found on disk. Resolution is against this set, not the filesystem. */
   readonly assets: readonly Asset[];
   /**
-   * Directories a root-relative `/hero.png` may be served from, relative to the root.
+   * Where a root-relative `/hero.png` may be served from, and whether the project
+   * actually said so.
    *
-   * Defaults to `['public']`, which is right for a single-app Vite, Next or Astro
-   * project. A plain static site serves from the root itself: `['']`.
-   *
-   * **A list, because a monorepo has more than one.** shadcn-ui has six, and a file
-   * under `apps/v4/` that references `/images/hero.png` means `apps/v4/public/`,
-   * not the one at the workspace root. Resolving that against a single serving root
-   * produced 93 false `broken` findings on it — and zero false `broken` is the
-   * phase's exit criterion.
-   *
-   * Order within the list does not decide precedence: the **nearest ancestor of the
-   * referencing file wins**, which is what a bundler does. See `candidatePaths`.
+   * Required, and carrying its own provenance, because both halves have been wrong
+   * here. See {@link ServingRoots}.
    */
-  readonly publicDirs?: readonly string[];
+  readonly servingRoots: ServingRoots;
   /**
    * Directories the walk excluded, from `DiscoveryResult.excludedRoots`.
    *
@@ -88,7 +124,7 @@ export function resolveReferences(
   const context: ResolveContext = {
     index: new AssetIndex(options.assets),
     root: options.root,
-    publicDirs: options.publicDirs ?? ['public'],
+    publicDirs: options.servingRoots.dirs,
     excludedRoots: options.excludedRoots ?? [],
     exists: options.exists,
     aliases: options.aliases ?? { rules: [], skipped: [] },

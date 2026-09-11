@@ -58,7 +58,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     references: resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
+      servingRoots: { declared: true, dirs: [PUBLIC_DIRS[name] ?? 'public'] },
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),
@@ -1286,7 +1286,12 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
           asserted,
         },
       ],
-      { root: ROOT, assets: [ASSET], publicDirs: ['public'], exists: () => false },
+      {
+        root: ROOT,
+        assets: [ASSET],
+        servingRoots: { declared: true, dirs: ['public'] },
+        exists: () => false,
+      },
     );
 
     return buildReport({
@@ -1375,7 +1380,12 @@ describe('the headline reads correctly at a count of one (R21 / the agreement bu
           asserted: true,
         },
       ],
-      { root: ROOT, assets: [linked, orphan], publicDirs: [''], exists: () => false },
+      {
+        root: ROOT,
+        assets: [linked, orphan],
+        servingRoots: { declared: true, dirs: [''] },
+        exists: () => false,
+      },
     );
 
     return buildReport({

@@ -76,7 +76,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
     references: resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      publicDirs: ['public'],
+      servingRoots: { declared: true, dirs: ['public'] },
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),

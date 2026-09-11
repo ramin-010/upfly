@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
-    publicDirs: options.publicDirs,
+    servingRoots: { dirs: options.publicDirs, declared: true },
     excludedRoots: discovery.excludedRoots,
     exists: (path) => existsSync(path),
   });

@@ -79,7 +79,7 @@ function input(over: Partial<PlanInput> & { assets: Asset[]; references: Referen
     publicDir: over.publicDir === undefined ? 'public' : over.publicDir,
     publicPolicy: over.publicPolicy ?? 'keep-original',
     hedged: over.hedged ?? new Set(),
-    servingRootConfigured: over.servingRootConfigured ?? false,
+    servingRoots: over.servingRoots ?? { dirs: ['public'], declared: false },
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
   };
 }
@@ -206,7 +206,9 @@ describe('a root-relative path that resolved at the project root', () => {
   };
 
   it('is rewritten on a project with no serving root, which is the ordinary static site', () => {
-    const plan = planOptimization(input({ ...tree, servingRootConfigured: false }));
+    const plan = planOptimization(
+      input({ ...tree, servingRoots: { dirs: ['public'], declared: false } }),
+    );
 
     // End derived from the path being replaced rather than written down: copying 20
     // from the case above was wrong, because `/hero.png` is nine characters and
@@ -222,7 +224,9 @@ describe('a root-relative path that resolved at the project root', () => {
   it('is declined when a serving root was configured and the path missed it', () => {
     // The sub-case that is real but unevidenced: the path missed a root that was
     // configured, so existing at the project root may be coincidence.
-    const plan = planOptimization(input({ ...tree, servingRootConfigured: true }));
+    const plan = planOptimization(
+      input({ ...tree, servingRoots: { dirs: ['public'], declared: true } }),
+    );
 
     expect(plan.rewrites).toEqual([]);
     expect(plan.declined[0]?.reason).toContain('missed the configured serving root');
@@ -230,10 +234,18 @@ describe('a root-relative path that resolved at the project root', () => {
 
   it('can be forced either way, because the policy is named rather than implied', () => {
     const forced = planOptimization(
-      input({ ...tree, servingRootConfigured: true, rootLinkPolicy: 'always' }),
+      input({
+        ...tree,
+        servingRoots: { dirs: ['public'], declared: true },
+        rootLinkPolicy: 'always',
+      }),
     );
     const refused = planOptimization(
-      input({ ...tree, servingRootConfigured: false, rootLinkPolicy: 'never' }),
+      input({
+        ...tree,
+        servingRoots: { dirs: ['public'], declared: false },
+        rootLinkPolicy: 'never',
+      }),
     );
 
     expect(forced.rewrites).toHaveLength(1);
