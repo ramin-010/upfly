@@ -108,6 +108,21 @@ const REPOS: readonly RepoSpec[] = [
     ],
   },
   {
+    // The monorepo, met the way a stranger meets it. The convention guess is a single
+    // `public/` at the workspace root, which this repository does not have: its public
+    // directories live under `apps/*`, `packages/*` and `templates/*`.
+    //
+    // This is the repository where resolving a reference against a SIBLING app's
+    // public directory produced 93 false `broken` findings. The ancestor-only
+    // restraint that fixed it was built and measured against declared directories and
+    // has never been exercised against a guess, on the repository where that class of
+    // mistake actually happened.
+    name: 'shadcn-ui',
+    sha: '3ba91b1cc83e1bbe4ab35a422ff2a694849c5048',
+    publicDirs: [],
+    unconfigured: true,
+  },
+  {
     // R27/R28: chosen for how its files are NAMED, not for its stack. Hand-written
     // static HTML with no build step, so the project root itself is the serving root
     // — `['']` rather than a public directory, which is the case `project-root`
@@ -757,7 +772,7 @@ function worksheet(result: RepoResult): string {
   const lines = [
     `# ${labelOf(repo)} — §5.1(c)/(d) review worksheet`,
     '',
-    `Repo \`${repo.name}\` at \`${repo.sha}\`.`,
+    `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with NO configuration: the convention serving root, which this repository does not have' : ''}.`,
     `Root: \`${root}\``,
     '',
     'Every `broken` finding has been opened and every `dead` asset grepped **by machine**, against',
@@ -1100,7 +1115,7 @@ function overallSummary(results: readonly RepoResult[]): string {
   for (const result of results) {
     const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null).length;
     lines.push(
-      `| ${result.repo.name} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.noAbsolutePath ? 'yes' : 'NO'} | ${result.graphMs} |`,
+      `| ${labelOf(result.repo)} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.noAbsolutePath ? 'yes' : 'NO'} | ${result.graphMs} |`,
     );
   }
 
@@ -1120,7 +1135,7 @@ function overallSummary(results: readonly RepoResult[]): string {
   for (const result of results) {
     const counts = result.report.summary.findings;
     lines.push(
-      `| ${result.repo.name} | ${counts.broken} | ${counts.dead} | ${counts['possibly-dead']} | ${counts.oversized} | ${counts['format-opportunity']} |`,
+      `| ${labelOf(result.repo)} | ${counts.broken} | ${counts.dead} | ${counts['possibly-dead']} | ${counts.oversized} | ${counts['format-opportunity']} |`,
     );
   }
   lines.push('');
