@@ -775,6 +775,16 @@ claims contradict each other: a crash before the last step would leave a changed
 manifest at all, which is the one state `undo` cannot get out of. The manifest is a statement
 of intent, not a receipt.
 
+**The three write phases are separate functions, and each takes a witness value that only
+the previous phase can produce.** That is not decoration. Step 4 is safe only because step 3
+completed over *every* edit rather than running per asset: interleaved into a
+create-edit-delete loop one asset at a time, asset B's delete runs before asset A's edits and
+any file naming both is momentarily inconsistent. The crash matrix cannot see that, because it
+injects failures by mutation count and an interleaved loop produces the same count in the same
+order. The witnesses make the phases impossible to reorder; they do not make a per-asset loop
+impossible, but they remove the innocent version of it, where three loops are merged into one
+and nothing in the diff says an invariant died.
+
 **Every prefix of that sequence leaves a tree that still builds** under the default
 `keep-original` policy. Files appear before anything points at them, and originals are removed
 only once nothing points at them any more. A move is committed as a copy in step 2 and a

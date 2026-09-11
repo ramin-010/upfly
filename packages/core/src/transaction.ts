@@ -199,24 +199,11 @@ export async function commit(
   };
   await store.writeText(MANIFEST_PATH, serialiseManifest(pending));
 
-  for (const operation of plan) {
-    if (operation.kind === 'create') {
-      await store.copy(`${context.runDir}/${operation.staged}`, operation.path);
-    } else if (operation.kind === 'move') {
-      await store.copy(operation.from, operation.to);
-    }
-  }
-
-  for (const operation of plan) {
-    if (operation.kind !== 'edit') continue;
-    const before = await readVerified(store, operation.path, operation.beforeHash);
-    await store.writeText(operation.path, applyEdits(before, operation.edits));
-  }
-
-  for (const operation of plan) {
-    if (operation.kind === 'delete') await store.remove(operation.path);
-    else if (operation.kind === 'move') await store.remove(operation.from);
-  }
+  // Each phase takes the previous one's witness, so these three cannot be reordered
+  // and the removals cannot run before the edits. See `PhaseComplete`.
+  const created = await createPhase(plan, store, context.runDir);
+  const edited = await editPhase(plan, store, created);
+  await removePhase(plan, store, edited);
 
   const committed: Manifest = { ...pending, state: 'committed', completedAt: context.now() };
   await store.writeText(MANIFEST_PATH, serialiseManifest(committed));
@@ -478,6 +465,89 @@ async function expectHash(
       `${path} changed between planning and now. Re-run the audit rather than applying a plan built on stale content.`,
     );
   }
+}
+
+/**
+ * Proof that one commit phase finished over the whole plan.
+ *
+ * This type exists to make one specific refactor fail to compile, and it is worth the
+ * machinery because the bug it guards is invisible to every test there is.
+ *
+ * Step 4 removes originals, and it is only safe because step 3 completed over EVERY
+ * edit rather than running per asset. Interleaved into a create-edit-delete loop, one
+ * asset at a time, asset B's delete runs before asset A's edits, and any file naming
+ * both is momentarily inconsistent. The crash matrix cannot catch that: it injects
+ * failures by mutation count, and an interleaved loop produces the same count in the
+ * same order.
+ *
+ * ⚠️ What it prevents and what it does not. It makes the three phases impossible to
+ * reorder, and impossible to call the removals before the edits, because the witness
+ * for a phase can only be produced by running it. It does NOT make a per-asset loop
+ * impossible: slicing the plan and calling all three per asset would still compile.
+ * What it removes is the innocent-looking version, where three loops are merged into
+ * one and nothing in the diff says an invariant died.
+ */
+const phaseWitness = Symbol('the commit phase that produced this');
+
+interface PhaseComplete<Name extends string> {
+  readonly [phaseWitness]: Name;
+}
+
+function completed<Name extends string>(name: Name): PhaseComplete<Name> {
+  return { [phaseWitness]: name };
+}
+
+/** Step 2: staged encodes into place, and the destination half of every move. */
+async function createPhase(
+  plan: readonly PlannedOperation[],
+  store: FileStore,
+  runDir: string,
+): Promise<PhaseComplete<'create'>> {
+  for (const operation of plan) {
+    if (operation.kind === 'create') {
+      await store.copy(`${runDir}/${operation.staged}`, operation.path);
+    } else if (operation.kind === 'move') {
+      await store.copy(operation.from, operation.to);
+    }
+  }
+  return completed('create');
+}
+
+/**
+ * Step 3: the text rewrites, all of them.
+ *
+ * Takes the create witness because a reference must never point at a file that does
+ * not exist yet.
+ */
+async function editPhase(
+  plan: readonly PlannedOperation[],
+  store: FileStore,
+  _created: PhaseComplete<'create'>,
+): Promise<PhaseComplete<'edit'>> {
+  for (const operation of plan) {
+    if (operation.kind !== 'edit') continue;
+    const before = await readVerified(store, operation.path, operation.beforeHash);
+    await store.writeText(operation.path, applyEdits(before, operation.edits));
+  }
+  return completed('edit');
+}
+
+/**
+ * Step 4: the only destructive step.
+ *
+ * Takes the edit witness because an original must survive until nothing points at it,
+ * and that is true of the whole plan or of none of it.
+ */
+async function removePhase(
+  plan: readonly PlannedOperation[],
+  store: FileStore,
+  _edited: PhaseComplete<'edit'>,
+): Promise<PhaseComplete<'remove'>> {
+  for (const operation of plan) {
+    if (operation.kind === 'delete') await store.remove(operation.path);
+    else if (operation.kind === 'move') await store.remove(operation.from);
+  }
+  return completed('remove');
 }
 
 /**
