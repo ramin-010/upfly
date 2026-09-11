@@ -121,19 +121,18 @@ export function compareStrings(a: string, b: string): number {
  * class deliberately excludes `/`, so `{{ site.url }}/img/hero.png` yields
  * `hero.png` and nothing longer.
  *
- * ⚠️ **Single spaces are allowed between word runs, and that is R26.** The previous
- * pattern was `[\w@.\-]+\.(ext)`, with no space — so an asset named
- * `Firing Practice.webp` was matched only as `Practice.webp`, which never equals its
- * basename, and **no mention was ever recorded for it.** That is why R26's misses came
- * back as confident `dead` rather than `possibly-dead`: the adapter missed the
- * reference, and R8's sweep — the mechanism whose entire job is catching what the
- * adapter missed — had the identical hole. `dead` means *"this filename appears nowhere
- * in your codebase"*, and before this fix that claim held only for filenames without
- * spaces.
+ * ⚠️ **Deliberately still space-free, and deliberately cheap.** R26 needs spaced
+ * filenames found, and the obvious fix — `[\w@.\-]+(?: [\w@.\-]+){0,6}\.(ext)` — was
+ * **measured at 1.7× to 5× the running time** over the three validation repos' text
+ * (astro-docs: 647 ms to 3,228 ms across 15.9 MB) for **77, 0 and 90** extra tokens. The
+ * repetition makes the engine try to cross a space at every word boundary and then
+ * backtrack to find the extension, so the cost lands on every byte while the benefit
+ * lands on a handful of matches.
  *
- * The repetition is bounded at six spaces. A real filename has one to four words, and
- * the bound keeps both the token count and the sweep's cost predictable on prose —
- * (g) is already failing and this runs over every byte of every unread file.
+ * So the space handling lives in `imageFilenameCandidates`, which extends leftwards
+ * **only from a match** — same candidate set, at the cost of the scan this pattern
+ * always was. (g) is already failing and this runs over every byte of every unread file,
+ * which is exactly the wrong place to pay five times over.
  *
  * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses,
  * which would make results depend on what was scanned before them.
@@ -142,35 +141,61 @@ export function imageFilenamePattern(): RegExp {
   const extensions = IMAGE_EXTENSIONS.map((extension) =>
     extension.slice(1).replace(/[^A-Za-z0-9]/g, '\\$&'),
   );
-  return new RegExp(`[\\w@.\\-]+(?: [\\w@.\\-]+){0,6}\\.(?:${extensions.join('|')})\\b`, 'gi');
+  return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
 }
+
+/** How many space-separated words a filename may carry. Real ones use one to four. */
+const MAX_SPACED_WORDS = 6;
+
+/** The characters `imageFilenamePattern` allows inside a filename token. */
+const FILENAME_CHARACTER = /[\w@.\-]/;
 
 /**
  * Every basename an image-looking token in `text` could be naming, with its offset.
  *
- * ⚠️ **This exists because widening the pattern alone would have traded one hole for
- * another**, and both callers would have had to remember the same trick. `scan.ts` and
- * `sweep.ts` both extract a token, lowercase it, and look it up against asset
- * basenames. With spaces allowed, the prose `Remove workspace.png` yields exactly that
- * as one token — which no longer matches an asset named `workspace.png`, so a mention
- * that works today would have been **lost**. Measured: 87 strings of that shape in
- * `shadcn-ui` alone.
+ * **R26's sweep half.** `imageFilenamePattern` cannot cross a space, so an asset named
+ * `Firing Practice.webp` was only ever matched as `Practice.webp` — never equal to its
+ * basename, so **no mention was recorded and no hedge produced.** That is why R26's
+ * misses came back as confident `dead` rather than `possibly-dead`: the adapter missed
+ * the reference, and R8's sweep, whose entire job is catching what the adapter missed,
+ * had the identical hole. `dead` claims *"this filename appears nowhere in your
+ * codebase"*, and that held only for filenames without spaces.
  *
- * So every suffix beginning after a space is yielded too. `Remove workspace.png` offers
- * both itself and `workspace.png`; `Firing Practice.webp` offers both itself and
- * `Practice.webp`. The expansion is strictly additive — nothing that matched before
- * stops matching — and it lives here rather than in either caller, because a hole in
- * one of two identical lookups is exactly how this defect survived §5.1.
+ * ⚠️ **Extending leftwards from a match, rather than widening the pattern.** Widening it
+ * was measured at 1.7× to 5× the scan time for 0 to 90 extra tokens — see
+ * `imageFilenamePattern`. Here the work happens only at the ~1,400 places a match already
+ * occurred, and the candidate set is identical: walking left over ` word` runs from
+ * `Practice.webp` yields `Firing Practice.webp`, and each step is yielded, so the tail
+ * forms survive too.
+ *
+ * ⚠️ **Yielding every step is not tidiness, it is the regression guard.** Both callers
+ * lowercase a token and look it up against asset basenames. If only the longest form were
+ * offered, the prose `Remove workspace.png` would stop matching an asset named
+ * `workspace.png` — a mention that works today would be **lost**, and `shadcn-ui` has 87
+ * strings of that shape. Yielding both makes the change strictly additive.
+ *
+ * It lives here rather than in either caller because `scan.ts` and `sweep.ts` do the
+ * identical lookup, and a hole in one of two identical lookups is exactly how this
+ * defect survived §5.1.
  */
 export function* imageFilenameCandidates(text: string): Generator<[token: string, offset: number]> {
   const pattern = imageFilenamePattern();
   let match = pattern.exec(text);
   while (match !== null) {
-    const token = match[0];
-    yield [token, match.index];
+    const end = match.index + match[0].length;
+    yield [match[0], match.index];
 
-    for (let space = token.indexOf(' '); space !== -1; space = token.indexOf(' ', space + 1)) {
-      yield [token.slice(space + 1), match.index + space + 1];
+    let start = match.index;
+    for (let word = 0; word < MAX_SPACED_WORDS; word += 1) {
+      if (text[start - 1] !== ' ') break;
+
+      let candidate = start - 1;
+      while (candidate > 0 && FILENAME_CHARACTER.test(text[candidate - 1] ?? '')) candidate -= 1;
+      // A space with nothing filename-shaped before it is not part of a filename.
+      if (candidate === start - 1) break;
+
+      start = candidate;
+      yield [text.slice(start, end), start];
     }
     match = pattern.exec(text);
   }

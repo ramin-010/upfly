@@ -171,11 +171,14 @@ describe('imageFilenameCandidates', () => {
     );
   });
 
-  it('yields every suffix of a multi-word token', () => {
+  it('yields every length of a multi-word token, shortest first', () => {
+    // Shortest first because the cheap pattern finds the tail and the extension walks
+    // leftwards from it. Both callers key on the token, so the order is not load-bearing —
+    // it is asserted so a change to it is deliberate rather than incidental.
     expect(tokens('"Annual Sports Day.jpg"')).toEqual([
-      'Annual Sports Day.jpg',
-      'Sports Day.jpg',
       'Day.jpg',
+      'Sports Day.jpg',
+      'Annual Sports Day.jpg',
     ]);
   });
 
@@ -193,9 +196,11 @@ describe('imageFilenameCandidates', () => {
   });
 
   it('does not run away across a whole sentence', () => {
-    // Bounded at six spaces: a real filename has one to four words, and this runs over
-    // every byte of every unread file while (g) is already failing.
-    const tokens_ = tokens('one two three four five six seven eight nine.png');
-    expect(tokens_[0]).toBe('three four five six seven eight nine.png');
+    // Bounded at six words: a real filename has one to four, and this runs over every byte
+    // of every unread file while (g) is already failing.
+    const all = tokens('one two three four five six seven eight nine.png');
+    expect(all[0]).toBe('nine.png');
+    expect(all.at(-1)).toBe('three four five six seven eight nine.png');
+    expect(all).toHaveLength(7);
   });
 });
