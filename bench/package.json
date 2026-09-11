@@ -9,6 +9,7 @@
     "clean": "tsc --build --clean",
     "bench": "tsc --build && node dist/run.js",
     "validate": "tsc --build && node dist/validate.js",
+    "detect-roots": "tsc --build && node dist/detect-roots.js",
     "dead-rate": "tsc --build && node dist/dead-rate.js",
     "fixture-build": "tsc --build && node dist/fixture-build.js",
     "encode-quality": "tsc --build && node dist/encode-quality.js"
