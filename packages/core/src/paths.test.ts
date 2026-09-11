@@ -5,6 +5,7 @@ import {
   VECTOR_EXTENSIONS,
   compareStrings,
   extensionOf,
+  imageFilenameCandidates,
   isImageExtension,
   isVectorExtension,
   relativePath,
@@ -125,5 +126,76 @@ describe('compareStrings', () => {
     const once = [...input].sort(compareStrings);
     const twice = [...once].sort(compareStrings);
     expect(twice).toEqual(once);
+  });
+});
+
+describe('imageFilenameCandidates', () => {
+  /**
+   * R26's other half, and the one that restores the claim `dead` makes.
+   *
+   * The pattern used to be `[\w@.\-]+\.(ext)` with no space, so for an asset named
+   * `Firing Practice.webp` the sweep extracted only `Practice.webp` — which never equals
+   * that asset's basename, so **no mention was ever recorded and no hedge produced.**
+   *
+   * That is why R26's misses came back as confident `dead` rather than `possibly-dead`:
+   * the adapter missed the reference, and R8's sweep — the mechanism whose entire job is
+   * catching what the adapter missed — had the identical hole. Fixing only the adapter
+   * would have left `dead` meaning *"appears nowhere in your codebase"* solely for
+   * filenames without spaces.
+   */
+  function tokens(text: string): string[] {
+    return [...imageFilenameCandidates(text)].map(([token]) => token);
+  }
+
+  it('finds a filename containing a space', () => {
+    expect(tokens('src="/ncc/Firing Practice.webp"')).toContain('Firing Practice.webp');
+  });
+
+  it('finds a filename containing two spaces', () => {
+    expect(tokens('"/img/Annual Sports Day.jpg"')).toContain('Annual Sports Day.jpg');
+  });
+
+  /**
+   * ⚠️ The regression this generator exists to prevent.
+   *
+   * Widening the pattern alone would have traded one hole for another: with spaces
+   * allowed, the prose `Remove workspace.png` becomes a single token, which no longer
+   * matches an asset named `workspace.png` — so a mention that worked before would be
+   * **lost**. Measured: 87 strings of that shape in `shadcn-ui` alone. Every suffix
+   * beginning after a space is therefore yielded too, which makes the change strictly
+   * additive.
+   */
+  it('also yields the suffixes, so nothing that matched before stops matching', () => {
+    expect(tokens('aria-label="Remove workspace.png"')).toEqual(
+      expect.arrayContaining(['Remove workspace.png', 'workspace.png']),
+    );
+  });
+
+  it('yields every suffix of a multi-word token', () => {
+    expect(tokens('"Annual Sports Day.jpg"')).toEqual([
+      'Annual Sports Day.jpg',
+      'Sports Day.jpg',
+      'Day.jpg',
+    ]);
+  });
+
+  it('reports an offset that points at the token it yielded', () => {
+    // The offsets feed the citation a report prints, so a suffix must not carry its
+    // parent's position.
+    const text = 'x = "Remove workspace.png";';
+    for (const [token, offset] of imageFilenameCandidates(text)) {
+      expect(text.slice(offset, offset + token.length)).toBe(token);
+    }
+  });
+
+  it('still finds a filename with no space, unchanged', () => {
+    expect(tokens('url(/a/hero.png)')).toEqual(['hero.png']);
+  });
+
+  it('does not run away across a whole sentence', () => {
+    // Bounded at six spaces: a real filename has one to four words, and this runs over
+    // every byte of every unread file while (g) is already failing.
+    const tokens_ = tokens('one two three four five six seven eight nine.png');
+    expect(tokens_[0]).toBe('three four five six seven eight nine.png');
   });
 });

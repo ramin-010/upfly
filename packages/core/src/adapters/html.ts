@@ -37,7 +37,30 @@ const SINGLE_URL_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
   ['input', ['src']],
   ['object', ['data']],
   ['track', ['src']],
+
+  // ⚠️ **Inline SVG (R26), and this was missed because of where it was written down.**
+  // ARCHITECTURE.md recorded `<image href>` as a known gap *"for `.svg` files"* — true,
+  // and it hid the bigger case: an inline `<svg>` inside an HTML document or a JSX
+  // component is **not** an `.svg` file, so no future SVG adapter would ever have
+  // covered it. It is this adapter's element and it was simply absent from this map.
+  //
+  // Tag names arrive lowercased (`element.tagName.toLowerCase()`), which is why the key
+  // is `feimage` — the HTML parser's foreign-content adjustment spells the element
+  // `feImage` and a capitalised key here would never match.
+  //
+  // Both attribute spellings: `href` is the SVG 2 form, `xlink:href` the SVG 1.1 form
+  // that is still overwhelmingly what shipped markup contains.
+  ['image', ['href', 'xlink:href']],
+  ['feimage', ['href', 'xlink:href']],
 ]);
+
+// ⚠️ `<use>` is deliberately absent from the map above, and this is the reason rather
+// than an oversight. `<use href="#icon">` is a same-document reference to an element id —
+// the commonest form by far, and not a file at all. `<use href="/sprite.svg#icon">` *is*
+// a file reference, but its target is a vector we neither convert nor delete, so linking
+// it buys nothing today while every fragment-only `use` in the wild would need filtering
+// first. Measured incidence of `<use href>` naming an image across the three validation
+// repos: **0**. Written down so adding it later is a decision, not a rediscovery.
 
 /** Attributes holding a comma-separated candidate list, by tag name. */
 const SRCSET_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
@@ -98,8 +121,15 @@ function collectFromElement(element: ParsedElement, context: Context): void {
   if (attributeLocations === undefined) return;
 
   for (const attribute of element.attrs) {
+    // ⚠️ **The location map is keyed by the SOURCE spelling, and parse5 splits a
+    // namespaced attribute.** `xlink:href` arrives as `{ name: 'href', prefix: 'xlink' }`
+    // while its location sits under `'xlink:href'`, so looking up the bare name found
+    // nothing and the attribute was skipped — silently, which is the rule 9 shape. It
+    // cost R26's `<image xlink:href>` case even after the element was added to the map.
     const name = attribute.name.toLowerCase();
-    const location = attributeLocations[name];
+    const sourceName =
+      attribute.prefix === undefined ? name : `${attribute.prefix.toLowerCase()}:${name}`;
+    const location = attributeLocations[sourceName];
     if (location === undefined) continue;
 
     const range = attributeValueRange(context.text, location.startOffset, location.endOffset);
@@ -114,7 +144,7 @@ function collectFromElement(element: ParsedElement, context: Context): void {
       continue;
     }
 
-    collectFromAttribute({ element, tagName, name, raw, start: range.start, context });
+    collectFromAttribute({ element, tagName, name: sourceName, raw, start: range.start, context });
   }
 }
 

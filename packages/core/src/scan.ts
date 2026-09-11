@@ -26,7 +26,7 @@
 
 import { lineOf } from './citation.js';
 import { UpflyError } from './errors.js';
-import { imageFilenamePattern } from './paths.js';
+import { imageFilenameCandidates } from './paths.js';
 import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /**
@@ -229,11 +229,11 @@ function collectMentions(
 
   const found: ScannedMention[] = [];
   const seen = new Set<string>();
-  const pattern = imageFilenamePattern();
 
-  let match = pattern.exec(text);
-  while (match !== null) {
-    const token = match[0];
+  // `imageFilenameCandidates` rather than a bare pattern, so a spaced filename is seen
+  // here exactly as the sweep sees it (R26). The two lookups are identical and a hole
+  // in one of them is how a confident `dead` survived §5.1.
+  for (const [token, offset] of imageFilenameCandidates(text)) {
     const basename = token.toLowerCase();
     // One mention per basename per file: a hundred repeats of the same name are one
     // piece of evidence, and the report cites a place rather than a count.
@@ -242,11 +242,10 @@ function collectMentions(
       found.push({
         basename,
         relative: file.relative,
-        line: lineOf(text, match.index),
+        line: lineOf(text, offset),
         quote: token,
       });
     }
-    match = pattern.exec(text);
   }
 
   return found;

@@ -121,6 +121,20 @@ export function compareStrings(a: string, b: string): number {
  * class deliberately excludes `/`, so `{{ site.url }}/img/hero.png` yields
  * `hero.png` and nothing longer.
  *
+ * ⚠️ **Single spaces are allowed between word runs, and that is R26.** The previous
+ * pattern was `[\w@.\-]+\.(ext)`, with no space — so an asset named
+ * `Firing Practice.webp` was matched only as `Practice.webp`, which never equals its
+ * basename, and **no mention was ever recorded for it.** That is why R26's misses came
+ * back as confident `dead` rather than `possibly-dead`: the adapter missed the
+ * reference, and R8's sweep — the mechanism whose entire job is catching what the
+ * adapter missed — had the identical hole. `dead` means *"this filename appears nowhere
+ * in your codebase"*, and before this fix that claim held only for filenames without
+ * spaces.
+ *
+ * The repetition is bounded at six spaces. A real filename has one to four words, and
+ * the bound keeps both the token count and the sweep's cost predictable on prose —
+ * (g) is already failing and this runs over every byte of every unread file.
+ *
  * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses,
  * which would make results depend on what was scanned before them.
  */
@@ -128,5 +142,36 @@ export function imageFilenamePattern(): RegExp {
   const extensions = IMAGE_EXTENSIONS.map((extension) =>
     extension.slice(1).replace(/[^A-Za-z0-9]/g, '\\$&'),
   );
-  return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
+  return new RegExp(`[\\w@.\\-]+(?: [\\w@.\\-]+){0,6}\\.(?:${extensions.join('|')})\\b`, 'gi');
+}
+
+/**
+ * Every basename an image-looking token in `text` could be naming, with its offset.
+ *
+ * ⚠️ **This exists because widening the pattern alone would have traded one hole for
+ * another**, and both callers would have had to remember the same trick. `scan.ts` and
+ * `sweep.ts` both extract a token, lowercase it, and look it up against asset
+ * basenames. With spaces allowed, the prose `Remove workspace.png` yields exactly that
+ * as one token — which no longer matches an asset named `workspace.png`, so a mention
+ * that works today would have been **lost**. Measured: 87 strings of that shape in
+ * `shadcn-ui` alone.
+ *
+ * So every suffix beginning after a space is yielded too. `Remove workspace.png` offers
+ * both itself and `workspace.png`; `Firing Practice.webp` offers both itself and
+ * `Practice.webp`. The expansion is strictly additive — nothing that matched before
+ * stops matching — and it lives here rather than in either caller, because a hole in
+ * one of two identical lookups is exactly how this defect survived §5.1.
+ */
+export function* imageFilenameCandidates(text: string): Generator<[token: string, offset: number]> {
+  const pattern = imageFilenamePattern();
+  let match = pattern.exec(text);
+  while (match !== null) {
+    const token = match[0];
+    yield [token, match.index];
+
+    for (let space = token.indexOf(' '); space !== -1; space = token.indexOf(' ', space + 1)) {
+      yield [token.slice(space + 1), match.index + space + 1];
+    }
+    match = pattern.exec(text);
+  }
 }

@@ -38,7 +38,7 @@ import { citeReferences, lineOf } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
-import { compareStrings, imageFilenamePattern } from './paths.js';
+import { compareStrings, imageFilenameCandidates } from './paths.js';
 import type { ReadFilePort, ScannedMention } from './scan.js';
 import type { Reference } from './types.js';
 
@@ -317,16 +317,15 @@ function isServed(asset: string, publicDirs: readonly string[] | undefined): boo
   );
 }
 
-/** Every filename-shaped token in a string, with the offset it started at. */
+/**
+ * Every filename-shaped token in a string, with the offset it started at.
+ *
+ * Delegates to `imageFilenameCandidates`, which also yields the suffixes of a
+ * space-containing token — see R26. `scan.ts` does the identical lookup, and the shared
+ * generator is what stops one of the two keeping the hole.
+ */
 function* tokens(text: string): Generator<[string, number]> {
-  // A fresh RegExp per call: a `g`-flagged literal carries `lastIndex` between
-  // calls, which would make results depend on what was scanned before them.
-  const pattern = imageFilenamePattern();
-  let match = pattern.exec(text);
-  while (match !== null) {
-    yield [match[0], match.index];
-    match = pattern.exec(text);
-  }
+  yield* imageFilenameCandidates(text);
 }
 
 function record(mentions: Map<string, Mention[]>, mention: Mention): void {

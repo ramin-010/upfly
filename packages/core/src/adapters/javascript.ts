@@ -19,6 +19,7 @@ import type {
   ImportDeclaration,
   ImportExpression,
   JSXAttribute,
+  JSXOpeningElement,
   StringLiteral,
   TaggedTemplateExpression,
   TemplateLiteral,
@@ -53,6 +54,24 @@ const PLUGINS_BY_EXTENSION: ReadonlyMap<string, readonly string[]> = new Map([
 
 /** JSX attributes that hold an asset path, matched case-insensitively. */
 const JSX_URL_ATTRIBUTES: ReadonlySet<string> = new Set(['src', 'srcset', 'poster']);
+
+/**
+ * Inline-SVG elements whose `href` names a file, keyed by lowercased tag name (R26).
+ *
+ * ⚠️ **Tag-scoped, unlike `JSX_URL_ATTRIBUTES`, and that is the whole point.** Adding a
+ * bare `href` to the set above would have made every `<a href>` a candidate — including
+ * `<a href="/report.pdf">`, where the resolver would then have to decide what a link to
+ * a non-image means. `<image>` and `<feImage>` are unambiguous: their `href` is always a
+ * file.
+ *
+ * `xlinkhref` is the React spelling of SVG 1.1's `xlink:href`, and `xlink:href` itself
+ * arrives as a `JSXNamespacedName` — both are still overwhelmingly what shipped markup
+ * contains, so both are here.
+ */
+const JSX_SVG_HREF_ELEMENTS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['image', ['href', 'xlinkhref', 'xlink:href']],
+  ['feimage', ['href', 'xlinkhref', 'xlink:href']],
+]);
 
 /**
  * Tag functions whose template literal contains CSS.
@@ -225,6 +244,9 @@ function collectFromNode(node: BabelNode, context: Context): void {
         collectFromModuleSource(node.arguments[0], context, 'high', 'new URL(…, import.meta.url)');
       }
       return;
+    case 'JSXOpeningElement':
+      collectFromJsxSvgImage(node, context);
+      return;
     case 'JSXAttribute':
       collectFromJsxAttribute(node, context);
       return;
@@ -259,6 +281,72 @@ function collectFromNode(node: BabelNode, context: Context): void {
  * hedge, because Phase 2 can then act on it — and one that does not is `discarded`
  * silently, which is already the ruled behaviour for a guess.
  */
+/**
+ * Whether a bare string is shaped enough like a path to guess at (R26).
+ *
+ * ⚠️ **The line this replaces said `a path never contains whitespace`, and that is
+ * simply false.** Spaces come from every CMS upload and every dragged-in file, so
+ * `["/ncc/Firing Practice.webp"]` yielded nothing and the asset came back a confident
+ * `dead` — *"safe to delete"* about a file on a live site. The claim was stated as fact
+ * in a comment, which is why nobody questioned it.
+ *
+ * A comma still disqualifies: that is the unsplit `srcSet` shape
+ * (`"/a.jpg 1x, /b.jpg 2x"`), which is a list rather than a path. So are tabs and
+ * newlines, which no real path carries.
+ *
+ * **A space is allowed only alongside a `/`, and that rule is measured rather than
+ * guessed.** Two repositories point opposite ways and separate cleanly:
+ *
+ * - `D:/RBU/RBU-Website`: **109** quoted image paths contain a space, and **109 of 109
+ *   contain a slash.** Every real case is a served path.
+ * - `shadcn-ui`: **87** quoted strings contain a space and end in an image extension,
+ *   and **0 of 87 contain a slash.** All 13 distinct values are accessible UI labels —
+ *   `"Remove workspace.png"`, `"Open desk-reference.jpg"`. Prose, not paths.
+ *
+ * Without the slash, a spaced string is indistinguishable from a sentence, and treating
+ * one as a reference risks the expensive direction: a speculative string that *resolves*
+ * becomes a real link Phase 2 will rewrite.
+ *
+ * ⚠️ **The known limit, deliberately not widened:** a bare spaced filename with no
+ * separator — `{ file: 'My Logo.svg' }`, R14's shape with a space in it — stays
+ * invisible. **Measured frequency across all four repositories: zero.** It is pinned by
+ * a test in `javascript.test.ts` so the gap is written down rather than silent, and
+ * widening it is one clause here.
+ */
+function plausiblePathShape(path: string): boolean {
+  if (/[\t\n\r,]/.test(path)) return false;
+  if (!path.includes(' ')) return true;
+  return SPACED_PATH.test(path) && path.includes('/');
+}
+
+/**
+ * A string that is *nothing but* a path, allowing single spaces inside it.
+ *
+ * ⚠️ **The slash rule alone was not enough, and the suite caught it.** `never mistakes
+ * text for code` failed on three cases that contain both a space and a slash:
+ *
+ * ```
+ * "see ./old.png for details"        prose in an object property
+ * `we removed ./old.png last week`   prose in a template
+ * "import logo from './old.png'"     an import statement quoted as text
+ * ```
+ *
+ * What separates those from `/ncc/Firing Practice.webp` is not the slash — it is that
+ * **prose continues after the extension.** So the pattern is anchored at both ends and
+ * must finish on a real extension: `.` followed only by letters or digits. That rejects
+ * `.png for details` (spaces after the dot) and `.png'` (a trailing quote), while
+ * `.webp` and `.jpg` pass.
+ *
+ * `*` is in the character class because `collectSpeculativeTemplate` joins its holes with
+ * one, so `` `/gallery/Firing Practice ${n}.webp` `` arrives here as
+ * `/gallery/Firing Practice *.webp`.
+ *
+ * Note that `extensionOf` cannot do this job: `extname('see ./old.png for details')`
+ * returns `'.png for details'`, which is non-empty, so the extension check upstream was
+ * satisfied by prose all along — the old whitespace ban was what had been hiding it.
+ */
+const SPACED_PATH = /^[\w@.\-/*]+(?: [\w@.\-/*]+)*\.[A-Za-z0-9]+$/;
+
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;
   if (node.end === null || node.end === undefined) return;
@@ -274,8 +362,7 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
   // uses. Deciding what an *asset* extension is stays with the resolver, which is
   // the one place that policy lives.
   if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return;
-  // A module specifier never contains whitespace or a comma; neither does a path.
-  if (/[\s,]/.test(path)) return;
+  if (!plausiblePathShape(path)) return;
 
   context.speculative.push({
     file: context.file,
@@ -324,7 +411,11 @@ function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): vo
   // pass and the plan's other example, `./images/${name}.png`, did not.
   const literal = node.quasis.map((quasi) => quasi.value.raw).join('*');
   if (extensionOf(splitPathSuffix(literal).path) === '') return;
-  if (/[\s,]/.test(literal)) return;
+  // The same shape test as the string rule, and for the same reason (R26): a template
+  // that builds `/gallery/Firing Practice ${n}.webp` is a path, not a sentence. Sharing
+  // the predicate is what keeps the two speculative collectors from disagreeing about
+  // what a path looks like — they disagreed about nothing else.
+  if (!plausiblePathShape(literal)) return;
 
   addTemplateReference(node, context, 'string', 'a path-shaped template literal', false);
 }
@@ -393,22 +484,68 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
   // but the first gains no reference and looks dead.
   const isSrcSet = name.toLowerCase() === 'srcset';
 
+  addJsxAttributeValue(value, context, `JSX ${name}`, isSrcSet);
+}
+
+/**
+ * Emit a reference for a JSX attribute value, whatever shape it takes.
+ *
+ * Extracted so the tag-scoped inline-SVG handler below reads values identically to
+ * `src`/`srcSet`/`poster`. A second copy would have been a second place for a template
+ * literal in an attribute to stop being understood.
+ */
+function addJsxAttributeValue(
+  value: JSXAttribute['value'],
+  context: Context,
+  label: string,
+  isSrcSet: boolean,
+): void {
+  if (value === null || value === undefined) return;
+
   if (value.type === 'StringLiteral') {
-    addLiteralReference(value, context, 'high', 'attr', `JSX ${name}`, isSrcSet);
+    addLiteralReference(value, context, 'high', 'attr', label, isSrcSet);
     return;
   }
 
   if (value.type === 'JSXExpressionContainer') {
     const expression = value.expression;
     if (expression.type === 'StringLiteral') {
-      addLiteralReference(expression, context, 'high', 'attr', `JSX ${name}`, isSrcSet);
+      addLiteralReference(expression, context, 'high', 'attr', label, isSrcSet);
       return;
     }
     if (expression.type === 'TemplateLiteral') {
-      addTemplateReference(expression, context, 'attr', `JSX ${name}`);
+      addTemplateReference(expression, context, 'attr', label);
     }
     // Anything else — an identifier, a call, a conditional — is a value, not a
     // path. The import that produced it was already captured on its own.
+  }
+}
+
+/** The attribute's written name, including a namespace such as `xlink:href`. */
+function jsxAttributeName(attribute: JSXAttribute): string {
+  const name = attribute.name;
+  if (name.type === 'JSXIdentifier') return name.name;
+  return `${name.namespace.name}:${name.name.name}`;
+}
+
+/**
+ * `<image href>` and `<feImage href>` inside JSX — R26's second defect.
+ *
+ * ⚠️ **Handled at the element rather than the attribute, because `href` alone is not
+ * enough to know.** ARCHITECTURE.md recorded this as a known gap *"for `.svg` files"*,
+ * which is why nobody looked: an inline `<svg>` in a JSX component is not an `.svg`
+ * file, so no future SVG adapter would ever have reached it. One of R26's eight misses
+ * was this, and the HTML adapter had the identical hole.
+ */
+function collectFromJsxSvgImage(node: JSXOpeningElement, context: Context): void {
+  const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
+  const attributes = JSX_SVG_HREF_ELEMENTS.get(tag);
+  if (attributes === undefined) return;
+
+  for (const attribute of node.attributes) {
+    if (attribute.type !== 'JSXAttribute') continue;
+    if (!attributes.includes(jsxAttributeName(attribute).toLowerCase())) continue;
+    addJsxAttributeValue(attribute.value, context, `JSX <${tag}> href`, false);
   }
 }
 

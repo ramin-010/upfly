@@ -370,4 +370,97 @@ describe('htmlAdapter', () => {
       ).toEqual(['./hero.png']);
     });
   });
+
+  /**
+   * Inline SVG — R26's second defect, and this adapter had the same hole as the JSX one.
+   *
+   * R26 reported it as a JSX gap. Measured, it was both: `<image href>` was missing from
+   * this adapter's attribute map too. ARCHITECTURE.md recorded it as a known gap *"for
+   * `.svg` files"*, and that framing is what hid it — an inline `<svg>` inside an HTML
+   * document is not an `.svg` file, so no future SVG adapter would ever have reached it.
+   *
+   * Measured incidence across the three validation repos: **0**, which is why §5.1 could
+   * not have found it.
+   */
+  describe('inline SVG — R26', () => {
+    const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      ['image href', '<svg><image href="/a/hero.png"/></svg>', ['/a/hero.png']],
+      // The SVG 1.1 spelling, still overwhelmingly what shipped markup contains.
+      ['image xlink:href', '<svg><image xlink:href="/a/hero.png"/></svg>', ['/a/hero.png']],
+      [
+        'feImage href',
+        '<svg><filter><feImage href="/a/hero.png"/></filter></svg>',
+        ['/a/hero.png'],
+      ],
+    ];
+
+    it.each(cases)('reads %s', (_name, source, expected) => {
+      expect(paths(source)).toEqual(expected);
+      expect(slices(source)).toEqual(expected);
+    });
+
+    /**
+     * ⚠️ A namespaced attribute needed a second fix, and it was a silent skip.
+     *
+     * parse5 splits `xlink:href` into `{ name: 'href', prefix: 'xlink' }` but keys its
+     * source-location map by the **written** spelling, `'xlink:href'`. The adapter looked
+     * the location up by the bare name, found nothing, and `continue`d — so even after
+     * `<image>` was added to the map the attribute was still dropped, with no reason
+     * recorded anywhere. That is the rule 9 shape, and it would have applied to any
+     * namespaced attribute added later.
+     */
+    it('finds the location of a namespaced attribute, which is keyed by its spelling', () => {
+      const source = '<svg><image xlink:href="/a/hero.png"/></svg>';
+      const references = find(source);
+      expect(references).toHaveLength(1);
+      expect(source.slice(references[0]?.start, references[0]?.end)).toBe('/a/hero.png');
+    });
+
+    it('leaves a bare <image href> alone, because the parser makes it an <img>', () => {
+      // Not a gap. Outside foreign content the HTML spec renames `<image>` to `<img>`,
+      // and `href` is not an `<img>` attribute — so the markup genuinely displays nothing
+      // and there is no reference to find.
+      expect(find('<image href="/a/hero.png">')).toEqual([]);
+    });
+
+    it('leaves <use href> alone, deliberately', () => {
+      // `<use href="#icon">` is a same-document element reference, not a file, and that is
+      // the commonest form by far. Measured incidence of `<use>` naming an image across
+      // the three validation repos: 0. Written down so adding it stays a decision.
+      expect(find('<svg><use href="#icon"/></svg>')).toEqual([]);
+      expect(find('<svg><use href="/a/sprite.svg#icon"/></svg>')).toEqual([]);
+    });
+  });
+
+  /**
+   * R26 — a space in a filename, on this adapter's side.
+   *
+   * These already worked before the fix, and the test exists to keep them working: the
+   * defect was confined to the JavaScript adapter's speculative string rule, and three of
+   * eighteen reference positions lost a spaced path. Asserting the fifteen that did not
+   * is how a later "simplification" cannot quietly widen the hole.
+   */
+  describe('a space in a filename — R26', () => {
+    const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      ['img src', '<img src="/a/Firing Practice.webp">', ['/a/Firing Practice.webp']],
+      [
+        'style attribute url()',
+        '<div style="background:url(\'/a/Firing Practice.webp\')"></div>',
+        ['/a/Firing Practice.webp'],
+      ],
+      ['link rel=icon', '<link rel="icon" href="/a/My Logo.png">', ['/a/My Logo.png']],
+    ];
+
+    it.each(cases)('keeps reading %s', (_name, source, expected) => {
+      expect(paths(source)).toEqual(expected);
+      expect(slices(source)).toEqual(expected);
+    });
+
+    it('still splits srcset at the space, which is what the spec says', () => {
+      // Not a defect. In `srcset` a space separates the URL from its descriptor, so a
+      // filename with a real space has to be percent-encoded. The browser reads `/a/My`
+      // here too, and agreeing with the browser is the correct behaviour.
+      expect(paths('<img srcset="/a/My Photo.png 2x">')).toEqual(['/a/My']);
+    });
+  });
 });

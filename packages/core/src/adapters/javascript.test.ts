@@ -598,4 +598,122 @@ body`,
       ).not.toThrow();
     });
   });
+
+  /**
+   * R26 — a space in a filename made an image invisible, and the claim `dead` makes
+   * depends on this.
+   *
+   * Found on a fourth repository (a university site, 2,052 images): 50 of 709 `dead`
+   * findings were sampled against an independent grep and **8 were wrong, 16%** — seven
+   * of the eight because the filename contained a space. Spaces are not an edge case in
+   * the target market; they arrive with every CMS upload and every dragged-in file.
+   *
+   * ⚠️ **The guard that caused it stated a falsehood as fact:**
+   * `// A module specifier never contains whitespace or a comma; neither does a path.`
+   * The first clause is true, the second is not, and writing it as a certainty is why
+   * nobody questioned it for the life of the adapter.
+   *
+   * Both directions are asserted here, because the fix is only correct if prose stays
+   * out — and the first attempt at it (allow a space when there is also a `/`) let three
+   * of `never mistakes text for code`'s cases through.
+   */
+  describe('a space in a filename — R26', () => {
+    const found: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      [
+        'a served path in an array',
+        'const g = ["/ncc/Firing Practice.webp"];',
+        ['/ncc/Firing Practice.webp'],
+      ],
+      [
+        'a served path in an object property',
+        'const g = { src: "/research/events/SPARK 2.jpg" };',
+        ['/research/events/SPARK 2.jpg'],
+      ],
+      [
+        'two spaces in one filename',
+        'const g = ["/img/Annual Sports Day.jpg"];',
+        ['/img/Annual Sports Day.jpg'],
+      ],
+      [
+        'a template literal with a space',
+        'const g = `/gallery/Firing Practice ${n}.webp`;',
+        ['/gallery/Firing Practice ${n}.webp'],
+      ],
+    ];
+
+    it.each(found)('finds %s', (_name, source, expected) => {
+      expect(paths(source)).toEqual(expected);
+      // The range must still slice the path back out: a spaced path is exactly where an
+      // off-by-one would corrupt a file at rewrite time.
+      expect(slices(source)).toEqual(expected);
+    });
+
+    const ignored: ReadonlyArray<[name: string, source: string]> = [
+      // Each of these contains both a space and a `/`, which is why the slash rule alone
+      // was not enough. What separates them is that prose continues after the extension.
+      [
+        'prose that continues past the extension',
+        'const m = { note: "see ./old.png for details" };',
+      ],
+      ['an import statement quoted as text', `const s = "import logo from './old.png'";`],
+      ['prose in a template literal', 'const msg = `we removed ./old.png last week`;'],
+      // Measured in shadcn-ui: 87 strings of this shape, 13 distinct, none with a slash.
+      // They are accessible button labels, and treating one as a path would put a
+      // rewritable reference on a piece of UI text.
+      ['an accessible UI label naming a file', 'const label = "Remove workspace.png";'],
+      ['another UI label', 'const label = "Open desk-reference.jpg";'],
+      // A comma means a list, not a path — the unsplit srcSet shape.
+      ['a srcSet-shaped candidate list', 'const s = "/a.jpg 1x, /b.jpg 2x";'],
+    ];
+
+    it.each(ignored)('ignores %s', (_name, source) => {
+      expect(find(source)).toEqual([]);
+    });
+
+    /**
+     * ⚠️ The known limit, pinned deliberately rather than fixed.
+     *
+     * A bare spaced filename with no separator is indistinguishable from the UI labels
+     * above — `'My Logo.svg'` and `'Remove workspace.png'` have the same shape — so it
+     * stays invisible. **Measured frequency across all four repositories: zero**; in the
+     * university site all 109 spaced image paths contained a slash.
+     *
+     * This test documents the gap instead of leaving it silent. If a repository ever
+     * needs it, the fix is to drop the `path.includes('/')` clause in
+     * `plausiblePathShape`, and this expectation flips.
+     */
+    it('still misses a bare spaced filename with no separator, by design', () => {
+      expect(find("const a = { file: 'My Logo.svg' };")).toEqual([]);
+    });
+  });
+
+  /**
+   * R26's second defect — `<image href>` in JSX.
+   *
+   * ARCHITECTURE.md recorded `<image href>` as a known gap **for `.svg` files**, which is
+   * why nobody looked here: an inline `<svg>` in a JSX component is not an `.svg` file,
+   * so no future SVG adapter would ever have covered it. Measured across the three
+   * validation repos: **0 occurrences**, which is why §5.1 could not have found it.
+   */
+  describe('inline SVG in JSX — R26', () => {
+    const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      ['image href', '<image href="/a/hero.png" />', ['/a/hero.png']],
+      ['image xlinkHref, the React spelling', '<image xlinkHref="/a/hero.png" />', ['/a/hero.png']],
+      ['feImage href', '<feImage href="/a/hero.png" />', ['/a/hero.png']],
+      ['image href in an expression container', '<image href={"/a/hero.png"} />', ['/a/hero.png']],
+      ['image href built by a template', '<image href={`/a/${slug}.png`} />', ['/a/${slug}.png']],
+    ];
+
+    it.each(cases)('reads %s', (_name, source, expected) => {
+      expect(paths(source)).toEqual(expected);
+      expect(slices(source)).toEqual(expected);
+    });
+
+    it('does not turn every href into a candidate', () => {
+      // The reason the map is keyed by tag rather than by attribute name: a bare `href`
+      // set would have made every link a candidate, including links to non-images.
+      expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
+      expect(find('<a href="/a/hero.png">x</a>')).toEqual([]);
+    });
+  });
 });
