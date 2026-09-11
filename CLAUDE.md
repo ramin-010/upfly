@@ -83,7 +83,12 @@ it up with options and a recommendation and ask the parent chat.
 Commit locally as you go. **Never push, never publish, never tag** — hand Rinkal the exact commands
 and let him run them. `git push` and `gh` are denied at the permission layer.
 
-A hook runs `pnpm check` before every `git commit` here and **refuses the commit if it is red**
-(rule 3). It takes ~20s. If you are deliberately checkpointing work mid-red-green cycle, put
-**`[wip]`** in the commit message and it will let you through — that escape exists so the gate never
-pushes work toward not being committed at all.
+⚠️ **There is no pre-commit hook. Run `pnpm check` yourself before every commit** (rule 3); it takes
+~20s and is lint + typecheck + test.
+
+This file used to promise a hook that ran it for you, with `[wip]` as the escape hatch. That hook was
+**removed rather than fixed** after it was found to have four bugs and to have never once fired — the
+clearest instance of the phase's most reliable lesson, that a construction which cannot carry the bug
+beats the discipline of avoiding it. The removal was right; leaving the promise here was not, because
+it told the next chat its commits were gated when nothing was checking them. **Open question for the
+parent chat:** rebuild it so it *can* fail, or leave the check manual and keep this paragraph.

@@ -613,6 +613,28 @@ Two calls about references are worth knowing:
   and i18n bundles, and listing them buries everything else. The count is still there, because it is
   what tells a user the JSON adapter has started eating something real.
 
+### `findings` holds what there is something to do about (schema 2, R22)
+
+⚠️ **It is not every finding the audit produced.** An unreferenced **vector** is moved to
+`unusedVectors` — a count and a total size — because Upfly neither converts a vector nor deletes an
+asset, so itemising one proposes the only two things it will not do. `--include-unused-svg` lists
+them; `summary.findings` counts the itemised array, so the two can never disagree. On `astro-docs`
+this is what takes the unreferenced-asset findings from 150 to 24, and the hedges from 140 to 18.
+
+The argument is **"we offer no action", not "vectors are small"** — the second is false, and measured:
+SVG is 96% of `shadcn-ui`'s hedged bytes and `eleventy-docs`' nine vectors are 210 KB. That is why the
+counted line carries the size: §8 decision 7 leaves the reader holding the decision, and a total is
+what turns a count into one. SVGs stay in reference tracking throughout — a broken
+`<img src="/logo.svg">` is a broken image like any other.
+
+The set of vector extensions lives in `paths.ts`, not in the probe, because **two decisions depend on
+it being the same set**: what the probe declines to encode, and what the report declines to itemise.
+
+One exception keeps a vector itemised: if a broken reference asks for its raster twin (`hero.svg`
+unreferenced beside a broken `hero.png`), the pair lands in `staleConversions` and the vector stays in
+`findings` — there *is* an action, which is to fix the reference. It is phrased as two facts and an
+inference the reader judges, never as a conclusion.
+
 ### The human renderer prints the skipped list before the findings
 
 That ordering is deliberate and slightly uncomfortable: it puts what the tool could *not* do above
