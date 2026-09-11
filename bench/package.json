@@ -8,7 +8,8 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "bench": "tsc --build && node dist/run.js",
-    "validate": "tsc --build && node dist/validate.js"
+    "validate": "tsc --build && node dist/validate.js",
+    "dead-rate": "tsc --build && node dist/dead-rate.js"
   },
   "dependencies": {
     "sharp": "^0.35.4",

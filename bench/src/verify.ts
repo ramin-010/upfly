@@ -17,9 +17,10 @@
  * It differs from the engine's own machinery on purpose, in three ways that are the
  * whole point:
  *
- * - it walks **everything** except `.git`, including the directories `discover`
- *   prunes and whatever `.upflyignore` excluded, because an asset referenced from a
- *   pruned directory is still referenced;
+ * - it walks the directories `discover` prunes and whatever `.upflyignore` excluded,
+ *   because an asset referenced from a pruned directory is still referenced — but **not**
+ *   vendored dependencies or generated build output, which are derived rather than
+ *   authored. See `ORACLE_SKIPS` for the measurement behind that;
  * - it matches an asset's **stem under a different extension** as well as its exact
  *   filename, which catches the case Phase 2 will create;
  * - it decides a path exists by looking it up in the **directory index**, not with
@@ -30,6 +31,7 @@
  * the evidence attached. Only the ambiguous ones are a person's problem.
  */
 
+import { appendFileSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
@@ -361,6 +363,64 @@ function verifyHedge(
   };
 }
 
+/**
+ * The oracle's own tokeniser, which must be able to see a filename containing a space.
+ *
+ * ⚠️ **It could not, and that is the R17 amendment landing for the third time.** This
+ * index was built with `[\w@.\-]+\.(ext)` — no space — exactly like the engine's sweep.
+ * So for an asset named `Firing Practice.webp` the oracle indexed only `practice.webp`,
+ * the lookup for `firing practice.webp` found nothing, and it returned
+ * **confirmed-genuine for a false `dead`.** *"Independent in implementation is not
+ * independent in assumption"*: a different tree walk and a different regex, and the same
+ * blind spot, because both were written by people who do not put spaces in filenames.
+ *
+ * This is the defect that would have made §5.1(j) worthless — the rate would have come
+ * back near zero because the instrument could not see the class being measured. **R26's
+ * 16% was found by a person grepping served paths by hand, not by this.**
+ *
+ * Deliberately a **separate copy** of the extend-leftwards trick rather than an import of
+ * `imageFilenameCandidates`: the whole value of an oracle is that it agrees with the
+ * engine by coincidence rather than by construction. `assertOracleSeesSpaces` below is
+ * what stops the copy silently regressing.
+ */
+function* oracleTokens(text: string, pattern: RegExp): Generator<[token: string, index: number]> {
+  pattern.lastIndex = 0;
+  let match = pattern.exec(text);
+  while (match !== null) {
+    const end = match.index + match[0].length;
+    yield [match[0], match.index];
+
+    let start = match.index;
+    for (let word = 0; word < 6; word += 1) {
+      if (text[start - 1] !== ' ') break;
+      let candidate = start - 1;
+      while (candidate > 0 && /[\w@.\-]/.test(text[candidate - 1] ?? '')) candidate -= 1;
+      if (candidate === start - 1) break;
+      start = candidate;
+      yield [text.slice(start, end), start];
+    }
+    match = pattern.exec(text);
+  }
+}
+
+/**
+ * Prove the oracle can see the class it is about to measure, before it measures it.
+ *
+ * A gate whose instrument is blind to the failure reports a clean result either way, and
+ * that is the one outcome this project has learned to distrust. Cheap, runs once, and
+ * throws rather than warning — a warning in a bench script is a line nobody reads.
+ */
+function assertOracleSeesSpaces(pattern: () => RegExp): void {
+  const tokens = [...oracleTokens('src="/ncc/Firing Practice.webp"', pattern())].map(
+    ([token]) => token,
+  );
+  if (!tokens.includes('Firing Practice.webp')) {
+    throw new Error(
+      'The oracle cannot see a filename containing a space, so any false-dead rate it reports is meaningless. See §5.1(j).',
+    );
+  }
+}
+
 /** The oracle's own walk and grep. Nothing here imports the engine's machinery. */
 async function buildIndex(root: string): Promise<RepoIndex> {
   const files = new Set<string>();
@@ -370,11 +430,26 @@ async function buildIndex(root: string): Promise<RepoIndex> {
   let filesGrepped = 0;
 
   const extensions = IMAGE_EXTENSIONS.map((extension) => extension.slice(1)).join('|');
-  const pattern = new RegExp(`[\\w@.\\-]+\\.(?:${extensions})\\b`, 'gi');
+  const makePattern = () => new RegExp(`[\\w@.\\-]+\\.(?:${extensions})\\b`, 'gi');
+  const pattern = makePattern();
 
+  // Before measuring anything, prove the instrument can see the class being measured.
+  assertOracleSeesSpaces(makePattern);
+
+  let walked = 0;
+  const startedAt = Date.now();
   for await (const absolute of walk(root)) {
     const rel = relative(root, absolute).replaceAll('\\', '/');
     files.add(rel);
+    walked += 1;
+    // Progress, synchronously to stderr: a slow index is otherwise indistinguishable from
+    // a hang, and this is pointed at repositories nobody has profiled.
+    if (walked % 2000 === 0) {
+      appendFileSync(
+        2,
+        `      oracle: ${walked} walked, ${filesGrepped} grepped, ${((Date.now() - startedAt) / 1000).toFixed(0)}s\n`,
+      );
+    }
 
     const extension = rel.slice(rel.lastIndexOf('.')).toLowerCase();
     if (IMAGE_EXTENSIONS.includes(extension)) continue;
@@ -411,8 +486,15 @@ async function buildIndex(root: string): Promise<RepoIndex> {
         text: lineText(text, match.index),
         extensionSwapped: false,
       };
-      hitsByToken.set(token, [...(hitsByToken.get(token) ?? []), hit]);
-      hitsByStem.set(stem, [...(hitsByStem.get(stem) ?? []), { ...hit, extensionSwapped: true }]);
+      // ⚠️ **Push, never spread.** This was
+      // `map.set(token, [...(map.get(token) ?? []), hit])`, which copies the whole array
+      // per hit and is quadratic in the number of times one filename appears. On the three
+      // pinned repos nothing repeats often enough to notice; on a real site with 1,873
+      // images it turned a 23-second pipeline into a run that had not finished in ten
+      // minutes, and adding the space-aware suffix tokens made it worse. A check nobody can
+      // afford to run is a check nobody runs.
+      pushHit(hitsByToken, token, hit);
+      pushHit(hitsByStem, stem, { ...hit, extensionSwapped: true });
       match = pattern.exec(text);
     }
   }
@@ -421,12 +503,75 @@ async function buildIndex(root: string): Promise<RepoIndex> {
 }
 
 /**
- * Everything but `.git`.
+ * Everything but `.git` and vendored dependencies.
  *
  * Deliberately not `discover`'s prune list: an asset referenced from `dist/` or from
  * a directory the user ignored is still referenced, and the point of an independent
  * oracle is to look where the engine agreed not to.
+ *
+ * ⚠️ **`node_modules` is the exception, and it is a validity fix rather than a speed one.**
+ * That principle is about the *user's own* output — `dist/`, a `.gitignore`d build — and a
+ * third-party package is not that. A user's asset filename appearing inside a dependency's
+ * own files is a coincidence, not a reference to their asset, so counting it would produce
+ * a **false confirmed-false** and bias §5.1(j)'s rate *upward*, making the engine look
+ * worse than it is. The engine prunes `node_modules` too, so indexing it here would not be
+ * independence — it would make the two corpora incomparable.
+ *
+ * None of the three pinned §5.1(c) repos has `node_modules` installed, so this changes
+ * nothing there. It matters only on a real working repository, which is exactly what (j)
+ * is pointed at. (It is also what took a run past ten minutes.)
  */
+/** Append without copying. See the note at the call site. */
+function pushHit(into: Map<string, Hit[]>, key: string, hit: Hit): void {
+  const existing = into.get(key);
+  if (existing === undefined) into.set(key, [hit]);
+  else existing.push(hit);
+}
+
+/**
+ * Directories the oracle does not index: vendored dependencies and generated output.
+ *
+ * ⚠️ **This reverses a decision written in this file, and the reversal is measured.** The
+ * note above said an asset referenced from `dist/` is still referenced, so the oracle
+ * should look there. Two problems showed up the first time it was pointed at a real
+ * working repository rather than a pinned clone:
+ *
+ * - **Cost.** `.next/` holds 1,482 files of minified bundles, and the oracle's regex
+ *   backtracks catastrophically over long runs of word characters. Measured on
+ *   `D:/RBU/RBU-Website`: **over ten minutes** with `.next` indexed, **181 ms** without,
+ *   across the same 1,314 other files. A check nobody can afford to run is a check nobody
+ *   runs, and §5.1(j) is meant to be run on real repositories.
+ * - **Validity, which matters more.** Generated output is *derived from* source. If the
+ *   source still names an asset, the oracle finds it in the source; the only thing a build
+ *   directory adds is the case where the source reference is **gone and the bundle is
+ *   stale** — where the asset genuinely is dead and the oracle would wrongly call the
+ *   finding false. Indexing it inflates the measured error rate with the engine's own
+ *   correct answers.
+ *
+ * The same argument covers `node_modules`: a user's filename appearing inside a dependency
+ * is a coincidence, not a reference to their asset.
+ *
+ * None of the three pinned §5.1(c) repos contains any of these directories, so this
+ * changes nothing there — which is also why it was never noticed.
+ *
+ * ⚠️ **Raised rather than settled:** this changes §5.1(d)'s stated method, not the engine.
+ * If the parent chat wants the other number, deleting an entry here is the whole change.
+ */
+const ORACLE_SKIPS: ReadonlySet<string> = new Set([
+  '.git',
+  'node_modules',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.output',
+  '.turbo',
+  '.cache',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+]);
+
 async function* walk(directory: string): AsyncGenerator<string> {
   let entries: Dirent[];
   try {
@@ -439,7 +584,7 @@ async function* walk(directory: string): AsyncGenerator<string> {
     if (entry.isSymbolicLink()) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name !== '.git') yield* walk(path);
+      if (!ORACLE_SKIPS.has(entry.name)) yield* walk(path);
     } else if (entry.isFile()) {
       yield path;
     }
