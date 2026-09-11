@@ -15,6 +15,8 @@
 
 import { dirname, resolve as resolvePath } from 'node:path';
 import { splitPathSuffix, staticExtensionOf } from './adapters/reference-path.js';
+import type { AliasMap } from './aliases.js';
+import { expandAlias } from './aliases.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
@@ -47,6 +49,14 @@ export interface ResolveOptions {
    * but a user who ignores `legacy/` while it is still referenced.
    */
   readonly excludedRoots?: readonly ExcludedRoot[];
+  /**
+   * Path aliases the project declares, from `loadAliases`.
+   *
+   * Passed in rather than read here, because reading a config is filesystem work and
+   * this module is pure. Absent means "no aliases were loaded", which leaves every
+   * alias-shaped path in `unresolved-alias` exactly as before.
+   */
+  readonly aliases?: AliasMap;
   /**
    * Whether a path exists on disk. Required, not optional.
    *
@@ -81,6 +91,7 @@ export function resolveReferences(
     publicDirs: options.publicDirs ?? ['public'],
     excludedRoots: options.excludedRoots ?? [],
     exists: options.exists,
+    aliases: options.aliases ?? { rules: [], skipped: [] },
   };
   const resolved: Reference[] = [];
 
@@ -98,6 +109,7 @@ interface ResolveContext {
   readonly publicDirs: readonly string[];
   readonly excludedRoots: readonly ExcludedRoot[];
   readonly exists: (absolutePath: string) => boolean;
+  readonly aliases: AliasMap;
 }
 
 /**
@@ -150,13 +162,32 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
     };
   }
 
+  // 4b. An alias the project declares. Tried after the literal lookup, so a real file
+  //     at the written path always wins over a mapping that happens to match.
+  const viaAlias = resolveThroughAlias(path, raw, context);
+  if (viaAlias !== null) return viaAlias;
+
   // 5. Points at a real file we deliberately do not index.
   const excluded = outOfScope(path, raw, context);
   if (excluded !== null) return excluded;
 
-  // 6. Alias-shaped. Phase 2 teaches the resolver tsconfig paths and Vite aliases;
-  //    until then these are their own bucket, never a finding.
+  // 6. Alias-shaped and no declared alias matched.
   if (isAliasShaped(path, raw.kind)) {
+    // ⚠️ R32 — an npm package specifier is NOT an alias, and must not sit in a bucket
+    // that promises a resolution alias resolution will never deliver. `unresolved-alias`
+    // means *"we expect to resolve this once aliases land"*: it is a promise, not a
+    // description. `resolveModule('@11ty/logo/img/logo-96x96.png')` points into
+    // `node_modules`, which is pruned — known, and known not to be an indexed asset,
+    // which is precisely what `out-of-scope` is defined as.
+    if (isPackageSpecifier(path, raw.kind)) {
+      return {
+        ...raw,
+        resolution: 'out-of-scope',
+        confidence: 'unsafe',
+        resolvedPath: path,
+        exclusionReason: 'names a file inside an npm package, which is not an indexed asset',
+      };
+    }
     return unlinked(raw, 'unresolved-alias');
   }
 
@@ -242,6 +273,66 @@ function unlinked(
  * alias-shaped too, but only in an `import`: in CSS or HTML, `images/logo.png` is an
  * ordinary relative path, while in JavaScript it is a package name.
  */
+/**
+ * Rung 4b: expand a declared alias and look the result up.
+ *
+ * Separate from `resolveOne` so the ladder stays readable as a ladder — and because
+ * the expansion can produce several candidates, which is a loop the surrounding
+ * sequence of single tests should not have to carry.
+ */
+function resolveThroughAlias(
+  path: string,
+  raw: RawReference,
+  context: ResolveContext,
+): Reference | null {
+  if (!isAliasShaped(path, raw.kind)) return null;
+
+  for (const candidate of expandAlias(context.aliases, path, raw.file)) {
+    const target = context.index.lookupExact(candidate);
+    if (target === null) continue;
+    return {
+      ...raw,
+      resolution: 'resolved',
+      confidence: raw.ceiling,
+      resolvedPath: target,
+      // `serving-root`, not a new value: an alias is a **configured** base the user
+      // stated, exactly like a serving root, and it is as strong. An eighth
+      // `resolvedVia` would make every consumer handle a case that behaves
+      // identically to one it already handles.
+      resolvedVia: 'serving-root',
+    };
+  }
+  return null;
+}
+
+/**
+ * Whether an alias-shaped path is really a **package** specifier (R32).
+ *
+ * The two look alike and mean opposite things. `@/assets/logo.png` is the Next and
+ * Vite alias convention — an empty scope, which no package registry permits — while
+ * `@11ty/logo/img/logo.png` is a scoped package, and a bare `lodash/x.png` in an
+ * `import` is an unscoped one. A package's files live in `node_modules`, which the
+ * walk prunes, so no amount of alias configuration will ever resolve them.
+ *
+ * Measured scope when this was ruled: 4 references, 1 file, 1 repository, zero
+ * elsewhere — all four `resolveModule('@11ty/logo/…')` in `eleventy.config.js`.
+ */
+function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
+  // `@scope/name/…` — a non-empty scope. `@/…` has an empty one and is the alias.
+  if (/^@[^/]+\//.test(path)) return true;
+  // A bare specifier in an import position: `lodash/x.png`, never `./x.png`.
+  if (kind !== 'import') return false;
+  // `@` is excluded here because the scoped-package case is already decided above: an
+  // `@`-leading path that is not `@scope/name` is `@/…`, the alias convention.
+  return (
+    !path.startsWith('.') &&
+    !path.startsWith('/') &&
+    !path.startsWith('~') &&
+    !path.startsWith('#') &&
+    !path.startsWith('@')
+  );
+}
+
 function isAliasShaped(path: string, kind: RawReference['kind']): boolean {
   if (path.startsWith('@') || path.startsWith('~') || path.startsWith('#')) return true;
   if (kind !== 'import') return false;
@@ -280,6 +371,18 @@ class AssetIndex {
       if (match !== undefined) return { path: match, via: candidate.via };
     }
     return null;
+  }
+
+  /**
+   * The asset at an already-absolute POSIX path, or `null`.
+   *
+   * Separate from `lookup` because an expanded alias is already a complete path: the
+   * base came from the config, so re-running the file-relative and serving-root
+   * candidate generation over it would be asking the same question twice with the
+   * wrong inputs.
+   */
+  lookupExact(path: string): string | null {
+    return this.byPath.get(path) ?? null;
   }
 
   /**

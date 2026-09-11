@@ -35,6 +35,7 @@ import {
   detectConventionRoots,
   discover,
   linkedPaths,
+  loadAliases,
   probeAssets,
   renderReport,
   resolveReferences,
@@ -84,6 +85,26 @@ const REPOS: readonly RepoSpec[] = [
       'templates/start-monorepo/apps/web/public',
       'templates/vite-app/public',
     ],
+  },
+  {
+    // R27/R28: chosen for how its files are NAMED, not for its stack. Hand-written
+    // static HTML with no build step, so the project root itself is the serving root
+    // — `['']` rather than a public directory, which is the case `project-root`
+    // resolution exists for and the one R36 measured at 1,267 asserted references.
+    name: 'railsgirls-com',
+    sha: 'fa2b63c48381a04f354d976efe2fdd1d35078b9e',
+    publicDirs: [''],
+  },
+  {
+    // R27/R28's other half: messy filenames reached through JSX and SCSS rather than
+    // raw HTML, which is the shape R26 was. Webpack serves `static/` at `/`.
+    //
+    // ⚠️ No saving percentage may ever be quoted off this repo: 91 of its 132 messy
+    // images are `.svg`, which Upfly never converts, so it is a reference-graph
+    // subject rather than a conversion one (06-validation-repos.md).
+    name: 'scratch-www',
+    sha: '8025bf2c0cbb5bdaff1272ed888e38deb7fae9ed',
+    publicDirs: ['static'],
   },
 ];
 
@@ -218,11 +239,20 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     readFile: readFileText,
     assetBasenames: basenamesOf(discovery.assets),
   });
+  // B1: the aliases the project declares, read from the files `discover` already
+  // found. No second walk — the config files are ordinary discovered files.
+  const aliases = await loadAliases({
+    root: discovery.root,
+    files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
+    readFile: readFileText,
+    exists: (path) => existsSync(path),
+  });
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
     publicDirs: repo.publicDirs,
     excludedRoots: discovery.excludedRoots,
+    aliases,
     exists: (path) => existsSync(path),
   });
   const graph = buildGraph({

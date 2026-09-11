@@ -249,8 +249,20 @@ function candidatePaths(
     candidates.push(bare);
   } else {
     candidates.push(posix.normalize(posix.join(posix.dirname(file), path)));
-    // A `./`-spelled path meant relative to the project root — R15's case.
-    candidates.push(posix.normalize(path));
+    // ⚠️ **The project-root reading of a `./` path is deliberately NOT offered here,
+    // and removing it is the point.** It used to be, citing R15 — but R15 allows that
+    // fallback only for a **speculative** reference, and every `broken` finding is
+    // asserted by construction (rung 7 tests `asserted`). `./` in an `<img src>`
+    // unambiguously means file-relative, and R15's own reasoning is that falling back
+    // would link a genuinely broken reference to an unrelated file: a false link,
+    // which costs a broken build where a false `broken` costs five minutes.
+    //
+    // Offering it made the oracle MORE generous than the engine intends to be, and on
+    // `railsgirls-com` that produced six "confirmed FALSE" verdicts against an engine
+    // that was right every time: `files/galway/archive.html` asks for
+    // `./images/galway/alanna.jpg`, which does not exist beside it — the images moved
+    // and the archived page was left behind. An oracle that disagrees with a correct
+    // engine fails the gate exactly as loudly as a real defect.
   }
 
   return [...new Set(candidates)].filter((candidate) => !candidate.startsWith('..'));
@@ -527,7 +539,18 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     }
 
     const extension = rel.slice(rel.lastIndexOf('.')).toLowerCase();
-    if (IMAGE_EXTENSIONS.includes(extension)) continue;
+    // ⚠️ **`.svg` is an image AND a text container, so it is grepped.** Skipping every
+    // image extension meant the oracle never looked inside an SVG, and on
+    // `railsgirls-com` that produced three "confirmed FALSE" hedges whose citations
+    // were all real: Inkscape writes `sodipodi:docname="GitLab.svg"` into the file, the
+    // engine's sweep reads `.svg` as unscanned text and cited it correctly, and the
+    // oracle — which had never read the file — called the engine wrong.
+    //
+    // ARCHITECTURE.md says this about the engine's own sweep in as many words. The
+    // oracle simply did not have it, which is what "independent in implementation is
+    // not independent in assumption" costs when the assumption is *"an image is not
+    // text"*.
+    if (IMAGE_EXTENSIONS.includes(extension) && extension !== '.svg') continue;
 
     let text: string;
     try {
@@ -550,16 +573,24 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     lowerTexts.set(rel, text.toLowerCase());
 
     const lineStarts = offsetsOfLines(text);
-    pattern.lastIndex = 0;
-    let match = pattern.exec(text);
-    while (match !== null) {
-      const token = match[0].toLowerCase();
+    // ⚠️ **`oracleTokens`, not `pattern.exec` directly.** This loop used the bare
+    // pattern, so the space-aware leftward extension never ran on the index at all —
+    // `oracleTokens` was called from exactly one place, `assertOracleSeesSpaces`, the
+    // guard whose job is to certify it. **The guard tested a function that was not on
+    // the path it guarded**, and passed while the index it certifies stayed blind to
+    // every filename containing a space.
+    //
+    // Found in B1 when `scratch-www` produced 32 "confirmed FALSE" hedges whose
+    // citations were all correct — the engine was right and the instrument was wrong,
+    // which is R26's lesson arriving from the other direction.
+    for (const [raw, index] of oracleTokens(text, pattern)) {
+      const token = raw.toLowerCase();
       const stem = token.slice(0, token.lastIndexOf('.'));
-      const line = lineOf(lineStarts, match.index);
+      const line = lineOf(lineStarts, index);
       const hit: Hit = {
         file: rel,
         line,
-        text: lineText(text, match.index),
+        text: lineText(text, index),
         extensionSwapped: false,
       };
       // ⚠️ **Push, never spread.** This was
@@ -571,7 +602,6 @@ async function buildIndex(root: string): Promise<RepoIndex> {
       // afford to run is a check nobody runs.
       pushHit(hitsByToken, token, hit);
       pushHit(hitsByStem, stem, { ...hit, extensionSwapped: true });
-      match = pattern.exec(text);
     }
   }
 

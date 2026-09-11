@@ -431,7 +431,6 @@ describe('resolveReferences', () => {
       ['a webpack-style alias', '@/assets/logo.png'],
       ['a tilde alias', '~/assets/logo.png'],
       ['a subpath import alias', '#assets/logo.png'],
-      ['a scoped package asset', '@scope/pkg/logo.png'],
     ])('%s', (_name, rawPath) => {
       const reference = resolveOne({ rawPath });
 
@@ -441,9 +440,31 @@ describe('resolveReferences', () => {
       expect(reference?.confidence).toBe('unsafe');
     });
 
-    it('treats an unresolved bare specifier in an import as alias-shaped', () => {
-      const reference = resolveOne({ rawPath: 'some-pkg/logo.png', kind: 'import' });
-      expect(reference?.resolution).toBe('unresolved-alias');
+    it.each([
+      ['a scoped package asset', '@scope/pkg/logo.png', 'attr'],
+      ['a bare specifier in an import', 'some-pkg/logo.png', 'import'],
+    ])('%s is out-of-scope, not unresolved-alias (R32)', (_name, rawPath, kind) => {
+      // ⚠️ These moved buckets. `unresolved-alias` means *"we expect to resolve this
+      // once aliases land"* — it is a promise, not a description — and a package's
+      // files live in `node_modules`, which the walk prunes, so no alias config will
+      // ever resolve them. `out-of-scope` already means "known, and known not to be
+      // an indexed asset", which is exactly this.
+      const reference = resolveOne({ rawPath, kind: kind as 'attr' | 'import' });
+
+      expect(reference?.resolution).toBe('out-of-scope');
+      expect(reference?.confidence).toBe('unsafe');
+      expect(reference?.resolution === 'out-of-scope' ? reference.exclusionReason : null).toContain(
+        'npm package',
+      );
+    });
+
+    it('keeps the alias conventions out of the package bucket — the control', () => {
+      // The converse of the test above, and the reason it is not enough on its own:
+      // `@/…` and `@scope/…` differ by one character, and a test that only checked
+      // the package side would pass with a rule that swallowed every `@` path.
+      for (const rawPath of ['@/assets/logo.png', '~/assets/logo.png', '#assets/logo.png']) {
+        expect(resolveOne({ rawPath, kind: 'import' })?.resolution).toBe('unresolved-alias');
+      }
     });
 
     it('does not treat a bare path in CSS as alias-shaped', () => {

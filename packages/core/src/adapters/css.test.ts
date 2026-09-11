@@ -320,3 +320,50 @@ describe('cssAdapter', () => {
     expect([...starts].sort((a, b) => a - b)).toEqual(starts);
   });
 });
+
+describe('a parenthesis inside quotes is a character, not a function call (R26 class)', () => {
+  // Found by `scratch-www` in B1's re-validation: four assets reported `dead` —
+  // *safe to delete* — about files the live site serves, because
+  // `url("/images/quote (blue).svg")` was read as containing a function call. The
+  // reference became `dynamic`, linked nothing, and the asset looked unreferenced.
+  const find = (text: string) => cssAdapter.findReferences({ file: '/project/a.scss', text });
+
+  it('treats a quoted path with parentheses as a literal path', () => {
+    const [reference] = find('a { background-image: url("/images/quote (blue).svg"); }');
+
+    expect(reference?.rawPath).toBe('/images/quote (blue).svg');
+    expect(reference?.ceiling).toBe('high');
+    expect(reference?.note).toBeUndefined();
+  });
+
+  it('treats a quoted path with parentheses AND spaces as a literal path', () => {
+    const [reference] = find(
+      'a { background-image: url("/img/3_Community/Timeline Background (Base).svg"); }',
+    );
+
+    expect(reference?.rawPath).toBe('/img/3_Community/Timeline Background (Base).svg');
+    expect(reference?.ceiling).toBe('high');
+  });
+
+  it('still refuses an UNQUOTED function call — the control', () => {
+    // The assertion above would pass with the check deleted outright. This is what
+    // stops that: a real SCSS function call must stay `unsafe`.
+    const [reference] = find('a { background-image: url(map-get($images, hero)); }');
+
+    expect(reference?.ceiling).toBe('unsafe');
+    expect(reference?.note).toContain('function call');
+  });
+
+  it.each([
+    ['SCSS interpolation', 'url("#{$path}/hero.png")'],
+    ['Less interpolation', 'url("@{path}/hero.png")'],
+    ['a CSS-in-JS substitution hole', 'url("/*------*/")'],
+  ])('keeps %s unsafe even inside quotes', (_name, value) => {
+    // The other markers are NOT quote-sensitive, and that asymmetry is the whole
+    // design: interpolation and the comment the JS adapter substitutes appear inside
+    // quotes routinely, while a function call cannot.
+    const [reference] = find(`a { background-image: ${value}; }`);
+
+    expect(reference?.ceiling).toBe('unsafe');
+  });
+});

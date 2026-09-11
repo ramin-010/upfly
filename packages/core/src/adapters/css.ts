@@ -179,6 +179,7 @@ function collectFromValueNodes(
         start: base + node.sourceIndex + 1,
         file,
         references,
+        quoted: true,
       });
     }
   }
@@ -198,16 +199,34 @@ function collectFromUrlFunction(
     start: base + argument.sourceIndex + (argument.type === 'string' ? 1 : 0),
     file,
     references,
+    quoted: argument.type === 'string',
   });
 }
 
-/** Markers that mean the path is assembled at compile time, not written literally. */
-function dynamicReason(rawPath: string): string | null {
+/**
+ * Markers that mean the path is assembled at compile time, not written literally.
+ *
+ * ⚠️ **`quoted` is not a nicety: without it a parenthesis in a filename made an image
+ * invisible.** `url("/images/quote (blue).svg")` is a literal path — inside quotes a
+ * parenthesis is just a character — but the function-call test read it as
+ * `map-get($m, k)` and marked the reference `unsafe`. It then linked nothing, the
+ * asset had zero references, and it was reported **`dead`**: *safe to delete*, about a
+ * file the live site serves. Four of them on `scratch-www`, all in one stylesheet.
+ *
+ * That is R26's class for the third time — spaces and parentheses are how a
+ * non-developer names a file, and every repository maintained by professional JS
+ * developers is blind to it by construction. The other markers stay unconditional:
+ * SCSS and Less interpolation, and the comment that CSS-in-JS substitution leaves
+ * behind, all appear *inside* quotes routinely.
+ */
+function dynamicReason(rawPath: string, quoted: boolean): string | null {
   if (rawPath.includes('#{')) return 'SCSS interpolation: the path is not known statically';
   if (rawPath.includes('@{')) return 'Less interpolation: the path is not known statically';
   if (rawPath.startsWith('$')) return 'SCSS variable: the path is not known statically';
   if (rawPath.startsWith('@')) return 'Less variable: the path is not known statically';
-  if (rawPath.includes('(')) return 'contains a function call: the path is not known statically';
+  if (!quoted && rawPath.includes('(')) {
+    return 'contains a function call: the path is not known statically';
+  }
   // A comment inside a url token is never a literal path. It also stands in for a
   // CSS-in-JS interpolation: the JS adapter replaces every `${...}` with a comment
   // of exactly the same length, so `url(${bg})` arrives here as `url(/*--*/)`.
@@ -221,12 +240,14 @@ function addReference(input: {
   start: number;
   file: string;
   references: RawReference[];
+  /** Whether the author wrote this inside quotes, where `(` is an ordinary character. */
+  quoted: boolean;
 }): void {
-  const { text, start, file, references } = input;
+  const { text, start, file, references, quoted } = input;
   if (text === '') return;
   if (isExternalUrl(text, 'css-url')) return;
 
-  const reason = dynamicReason(text);
+  const reason = dynamicReason(text, quoted);
   if (reason !== null) {
     // Reported, never rewritten. These are the cases where guessing would corrupt
     // a file, so the honest answer is to say what we saw and why we left it alone.
