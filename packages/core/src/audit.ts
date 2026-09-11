@@ -28,6 +28,7 @@ import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
 import type { AssetProbe, EncodeFormat } from './probe.js';
+import { resolutionHealth } from './resolution-health.js';
 import type { ReadFilePort } from './scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
@@ -109,10 +110,34 @@ export interface FormatOpportunityFinding {
   readonly quality: number;
 }
 
+/**
+ * The engine could not work out where this project serves files from.
+ *
+ * It replaces the `broken` findings of the same run rather than joining them. When
+ * almost no root-relative reference resolves, those are not broken references: they
+ * are one misconfiguration seen N times, and reporting them individually states a
+ * symptom as a diagnosis. Measured on eleventy-docs, that is 14 `broken` findings
+ * whose targets are all present on disk.
+ *
+ * `suppressedBroken` is what keeps rule 9: the count of what this replaced is part of
+ * the finding, and every one of those references is still itemised in the report's
+ * own `references` section, so nothing is hidden, only re-explained.
+ */
+export interface ServingRootUnknownFinding {
+  readonly kind: 'serving-root-unknown';
+  /** Root-relative references that did resolve. */
+  readonly linked: number;
+  /** Root-relative references the engine could check: linked plus broken. */
+  readonly checkable: number;
+  /** How many `broken` findings this replaced. */
+  readonly suppressedBroken: number;
+}
+
 export type Finding =
   | DeadFinding
   | PossiblyDeadFinding
   | BrokenFinding
+  | ServingRootUnknownFinding
   | OversizedFinding
   | FormatOpportunityFinding;
 
@@ -229,6 +254,21 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   const publicPrefixes = normalisePublicDirs(options.publicDirs);
 
   const { findings: broken, unreadableSources } = await brokenFindings(options);
+  // One diagnosis instead of N symptoms. See `resolutionHealth`: below the floor the
+  // engine has not established where root-relative paths are served from, and a
+  // `broken` finding produced in that state is a statement about our configuration
+  // rather than about the user's code.
+  const health = resolutionHealth(options.graph);
+  const reported: (BrokenFinding | ServingRootUnknownFinding)[] = health.servingRootUnknown
+    ? [
+        {
+          kind: 'serving-root-unknown',
+          linked: health.linked,
+          checkable: health.checkable,
+          suppressedBroken: broken.length,
+        },
+      ]
+    : broken;
   const { findings: dead, conventionLinked } = deadFindings(options, publicPrefixes);
   // `AssetProbe` measures pixels and `discover` measured bytes, so the two are
   // joined here — the one place that holds both — rather than by threading the
@@ -240,7 +280,7 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
     options.probes === undefined ? [] : sizeFindings(options.probes, thresholds, bytesByAsset);
 
   return {
-    findings: [...dead, ...broken, ...probeFindings].sort(byReportOrder),
+    findings: [...dead, ...reported, ...probeFindings].sort(byReportOrder),
     publicDirDeadCount: dead.filter((finding) => finding.kind === 'dead' && finding.inPublicDir)
       .length,
     conventionLinked,
@@ -430,6 +470,9 @@ function normalisePublicDirs(publicDirs: readonly string[] | undefined): readonl
  * together, every dead asset together — rather than interleaved by path.
  */
 const KIND_ORDER: Record<Finding['kind'], number> = {
+  // Ahead of everything, because when it is present it is the reason the rest of the
+  // report looks the way it does.
+  'serving-root-unknown': -1,
   broken: 0,
   dead: 1,
   'possibly-dead': 2,
@@ -446,7 +489,10 @@ function byReportOrder(a: Finding, b: Finding): number {
 }
 
 function subjectOf(finding: Finding): string {
-  return finding.kind === 'broken' ? finding.file : finding.asset;
+  if (finding.kind === 'broken') return finding.file;
+  // At most one per run and sorted first, so it needs no subject to be ordered by.
+  if (finding.kind === 'serving-root-unknown') return '';
+  return finding.asset;
 }
 
 function detailOf(finding: Finding): string {

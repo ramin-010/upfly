@@ -1122,9 +1122,10 @@ describe('buildReport', () => {
         { kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false },
       ]);
 
-      const named = report.findings.map((finding) =>
-        finding.kind === 'broken' ? finding.rawPath : finding.asset,
-      );
+      const named = report.findings.map((finding) => {
+        if (finding.kind === 'broken') return finding.rawPath;
+        return finding.kind === 'serving-root-unknown' ? finding.kind : finding.asset;
+      });
       expect(named).toEqual(['public/photo.png']);
       expect(report.unusedVectors.count).toBe(2);
       expect(report.unusedVectors.bytes).toBe(2000);
@@ -1186,9 +1187,10 @@ describe('buildReport', () => {
       ]);
 
       expect(report.unusedVectors.count).toBe(0);
-      const kept = report.findings.map((finding) =>
-        finding.kind === 'broken' ? finding.rawPath : finding.asset,
-      );
+      const kept = report.findings.map((finding) => {
+        if (finding.kind === 'broken') return finding.rawPath;
+        return finding.kind === 'serving-root-unknown' ? finding.kind : finding.asset;
+      });
       expect(kept).toContain('images/hero.svg');
       expect(report.staleConversions).toEqual([
         { vector: 'images/hero.svg', rawPath: 'images/hero.png', where: 'about.html:10' },

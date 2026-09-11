@@ -24,10 +24,12 @@ import {
   type Asset,
   type Reference,
   type ServingRoots,
+  buildGraph,
   defaultAdapters,
   detectServingRoots,
   discover,
   loadAliases,
+  resolutionHealth,
   resolveReferences,
   scanSources,
 } from 'upfly-core';
@@ -111,8 +113,25 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
   // Both counts, because they are different numbers and only one of them is the
   // denominator of this table: the resolver returns a reference per path it was
   // asked about, and the scan raises many more strings than it ends up asking about.
+  // The real function rather than the same sum written out again here. The floor it
+  // reports against is chosen from exactly these numbers, so a second implementation
+  // could put the threshold on one side of a line and the product on the other.
+  const health = (references: readonly Reference[]): string => {
+    const graph = buildGraph({
+      root: discovery.root,
+      assets: discovery.assets,
+      references,
+      unscannedFiles: [...discovery.unscannedFiles, ...scanned.unscanned],
+    });
+    const { linked, checkable, rate, servingRootUnknown } = resolutionHealth(graph);
+    const share = checkable === 0 ? 'n/a' : `${(rate * 100).toFixed(1)}%`;
+    return `${linked}/${checkable} root-relative linked (${share})${servingRootUnknown ? '  SERVING ROOT UNKNOWN' : ''}`;
+  };
+
   return [
     `${repo.name}: ${scanned.references.length} scanned, ${configured.length} resolved against`,
+    `  configured: ${health(configured)}`,
+    `  detected:   ${health(auto)}`,
     ...table(configured, auto),
     ...changed(configured, auto),
   ];

@@ -356,3 +356,59 @@ describe('everything declined carries a reason', () => {
     }
   });
 });
+
+describe('refusing to plan a run whose serving root is unknown', () => {
+  function unresolvedRootRelative(n: number): Reference[] {
+    return Array.from(
+      { length: n },
+      (_, index) =>
+        ({
+          ...RAW,
+          file: `${ROOT}/index.html`,
+          rawPath: `/missing${index}.png`,
+          start: index * 40,
+          end: index * 40 + 10,
+          resolution: 'broken',
+          confidence: 'unsafe',
+          resolvedPath: null,
+        }) as Reference,
+    );
+  }
+
+  it('returns a refusal rather than throwing, so the caller is holding something', () => {
+    // R49 part 3. A thrown error leaves a user with nothing; a returned refusal is a
+    // finding with a reason, which is what rule 9 asks for.
+    const plan = planOptimization(
+      input({ assets: [asset('src/logo.png')], references: unresolvedRootRelative(20) }),
+    );
+
+    expect(plan.refusal).toMatchObject({
+      code: 'serving-root-unknown',
+      linked: 0,
+      checkable: 20,
+    });
+    expect(plan.refusal?.reason).toContain('Declare the directory your site serves from');
+  });
+
+  it('plans nothing at all, so a caller that ignores the refusal writes nothing', () => {
+    const plan = planOptimization(
+      input({ assets: [asset('src/logo.png')], references: unresolvedRootRelative(20) }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.rewrites).toEqual([]);
+    expect(plan.declined).toEqual([]);
+  });
+
+  it('leaves an ordinary plan with no refusal on it', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/logo.png')],
+        references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
+      }),
+    );
+
+    expect(plan.refusal).toBeNull();
+    expect(plan.conversions).toHaveLength(1);
+  });
+});

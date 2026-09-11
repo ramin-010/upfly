@@ -317,6 +317,59 @@ the project stating anything. The planner's root-link policy already branches on
 report discloses it in `coverage.servingRoots` and in a line of the human headline, because a guess
 nobody is told about is precisely the defect above.
 
+### When the serving root cannot be found at all
+
+Detection can come back with nothing, and for a hand-written static site that is the right
+answer. For a framework whose convention the engine does not know, it is not: almost no
+root-relative reference resolves, and the run fills with `broken` findings whose targets are
+sitting on disk.
+
+**In that state the finding is not "these references are broken". It is "we could not work out
+where this project serves files from."** Reporting the first is stating a symptom as a diagnosis,
+and it is the same class of mistake as calling a reference broken when it is not.
+
+So two things happen below a floor:
+
+1. **`planOptimization` refuses.** It returns a `PlanRefusal` rather than throwing — a throw
+   leaves the caller holding nothing, while a returned refusal is a finding with a reason. The
+   audit still reports; only the write path stops.
+2. **`audit` replaces every `broken` finding with one `serving-root-unknown` finding** that names
+   the real problem, says how many findings it replaced, and tells the user to declare a serving
+   root. Nothing vanishes: the references themselves are still itemised in the report's
+   `references` section, so this re-explains them rather than hiding them.
+
+**The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
+Only those depend on a serving root. A repository whose *relative* imports are genuinely broken
+scores normally and keeps every one of its findings, which makes the diagnosis correct by
+construction rather than merely the likeliest explanation. Dynamic, discarded, alias-shaped and
+out-of-scope references are excluded too: a discarded path-shaped string out of a lockfile is no
+evidence about a serving root, and counting it would make a large `package.json` look like a
+misconfiguration.
+
+**The floor is 25%, and it was measured rather than chosen.** Across the five validation
+repositories, root-relative references only:
+
+| repo | configured or correctly detected | no serving root found |
+|---|---|---|
+| `astro-docs` | 12/12, 100% | 0/11, **0.0%** |
+| `eleventy-docs` | 23/23, 100% | 0/14, **0.0%** |
+| `shadcn-ui` | 164/183, 89.6% | 0/115, **0.0%** |
+| `scratch-www` | 682/704, 96.9% | 0/615, **0.0%** |
+| `railsgirls-com` | 1325/1335, 99.3% | 1325/1335, 99.3% |
+
+The two populations do not overlap and do not come close. `railsgirls-com` is unchanged in both
+columns because it genuinely serves from its own project root, which is the control that shows the
+measure is not simply detecting "no serving root configured".
+
+⚠️ **A partial failure is not caught by this, on purpose.** A monorepo where half the serving
+roots are found scores around 50% and keeps its individual findings, because half of them are
+real and a user can act on them. This fires only where the run has nothing to say.
+
+**Below ten root-relative references the floor does not apply**, because a share taken over a
+handful is not a measurement and a single genuinely broken path would otherwise suppress itself.
+That minimum is judgement rather than measurement; the smallest real instance in the corpus is
+eleventy-docs at 16.
+
 ### Aliases are read, never executed
 
 `@/assets/logo.png` resolves only if the project declares that alias somewhere the engine can read

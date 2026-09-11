@@ -10,6 +10,7 @@ export type {
   OversizeDimension,
   OversizedFinding,
   PossiblyDeadFinding,
+  ServingRootUnknownFinding,
 } from './audit.js';
 export { citeReferences, lineOf } from './citation.js';
 export type { Citation, CitationOptions, CitationResult, UnreadableSource } from './citation.js';
@@ -57,6 +58,7 @@ export { patternTargets, planOptimization } from './plan.js';
 export type {
   OptimizationPlan,
   PlanInput,
+  PlanRefusal,
   PlannedConversion,
   PlannedRewrite,
   PublicPolicy,
@@ -105,6 +107,12 @@ export { expandAlias, loadAliases } from './aliases.js';
 export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './aliases.js';
 export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
 export { CONVENTIONAL_SERVING_ROOT_NAMES, detectServingRoots } from './serving-roots.js';
+export {
+  MINIMUM_ROOT_RELATIVE,
+  RESOLUTION_FLOOR,
+  type ResolutionHealth,
+  resolutionHealth,
+} from './resolution-health.js';
 export type { ResolveOptions, ServingRoots } from './resolve.js';
 export { scanSources } from './scan.js';
 export type { ReadFilePort, ScanOptions, ScanResult } from './scan.js';

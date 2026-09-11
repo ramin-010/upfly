@@ -515,6 +515,7 @@ function partitionUnusedVectors(findings: readonly Finding[]): {
 
 function summarise(input: ReportInput, findings: readonly Finding[]): ReportSummary {
   const counts: Record<Finding['kind'], number> = {
+    'serving-root-unknown': 0,
     broken: 0,
     dead: 0,
     'possibly-dead': 0,

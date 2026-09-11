@@ -597,6 +597,10 @@ function sizeSection(report: Report): string[] {
 function headingFor(kind: Finding['kind'], report: Report): string {
   const total = report.summary.findings[kind];
   switch (kind) {
+    case 'serving-root-unknown':
+      // No count in the heading. There is exactly one of these, and "(1)" beside a
+      // sentence about the whole run reads as though it were one of a list.
+      return 'Upfly could not work out where this project serves files from';
     case 'broken':
       return `broken references (${total}) — these point at nothing`;
     case 'dead':
@@ -619,6 +623,12 @@ function headingFor(kind: Finding['kind'], report: Report): string {
 
 function describe(finding: Finding): string[] {
   switch (finding.kind) {
+    case 'serving-root-unknown':
+      return [
+        `    ${finding.linked} of ${finding.checkable} root-relative references resolved, so the rest cannot be judged`,
+        `    ${finding.suppressedBroken} broken-reference findings are withheld: they are almost certainly this one problem`,
+        '    declare the directory your site serves from and run again, for example publicDirs: ["src"]',
+      ];
     case 'broken':
       return [`    ${finding.where}  ${finding.rawPath}`];
     case 'dead':

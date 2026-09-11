@@ -677,3 +677,86 @@ describe('audit', () => {
     });
   });
 });
+
+describe('a run that could not find the serving root', () => {
+  /** `n` root-relative references, of which `linkedCount` resolve. */
+  function rootRelative(n: number, linkedCount: number) {
+    const assets: Asset[] = [];
+    const references: Reference[] = [];
+    for (let index = 0; index < n; index++) {
+      if (index < linkedCount) {
+        assets.push(asset(`public/a${index}.png`));
+        references.push(resolved('index.html', `/a${index}.png`, `public/a${index}.png`));
+      } else {
+        references.push(broken('index.html', `/missing${index}.png`, index * 40));
+      }
+    }
+    return { assets, references };
+  }
+
+  it('reports one diagnosis instead of every symptom', async () => {
+    // The R51 ruling. When almost nothing root-relative resolves, the finding is not
+    // that these references are broken; it is that we do not know where the project
+    // serves files from, and 14 broken findings whose targets are all on disk is a
+    // symptom reported as a diagnosis.
+    const { assets, references } = rootRelative(20, 1);
+
+    const result = await audit({
+      graph: graphOf({ assets, references }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    expect(kinds(result.findings)).toEqual(['serving-root-unknown']);
+    expect(result.findings[0]).toMatchObject({
+      kind: 'serving-root-unknown',
+      linked: 1,
+      checkable: 20,
+      suppressedBroken: 19,
+    });
+  });
+
+  it('carries the count of what it replaced, so nothing vanishes silently', async () => {
+    // Rule 9. The references themselves are still itemised in the report's own
+    // references section, so this re-explains them rather than hiding them.
+    const { assets, references } = rootRelative(30, 2);
+
+    const result = await audit({
+      graph: graphOf({ assets, references }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    const [finding] = result.findings;
+    expect(finding).toMatchObject({ kind: 'serving-root-unknown', suppressedBroken: 28 });
+  });
+
+  it('leaves an ordinary run alone, broken findings and all', async () => {
+    const { assets, references } = rootRelative(20, 19);
+
+    const result = await audit({
+      graph: graphOf({ assets, references }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    expect(kinds(result.findings)).toEqual(['broken']);
+  });
+
+  it('does not suppress genuinely broken relative references', async () => {
+    // A repository whose relative paths are broken is not a repository whose serving
+    // root is unknown, and it keeps every finding.
+    const references = Array.from({ length: 40 }, (_, index) =>
+      broken('index.html', `./gone${index}.png`, index * 40),
+    );
+
+    const result = await audit({
+      graph: graphOf({ references }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    expect(new Set(kinds(result.findings))).toEqual(new Set(['broken']));
+    expect(result.findings).toHaveLength(40);
+  });
+});

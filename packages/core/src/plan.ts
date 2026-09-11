@@ -17,6 +17,7 @@ import type { Declined } from './manifest.js';
 import { extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
+import { resolutionHealth } from './resolution-health.js';
 import type { ServingRoots } from './resolve.js';
 import type { Edit, Reference } from './types.js';
 
@@ -91,11 +92,38 @@ export interface PlannedRewrite {
   readonly edits: readonly Edit[];
 }
 
+/**
+ * Why the planner will not act at all, or null when it will.
+ *
+ * A returned refusal rather than a thrown error: a throw leaves the caller holding
+ * nothing, while this is a finding with a reason, which is what rule 9 asks for. The
+ * audit still reports on a misconfigured repository; only the write path stops.
+ *
+ * It deliberately replaces the per-asset `declined` list rather than joining it. When
+ * the engine does not know where files are served from, every asset would decline for
+ * the same reason, and N copies of one sentence buries the sentence.
+ */
+export interface PlanRefusal {
+  readonly code: 'serving-root-unknown';
+  /** A sentence a user can act on, naming what to do next. */
+  readonly reason: string;
+  readonly linked: number;
+  readonly checkable: number;
+}
+
 export interface OptimizationPlan {
   readonly conversions: readonly PlannedConversion[];
   readonly rewrites: readonly PlannedRewrite[];
   /** Everything the planner decided against, each with the reason it decided. */
   readonly declined: readonly Declined[];
+  /**
+   * Set when the planner refused to plan anything, and null on an ordinary run.
+   *
+   * A caller that writes must check this. When it is set the other three are empty,
+   * so a caller that forgets writes nothing rather than writing something wrong,
+   * which is the failure mode worth designing for.
+   */
+  readonly refusal: PlanRefusal | null;
 }
 
 /**
@@ -120,6 +148,24 @@ export function patternTargets(graph: Graph): readonly string[] {
 }
 
 export function planOptimization(input: PlanInput): OptimizationPlan {
+  // Before anything else. Rewriting references on a graph whose root-relative paths
+  // did not resolve means repointing whatever did resolve while the majority stays
+  // broken, and the engine has no basis for believing either half.
+  const health = resolutionHealth(input.graph);
+  if (health.servingRootUnknown) {
+    return {
+      conversions: [],
+      rewrites: [],
+      declined: [],
+      refusal: {
+        code: 'serving-root-unknown',
+        reason: `Only ${health.linked} of ${health.checkable} root-relative references resolved, so Upfly cannot tell where this project serves files from. Declare the directory your site serves from and run again.`,
+        linked: health.linked,
+        checkable: health.checkable,
+      },
+    };
+  }
+
   const declined: Declined[] = [];
   const relativeOf = new Map(
     input.graph.assets.map((node) => [node.asset.path, node.asset.relative]),
@@ -158,6 +204,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     declined: declined.sort(
       (a, b) => a.path.localeCompare(b.path) || a.reason.localeCompare(b.reason),
     ),
+    refusal: null,
   };
 }
 
