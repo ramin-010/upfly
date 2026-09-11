@@ -57,7 +57,7 @@ plan(graph, config) ──► { assetPlans[], edits[] }     only confidence ≤ 
         ▼
 validate(plan)                     overlaps, writability, conflicting plans
         ▼
-execute(plan) ──► manifest         encode → temp, then write, then edit, then manifest
+execute(plan) ──► manifest         encode → run dir, then MANIFEST, then write, then edit
         ▼
 buildReport(graph, audit, discovery, sweep, probes) ──► Report
         │  versioned JSON (public API) · every path POSIX-relative · no timestamps
@@ -627,20 +627,57 @@ whole run before a single byte is written.
 
 Writing is two-phase, because a half-applied run is worse than a failed one.
 
-**Prepare** — encode every image into `.upfly/tmp/<run-id>/`, compute every edit in memory,
-validate the whole plan. Any failure here leaves the working tree completely untouched.
+**Prepare** — encode every image into `.upfly/runs/<run-id>/`, back up the bytes of anything
+that will be destroyed, compute every edit in memory, and check the whole plan. Any failure
+here leaves the working tree completely untouched.
 
-**Commit** — move images into place, write edited files, write `.upfly/manifest.json`, remove
-the temp directory.
+**Commit** — in this order, and the order is the design:
 
-The manifest records every file touched with before/after hashes and every skipped reference
-with its reason, so `upfly undo` can restore the tree even if the user never committed. On top
-of that, `--apply` refuses to run on a dirty git tree unless forced, and `--commit` produces
-exactly one commit — making `git revert` the real undo button and code review the trust
+1. **write `.upfly/manifest.json` in `pending` state**, before a single file is touched
+2. create new files: staged images into place, and the destination half of every move
+3. apply the text edits
+4. remove what is now superseded: deleted originals, and the source half of every move
+5. rewrite the manifest in `committed` state
+
+⚠️ **This section used to say the manifest was written after the images and the edits, and
+promised in the next sentence that a crash during commit was recoverable from it.** Those two
+claims contradict each other: a crash before the last step would leave a changed tree with no
+manifest at all, which is the one state `undo` cannot get out of. The manifest is a statement
+of intent, not a receipt.
+
+**Every prefix of that sequence leaves a tree that still builds** under the default
+`keep-original` policy. Files appear before anything points at them, and originals are removed
+only once nothing points at them any more. A move is committed as a copy in step 2 and a
+removal in step 4 for exactly this reason: between the two, both paths exist.
+
+**Recovery is a pure function of the manifest and the current disk.** Every operation records
+the content hash on both sides, so hashing a file says whether that operation ran. Nothing
+depends on how far a counter got before the process died, and commit therefore keeps no journal
+of its own progress. A file matching neither hash was changed by something other than the run:
+the transaction refuses to touch it and names it in the error, because silently writing over
+somebody's work is worse than leaving a run half applied.
+
+**There is no separate "recover an interrupted run" path.** Undoing a finished run and cleaning
+up an interrupted one are the same job — reverse whatever the disk says actually happened — so
+there is no rarely-exercised branch left to be wrong.
+
+**The manifest is self-contained**, and holds no absolute path, so it still means something
+after the project is moved. For a text file it stores the *inverse* edits rather than a copy of
+the file: the replaced text is a path string, so undo restores the file from bytes rather than
+kilobytes. A delete is the one operation whose content nothing else can reconstruct, so its
+bytes are backed up under the run directory and `prepare` refuses a delete whose backup is not
+actually there. **The run directory therefore survives commit** — deleting it would throw away
+the only copy of anything the `replace` policy removed.
+
+On top of all that, `--apply` refuses to run on a dirty git tree unless forced, and `--commit`
+produces exactly one commit — making `git revert` the real undo button and code review the trust
 mechanism.
 
-Windows specifics that are handled deliberately, not incidentally: cross-volume renames fall
-back to copy + unlink, long paths are supported, and `EBUSY` is retried with backoff.
+Windows specifics that are handled deliberately, not incidentally: every placement is a
+`copyFile` rather than a rename, so a run directory on another volume cannot fail the way a
+cross-volume rename would; long paths are supported; and `EBUSY` and `EPERM` are retried with
+backoff, because on Windows an editor or a virus scanner holds a handle open for a few
+milliseconds and failing the run for that would make the tool unusable on a first-class target.
 
 ## Performance budget
 
