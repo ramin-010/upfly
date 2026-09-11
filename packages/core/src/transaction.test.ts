@@ -484,107 +484,127 @@ async function diskProjectFiles(root: string): Promise<Record<string, string>> {
   return out;
 }
 
+/**
+ * Well beyond what either store needs alone, because these do not run alone.
+ *
+ * The disk matrices take a couple of seconds by themselves and several times that
+ * when the whole suite is running in parallel around them, which is the only way CI
+ * ever runs them. A default timeout tuned to a quiet machine turns a real failure
+ * and a busy one into the same red.
+ */
+const MATRIX_TIMEOUT_MS = 120_000;
+
 describe.each([inMemory, onDisk])('the crash matrix, $name', (matrix) => {
-  it('restores a byte-identical tree after a failure at every step of commit', async () => {
-    const reference = await matrix.open();
-    const original = await reference.projectFiles();
-    await commit(plan(), reference.store, context());
-    const steps = reference.mutations();
-    await reference.dispose();
+  it(
+    'restores a byte-identical tree after a failure at every step of commit',
+    async () => {
+      const reference = await matrix.open();
+      const original = await reference.projectFiles();
+      await commit(plan(), reference.store, context());
+      const steps = reference.mutations();
+      await reference.dispose();
 
-    expect(steps).toBeGreaterThan(5);
-    let treesActuallyChanged = 0;
+      expect(steps).toBeGreaterThan(5);
+      let treesActuallyChanged = 0;
 
-    for (let failAfter = 0; failAfter < steps; failAfter++) {
-      const harness = await matrix.open();
-      harness.failAfter(failAfter);
-      await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
-
-      const interrupted = await harness.manifest();
-      if (interrupted === undefined) {
-        // Only possible when the crash beat the manifest write, in which case the
-        // tree cannot have been touched.
-        expect(await harness.projectFiles()).toEqual(original);
-        await harness.dispose();
-        continue;
-      }
-
-      if (JSON.stringify(await harness.projectFiles()) !== JSON.stringify(original)) {
-        treesActuallyChanged += 1;
-      }
-
-      harness.stopFailing();
-      await revert(JSON.parse(interrupted), harness.store);
-      expect(await harness.projectFiles(), `failure after mutation ${failAfter}`).toEqual(original);
-      await harness.dispose();
-    }
-
-    // Without this the matrix could pass by never having changed anything, which is
-    // the vacuous version of the same test.
-    expect(treesActuallyChanged).toBeGreaterThan(0);
-  });
-
-  it('recovers when the undo is itself interrupted, from every state a commit can leave', async () => {
-    const reference = await matrix.open();
-    const original = await reference.projectFiles();
-    await commit(plan(), reference.store, context());
-    const commitSteps = reference.mutations();
-    await reference.dispose();
-
-    let undosActuallyInterrupted = 0;
-
-    // The last value lets commit run to the end, so undo is exercised from the
-    // completed run as well as from every point a crash can cut it short at. The
-    // matrix that existed before this one interrupted commit only, and then reverted
-    // on a disk that had started working again.
-    for (let commitFailAfter = 0; commitFailAfter <= commitSteps; commitFailAfter++) {
-      for (let undoFailAfter = 0; ; undoFailAfter++) {
+      for (let failAfter = 0; failAfter < steps; failAfter++) {
         const harness = await matrix.open();
-        harness.failAfter(commitFailAfter);
-        const run = commit(plan(), harness.store, context());
+        harness.failAfter(failAfter);
+        await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
 
-        if (commitFailAfter < commitSteps) {
-          await expect(run).rejects.toThrow(/injected failure/);
-        } else {
-          await run;
-        }
-
-        const afterCommit = await harness.manifest();
-        if (afterCommit === undefined) {
+        const interrupted = await harness.manifest();
+        if (interrupted === undefined) {
+          // Only possible when the crash beat the manifest write, in which case the
+          // tree cannot have been touched.
+          expect(await harness.projectFiles()).toEqual(original);
           await harness.dispose();
-          break;
+          continue;
         }
 
-        harness.failAfter(undoFailAfter);
-        let interrupted = false;
-        try {
-          await revert(JSON.parse(afterCommit), harness.store);
-        } catch (cause) {
-          if (!/injected failure/.test((cause as Error).message)) throw cause;
-          interrupted = true;
-          undosActuallyInterrupted += 1;
+        if (JSON.stringify(await harness.projectFiles()) !== JSON.stringify(original)) {
+          treesActuallyChanged += 1;
         }
 
-        // What a person does next: read whatever manifest is on disk and undo again.
         harness.stopFailing();
-        const remaining = await harness.manifest();
-        expect(remaining).toBeDefined();
-        await revert(JSON.parse(remaining as string), harness.store);
-
-        expect(
-          await harness.projectFiles(),
-          `commit cut after ${commitFailAfter}, undo cut after ${undoFailAfter}`,
-        ).toEqual(original);
+        await revert(JSON.parse(interrupted), harness.store);
+        expect(await harness.projectFiles(), `failure after mutation ${failAfter}`).toEqual(
+          original,
+        );
         await harness.dispose();
-
-        // One step past the last mutation the undo makes, so the loop stops at the
-        // point where there was nothing left to interrupt.
-        if (!interrupted) break;
       }
-    }
 
-    expect(undosActuallyInterrupted).toBeGreaterThan(0);
-  });
+      // Without this the matrix could pass by never having changed anything, which is
+      // the vacuous version of the same test.
+      expect(treesActuallyChanged).toBeGreaterThan(0);
+    },
+    MATRIX_TIMEOUT_MS,
+  );
+
+  it(
+    'recovers when the undo is itself interrupted, from every state a commit can leave',
+    async () => {
+      const reference = await matrix.open();
+      const original = await reference.projectFiles();
+      await commit(plan(), reference.store, context());
+      const commitSteps = reference.mutations();
+      await reference.dispose();
+
+      let undosActuallyInterrupted = 0;
+
+      // The last value lets commit run to the end, so undo is exercised from the
+      // completed run as well as from every point a crash can cut it short at. The
+      // matrix that existed before this one interrupted commit only, and then reverted
+      // on a disk that had started working again.
+      for (let commitFailAfter = 0; commitFailAfter <= commitSteps; commitFailAfter++) {
+        for (let undoFailAfter = 0; ; undoFailAfter++) {
+          const harness = await matrix.open();
+          harness.failAfter(commitFailAfter);
+          const run = commit(plan(), harness.store, context());
+
+          if (commitFailAfter < commitSteps) {
+            await expect(run).rejects.toThrow(/injected failure/);
+          } else {
+            await run;
+          }
+
+          const afterCommit = await harness.manifest();
+          if (afterCommit === undefined) {
+            await harness.dispose();
+            break;
+          }
+
+          harness.failAfter(undoFailAfter);
+          let interrupted = false;
+          try {
+            await revert(JSON.parse(afterCommit), harness.store);
+          } catch (cause) {
+            if (!/injected failure/.test((cause as Error).message)) throw cause;
+            interrupted = true;
+            undosActuallyInterrupted += 1;
+          }
+
+          // What a person does next: read whatever manifest is on disk and undo again.
+          harness.stopFailing();
+          const remaining = await harness.manifest();
+          expect(remaining).toBeDefined();
+          await revert(JSON.parse(remaining as string), harness.store);
+
+          expect(
+            await harness.projectFiles(),
+            `commit cut after ${commitFailAfter}, undo cut after ${undoFailAfter}`,
+          ).toEqual(original);
+          await harness.dispose();
+
+          // One step past the last mutation the undo makes, so the loop stops at the
+          // point where there was nothing left to interrupt.
+          if (!interrupted) break;
+        }
+      }
+
+      expect(undosActuallyInterrupted).toBeGreaterThan(0);
+    },
+    MATRIX_TIMEOUT_MS,
+  );
 });
 
 describe('the manifest is deterministic except where it says it is not', () => {
