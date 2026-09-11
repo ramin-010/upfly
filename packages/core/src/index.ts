@@ -68,7 +68,7 @@ export { isLinked, linkedPaths } from './reference.js';
 export { buildGraph, unreferencedAssets } from './graph.js';
 export type { AssetNode, BuildGraphInput, Graph } from './graph.js';
 export { createSharpProbe } from './probe-sharp.js';
-export { probeAssets } from './probe.js';
+export { DEFAULT_ENCODE_QUALITY, probeAssets } from './probe.js';
 export type {
   AssetProbe,
   EncodeFormat,
