@@ -135,6 +135,9 @@ interface RepoResult {
   readonly rangeInvariantFailures: { file: string; rawPath: string; sliced: string }[];
   readonly graphMs: number;
   readonly deterministic: boolean;
+  /** Where two runs disagreed, when they did. A bare `false` cannot be acted on. */
+  readonly determinismDiff: readonly string[];
+  readonly cwdDiff: readonly string[];
   readonly cwdIndependent: boolean;
   readonly noAbsolutePath: boolean;
   /** Whatever proved the absolute-path check wrong, so a failure names itself. */
@@ -325,6 +328,42 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
   return { discovery, scanned, references, graph, report, human: renderReport(report), graphMs };
 }
 
+/**
+ * The first few places two reports disagree, as `path: a != b`.
+ *
+ * Walks the two objects in parallel rather than diffing serialised text, so the
+ * answer names a field a reader can go and look at instead of a line number in a
+ * 24,000-line document.
+ */
+function firstDifferences(a: unknown, b: unknown, path = '', out: string[] = []): string[] {
+  if (out.length >= 6) return out;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      out.push(`${path}: length ${a.length} != ${b.length}`);
+      return out;
+    }
+    for (let i = 0; i < a.length; i += 1) firstDifferences(a[i], b[i], `${path}[${i}]`, out);
+    return out;
+  }
+
+  if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object') {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of keys) {
+      firstDifferences(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+        path === '' ? key : `${path}.${key}`,
+        out,
+      );
+    }
+    return out;
+  }
+
+  if (a !== b) out.push(`${path}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`);
+  return out;
+}
+
 async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -337,6 +376,10 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   // --- (f) determinism: two whole runs, byte for byte ------------------------------
   const second = await runPipeline(repo, probed);
   const deterministic = JSON.stringify(second.report) === JSON.stringify(first.report);
+  // ⚠️ A boolean that says `false` and nothing else is a check that cannot be acted
+  // on. This says WHERE, which is the difference between "determinism failed" and a
+  // defect somebody can find — and on a 24,000-line report it is the whole difference.
+  const determinismDiff = deterministic ? [] : firstDifferences(first.report, second.report);
 
   // --- (f) and a third run from a different working directory ----------------------
   // §5.1(f) asks for this by name. `Reference.file` is absolute and four upstream
@@ -347,6 +390,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   const elsewhere = await runPipeline(repo, probed);
   chdir(originalCwd);
   const cwdIndependent = JSON.stringify(elsewhere.report) === JSON.stringify(first.report);
+  const cwdDiff = cwdIndependent ? [] : firstDifferences(first.report, elsewhere.report);
 
   // --- (f) and no absolute path in the output at all -------------------------------
   const { clean: noAbsolutePath, evidence: absolutePathEvidence } = checkNoAbsolutePath(
@@ -373,6 +417,8 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
     rangeInvariantFailures: failures,
     graphMs: first.graphMs,
     deterministic,
+    determinismDiff,
+    cwdDiff,
     cwdIndependent,
     noAbsolutePath,
     absolutePathEvidence,
@@ -927,6 +973,8 @@ function summarise(result: RepoResult): string {
     `  (a) range invariant: ${result.rangeInvariantChecked} checked, ${result.rangeInvariantFailures.length} failures`,
     `  (b) unaccounted grep hits: ${result.unaccounted.length} total, ${needsHuman} need a human`,
     `  (f) deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}, no absolute path: ${result.noAbsolutePath}`,
+    ...result.determinismDiff.map((entry) => `      ⚠️ differs between runs: ${entry}`),
+    ...result.cwdDiff.map((entry) => `      ⚠️ differs by cwd: ${entry}`),
     ...(result.absolutePathEvidence.length === 0
       ? []
       : result.absolutePathEvidence.map((line) => `      ! ${line}`)),
