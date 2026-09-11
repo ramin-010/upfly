@@ -1195,7 +1195,7 @@ describe('buildReport', () => {
       // whose only unreferenced assets are vectors gets this branch.
       const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
 
-      expect(text).toContain('No findings, apart from 1 unreferenced vector counted above');
+      expect(text).toContain('No findings, apart from 1 unreferenced SVG counted above');
       expect(text).not.toContain('No findings.');
     });
 
@@ -1209,10 +1209,10 @@ describe('buildReport', () => {
         reportOf([deadVector('public/logo.svg', 1200), deadVector('public/icon.svg', 800)]),
       );
 
-      expect(one).toContain('including 1 unreferenced vector, 1.2 KB');
-      expect(one).toContain('1 unreferenced vector totalling 1.2 KB, not listed');
-      expect(two).toContain('including 2 unreferenced vectors, 2 KB');
-      expect(two).toContain('2 unreferenced vectors totalling 2 KB, not listed');
+      expect(one).toContain('including 1 unreferenced SVG, 1.2 KB');
+      expect(one).toContain('1 unreferenced SVG totalling 1.2 KB, not listed');
+      expect(two).toContain('including 2 unreferenced SVGs, 2 KB');
+      expect(two).toContain('2 unreferenced SVGs totalling 2 KB, not listed');
     });
 
     it('explains the gap where the reader is, not forty lines below it', () => {
@@ -1221,7 +1221,7 @@ describe('buildReport', () => {
       // explanation sat in the caveats, R22 would have recreated the defect R21 #4
       // was raised about.
       const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
-      const headlineMention = text.indexOf('including 1 unreferenced vector');
+      const headlineMention = text.indexOf('including 1 unreferenced SVG');
       const findingsHeading = text.indexOf('No findings');
 
       expect(headlineMention).toBeGreaterThan(-1);
@@ -1235,7 +1235,7 @@ describe('buildReport', () => {
         reportOf([{ kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false }]),
       );
 
-      expect(text).not.toContain('unreferenced vector');
+      expect(text).not.toContain('unreferenced SVG');
       expect(text).not.toContain('--include-unused-svg');
     });
   });

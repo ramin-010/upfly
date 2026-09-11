@@ -731,7 +731,7 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
     list.push({
       code: 'unused-vectors',
       count: vectors.demoted.length,
-      message: `${plural(vectors.demoted.length, 'unreferenced vector')} totalling ${formatBytes(bytes)}, not listed — Upfly neither converts a vector nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
+      message: `${plural(vectors.demoted.length, 'unreferenced SVG')} totalling ${formatBytes(bytes)}, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
       detail: [],
     });
   }

@@ -105,7 +105,7 @@ function vectorLine(report: Report): string[] {
   const { count: vectors, bytes: vectorBytes } = report.unusedVectors;
   if (vectors === 0) return [];
   return [
-    `  including ${count(vectors, 'unreferenced vector')}, ${bytes(vectorBytes)} — counted, not listed: Upfly will neither convert a vector nor delete an asset`,
+    `  including ${count(vectors, 'unreferenced SVG')}, ${bytes(vectorBytes)} — counted, not listed: Upfly will neither convert an SVG nor delete an asset`,
   ];
 }
 
@@ -313,7 +313,7 @@ function findingsSection(report: Report): string[] {
   if (report.findings.length === 0) {
     if (report.unusedVectors.count === 0) return ['No findings.', ''];
     return [
-      `No findings, apart from ${count(report.unusedVectors.count, 'unreferenced vector')} counted above.`,
+      `No findings, apart from ${count(report.unusedVectors.count, 'unreferenced SVG')} counted above.`,
       '',
     ];
   }
