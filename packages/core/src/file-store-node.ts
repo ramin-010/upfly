@@ -4,6 +4,14 @@
  * One of the small number of modules allowed to touch a disk, alongside `discover`
  * and the sharp probe. Everything above it stays testable against an in-memory
  * store, which is what makes the crash tests possible.
+ *
+ * The filesystem calls are reached through a port rather than imported at the point
+ * of use, and that is not symmetry for its own sake. The busy retry below is the
+ * most platform-specific behaviour in the project, and nothing Node offers produces
+ * EBUSY or EPERM on demand: on Windows a read-only file and a file with an open
+ * handle both delete cleanly. Without a seam the retry could only be tested apart
+ * from the three methods meant to use it, which certifies a function while proving
+ * nothing about whether it is reached.
  */
 
 import { createHash } from 'node:crypto';
@@ -27,6 +35,55 @@ const BUSY_BACKOFF_MS = 20;
 const HASH_ALGORITHM = 'sha256';
 
 /**
+ * The filesystem operations the store performs, narrowed to the six it needs.
+ *
+ * Every path reaching an implementation is already absolute: the store resolves
+ * against its root first. Not exported from the package index, so the public surface
+ * is still `createNodeFileStore(root)` and nothing outside this package can supply
+ * its own filesystem.
+ */
+export interface FileOperations {
+  /**
+   * Raw bytes.
+   *
+   * Hashing reads bytes rather than decoded text, so a file that is not valid UTF-8
+   * still hashes to what is actually on disk and a manifest written on one machine
+   * means the same thing on another.
+   */
+  read(path: string): Promise<Uint8Array>;
+  readText(path: string): Promise<string>;
+  write(path: string, text: string): Promise<void>;
+  ensureDirectory(path: string): Promise<void>;
+  /** Fails rather than overwriting an existing destination. */
+  copy(from: string, to: string): Promise<void>;
+  /** Tolerates an absent path. */
+  remove(path: string): Promise<void>;
+}
+
+/** The operations a real run uses. */
+export const nodeFileOperations: FileOperations = {
+  read: (path) => readFile(path),
+  readText: (path) => readFile(path, 'utf8'),
+  write: (path, text) => writeFile(path, text, 'utf8'),
+  ensureDirectory: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
+  // copyFile rather than rename throughout: a rename across volumes fails on
+  // Windows, and staged bytes may legitimately sit on a different volume from the
+  // project. Copying costs a write we would otherwise avoid and removes a
+  // platform-specific failure that only shows up on somebody else's machine.
+  //
+  // COPYFILE_EXCL because every destination the transaction copies to is one it has
+  // already established should not exist. A silent overwrite here would turn a plan
+  // error into somebody's lost file.
+  copy: (from, to) => copyFile(from, to, constants.COPYFILE_EXCL),
+  // Tolerant of an already-absent file so that reverting a run twice, or reverting
+  // one that was interrupted midway through its removals, is not an error. Undo has
+  // to be safe to repeat.
+  remove: (path) => rm(path, { force: true }),
+};
+
+/**
  * Build a store rooted at a project directory.
  *
  * Every path handed to the returned store is POSIX-relative to `root`. Resolving
@@ -34,6 +91,16 @@ const HASH_ALGORITHM = 'sha256';
  * manifest, which is what lets a manifest survive the project being moved.
  */
 export function createNodeFileStore(root: string): FileStore {
+  return createFileStoreOn(nodeFileOperations, root);
+}
+
+/**
+ * The same store over whichever operations it is handed.
+ *
+ * Exported for the tests that inject an implementation failing with EBUSY, which is
+ * the only way to reach the retry from outside.
+ */
+export function createFileStoreOn(operations: FileOperations, root: string): FileStore {
   const absolute = (path: string): string => resolve(root, path);
 
   return {
@@ -41,7 +108,7 @@ export function createNodeFileStore(root: string): FileStore {
 
     async hash(path: string): Promise<string | null> {
       try {
-        const bytes = await readFile(absolute(path));
+        const bytes = await operations.read(absolute(path));
         return createHash(HASH_ALGORITHM).update(bytes).digest('hex');
       } catch (cause) {
         if (isMissing(cause)) return null;
@@ -50,30 +117,23 @@ export function createNodeFileStore(root: string): FileStore {
     },
 
     async readText(path: string): Promise<string> {
-      return readFile(absolute(path), 'utf8');
+      return operations.readText(absolute(path));
     },
 
     async writeText(path: string, text: string): Promise<void> {
       const target = absolute(path);
-      await mkdir(dirname(target), { recursive: true });
-      await retryWhileBusy(() => writeFile(target, text, 'utf8'));
+      await operations.ensureDirectory(dirname(target));
+      await retryWhileBusy(() => operations.write(target, text));
     },
 
     async copy(from: string, to: string): Promise<void> {
       const target = absolute(to);
-      await mkdir(dirname(target), { recursive: true });
-      // copyFile rather than rename throughout: a rename across volumes fails on
-      // Windows, and staged bytes may legitimately sit on a different volume from
-      // the project. Copying costs a write we would otherwise avoid and removes a
-      // platform-specific failure that only shows up on somebody else's machine.
-      await retryWhileBusy(() => copyFile(absolute(from), target, constants.COPYFILE_EXCL));
+      await operations.ensureDirectory(dirname(target));
+      await retryWhileBusy(() => operations.copy(absolute(from), target));
     },
 
     async remove(path: string): Promise<void> {
-      // Tolerant of an already-absent file so that reverting a run twice, or
-      // reverting one that was interrupted midway through its removals, is not an
-      // error. Undo has to be safe to repeat.
-      await retryWhileBusy(() => rm(absolute(path), { force: true }));
+      await retryWhileBusy(() => operations.remove(absolute(path)));
     },
   };
 }
