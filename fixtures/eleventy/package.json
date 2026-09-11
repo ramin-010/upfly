@@ -1,5 +1,8 @@
 {
   "name": "fixture-eleventy",
   "private": true,
-  "scripts": { "build": "eleventy" }
+  "scripts": { "build": "eleventy" },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0"
+  }
 }

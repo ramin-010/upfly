@@ -17,7 +17,12 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     },
   ],
   "coverage": {
-    "excludedRoots": [],
+    "excludedRoots": [
+      {
+        "path": "node_modules",
+        "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
@@ -131,7 +136,12 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
   ],
   "coverage": {
-    "excludedRoots": [],
+    "excludedRoots": [
+      {
+        "path": "node_modules",
+        "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
     "unscannedExtensions": [
       {
         "ext": ".njk",
@@ -329,7 +339,12 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     },
   ],
   "coverage": {
-    "excludedRoots": [],
+    "excludedRoots": [
+      {
+        "path": "node_modules",
+        "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
@@ -384,7 +399,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "probed": false,
     "referencedAssets": 9,
     "references": 11,
-    "sourceFiles": 7,
+    "sourceFiles": 8,
   },
   "unusedVectors": {
     "assets": null,
@@ -400,7 +415,7 @@ exports[`buildReport > next-app: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 7 source files and found 10 images, 700 B in total
+  scanned 8 source files and found 10 images, 700 B in total
   11 of 11 references resolved, pointing at 9 of those images
   1 image with no reference Upfly could follow
 
@@ -557,7 +572,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     },
   ],
   "coverage": {
-    "excludedRoots": [],
+    "excludedRoots": [
+      {
+        "path": "node_modules",
+        "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
     "unscannedExtensions": [
       {
         "ext": ".svg",

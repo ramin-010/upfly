@@ -2,5 +2,8 @@
   "name": "fixture-astro",
   "private": true,
   "type": "module",
-  "scripts": { "build": "astro build" }
+  "scripts": { "build": "astro build" },
+  "devDependencies": {
+    "astro": "^5.0.0"
+  }
 }

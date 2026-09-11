@@ -137,10 +137,28 @@ function harvestPattern(): RegExp {
   return new RegExp(`[\\w@.\\-/\${}#:]*\\.(?:${ORACLE_EXTENSIONS.join('|')})\\b`, 'gi');
 }
 
-/** Every file under a directory, recursively. Ignores nothing — that is the engine's job. */
+/**
+ * Every **fixture** file under a directory, recursively.
+ *
+ * This deliberately applies none of the engine's ignore rules — the whole point is
+ * to harvest what a person wrote, including files no adapter claims, rather than
+ * what `discover` decided to look at.
+ *
+ * ⚠️ **Two directory names are nevertheless skipped, and the distinction is the
+ * point.** `node_modules` and build output hold code nobody here wrote. Once the
+ * fixtures gained dependencies so their builds could run, this walk followed the
+ * dependency symlinks into the store and started harvesting image paths out of
+ * third-party packages — paths that cannot be "accounted for" by a fixture
+ * reference because they have nothing to do with the fixture. Skipping them is not
+ * a relaxation of the check; it is the difference between auditing our fixtures and
+ * auditing React's.
+ */
+const NOT_OURS: ReadonlySet<string> = new Set(['node_modules', 'dist', '_site', '.next', 'out']);
+
 async function filesUnder(dir: string): Promise<string[]> {
   const found: string[] = [];
   for (const entry of await readdir(dir)) {
+    if (NOT_OURS.has(entry)) continue;
     const full = join(dir, entry);
     if ((await stat(full)).isDirectory()) found.push(...(await filesUnder(full)));
     else found.push(full);

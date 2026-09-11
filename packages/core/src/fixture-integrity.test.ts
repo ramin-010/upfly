@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover } from './discover.js';
+import { extensionOf, isImageExtension } from './paths.js';
 import type { Adapter } from './types.js';
 
 /**
@@ -83,6 +84,20 @@ async function unresolvedIn(tree: Tree): Promise<Unresolved[]> {
       const looksLikeModuleSpecifier =
         !/\.[a-z0-9]+$/i.test(reference.rawPath) && !/[\s,]/.test(reference.rawPath);
       if (looksLikeModuleSpecifier) continue;
+
+      // A speculative string that does not name an image is not a reference to
+      // anything in this tree, and holding the fixtures to it is stricter than the
+      // engine itself — rung 3 of the ladder drops an untracked extension before
+      // the resolver ever asks the filesystem.
+      //
+      // ⚠️ This was invisible until the fixtures gained dependencies. `"^19.0.0"`
+      // ends in `.0`, so it passes the extension test above, is emitted by the JSON
+      // adapter as a speculative path-shaped string, and resolves to nothing —
+      // eleven version ranges across four `package.json` files, every one of them a
+      // false positive. The exemption is narrow on purpose: `asserted` references
+      // are still checked whatever their extension, and a speculative `.png` is
+      // still checked, so nothing this test was built to catch is let through.
+      if (!reference.asserted && !isImageExtension(extensionOf(reference.rawPath))) continue;
 
       if (!resolvesOnDisk(reference.rawPath, sourceFile.path, root, tree.publicDir)) {
         unresolved.push({ from: sourceFile.relative, rawPath: reference.rawPath });
