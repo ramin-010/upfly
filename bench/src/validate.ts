@@ -220,7 +220,17 @@ async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
     publicDirs: repo.publicDirs,
     probes,
   });
-  const report = buildReport({ graph, audit: auditResult, discovery, sweep, probes });
+  // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes only
+  // whether `unusedVectors.assets` is populated, never a finding or a count, so the
+  // determinism comparison and every number in the artefacts are unaffected.
+  const report = buildReport({
+    graph,
+    audit: auditResult,
+    discovery,
+    sweep,
+    probes,
+    includeUnusedVectors: true,
+  });
 
   return { discovery, scanned, references, graph, report, human: renderReport(report), graphMs };
 }
@@ -581,12 +591,21 @@ function verdictHeadline(verified: VerifyResult): string {
   const wrong = verified.items.filter((item) => item.verdict === 'confirmed-false').length;
   const unclear = verified.items.filter((item) => item.verdict === 'ambiguous').length;
 
+  // ⚠️ Every branch is in the past tense, and that is deliberate. The middle one read
+  // `${unclear} are ambiguous and need you`, which rendered "1 are ambiguous" on
+  // eleventy-docs — the seventh instance of the verb-agreement bug in this project. The
+  // first read `${wrong} finding(s)`, which dodges agreement by printing a bracket at the
+  // reader. `came back` is invariant for every count, so neither is reachable now.
+  //
+  // The totals are here for a second reason: R22 moved 145 assets out of `findings`, so
+  // the denominator can change without the numerator moving, and a bare "0 confirmed-false"
+  // would not have shown that.
   const headline =
     wrong > 0
-      ? `**${wrong} finding(s) came back confirmed-false — the gate is not passed.**`
+      ? `**${wrong} of ${verified.items.length} came back confirmed-false — the gate is not passed.**`
       : unclear === 0
         ? `All ${verified.items.length} came back confirmed-genuine.`
-        : `None came back false; ${unclear} are ambiguous and need you.`;
+        : `None came back false; ${unclear} of ${verified.items.length} came back ambiguous, for you to decide.`;
 
   return `${headline}\n\n${BLIND_SPOT}`;
 }

@@ -33,7 +33,7 @@ import {
   relativePath,
 } from './paths.js';
 import type { AssetProbe, ProbeSkipCode } from './probe.js';
-import type { SweepResult } from './sweep.js';
+import type { Mention, SweepResult } from './sweep.js';
 import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from './types.js';
 
 /**
@@ -136,14 +136,34 @@ export interface SkippedItem {
   readonly reason: string;
 }
 
-/** One unreferenced vector, as it appears behind the flag. */
-export interface UnusedVectorEntry {
-  /** POSIX-relative path. */
-  readonly asset: string;
-  readonly bytes: number;
-  /** Which finding it would have been itemised as, had we offered an action for it. */
-  readonly kind: 'dead' | 'possibly-dead';
-}
+/**
+ * One unreferenced vector, as it appears behind the flag.
+ *
+ * A union rather than an optional `evidence`, mirroring the invariant
+ * `PossiblyDeadFinding` already holds: no evidence means `dead`, so a hedge without its
+ * citation is unrepresentable rather than merely discouraged.
+ *
+ * ⚠️ **It carries everything the finding carried, and that is load-bearing rather than
+ * tidy.** §5.1(d)'s independent oracle walks `report.findings`, so the first version of
+ * R22 silently removed 145 assets from the verification pass — astro-docs' verdict count
+ * fell from 150 to 24 — and "0 confirmed-false" would have been quoted over a denominator
+ * that had shrunk by 70% with nothing saying so. Demoting a finding from the default
+ * report must not demote it out of being checked.
+ */
+export type UnusedVectorEntry =
+  | {
+      readonly kind: 'dead';
+      /** POSIX-relative path. */
+      readonly asset: string;
+      readonly bytes: number;
+    }
+  | {
+      readonly kind: 'possibly-dead';
+      readonly asset: string;
+      readonly bytes: number;
+      /** Why it was hedged. Non-empty by construction, exactly as on the finding. */
+      readonly evidence: readonly [Mention, ...Mention[]];
+    };
 
 /**
  * R22: unreferenced vectors, counted rather than itemised.
@@ -326,39 +346,60 @@ function stemOf(rawPath: string): string {
  * account of what is unreferenced is not what R22 disputes. What the report decides is
  * which of them it can offer a reader an action for.
  */
-function partitionUnusedVectors(findings: readonly Finding[]): {
-  itemised: readonly Finding[];
-  demoted: readonly UnusedVectorEntry[];
-  staleConversions: readonly StaleConversion[];
-} {
-  const isUnusedVector = (finding: Finding): finding is DeadFinding | PossiblyDeadFinding =>
+/** Whether this finding is an unreferenced vector — the set R22 partitions. */
+function isUnusedVector(finding: Finding): finding is DeadFinding | PossiblyDeadFinding {
+  return (
     (finding.kind === 'dead' || finding.kind === 'possibly-dead') &&
-    isVectorExtension(extensionOf(finding.asset));
+    isVectorExtension(extensionOf(finding.asset))
+  );
+}
 
-  // Broken references to a *raster* twin only. A broken reference to another vector
-  // says nothing about a conversion: `shadcn-ui`'s 20 broken references are all
-  // `/next.svg`, `/vercel.svg` and `/vite.svg` from framework scaffolds, and pairing
-  // those with its 10 unused vectors would have invented ten conversion stories.
-  const brokenByStem = new Map<string, { rawPath: string; where: string }[]>();
+/** One broken reference, reduced to what R23 needs to say about it. */
+interface BrokenRaster {
+  readonly rawPath: string;
+  readonly where: string;
+}
+
+/**
+ * Broken references to a *raster*, indexed by filename stem.
+ *
+ * ⚠️ **Vectors are excluded, and that exclusion is the whole guard.** A broken reference
+ * to another vector says nothing about a conversion: all 20 of `shadcn-ui`'s broken
+ * references are `/next.svg`, `/vercel.svg` and `/vite.svg` from framework scaffolds, and
+ * pairing those against its 10 unreferenced vectors would have invented ten conversion
+ * stories out of matching filenames.
+ */
+function brokenRasterStems(findings: readonly Finding[]): ReadonlyMap<string, BrokenRaster[]> {
+  const byStem = new Map<string, BrokenRaster[]>();
   for (const finding of findings) {
     if (finding.kind !== 'broken') continue;
     const extension = extensionOf(baseNameOf(finding.rawPath));
     if (!isImageExtension(extension) || isVectorExtension(extension)) continue;
     const stem = stemOf(finding.rawPath);
     if (stem === '') continue;
-    const list = brokenByStem.get(stem) ?? [];
-    list.push({ rawPath: finding.rawPath, where: finding.where });
-    brokenByStem.set(stem, list);
+    byStem.set(stem, [
+      ...(byStem.get(stem) ?? []),
+      { rawPath: finding.rawPath, where: finding.where },
+    ]);
   }
+  return byStem;
+}
 
+/** R23: the pairs, and the vectors they rescue from R22's demotion. */
+function findStaleConversions(findings: readonly Finding[]): {
+  staleConversions: readonly StaleConversion[];
+  paired: ReadonlySet<string>;
+} {
+  const byStem = brokenRasterStems(findings);
   const staleConversions: StaleConversion[] = [];
   const paired = new Set<string>();
+
   for (const finding of findings) {
     if (!isUnusedVector(finding)) continue;
-    // Exact, case-sensitive: paths are case-sensitive on the platform this runs on
-    // most often, and a hint nobody asked for costs more trust than one we skipped.
-    const stem = stemOf(finding.asset);
-    for (const broken of brokenByStem.get(stem) ?? []) {
+    // Exact and case-sensitive. `Hero.png` is a different file from `hero.png` on the
+    // platform most of this runs on, and a hint nobody asked for costs more trust than
+    // one we declined to offer.
+    for (const broken of byStem.get(stemOf(finding.asset)) ?? []) {
       staleConversions.push({
         vector: finding.asset,
         rawPath: broken.rawPath,
@@ -367,18 +408,40 @@ function partitionUnusedVectors(findings: readonly Finding[]): {
       paired.add(finding.asset);
     }
   }
+
   staleConversions.sort(
     (a, b) =>
       compareStrings(a.vector, b.vector) ||
       compareStrings(a.rawPath, b.rawPath) ||
       compareStrings(a.where, b.where),
   );
+  return { staleConversions, paired };
+}
+
+/** One demoted vector, keeping everything the finding carried. */
+function asUnusedVector(finding: DeadFinding | PossiblyDeadFinding): UnusedVectorEntry {
+  return finding.kind === 'dead'
+    ? { kind: 'dead', asset: finding.asset, bytes: finding.bytes }
+    : {
+        kind: 'possibly-dead',
+        asset: finding.asset,
+        bytes: finding.bytes,
+        evidence: finding.evidence,
+      };
+}
+
+function partitionUnusedVectors(findings: readonly Finding[]): {
+  itemised: readonly Finding[];
+  demoted: readonly UnusedVectorEntry[];
+  staleConversions: readonly StaleConversion[];
+} {
+  const { staleConversions, paired } = findStaleConversions(findings);
 
   const itemised: Finding[] = [];
   const demoted: UnusedVectorEntry[] = [];
   for (const finding of findings) {
     if (isUnusedVector(finding) && !paired.has(finding.asset)) {
-      demoted.push({ asset: finding.asset, bytes: finding.bytes, kind: finding.kind });
+      demoted.push(asUnusedVector(finding));
     } else {
       itemised.push(finding);
     }

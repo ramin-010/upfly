@@ -105,6 +105,23 @@ export async function verifyFindings(
     }
   }
 
+  // R22's demoted vectors, verified exactly as if they had stayed itemised.
+  //
+  // ⚠️ **Not optional, and the reason is a near miss.** These are no longer in
+  // `report.findings`, so the first version of R22 dropped 145 assets out of this pass
+  // without anything saying so -- astro-docs' verdict count fell from 150 to 24 while the
+  // write-up was about to quote "0 confirmed-false" over the smaller number. A finding the
+  // report declines to itemise is still a claim about somebody's repository, and the
+  // independent oracle is the only thing that checks it. `assets` is `null` unless the run
+  // asked for them, which is why `validate.ts` passes `includeUnusedVectors`.
+  for (const vector of report.unusedVectors.assets ?? []) {
+    items.push(
+      vector.kind === 'dead'
+        ? verifyDead(vector.asset, index)
+        : verifyHedge(vector.asset, vector.evidence, index),
+    );
+  }
+
   return {
     items,
     unreadable: index.unreadable,
