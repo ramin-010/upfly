@@ -83,7 +83,48 @@ function headline(report: Report): string[] {
     // with, so the fix is structural rather than another reminder to remember.
     `  ${count(unreferenced, 'image')} with no reference Upfly could follow`,
     ...vectorLine(report),
+    ...servingRootLine(report),
     '',
+  ];
+}
+
+/**
+ * Where root-relative paths came from, printed only when nobody declared it.
+ *
+ * A guess the report does not disclose is the defect R49 was. The zero-false-`broken`
+ * figure was measured five times over, every time against serving roots somebody had
+ * tuned by hand, which is configuration a first run does not have. `declared: false`
+ * already carries that through the resolver and the planner; this is what carries it
+ * to the person reading the output, and every `broken` finding below it depends on
+ * the engine having guessed right.
+ *
+ * Silent when the project declared its roots, because then there is nothing to own up
+ * to and this headline has twice been found too long.
+ *
+ * Three names then a count: twelve paths would bury the sentence that matters, and the
+ * full list is in `coverage.servingRoots` for anyone checking the engine's homework.
+ *
+ * ⚠️ No noun agrees with a number anywhere in these two sentences, and that is the
+ * point rather than a style choice. The first draft read `${count(dirs.length,
+ * 'directory Upfly detected')}`, which renders "12 directory Upfly detecteds", because
+ * `count` pluralises by appending to whatever it is handed. That is the agreement bug
+ * this renderer has now produced eight times. `(N in all)` cannot disagree with
+ * anything, so there is nothing left to get right.
+ */
+function servingRootLine(report: Report): string[] {
+  const { dirs, declared } = report.coverage.servingRoots;
+  if (declared) return [];
+
+  if (dirs.length === 0) {
+    return [
+      '  root-relative paths resolved from the project root — Upfly found no public directory and none was declared',
+    ];
+  }
+
+  const shown = dirs.slice(0, 3).join(', ');
+  const rest = dirs.length > 3 ? `, and ${dirs.length - 3} more` : '';
+  return [
+    `  root-relative paths resolved from what Upfly detected rather than what the project declared (${dirs.length} in all): ${shown}${rest}`,
   ];
 }
 

@@ -282,6 +282,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     audit: auditResult,
     discovery,
     sweep,
+    servingRoots: servingRootsFor(repo),
     ...(probes === undefined ? {} : { probes }),
     includeUnusedVectors: true,
   });

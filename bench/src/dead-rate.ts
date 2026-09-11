@@ -158,6 +158,7 @@ async function main(): Promise<void> {
     graph,
     audit: auditResult,
     discovery,
+    servingRoots: { dirs: options.publicDirs, declared: true },
     sweep,
     includeUnusedVectors: true,
   });

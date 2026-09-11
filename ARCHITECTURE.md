@@ -253,6 +253,70 @@ The counts reach the JSON as `references.byResolvedVia`. Before that they existe
 resolver, which meant no consumer could tell a guess from an ordinary resolution and the planner
 would have had nothing to cite when it declined one — and a silent decline is a rule 9 P0.
 
+### Serving roots
+
+A root-relative `/hero.png` means nothing until you know which directory the site serves. The
+engine works that out from the directories `discover` walked, by name, and this section is what
+`serving-roots.ts` points at for the measurements behind that.
+
+**Why it exists at all.** The headline claim, zero false `broken`, was measured across 53,154
+references — and every measurement used serving roots somebody had typed in by hand. Run the way a
+first-time user runs it, the old single-entry convention guess (`['public']`) finds one of
+shadcn-ui's twelve public directories: 159 resolved references become 3, and the run reports 116
+`broken` and 125 `dead` findings, 44 of whose paths exist on disk. No rung misbehaved. The ladder
+was never the defect; the input was.
+
+**Detection is by directory name, over the recorded walk.** `DiscoveryResult.directories` is
+recorded during the walk rather than derived afterwards from the paths in `assets` and
+`sourceFiles`, because a directory holding only files nothing tracks leaves no trace in either
+list. Deriving finds 11 of shadcn-ui's 12; `templates/next-app/public` holds a single `.gitkeep`.
+A recorded list cannot disagree with the walk, because it is the walk.
+
+**Depth is not the discriminator.** Those twelve range from two path segments to six, so any
+depth-limited search is wrong on the repository that matters. A `-maxdepth 3` search finds six.
+
+**It does not require the directory to hold an image**, and that was measured rather than assumed.
+Six of shadcn-ui's twelve public directories hold no image the engine tracks, only `favicon.ico`,
+`.gitkeep`, `robots.txt` and `manifest.json`. So an asset-bearing rule finds six — the same count as
+the depth search, reached by a different route and failing in the same way. A `public/` directory is
+a serving root whether or not it currently holds an image, because that is what the bundler thinks.
+
+**It never reads a framework config.** A serving root in `next.config.js` or `astro.config.mjs` is
+more often computed JavaScript than a literal, so reading one means either executing a user's code
+or statically reading a value that usually is not static — and a plain static site has no config to
+read. The directory name is observable and static; the config is neither.
+
+**The name set is `public` and `static`, and it is an argument rather than a constant.** It is still
+a hardcoded convention list and it will be wrong for some framework, so a caller can supply its own.
+
+**Measured against the hand-tuned corpus** (`pnpm --filter upfly-bench run detect-roots`):
+detection reproduces the configured list exactly on `astro-docs`, `shadcn-ui` (all twelve),
+`railsgirls-com` and `scratch-www`, and `--delta` shows zero change in every resolution bucket on
+those four. It finds nothing on `eleventy-docs`, which serves from `src` via `addPassthroughCopy`.
+
+**Eleventy is not special; it is merely in the test set.** Hugo, Jekyll, Gatsby, Nuxt, SvelteKit,
+Rails, Django and WordPress are equally unresolvable out of the box. Special-casing the one
+framework that happens to be in the corpus is letting the corpus decide the product, and the first
+per-framework parser is a door the second and third requests come through. What eleventy gets
+instead is what every unparsed framework gets: told plainly that the serving root could not be
+determined, so one line of configuration fixes it.
+
+**A missed root is survivable and a wrong one is not.** Detection finding nothing degrades to the
+`project-root` rung, which is correct for a hand-written static site and measured at identical
+findings on `railsgirls-com`. A wrongly detected root resolves a reference to the *wrong file*, and
+in Phase 2 a false link rewrites that file. That asymmetry is why detection matches directory names
+exactly rather than case-insensitively, and why `src` was measured and then rejected: adding it
+fixes eleventy and costs zero delta and zero relinks on the other four repos, but `src` is a source
+directory rather than a serving root, it is free here only because roots are filtered to ancestors
+of the referencing file and `public` happens to sort before `src` on a tie, and the corpus contains
+no repository of the shape where it would fail — a project with `src/` but no `public/`, serving
+from its root. A measurement that cannot see a failure is not evidence that there is none.
+
+**Detected roots carry `declared: false`, and the report says so.** Detection is an inference, not
+the project stating anything. The planner's root-link policy already branches on that flag; the
+report discloses it in `coverage.servingRoots` and in a line of the human headline, because a guess
+nobody is told about is precisely the defect above.
+
 ### Aliases are read, never executed
 
 `@/assets/logo.png` resolves only if the project declares that alias somewhere the engine can read

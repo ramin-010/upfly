@@ -86,6 +86,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     audit: auditResult,
     discovery,
     sweep,
+    servingRoots: { dirs: [PUBLIC_DIRS[name] ?? 'public'], declared: true },
     includeDiscarded,
     ...(probes === undefined ? {} : { probes }),
   });
@@ -210,6 +211,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         probes: [
           {
             relative: 'huge.png',
@@ -314,6 +316,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
       });
     }
 
@@ -388,6 +391,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
       });
       const text = renderReport(both);
 
@@ -429,6 +433,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         probes: Array.from({ length: n }, (_, index) => ({
           relative: `img${index}.png`,
           metadata: { width: 10, height: 10, format: 'png' as const, pages: 1 },
@@ -566,6 +571,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         ...(probes.length > 0 ? { probes } : {}),
       });
 
@@ -649,6 +655,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
       });
     }
 
@@ -749,6 +756,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         probes,
       });
     }
@@ -817,6 +825,7 @@ describe('buildReport', () => {
           mentions: new Map(),
           skipped: [{ relative: 'fonts/inter.woff2', reason: 'over 2 MB' }],
         },
+        servingRoots: { dirs: ['public'], declared: true },
       });
       const text = renderReport(report);
 
@@ -877,6 +886,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
       });
     }
 
@@ -953,6 +963,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         includeDiscarded,
       });
     }
@@ -1099,6 +1110,7 @@ describe('buildReport', () => {
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
         includeUnusedVectors,
       });
     }
@@ -1325,6 +1337,7 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: ['public'], declared: true },
     });
   }
 
@@ -1425,6 +1438,7 @@ describe('the headline reads correctly at a count of one (R21 / the agreement bu
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: ['public'], declared: true },
     });
   }
 
@@ -1445,5 +1459,89 @@ describe('the headline reads correctly at a count of one (R21 / the agreement bu
     // Derived by writing the sentence out, not by pasting what the renderer emits.
     expect(rendered).toContain('1 of 1 reference resolved, pointing at 1 of those images');
     expect(rendered).toContain('1 image with no reference Upfly could follow');
+  });
+});
+
+describe('the serving roots the report discloses', () => {
+  const ROOT = '/repo';
+
+  function reportWith(dirs: readonly string[], declared: boolean): Report {
+    return buildReport({
+      graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [],
+        sourceFiles: [],
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs, declared },
+    });
+  }
+
+  it('carries them into the JSON exactly as the resolver was given them', () => {
+    const report = reportWith(['apps/v4/public', 'apps/www/public'], false);
+
+    expect(report.coverage.servingRoots).toEqual({
+      dirs: ['apps/v4/public', 'apps/www/public'],
+      declared: false,
+    });
+  });
+
+  it('tells the reader when the roots were detected rather than declared', () => {
+    // The whole point of R50 part 3. Every broken finding under this line depends on
+    // the engine having guessed right, and a guess nobody is told about is the defect
+    // R49 was.
+    const rendered = renderReport(reportWith(['public'], false));
+
+    expect(rendered).toContain('what Upfly detected rather than what the project declared');
+    expect(rendered).toContain('public');
+  });
+
+  it('stays quiet when the project declared them, because there is nothing to own up to', () => {
+    const rendered = renderReport(reportWith(['public'], true));
+
+    expect(rendered).not.toContain('Upfly detected');
+  });
+
+  it('says so plainly when it found none and none was declared', () => {
+    // A static site really does serve from its own root, so this is not a failure.
+    // It still has to be said: it is the state in which every root-relative path
+    // resolves against the project root and nobody chose that.
+    const rendered = renderReport(reportWith([], false));
+
+    expect(rendered).toContain('resolved from the project root');
+    expect(rendered).toContain('found no public directory and none was declared');
+  });
+
+  it('names three and counts the rest, rather than printing twelve paths', () => {
+    const twelve = Array.from({ length: 12 }, (_, index) => `app${index}/public`);
+
+    const rendered = renderReport(reportWith(twelve, false));
+
+    expect(rendered).toContain('(12 in all): app0/public, app1/public, app2/public, and 9 more');
+  });
+
+  it('never pluralises a noun against a number, which this renderer keeps getting wrong', () => {
+    // `count()` pluralises by appending to whatever it is handed, so the first draft
+    // of this line rendered "12 directory Upfly detecteds". The sentence now contains
+    // no noun that agrees with a number at all.
+    for (const dirs of [['public'], ['a/public', 'b/public']]) {
+      const rendered = renderReport(reportWith(dirs, false));
+
+      expect(rendered).not.toMatch(/detecteds/);
+      expect(rendered).toContain(`(${dirs.length} in all)`);
+    }
   });
 });

@@ -23,6 +23,12 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "public",
+      ],
+    },
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
@@ -143,6 +149,12 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "src",
+      ],
+    },
     "unscannedExtensions": [
       {
         "ext": ".njk",
@@ -347,6 +359,12 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "public",
+      ],
+    },
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
@@ -448,6 +466,12 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
   ],
   "coverage": {
     "excludedRoots": [],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "",
+      ],
+    },
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
@@ -582,6 +606,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "public",
+      ],
+    },
     "unscannedExtensions": [
       {
         "ext": ".svg",

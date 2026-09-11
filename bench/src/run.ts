@@ -363,7 +363,14 @@ async function main(): Promise<void> {
     audit({ graph, sweep, readFile: readFileText, publicDirs: ['public'], probes: cappedProbes }),
   );
   const [, reportMs] = await timed('report', () =>
-    buildReport({ graph, audit: auditResult, discovery, sweep, probes: cappedProbes }),
+    buildReport({
+      graph,
+      audit: auditResult,
+      discovery,
+      sweep,
+      servingRoots: { dirs: ['public'], declared: true },
+      probes: cappedProbes,
+    }),
   );
 
   const result: BenchResult = {

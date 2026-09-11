@@ -105,6 +105,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
     audit: auditResult,
     discovery,
     sweep,
+    servingRoots: { dirs: ['public'], declared: true },
     ...(probes === undefined ? {} : { probes }),
   });
 

@@ -34,6 +34,7 @@ import {
 } from './paths.js';
 import type { AssetProbe, EncodeFormat, ProbeSkipCode } from './probe.js';
 import { isLinked } from './reference.js';
+import type { ServingRoots } from './resolve.js';
 import type { Mention, SweepResult } from './sweep.js';
 import type {
   Confidence,
@@ -163,6 +164,20 @@ export interface CoverageReport {
   readonly unscannedExtensions: readonly UnscannedExtension[];
   readonly unscannedFileCount: number;
   readonly excludedRoots: readonly { readonly path: string; readonly reason: string }[];
+  /**
+   * Where a root-relative `/hero.png` was resolved from, and whether the project said
+   * so or the engine worked it out.
+   *
+   * Here because a guess the report does not disclose is the defect R49 was: the
+   * zero-false-`broken` figure was measured five times against serving roots somebody
+   * had tuned by hand, which is configuration no first run produces. `declared: false`
+   * already carries the distinction through the resolver and the planner; this is what
+   * carries it to the person reading the output.
+   *
+   * The same type the resolver was handed, rather than a copy of its shape, so the
+   * report cannot describe a run that did not happen.
+   */
+  readonly servingRoots: ServingRoots;
 }
 
 /** Where a skip happened, so a reader can tell a parse failure from a bad symlink. */
@@ -316,6 +331,14 @@ export interface ReportInput {
   /** For the entries only discovery saw: symlinks, unreadable files, pruned roots. */
   readonly discovery: DiscoveryResult;
   readonly sweep: SweepResult;
+  /**
+   * The serving roots the resolver was given, passed on rather than re-derived.
+   *
+   * Required, not optional. A report that could omit this could describe a guessed
+   * resolution as though it were a declared one, which is the single thing this field
+   * exists to prevent, and an optional field would let every caller forget.
+   */
+  readonly servingRoots: ServingRoots;
   /** Absent for a `--no-probe` run. */
   readonly probes?: readonly AssetProbe[];
   /**
@@ -608,6 +631,7 @@ function coverageReport(input: ReportInput): CoverageReport {
       path: root.relative,
       reason: root.reason,
     })),
+    servingRoots: input.servingRoots,
   };
 }
 
