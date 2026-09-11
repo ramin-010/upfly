@@ -137,6 +137,7 @@ interface RepoResult {
 
 async function main(): Promise<void> {
   const only = argv.find((argument) => argument.startsWith('--repo='))?.slice('--repo='.length);
+  const probed = !argv.includes('--no-probe');
   const outDir = join(VALIDATION_ROOT, '..', 'upfly', 'notes', 'validation');
   await mkdir(outDir, { recursive: true });
 
@@ -144,14 +145,65 @@ async function main(): Promise<void> {
   for (const repo of REPOS) {
     if (only !== undefined && repo.name !== only) continue;
     stdout.write(`\n=== ${repo.name} ===\n`);
-    const result = await validateRepo(repo);
+    const result = await validateRepo(repo, probed);
     results.push(result);
     await writeArtifacts(outDir, result);
     stdout.write(summarise(result));
   }
 
-  await writeFile(join(outDir, 'SUMMARY.md'), overallSummary(results), 'utf8');
+  // ⚠️ **A partial run must not leave behind something that looks complete.** `--repo=` and
+  // `--no-probe` each produce results that are true but are not the gate, and SUMMARY.md is
+  // the file a number gets quoted from. It used to be rewritten with only the row that ran,
+  // silently discarding the others — so a one-repo run left an artefact that read as a full
+  // validation of a suite with one repo in it, and nothing on the page said otherwise.
+  const partial = only !== undefined || !probed;
+  await writeFile(
+    join(outDir, 'SUMMARY.md'),
+    partial ? partialSummary(results, only, probed) : overallSummary(results),
+    'utf8',
+  );
   stdout.write(`\nWrote worksheets to ${outDir}\n`);
+  if (partial) {
+    stdout.write('\n⚠️  Partial run. SUMMARY.md says so. Re-run with no flags before quoting it.\n');
+  }
+}
+
+/**
+ * What SUMMARY.md says when the run was not the whole gate.
+ *
+ * Keeps the table, because the rows that ran are real — and puts the limitation above it
+ * rather than in a footnote, because a limitation below the numbers is one nobody reads.
+ * §3.5 says which tier to run for which change; this is what stops the cheap tier being
+ * mistaken for the expensive one afterwards.
+ */
+function partialSummary(
+  results: readonly RepoResult[],
+  only: string | undefined,
+  probed: boolean,
+): string {
+  const absent = REPOS.filter((repo) => !results.some((result) => result.repo.name === repo.name));
+  const reasons: string[] = [];
+  if (only !== undefined) {
+    reasons.push(
+      `**Only \`${only}\` ran.** Not run: ${absent.map((repo) => repo.name).join(', ') || 'none'}.`,
+    );
+  }
+  if (!probed) {
+    reasons.push(
+      '**`--no-probe`**, so `oversized` and `format-opportunity` are absent and no saving was measured.',
+    );
+  }
+
+  return [
+    '# ⚠️ PARTIAL RUN — this is not the §5.1 gate',
+    '',
+    'Everything below was measured and is true. It is simply not all of it.',
+    '**Re-run `pnpm validate` with no flags before quoting any of it as a result.**',
+    '',
+    ...reasons.map((reason) => `- ${reason}`),
+    '',
+    overallSummary(results),
+  ].join('\n');
 }
 
 /**
@@ -164,7 +216,7 @@ async function main(): Promise<void> {
  * `deterministic: true` while the written JSON differed by 318 lines. Determinism
  * has to be measured over the whole pipeline or it is not measured at all.
  */
-async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
+async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
 
@@ -199,10 +251,24 @@ async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
     scannedMentions: scanned.mentions,
     publicDirs: repo.publicDirs,
   });
-  const probes = await probeAssets(
-    graph.assets.map((node) => node.asset),
-    { probe: await createSharpProbe(), formats: ['webp'], maxEncodedAssets: 100 },
-  );
+  // ⚠️ **The dominant cost of a validate run, and irrelevant to nearly every question this
+  // phase asked.** Encoding 300 images with sharp says nothing about whether a reference
+  // was detected, yet it ran on every invocation — including ones that changed a single
+  // word in a report heading. `--no-probe` skips it; §3.5 says when to use which tier.
+  //
+  // `undefined` rather than `[]`: `audit` reads `probes !== undefined` as "was probed", so
+  // an empty array would claim a measurement happened and report no savings, which is the
+  // silent-lie shape rather than the honest one.
+  const probes = probed
+    ? await probeAssets(
+        graph.assets.map((node) => node.asset),
+        {
+          probe: await createSharpProbe(),
+          formats: ['webp'],
+          maxEncodedAssets: 100,
+        },
+      )
+    : undefined;
   // R17: which directories a framework reads certain filenames from. Derived from
   // the file list `discover` already produced, so no extra walk and no disk access
   // in `audit` — `next.config.mjs` is claimed by the JavaScript adapter, so it is
@@ -212,13 +278,17 @@ async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
     ...discovery.unscannedFiles.map((file) => file.relative),
   ]);
 
+  // Spread rather than `probes: probes`: under `exactOptionalPropertyTypes` an explicit
+  // `undefined` is not the same as an absent key, and `audit` reads the key's presence as
+  // "was probed". Omitting it is what makes `--no-probe` say *"savings not measured"*
+  // rather than *"no savings found"*.
   const auditResult = await audit({
     graph,
     conventionRoots,
     sweep,
     readFile: readFileText,
     publicDirs: repo.publicDirs,
-    probes,
+    ...(probes === undefined ? {} : { probes }),
   });
   // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes only
   // whether `unusedVectors.assets` is populated, never a finding or a count, so the
@@ -228,24 +298,24 @@ async function runPipeline(repo: RepoSpec): Promise<PipelineResult> {
     audit: auditResult,
     discovery,
     sweep,
-    probes,
+    ...(probes === undefined ? {} : { probes }),
     includeUnusedVectors: true,
   });
 
   return { discovery, scanned, references, graph, report, human: renderReport(report), graphMs };
 }
 
-async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
+async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
 
-  const first = await runPipeline(repo);
+  const first = await runPipeline(repo, probed);
 
   // --- (a) the range invariant, over real code -----------------------------------
   const { checked, failures } = await checkRanges(first.scanned.references, readFileText);
 
   // --- (f) determinism: two whole runs, byte for byte ------------------------------
-  const second = await runPipeline(repo);
+  const second = await runPipeline(repo, probed);
   const deterministic = JSON.stringify(second.report) === JSON.stringify(first.report);
 
   // --- (f) and a third run from a different working directory ----------------------
@@ -254,7 +324,7 @@ async function validateRepo(repo: RepoSpec): Promise<RepoResult> {
   // depends on is a real risk rather than a theoretical one.
   const originalCwd = cwd();
   chdir(tmpdir());
-  const elsewhere = await runPipeline(repo);
+  const elsewhere = await runPipeline(repo, probed);
   chdir(originalCwd);
   const cwdIndependent = JSON.stringify(elsewhere.report) === JSON.stringify(first.report);
 
