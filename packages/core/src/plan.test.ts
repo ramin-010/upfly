@@ -412,3 +412,46 @@ describe('refusing to plan a run whose serving root is unknown', () => {
     expect(plan.conversions).toHaveLength(1);
   });
 });
+
+describe('an asset that was measured and gained nothing', () => {
+  it('is declined with a reason rather than dropped in silence', () => {
+    // B2's unease (f), confirmed on the astro fixture: all seven of its assets encode
+    // larger as webp, the planner declined all seven, and nothing in the report
+    // mentioned any of them. A format-opportunity finding only exists when there is an
+    // opportunity, and the audit's skip list only holds measurements never taken, so
+    // this case was reported nowhere at all. A silent skip is a P0 (rule 9).
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/logo.png', 70)],
+        references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
+        probes: [probe('src/logo.png', 94)],
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'src/logo.png',
+        line: null,
+        reason:
+          'measured as webp and came out no smaller, so converting it would cost bytes rather than save them',
+      },
+    ]);
+  });
+
+  it('stays silent about an asset nothing measured, which the audit does report', () => {
+    // The other half of what a null reason used to mean at once. A probe skip names
+    // the cap, the vector or the format, and it reaches the report on its own; saying
+    // it twice would bury the real decisions under every file in the repository.
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/logo.png', 70)],
+        references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
+        probes: [],
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined).toEqual([]);
+  });
+});

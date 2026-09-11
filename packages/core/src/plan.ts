@@ -239,6 +239,18 @@ function measuredSavings(input: PlanInput): Map<string, Saving> {
   return savings;
 }
 
+/**
+ * Whether this asset was actually encoded in the target format.
+ *
+ * The difference between "we looked and there was nothing to gain" and "we never
+ * looked", which are the two things a null reason used to mean at once. Only the
+ * second is reported elsewhere.
+ */
+function wasMeasured(relative: string, input: PlanInput): boolean {
+  const probe = input.probes.find((entry) => entry.relative === relative);
+  return probe?.encoded.some((encoded) => encoded.format === input.format) ?? false;
+}
+
 type ConvertDecision =
   | { readonly convert: true; readonly conversion: PlannedConversion }
   | { readonly convert: false; readonly reason: string | null };
@@ -246,9 +258,16 @@ type ConvertDecision =
 /**
  * Whether one asset is converted, and why not when it is not.
  *
- * `reason: null` is for an asset there was never a decision to make about - it has no
- * measured saving in this format, which the audit already reports. Declining those
- * here would bury the real decisions under a list of every file in the repository.
+ * `reason: null` is for an asset there was never a decision to make about, and it is
+ * narrower than it used to be. It covers an asset nothing measured, which the audit
+ * already reports as a probe skip naming the cap, the vector or the format. It does
+ * NOT cover an asset that was measured and came back no smaller: nothing anywhere
+ * reported those, because a `format-opportunity` finding only exists when there is an
+ * opportunity, and the audit's skip list only holds measurements that were not taken.
+ *
+ * Measured on the astro fixture: all seven assets encode larger as webp, the planner
+ * declined all seven, and the report said nothing whatsoever about any of them. A
+ * silent skip is a P0 (rule 9), so the measured case now carries a reason.
  */
 function convertDecision(
   relative: string,
@@ -257,7 +276,14 @@ function convertDecision(
   savings: ReadonlyMap<string, Saving>,
 ): ConvertDecision {
   const saving = savings.get(relative);
-  if (saving === undefined) return { convert: false, reason: null };
+  if (saving === undefined) {
+    return wasMeasured(relative, input)
+      ? {
+          convert: false,
+          reason: `measured as ${input.format} and came out no smaller, so converting it would cost bytes rather than save them`,
+        }
+      : { convert: false, reason: null };
+  }
 
   const target = withExtension(relative, input.format);
   if (target === relative) return { convert: false, reason: null };
