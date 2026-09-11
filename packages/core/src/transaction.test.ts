@@ -266,6 +266,57 @@ describe('commit', () => {
   });
 });
 
+/**
+ * Both windows in which a file can move under a run that already checked it.
+ *
+ * The replacement text is chosen to be the same length as the original in both
+ * tests, so the planned offsets still land inside the file and every other check
+ * still passes. That is the version worth testing: a change that shortens the file
+ * throws somewhere in `applyEdits` by luck, and a test resting on that luck would
+ * pass against code that has no check at all.
+ */
+describe('commit refuses a file that changed after the plan was checked', () => {
+  const edited = (text: string): string => text.replace('const alt', 'const ALT');
+
+  it('refuses before writing the manifest, leaving the tree untouched', async () => {
+    const harness = memoryStore(tree());
+    const original = projectFiles(harness.files);
+    await prepare(plan(), harness.store, RUN_DIR);
+
+    harness.files.set('src/App.jsx', edited(tree()['src/App.jsx'] as string));
+
+    await expect(commit(plan(), harness.store, context())).rejects.toMatchObject({
+      code: 'TRANSACTION_FOREIGN_CHANGE',
+    });
+    expect(harness.files.has(MANIFEST_PATH)).toBe(false);
+    expect(projectFiles(harness.files)).toEqual({
+      ...original,
+      'src/App.jsx': edited(tree()['src/App.jsx'] as string),
+    });
+  });
+
+  it('refuses mid-run without overwriting what the other writer put there', async () => {
+    const harness = memoryStore(tree());
+    const saved = edited(tree()['src/App.jsx'] as string);
+
+    // Saved during the create phase, which is where the encoded images land, so this
+    // stands in for the editor that writes while a run is copying bytes into place.
+    const store: FileStore = {
+      ...harness.store,
+      async copy(from, to) {
+        await harness.store.copy(from, to);
+        harness.files.set('src/App.jsx', saved);
+      },
+    };
+
+    await expect(commit(plan(), store, context())).rejects.toMatchObject({
+      code: 'TRANSACTION_FOREIGN_CHANGE',
+    });
+    expect(harness.files.get('src/App.jsx')).toBe(saved);
+    expect(harness.files.has(MANIFEST_PATH)).toBe(true);
+  });
+});
+
 describe('revert', () => {
   it('restores a byte-identical tree after a complete run', async () => {
     const original = tree();

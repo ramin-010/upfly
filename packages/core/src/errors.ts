@@ -27,8 +27,11 @@ export type UpflyErrorCode =
    */
   | 'TRANSACTION_PLAN_INVALID'
   /**
-   * A file an undo would have rewritten no longer matches either the state the run
-   * found or the state it left. Something else changed it, so nothing is reverted.
+   * A file the run was to rewrite was changed by something outside the run, and the
+   * two directions both refuse rather than write over it. Commit will not apply edit
+   * offsets to text that has moved since the plan was checked; undo will not revert
+   * a file matching neither the state the run found nor the state it left. The file
+   * is always named, because the quiet alternative is losing whoever changed it.
    */
   | 'TRANSACTION_FOREIGN_CHANGE'
   /** A manifest written by a build whose schema this one does not understand. */

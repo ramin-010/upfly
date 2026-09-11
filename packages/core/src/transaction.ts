@@ -175,6 +175,10 @@ export async function prepare(
  * write it last. The phase order is what keeps an interrupted run buildable: files
  * appear before anything points at them, and originals go only once nothing points
  * at them any more.
+ *
+ * Every edit target is hashed again at the moment it is read, rather than trusting
+ * the identical check `prepare` made: encoding runs between the two, so that check
+ * is only as fresh as however long the images took.
  */
 export async function commit(
   plan: readonly PlannedOperation[],
@@ -205,7 +209,7 @@ export async function commit(
 
   for (const operation of plan) {
     if (operation.kind !== 'edit') continue;
-    const before = await store.readText(operation.path);
+    const before = await readVerified(store, operation.path, operation.beforeHash);
     await store.writeText(operation.path, applyEdits(before, operation.edits));
   }
 
@@ -386,7 +390,7 @@ async function manifestOperations(
       operations.push(operation);
       continue;
     }
-    const before = await store.readText(operation.path);
+    const before = await readVerified(store, operation.path, operation.beforeHash);
     operations.push({
       kind: 'edit',
       path: operation.path,
@@ -474,6 +478,27 @@ async function expectHash(
       `${path} changed between planning and now. Re-run the audit rather than applying a plan built on stale content.`,
     );
   }
+}
+
+/**
+ * Read an edit target, refusing it when the bytes are no longer the ones planned.
+ *
+ * `prepare` checks this same hash, but it can be a long way earlier: encoding runs
+ * between them, and an editor saving the file in that window leaves edit offsets
+ * that no longer describe the text. Applying them writes something nobody planned,
+ * and the inverse derived from the same read would not fit the file either, so the
+ * undo recorded in the manifest would be wrong in the same stroke. `inspect` calls
+ * the result `foreign` afterwards, which detects the damage rather than preventing
+ * it, and the file it detects it on is somebody's unsaved work.
+ */
+async function readVerified(store: FileStore, path: string, expected: string): Promise<string> {
+  if ((await store.hash(path)) !== expected) {
+    throw new UpflyError(
+      'TRANSACTION_FOREIGN_CHANGE',
+      `${path} changed after the plan was checked, so it was not rewritten. Re-run the audit rather than applying a plan built on text that has moved.`,
+    );
+  }
+  return store.readText(path);
 }
 
 async function expectStaged(

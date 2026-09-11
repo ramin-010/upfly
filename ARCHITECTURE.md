@@ -670,6 +670,12 @@ of its own progress. A file matching neither hash was changed by something other
 the transaction refuses to touch it and names it in the error, because silently writing over
 somebody's work is worse than leaving a run half applied.
 
+**That check is made again at the moment of writing, not only in prepare.** Encoding runs
+between the two, so prepare's answer is only as fresh as however long the images took. An
+editor saving in that window leaves edit offsets that no longer describe the text, and applying
+them would both corrupt the file and store an undo that does not fit it — damage `inspect`
+would report afterwards rather than prevent.
+
 **There is no separate "recover an interrupted run" path.** Undoing a finished run and cleaning
 up an interrupted one are the same job — reverse whatever the disk says actually happened — so
 there is no rarely-exercised branch left to be wrong.
