@@ -53,6 +53,15 @@ export type {
   MoveOperation,
   Operation,
 } from './manifest.js';
+export { patternTargets, planOptimization } from './plan.js';
+export type {
+  OptimizationPlan,
+  PlanInput,
+  PlannedConversion,
+  PlannedRewrite,
+  PublicPolicy,
+  RootLinkPolicy,
+} from './plan.js';
 export { commit, inspect, prepare, readManifest, revert } from './transaction.js';
 export type {
   FileStore,

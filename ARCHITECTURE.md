@@ -222,19 +222,32 @@ literal in a data object may well be joined to some other directory at runtime, 
 evidence the asset is **alive** and nothing more. Rewriting it could point a working reference at
 a file the code never loads.
 
-⚠️ **These were one value until R36, and the merge was costing real rewrites.** Measured across
-the five validation repositories, `project-root` occurs **1,325** times with **1,267 asserted** —
-almost all of them `<img src="/favicon.png">` in hand-written HTML on a site with no build step,
-where the project root genuinely *is* the serving root — while `speculative-root` occurs **10
-times and is never asserted**. Treating a static site's ordinary reference as the same evidence as
-a guess-on-a-guess would decline to rewrite most of that repository, and repositories like it are
-the ones this product is for.
+**These were one value until R36, and the merge was costing real rewrites.** The case is
+`<img src="/favicon.png">` in hand-written HTML on a site with no build step, where the project
+root genuinely *is* the serving root. Treating that as the same evidence as a guess-on-a-guess
+would decline to rewrite most of such a repository, and repositories like it are the ones this
+product is for.
 
-⚠️ **`project-root` is still not unconditionally safe, and the unsafe sub-case is unmeasured.** If
-a serving root *is* configured and correct, a root-relative path that misses it and happens to
-exist at the project root is a false link. There are **zero** occurrences across all five repos —
-wherever a serving root matched, its candidate won first — so the risk is real but unevidenced,
-and whether the planner may rewrite this class is deliberately left open rather than assumed.
+⚠️ **The counts that argued for the split no longer describe the validation corpus, and the reason
+matters more than the numbers.** R36 measured **1,325** `project-root` references with **1,267**
+asserted, nearly all of them on `railsgirls-com`. Today that repository reports **1,325
+`serving-root` and zero `project-root`**, and every one of the five repositories reports zero. The
+references did not change: the validation harness now declares `publicDirs: ['']` for that repo, so
+the project root is a *configured* serving root and the `serving-root` candidate wins first.
+
+**So the corpus can no longer see this class at all** — not because it is rare in the wild, but
+because our own harness configures it away. A real static site that has never been given an Upfly
+config has no serving root to match, which is exactly when a root-relative path lands here. Any
+future measurement of `project-root` has to be taken on a repository with no configured serving
+root, or it will keep reporting zero for a reason that has nothing to do with the class.
+
+⚠️ **`project-root` is also not unconditionally safe.** If a serving root *is* configured and
+correct, a root-relative path that misses it and happens to exist at the project root may be
+coincidence rather than a link. **Zero occurrences across all five repos**, so the risk is real but
+unevidenced. The planner treats the two apart rather than guessing: it rewrites this class when the
+project configures no serving root, and declines it when one is configured and the path missed it.
+The policy is named (`RootLinkPolicy`) rather than implied, so overriding it is a decision somebody
+makes on purpose.
 
 The counts reach the JSON as `references.byResolvedVia`. Before that they existed only inside the
 resolver, which meant no consumer could tell a guess from an ordinary resolution and the planner
