@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from './errors.js';
+import { createNodeFileStore } from './file-store-node.js';
 import { MANIFEST_PATH, MANIFEST_VOLATILE_FIELDS, withoutVolatileFields } from './manifest.js';
 import {
   type FileStore,
@@ -27,20 +31,26 @@ interface Harness {
 }
 
 /**
- * An in-memory store that can be told to die partway through.
+ * Wrap a store so it can be told to die partway through.
  *
- * `failAfter` counts the operations that change something: a write, a copy, a
- * removal. Injecting the failure here rather than calling revert directly is the
- * point of the whole exercise, because it interrupts commit on the same code path a
- * real crash would.
+ * The count is of operations that change something: a write, a copy, a removal.
+ * Injecting the failure here rather than calling revert directly is the point of the
+ * whole exercise, because it interrupts commit on the same code path a real crash
+ * would.
+ *
+ * Separate from any one store so that both the in-memory double and the real
+ * filesystem store are interrupted by the same mechanism at the same points. While
+ * this lived inside the memory store, every crash test in the project ran against
+ * semantics the real store does not have.
  */
-function memoryStore(
-  initial: Record<string, string>,
-  failAfter = Number.POSITIVE_INFINITY,
-): Harness {
-  const files = new Map(Object.entries(initial));
+function interruptible(store: FileStore): {
+  readonly store: FileStore;
+  mutations(): number;
+  failAfter(count: number): void;
+  stopFailing(): void;
+} {
   let mutations = 0;
-  let limit = failAfter;
+  let limit = Number.POSITIVE_INFINITY;
 
   const mutate = (): void => {
     mutations += 1;
@@ -48,37 +58,74 @@ function memoryStore(
   };
 
   return {
-    files,
     mutations: () => mutations,
+    failAfter: (count) => {
+      mutations = 0;
+      limit = count;
+    },
     stopFailing: () => {
       limit = Number.POSITIVE_INFINITY;
     },
     store: {
-      hashAlgorithm: 'sha256',
-      async hash(path) {
-        const text = files.get(path);
-        return text === undefined ? null : sha(text);
-      },
-      async readText(path) {
-        const text = files.get(path);
-        if (text === undefined) throw new Error(`no such file: ${path}`);
-        return text;
-      },
+      hashAlgorithm: store.hashAlgorithm,
+      hash: (path) => store.hash(path),
+      readText: (path) => store.readText(path),
       async writeText(path, text) {
         mutate();
-        files.set(path, text);
+        await store.writeText(path, text);
       },
       async copy(from, to) {
         mutate();
-        const text = files.get(from);
-        if (text === undefined) throw new Error(`no such file: ${from}`);
-        files.set(to, text);
+        await store.copy(from, to);
       },
       async remove(path) {
         mutate();
-        files.delete(path);
+        await store.remove(path);
       },
     },
+  };
+}
+
+/** A bare in-memory store, with the failure injection left to `interruptible`. */
+function memoryFiles(files: Map<string, string>): FileStore {
+  return {
+    hashAlgorithm: 'sha256',
+    async hash(path) {
+      const text = files.get(path);
+      return text === undefined ? null : sha(text);
+    },
+    async readText(path) {
+      const text = files.get(path);
+      if (text === undefined) throw new Error(`no such file: ${path}`);
+      return text;
+    },
+    async writeText(path, text) {
+      files.set(path, text);
+    },
+    async copy(from, to) {
+      const text = files.get(from);
+      if (text === undefined) throw new Error(`no such file: ${from}`);
+      files.set(to, text);
+    },
+    async remove(path) {
+      files.delete(path);
+    },
+  };
+}
+
+function memoryStore(
+  initial: Record<string, string>,
+  failAfter = Number.POSITIVE_INFINITY,
+): Harness {
+  const files = new Map(Object.entries(initial));
+  const interrupted = interruptible(memoryFiles(files));
+  interrupted.failAfter(failAfter);
+
+  return {
+    files,
+    store: interrupted.store,
+    mutations: interrupted.mutations,
+    stopFailing: interrupted.stopFailing,
   };
 }
 
@@ -352,41 +399,191 @@ describe('revert', () => {
   });
 });
 
-describe('the crash matrix', () => {
+/**
+ * A tree and a store over it, so a matrix can run against either implementation.
+ *
+ * The disk half is not thoroughness for its own sake. The in-memory double's `copy`
+ * overwrites its destination and the real store refuses to, so any recovery path
+ * that copies onto a file already present passes in memory and fails on a disk.
+ * These matrices are the strongest instrument this project has and, until now, both
+ * of them only ever ran against the double.
+ */
+interface MatrixHarness {
+  readonly store: FileStore;
+  /** The project's own files, with the run directory and the manifest left out. */
+  projectFiles(): Promise<Record<string, string>>;
+  /** The manifest as written, or undefined when the run never reached it. */
+  manifest(): Promise<string | undefined>;
+  mutations(): number;
+  failAfter(count: number): void;
+  stopFailing(): void;
+  dispose(): Promise<void>;
+}
+
+interface MatrixStore {
+  readonly name: string;
+  open(): Promise<MatrixHarness>;
+}
+
+const inMemory: MatrixStore = {
+  name: 'in memory',
+  async open() {
+    const files = new Map(Object.entries(tree()));
+    const interrupted = interruptible(memoryFiles(files));
+
+    return {
+      ...interrupted,
+      projectFiles: async () => projectFiles(files),
+      manifest: async () => files.get(MANIFEST_PATH),
+      dispose: async () => {},
+    };
+  },
+};
+
+const onDisk: MatrixStore = {
+  name: 'on a real filesystem',
+  async open() {
+    // The OS temp directory rather than anywhere in the workspace: this tree has a
+    // `public/` in it, and the v2 extension converts images inside in-repo ones in
+    // place, which has already destroyed a set of fixture files once.
+    const root = await mkdtemp(join(tmpdir(), 'upfly-matrix-'));
+
+    for (const [path, text] of Object.entries(tree())) {
+      const absolute = join(root, ...path.split('/'));
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, text, 'utf8');
+    }
+    const interrupted = interruptible(createNodeFileStore(root));
+
+    return {
+      ...interrupted,
+      projectFiles: () => diskProjectFiles(root),
+      manifest: async () => {
+        try {
+          return await readFile(join(root, ...MANIFEST_PATH.split('/')), 'utf8');
+        } catch {
+          return undefined;
+        }
+      },
+      dispose: () => rm(root, { recursive: true, force: true }),
+    };
+  },
+};
+
+/** The view `projectFiles` gives of the in-memory map, taken from a real tree. */
+async function diskProjectFiles(root: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+
+  for (const name of (await readdir(root, { recursive: true })).sort()) {
+    const relative = name.split(sep).join('/');
+    if (relative.startsWith('.upfly/')) continue;
+    const absolute = join(root, name);
+    if (!(await stat(absolute)).isFile()) continue;
+    out[relative] = await readFile(absolute, 'utf8');
+  }
+  return out;
+}
+
+describe.each([inMemory, onDisk])('the crash matrix, $name', (matrix) => {
   it('restores a byte-identical tree after a failure at every step of commit', async () => {
-    const original = projectFiles(new Map(Object.entries(tree())));
+    const reference = await matrix.open();
+    const original = await reference.projectFiles();
+    await commit(plan(), reference.store, context());
+    const steps = reference.mutations();
+    await reference.dispose();
 
-    const complete = memoryStore(tree());
-    await commit(plan(), complete.store, context());
-    const steps = complete.mutations();
     expect(steps).toBeGreaterThan(5);
-
     let treesActuallyChanged = 0;
 
     for (let failAfter = 0; failAfter < steps; failAfter++) {
-      const harness = memoryStore(tree(), failAfter);
+      const harness = await matrix.open();
+      harness.failAfter(failAfter);
       await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
 
-      const interrupted = harness.files.get(MANIFEST_PATH);
+      const interrupted = await harness.manifest();
       if (interrupted === undefined) {
         // Only possible when the crash beat the manifest write, in which case the
         // tree cannot have been touched.
-        expect(projectFiles(harness.files)).toEqual(original);
+        expect(await harness.projectFiles()).toEqual(original);
+        await harness.dispose();
         continue;
       }
 
-      if (JSON.stringify(projectFiles(harness.files)) !== JSON.stringify(original)) {
+      if (JSON.stringify(await harness.projectFiles()) !== JSON.stringify(original)) {
         treesActuallyChanged += 1;
       }
 
       harness.stopFailing();
       await revert(JSON.parse(interrupted), harness.store);
-      expect(projectFiles(harness.files), `failure after mutation ${failAfter}`).toEqual(original);
+      expect(await harness.projectFiles(), `failure after mutation ${failAfter}`).toEqual(original);
+      await harness.dispose();
     }
 
     // Without this the matrix could pass by never having changed anything, which is
     // the vacuous version of the same test.
     expect(treesActuallyChanged).toBeGreaterThan(0);
+  });
+
+  it('recovers when the undo is itself interrupted, from every state a commit can leave', async () => {
+    const reference = await matrix.open();
+    const original = await reference.projectFiles();
+    await commit(plan(), reference.store, context());
+    const commitSteps = reference.mutations();
+    await reference.dispose();
+
+    let undosActuallyInterrupted = 0;
+
+    // The last value lets commit run to the end, so undo is exercised from the
+    // completed run as well as from every point a crash can cut it short at. The
+    // matrix that existed before this one interrupted commit only, and then reverted
+    // on a disk that had started working again.
+    for (let commitFailAfter = 0; commitFailAfter <= commitSteps; commitFailAfter++) {
+      for (let undoFailAfter = 0; ; undoFailAfter++) {
+        const harness = await matrix.open();
+        harness.failAfter(commitFailAfter);
+        const run = commit(plan(), harness.store, context());
+
+        if (commitFailAfter < commitSteps) {
+          await expect(run).rejects.toThrow(/injected failure/);
+        } else {
+          await run;
+        }
+
+        const afterCommit = await harness.manifest();
+        if (afterCommit === undefined) {
+          await harness.dispose();
+          break;
+        }
+
+        harness.failAfter(undoFailAfter);
+        let interrupted = false;
+        try {
+          await revert(JSON.parse(afterCommit), harness.store);
+        } catch (cause) {
+          if (!/injected failure/.test((cause as Error).message)) throw cause;
+          interrupted = true;
+          undosActuallyInterrupted += 1;
+        }
+
+        // What a person does next: read whatever manifest is on disk and undo again.
+        harness.stopFailing();
+        const remaining = await harness.manifest();
+        expect(remaining).toBeDefined();
+        await revert(JSON.parse(remaining as string), harness.store);
+
+        expect(
+          await harness.projectFiles(),
+          `commit cut after ${commitFailAfter}, undo cut after ${undoFailAfter}`,
+        ).toEqual(original);
+        await harness.dispose();
+
+        // One step past the last mutation the undo makes, so the loop stops at the
+        // point where there was nothing left to interrupt.
+        if (!interrupted) break;
+      }
+    }
+
+    expect(undosActuallyInterrupted).toBeGreaterThan(0);
   });
 });
 
