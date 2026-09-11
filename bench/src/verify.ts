@@ -92,6 +92,13 @@ interface RepoIndex {
   readonly unreadable: readonly string[];
   readonly filesIndexed: number;
   readonly filesGrepped: number;
+  /**
+   * Whether the tokeniser that built this index can represent a given basename.
+   *
+   * Carried on the index rather than computed at the call site so it is answered by
+   * the same tokeniser that did the indexing, which is the whole point.
+   */
+  readonly canRepresent: (name: string) => boolean;
 }
 
 const MAX_GREP_BYTES = 8 * 1024 * 1024;
@@ -268,8 +275,27 @@ function candidatePaths(
   return [...new Set(candidates)].filter((candidate) => !candidate.startsWith('..'));
 }
 
-/** Characters the oracle's tokeniser can represent: its class, plus the space it spans. */
-const TOKENISABLE = /^[\w@.\- ]+$/;
+/**
+ * Whether the tokeniser can actually produce this basename — **asked, not guessed**.
+ *
+ * ⚠️ **This was a regex proxy, `/^[\w@.\- ]+$/`, and the proxy disagreed with the
+ * thing it stood for.** The tokeniser's leftward walk stops after six words, so
+ * `WhatsApp Image 2025-12-11 at 15.08.45 - Sonia Bishnoi.webp` — eight words, and
+ * exactly the shape R26 came from — passes the character test, is NOT representable,
+ * and therefore skipped the literal fallback and fell through to a confident verdict
+ * the index could not support. One asset on RBU-Website, measured.
+ *
+ * That is the same defect as the guard that tested a decoy: a check whose subject is
+ * not the thing in play. So the proxy is gone and the tokeniser is asked directly, by
+ * running it over a synthetic occurrence of the name. It cannot drift from itself.
+ */
+function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
+  const wanted = name.toLowerCase();
+  for (const [token] of oracleTokens(`"/probe/${name}"`, pattern)) {
+    if (token.toLowerCase() === wanted) return true;
+  }
+  return false;
+}
 
 /**
  * The fallback for a basename the tokeniser cannot represent at all.
@@ -295,7 +321,7 @@ const TOKENISABLE = /^[\w@.\- ]+$/;
  */
 function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
   const name = posix.basename(asset);
-  if (TOKENISABLE.test(name)) return null;
+  if (index.canRepresent(name)) return null;
 
   const needle = name.toLowerCase();
   const found: string[] = [];
@@ -450,6 +476,48 @@ function verifyHedge(
 }
 
 /**
+ * Index one file's image-filename tokens into the two maps.
+ *
+ * ⚠️ **Extracted so the guard below can run the REAL indexing path.** While this was
+ * an inline loop, `assertOracleSeesSpaces` tested `oracleTokens` directly and the loop
+ * was free to call `pattern.exec` instead — which is exactly what it did. The guard
+ * was active, passing and specific, and pointed at an object nothing on the path used.
+ *
+ * With the loop behind a named function the guard can assert on what the index
+ * actually produces, so reverting the tokeniser fails the guard rather than sliding
+ * past it. **The test to apply to any guard: if the function it calls were deleted,
+ * would production break?**
+ */
+function indexOneFile(
+  text: string,
+  rel: string,
+  pattern: RegExp,
+  hitsByToken: Map<string, Hit[]>,
+  hitsByStem: Map<string, Hit[]>,
+): void {
+  const lineStarts = offsetsOfLines(text);
+
+  for (const [raw, index] of oracleTokens(text, pattern)) {
+    const token = raw.toLowerCase();
+    const stem = token.slice(0, token.lastIndexOf('.'));
+    const hit: Hit = {
+      file: rel,
+      line: lineOf(lineStarts, index),
+      text: lineText(text, index),
+      extensionSwapped: false,
+    };
+    // ⚠️ **Push, never spread.** This was
+    // `map.set(token, [...(map.get(token) ?? []), hit])`, which copies the whole array
+    // per hit and is quadratic in the number of times one filename appears. On the three
+    // pinned repos nothing repeats often enough to notice; on a real site with 1,873
+    // images it turned a 23-second pipeline into a run that had not finished in ten
+    // minutes. A check nobody can afford to run is a check nobody runs.
+    pushHit(hitsByToken, token, hit);
+    pushHit(hitsByStem, stem, { ...hit, extensionSwapped: true });
+  }
+}
+
+/**
  * The oracle's own tokeniser, which must be able to see a filename containing a space.
  *
  * ⚠️ **It could not, and that is the R17 amendment landing for the third time.** This
@@ -497,12 +565,20 @@ function* oracleTokens(text: string, pattern: RegExp): Generator<[token: string,
  * throws rather than warning — a warning in a bench script is a line nobody reads.
  */
 function assertOracleSeesSpaces(pattern: () => RegExp): void {
-  const tokens = [...oracleTokens('src="/ncc/Firing Practice.webp"', pattern())].map(
-    ([token]) => token,
-  );
-  if (!tokens.includes('Firing Practice.webp')) {
+  // ⚠️ **Runs the real indexing path, not the tokeniser.** The previous version called
+  // `oracleTokens` directly, and the index was free to tokenise some other way — which
+  // it did, with `pattern.exec`. So the guard passed, named the right risk, asserted
+  // the right property, and certified an object nothing on the path used.
+  //
+  // Asserting on what `indexOneFile` puts in the map closes that: a tokeniser change
+  // that skips the space-aware pass now fails here instead of sliding past.
+  const hitsByToken = new Map<string, Hit[]>();
+  const hitsByStem = new Map<string, Hit[]>();
+  indexOneFile('src="/ncc/Firing Practice.webp"', 'probe.html', pattern(), hitsByToken, hitsByStem);
+
+  if (!hitsByToken.has('firing practice.webp')) {
     throw new Error(
-      'The oracle cannot see a filename containing a space, so any false-dead rate it reports is meaningless. See §5.1(j).',
+      'The oracle cannot see a filename containing a space, so any false-dead rate it reports is meaningless. See §5.1(j) and R38.',
     );
   }
 }
@@ -572,40 +648,11 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     filesGrepped += 1;
     lowerTexts.set(rel, text.toLowerCase());
 
-    const lineStarts = offsetsOfLines(text);
-    // ⚠️ **`oracleTokens`, not `pattern.exec` directly.** This loop used the bare
-    // pattern, so the space-aware leftward extension never ran on the index at all —
-    // `oracleTokens` was called from exactly one place, `assertOracleSeesSpaces`, the
-    // guard whose job is to certify it. **The guard tested a function that was not on
-    // the path it guarded**, and passed while the index it certifies stayed blind to
-    // every filename containing a space.
-    //
-    // Found in B1 when `scratch-www` produced 32 "confirmed FALSE" hedges whose
-    // citations were all correct — the engine was right and the instrument was wrong,
-    // which is R26's lesson arriving from the other direction.
-    for (const [raw, index] of oracleTokens(text, pattern)) {
-      const token = raw.toLowerCase();
-      const stem = token.slice(0, token.lastIndexOf('.'));
-      const line = lineOf(lineStarts, index);
-      const hit: Hit = {
-        file: rel,
-        line,
-        text: lineText(text, index),
-        extensionSwapped: false,
-      };
-      // ⚠️ **Push, never spread.** This was
-      // `map.set(token, [...(map.get(token) ?? []), hit])`, which copies the whole array
-      // per hit and is quadratic in the number of times one filename appears. On the three
-      // pinned repos nothing repeats often enough to notice; on a real site with 1,873
-      // images it turned a 23-second pipeline into a run that had not finished in ten
-      // minutes, and adding the space-aware suffix tokens made it worse. A check nobody can
-      // afford to run is a check nobody runs.
-      pushHit(hitsByToken, token, hit);
-      pushHit(hitsByStem, stem, { ...hit, extensionSwapped: true });
-    }
+    indexOneFile(text, rel, pattern, hitsByToken, hitsByStem);
   }
 
   return {
+    canRepresent: (name: string) => tokeniserCanRepresent(name, makePattern()),
     files,
     hitsByToken,
     hitsByStem,

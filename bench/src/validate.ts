@@ -138,6 +138,8 @@ interface RepoResult {
   /** Where two runs disagreed, when they did. A bare `false` cannot be acted on. */
   readonly determinismDiff: readonly string[];
   readonly cwdDiff: readonly string[];
+  /** `skipped` entries that differed between runs. Environmental, not a defect. */
+  readonly environmentNotes: readonly string[];
   readonly cwdIndependent: boolean;
   readonly noAbsolutePath: boolean;
   /** Whatever proved the absolute-path check wrong, so a failure names itself. */
@@ -329,6 +331,41 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
 }
 
 /**
+ * The part of a report a determinism claim is about (R38).
+ *
+ * Everything except `skipped`. Two runs that find the same images, the same
+ * references and the same problems have agreed on what matters; a file that was
+ * briefly unreadable under load has not changed what the engine concluded, only what
+ * it managed to look at, and the report already says so in the entry itself.
+ */
+function substance(report: Report): Omit<Report, 'skipped'> {
+  const { skipped: _skipped, ...rest } = report;
+  return rest;
+}
+
+function sameSubstance(a: Report, b: Report): boolean {
+  return JSON.stringify(substance(a)) === JSON.stringify(substance(b));
+}
+
+/**
+ * Entries that appeared in one run's `skipped` list and not the other's.
+ *
+ * Quoted in full rather than counted: *"one more skip"* is not actionable, and the
+ * whole reason this is separated from the determinism verdict is so it can be read
+ * and judged rather than silently tolerated.
+ */
+function skippedDifferences(a: Report, b: Report): string[] {
+  const key = (entry: Report['skipped'][number]) => `${entry.stage} ${entry.what}: ${entry.reason}`;
+  const first = new Set(a.skipped.map(key));
+  const second = new Set(b.skipped.map(key));
+
+  return [
+    ...[...first].filter((entry) => !second.has(entry)).map((entry) => `only in run 1 — ${entry}`),
+    ...[...second].filter((entry) => !first.has(entry)).map((entry) => `only in run 2 — ${entry}`),
+  ].slice(0, 6);
+}
+
+/**
  * The first few places two reports disagree, as `path: a != b`.
  *
  * Walks the two objects in parallel rather than diffing serialised text, so the
@@ -373,13 +410,22 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   // --- (a) the range invariant, over real code -----------------------------------
   const { checked, failures } = await checkRanges(first.scanned.references, readFileText);
 
-  // --- (f) determinism: two whole runs, byte for byte ------------------------------
+  // --- (f) determinism: two whole runs -------------------------------------------
+  //
+  // ⚠️ **A claim about the FINDINGS and REFERENCES, not about every byte (R38).** A
+  // `skipped` entry that appears in one run and not the next is an I/O failure under
+  // load — environmental, and rule 9 working exactly as designed by surfacing it. It
+  // must stay visible, but it is not a determinism defect and must not look like one:
+  // while the two were one boolean, a transient flake and a real correctness failure
+  // were indistinguishable, which is precisely what cost time on railsgirls-com.
   const second = await runPipeline(repo, probed);
-  const deterministic = JSON.stringify(second.report) === JSON.stringify(first.report);
-  // ⚠️ A boolean that says `false` and nothing else is a check that cannot be acted
-  // on. This says WHERE, which is the difference between "determinism failed" and a
-  // defect somebody can find — and on a 24,000-line report it is the whole difference.
-  const determinismDiff = deterministic ? [] : firstDifferences(first.report, second.report);
+  const deterministic = sameSubstance(first.report, second.report);
+  // A boolean that says `false` and nothing else cannot be acted on. This says WHERE,
+  // which on a 24,000-line report is the whole difference.
+  const determinismDiff = deterministic
+    ? []
+    : firstDifferences(substance(first.report), substance(second.report));
+  const environmentNotes = skippedDifferences(first.report, second.report);
 
   // --- (f) and a third run from a different working directory ----------------------
   // §5.1(f) asks for this by name. `Reference.file` is absolute and four upstream
@@ -389,8 +435,10 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   chdir(tmpdir());
   const elsewhere = await runPipeline(repo, probed);
   chdir(originalCwd);
-  const cwdIndependent = JSON.stringify(elsewhere.report) === JSON.stringify(first.report);
-  const cwdDiff = cwdIndependent ? [] : firstDifferences(first.report, elsewhere.report);
+  const cwdIndependent = sameSubstance(first.report, elsewhere.report);
+  const cwdDiff = cwdIndependent
+    ? []
+    : firstDifferences(substance(first.report), substance(elsewhere.report));
 
   // --- (f) and no absolute path in the output at all -------------------------------
   const { clean: noAbsolutePath, evidence: absolutePathEvidence } = checkNoAbsolutePath(
@@ -419,6 +467,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
     deterministic,
     determinismDiff,
     cwdDiff,
+    environmentNotes,
     cwdIndependent,
     noAbsolutePath,
     absolutePathEvidence,
@@ -973,8 +1022,11 @@ function summarise(result: RepoResult): string {
     `  (a) range invariant: ${result.rangeInvariantChecked} checked, ${result.rangeInvariantFailures.length} failures`,
     `  (b) unaccounted grep hits: ${result.unaccounted.length} total, ${needsHuman} need a human`,
     `  (f) deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}, no absolute path: ${result.noAbsolutePath}`,
-    ...result.determinismDiff.map((entry) => `      ⚠️ differs between runs: ${entry}`),
-    ...result.cwdDiff.map((entry) => `      ⚠️ differs by cwd: ${entry}`),
+    ...result.determinismDiff.map((entry) => `      🔴 FINDINGS DIFFER between runs: ${entry}`),
+    ...result.cwdDiff.map((entry) => `      🔴 FINDINGS DIFFER by cwd: ${entry}`),
+    ...result.environmentNotes.map(
+      (entry) => `      note (environmental, not a determinism failure): ${entry}`,
+    ),
     ...(result.absolutePathEvidence.length === 0
       ? []
       : result.absolutePathEvidence.map((line) => `      ! ${line}`)),
