@@ -134,13 +134,35 @@ export type ResolvedVia =
   /** A root-relative path against a configured serving root. */
   | 'serving-root'
   /**
-   * Against the project root as a fallback — no configured serving root had it.
+   * A root-relative path resolved against the project root, because no configured
+   * serving root held it.
    *
-   * Reached two ways: a root-relative path no serving root claimed, and a
-   * `./`-spelled **speculative** path that failed file-relative. In both the engine
-   * is guessing at the base, so the link is evidence of life and nothing more.
+   * ⚠️ **Split out from `speculative-root` by measurement (R36).** These were one
+   * value, and treating them alike was costing real rewrites: across the five
+   * validation repositories this case occurs **1,325** times and **1,267 of those are
+   * `asserted`** — `<img src="/favicon.png">` in hand-written HTML, resolving to a
+   * file that exists and that the site really does serve from the project root. A
+   * plain static site with no build step has no public directory to configure, so
+   * this is not a fallback *past* a statement; it is the ordinary answer.
+   *
+   * ⚠️ **It is not unconditionally strong, and the weak sub-case is unmeasured.** If a
+   * serving root *is* configured and correct, a root-relative path that misses it and
+   * happens to exist at the project root is a false link. **Zero occurrences across
+   * all five repos** — in every repo whose serving root matched, the `serving-root`
+   * candidate won first — so the risk is real but unevidenced. Whether this may be
+   * rewritten is a policy question for the planner and is **open**; today it is
+   * treated exactly as before.
    */
-  | 'project-root';
+  | 'project-root'
+  /**
+   * A `./`-spelled **speculative** path that failed file-relative and was retried
+   * against the project root — a guess at the base of a string that was already a
+   * guess.
+   *
+   * Genuinely weak, and measured as rare: **10 occurrences across five repositories,
+   * none of them `asserted`.** This is the case R15 was written about.
+   */
+  | 'speculative-root';
 
 /**
  * What the resolver produces: a raw reference plus what it points at.

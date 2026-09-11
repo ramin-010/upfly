@@ -202,6 +202,41 @@ class the validation protocol exists to catch. The graph builder, the audit and 
 it carries a `never`-typed default so an eighth outcome breaks the build instead of quietly
 un-linking a whole category.
 
+### A link says the asset is alive; `resolvedVia` says whether the text may be edited
+
+Being linked and being rewritable are different questions, and conflating them is how a tool
+breaks a build. Every linked reference records **how** it reached its target:
+
+| `resolvedVia` | what happened | may the text be rewritten? |
+|---|---|---|
+| `file` | relative to the referencing file's directory | yes — the base is unambiguous |
+| `serving-root` | root-relative, against a configured serving root | yes |
+| `project-root` | root-relative, and no configured serving root held it | **open** — see below |
+| `speculative-root` | a speculative `./` path retried against the project root | no (R15) |
+
+`speculative-root` is a guess at the base of a string that was already a guess: a path-shaped
+literal in a data object may well be joined to some other directory at runtime, so the match is
+evidence the asset is **alive** and nothing more. Rewriting it could point a working reference at
+a file the code never loads.
+
+⚠️ **These were one value until R36, and the merge was costing real rewrites.** Measured across
+the five validation repositories, `project-root` occurs **1,325** times with **1,267 asserted** —
+almost all of them `<img src="/favicon.png">` in hand-written HTML on a site with no build step,
+where the project root genuinely *is* the serving root — while `speculative-root` occurs **10
+times and is never asserted**. Treating a static site's ordinary reference as the same evidence as
+a guess-on-a-guess would decline to rewrite most of that repository, and repositories like it are
+the ones this product is for.
+
+⚠️ **`project-root` is still not unconditionally safe, and the unsafe sub-case is unmeasured.** If
+a serving root *is* configured and correct, a root-relative path that misses it and happens to
+exist at the project root is a false link. There are **zero** occurrences across all five repos —
+wherever a serving root matched, its candidate won first — so the risk is real but unevidenced,
+and whether the planner may rewrite this class is deliberately left open rather than assumed.
+
+The counts reach the JSON as `references.byResolvedVia`. Before that they existed only inside the
+resolver, which meant no consumer could tell a guess from an ordinary resolution and the planner
+would have had nothing to cite when it declined one — and a silent decline is a rule 9 P0.
+
 ### Non-asset extensions are the resolver's business
 
 `url(inter.woff2)` in an `@font-face` is a perfectly asserted reference to a file the engine

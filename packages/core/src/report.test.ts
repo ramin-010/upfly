@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cssAdapter } from './adapters/css.js';
@@ -1238,5 +1238,88 @@ describe('buildReport', () => {
       expect(text).not.toContain('unreferenced SVG');
       expect(text).not.toContain('--include-unused-svg');
     });
+  });
+});
+
+describe('byResolvedVia — the field that says which links may be rewritten (R36)', () => {
+  const ROOT = resolve('/repo');
+  const ASSET = {
+    path: join(ROOT, 'at-root.png'),
+    relative: 'at-root.png',
+    extension: '.png',
+    bytes: 10,
+  };
+
+  /** Built through `resolveReferences`, so the value under test is the engine's own. */
+  function reportFor(rawPath: string, asserted: boolean): Report {
+    const references = resolveReferences(
+      [
+        {
+          file: join(ROOT, 'src', 'page.tsx'),
+          start: 0,
+          end: rawPath.length,
+          rawPath,
+          kind: asserted ? 'attr' : 'json',
+          ceiling: 'high',
+          asserted,
+        },
+      ],
+      { root: ROOT, assets: [ASSET], publicDirs: ['public'], exists: () => false },
+    );
+
+    return buildReport({
+      graph: buildGraph({ root: ROOT, assets: [ASSET], references, unscannedFiles: [] }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [ASSET],
+        sourceFiles: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+    });
+  }
+
+  it('counts a root-relative fallback as project-root, not as the speculative one', () => {
+    // Measured at 1,325 occurrences across the five validation repos, 1,267 asserted.
+    // All five fixture trees produce ZERO of these, so without a hand-built case the
+    // split is unexercised at the report layer -- the fixtures cannot test it.
+    const report = reportFor('/at-root.png', true);
+
+    expect(report.references.byResolvedVia['project-root']).toBe(1);
+    expect(report.references.byResolvedVia['speculative-root']).toBe(0);
+  });
+
+  it('counts a speculative dot-path retry as speculative-root', () => {
+    const report = reportFor('./at-root.png', false);
+
+    expect(report.references.byResolvedVia['speculative-root']).toBe(1);
+    expect(report.references.byResolvedVia['project-root']).toBe(0);
+  });
+
+  it('sums to exactly the linked resolutions and to nothing else', () => {
+    // The invariant the doc comment promises, derived from byResolution rather than
+    // from a pasted number, so it holds for any input rather than for these two.
+    for (const [rawPath, asserted] of [
+      ['/at-root.png', true],
+      ['./at-root.png', false],
+    ] as const) {
+      const report = reportFor(rawPath, asserted);
+      const via = Object.values(report.references.byResolvedVia).reduce((a, b) => a + b, 0);
+      const linked =
+        report.references.byResolution.resolved +
+        report.references.byResolution['resolved-pattern'];
+
+      expect(via).toBe(linked);
+    }
   });
 });

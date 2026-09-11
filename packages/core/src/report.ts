@@ -33,8 +33,15 @@ import {
   relativePath,
 } from './paths.js';
 import type { AssetProbe, ProbeSkipCode } from './probe.js';
+import { isLinked } from './reference.js';
 import type { Mention, SweepResult } from './sweep.js';
-import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from './types.js';
+import type {
+  Confidence,
+  DiscoveryResult,
+  Resolution,
+  ResolvedVia,
+  UnscannedExtension,
+} from './types.js';
 
 /**
  * Schema version of the JSON report.
@@ -49,6 +56,13 @@ import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from
  * bump even though `unusedVectors` and `staleConversions` are themselves additions.
  * The alternative — leaving the vectors in place and flagging them — would have kept
  * the version at 1 by making an agent and a person disagree about the same run.
+ *
+ * ⚠️ **Deliberately NOT bumped for `byResolvedVia` (R36).** It is a pure addition — no
+ * existing field changes meaning and no consumer that ignores unknown keys is
+ * affected — so the rule above applies as written. The `ResolvedVia` *type* did change
+ * (`project-root` split in two), but that is the exported TypeScript API rather than
+ * the report schema, and it belongs to package versioning. Bumping here for an
+ * addition would train readers to ignore the number.
  */
 export const REPORT_SCHEMA_VERSION = 2;
 
@@ -87,6 +101,20 @@ export interface ReferenceEntry {
 export interface ReferenceReport {
   readonly byResolution: Readonly<Record<Resolution, number>>;
   readonly byConfidence: Readonly<Record<Confidence, number>>;
+  /**
+   * How each linked reference reached its target, counted (R36).
+   *
+   * ⚠️ **This is not decoration: it is the only thing in the report that says which
+   * links may be rewritten.** R15 holds that a link resolved by guessing at the base
+   * proves the asset is *alive* without licensing an edit to the string — and until
+   * this landed, `resolvedVia` appeared in the report zero times, so a consumer could
+   * not tell a guess from an ordinary resolution and the planner would have had no
+   * reason to give when it declined one. A silent decline is a rule 9 P0.
+   *
+   * Only `resolved` and `resolved-pattern` references have a `resolvedVia`, so these
+   * counts sum to those two entries of `byResolution` and to nothing else.
+   */
+  readonly byResolvedVia: Readonly<Record<ResolvedVia, number>>;
   /**
    * The "I could not be sure" bucket, in full: `dynamic`, `unresolved-alias` and
    * `out-of-scope`.
@@ -497,6 +525,19 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   const byConfidence: Record<Confidence, number> = { certain: 0, high: 0, medium: 0, unsafe: 0 };
   for (const reference of graph.references) byConfidence[reference.confidence] += 1;
 
+  // Only a linked reference has a `resolvedVia`, so `isLinked` is the gate rather
+  // than a hand-written comparison against two resolution values (R15's lesson, and
+  // the reason `isLinked` is exported at all).
+  const byResolvedVia: Record<ResolvedVia, number> = {
+    file: 0,
+    'serving-root': 0,
+    'project-root': 0,
+    'speculative-root': 0,
+  };
+  for (const reference of graph.references) {
+    if (isLinked(reference)) byResolvedVia[reference.resolvedVia] += 1;
+  }
+
   const unsafe: ReferenceEntry[] = [];
   for (const reference of graph.references) {
     if (
@@ -526,7 +567,14 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
       }))
     : null;
 
-  return { byResolution, byConfidence, unsafe, discardedCount: byResolution.discarded, discarded };
+  return {
+    byResolution,
+    byConfidence,
+    byResolvedVia,
+    unsafe,
+    discardedCount: byResolution.discarded,
+    discarded,
+  };
 }
 
 function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {

@@ -340,7 +340,12 @@ describe('resolveReferences', () => {
       // Recorded, not re-derived: Phase 2 must know this link is evidence the asset
       // is alive and NOT licence to rewrite the string, because the code may join
       // it to a different base entirely.
-      expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('project-root');
+      //
+      // R36 split this from the root-relative fallback. This is the weak one -- a
+      // guess at the base of a string that was already a guess -- and it is the case
+      // R15 was written about. Measured at 10 occurrences across five repositories,
+      // none of them asserted.
+      expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('speculative-root');
     });
 
     it('refuses the same fallback for an asserted import', () => {
@@ -389,6 +394,35 @@ describe('resolveReferences', () => {
       });
 
       expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('project-root');
+    });
+
+    it('tells the two root fallbacks apart (R36)', () => {
+      // These were ONE value, and merging them was not free. Measured across the five
+      // validation repositories: the root-relative fallback fires 1,325 times with
+      // 1,267 of them asserted -- `<img src="/favicon.png">` in hand-written HTML,
+      // resolving to a file the site really serves from the project root -- while the
+      // speculative retry fires 10 times, never asserted. Treating a static site's
+      // ordinary reference as the same evidence as a guess-on-a-guess would forgo
+      // rewrites we can safely make, on exactly the repositories in the target market.
+      const [rootRelative] = resolveReferences([raw({ rawPath: '/at-root.png' })], {
+        root: ROOT,
+        assets: ASSETS,
+        publicDirs: ['public'],
+        exists: NOTHING_EXISTS,
+      });
+      const [speculative] = resolveReferences(
+        [raw({ rawPath: './at-root.png', asserted: false, ceiling: 'high' })],
+        { root: ROOT, assets: ASSETS, publicDirs: ['public'], exists: NOTHING_EXISTS },
+      );
+
+      const viaOf = (reference: Reference | undefined): string | null =>
+        reference?.resolution === 'resolved' ? reference.resolvedVia : null;
+
+      expect(viaOf(rootRelative)).toBe('project-root');
+      expect(viaOf(speculative)).toBe('speculative-root');
+      // The assertion that matters is that they DIFFER; pinning each value
+      // separately would still pass if both collapsed back to one name.
+      expect(viaOf(rootRelative)).not.toBe(viaOf(speculative));
     });
   });
 

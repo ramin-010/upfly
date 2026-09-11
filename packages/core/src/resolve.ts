@@ -359,7 +359,10 @@ function candidatePaths(
     // Measured before it was proposed: 14 unresolved dot-paths across the three
     // validation repos, of which exactly 2 resolve this way, and both are real.
     if (!raw.asserted) {
-      relative.push({ path: toPosix(resolvePath(root, stripDotSlash(path))), via: 'project-root' });
+      relative.push({
+        path: toPosix(resolvePath(root, stripDotSlash(path))),
+        via: 'speculative-root',
+      });
     }
     return relative;
   }
