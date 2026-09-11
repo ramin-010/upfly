@@ -2,9 +2,11 @@ import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   IMAGE_EXTENSIONS,
+  VECTOR_EXTENSIONS,
   compareStrings,
   extensionOf,
   isImageExtension,
+  isVectorExtension,
   relativePath,
   toPosix,
 } from './paths.js';
@@ -70,6 +72,39 @@ describe('isImageExtension', () => {
       expect(isImageExtension(extension)).toBe(false);
     },
   );
+});
+
+describe('isVectorExtension', () => {
+  it('accepts every documented vector extension', () => {
+    for (const extension of VECTOR_EXTENSIONS) {
+      expect(isVectorExtension(extension)).toBe(true);
+    }
+  });
+
+  it.each(['.png', '.jpg', '.webp', '.avif', '.gif', '.tif', '.tiff', '.jpeg'])(
+    'rejects the raster format %s',
+    (extension) => {
+      expect(isVectorExtension(extension)).toBe(false);
+    },
+  );
+
+  /**
+   * The subset relation R22 rests on, as a check rather than a comment.
+   *
+   * A vector we do not track as an image would never be discovered as an asset, so
+   * it could never produce the unused finding the report demotes -- the demotion
+   * would silently apply to nothing. Adding a format to `VECTOR_EXTENSIONS` and
+   * forgetting `IMAGE_EXTENSIONS` fails here instead of in a report nobody rereads.
+   */
+  it('only names formats the engine tracks as images', () => {
+    for (const extension of VECTOR_EXTENSIONS) {
+      expect(isImageExtension(extension)).toBe(true);
+    }
+  });
+
+  it('does not claim every image is a vector', () => {
+    expect(VECTOR_EXTENSIONS.length).toBeLessThan(IMAGE_EXTENSIONS.length);
+  });
 });
 
 describe('compareStrings', () => {

@@ -30,7 +30,7 @@
  * so when it could not.
  */
 
-import { compareStrings, extensionOf } from './paths.js';
+import { compareStrings, extensionOf, isVectorExtension } from './paths.js';
 import type { Asset } from './types.js';
 
 /** A format we can measure an asset against. */
@@ -171,17 +171,6 @@ export interface ProbeOptions {
 const DEFAULT_CONCURRENCY = 4;
 
 /**
- * The one format that is an asset but not a raster.
- *
- * Encoding an SVG rasterises it at some arbitrary density, so the resulting byte
- * count answers a question nobody asked: it is not "how much would this asset
- * shrink", it is "how big would a picture of this asset be". SVG is audit-only until
- * an SVGO adapter exists, so the encode is declined *with a reason* rather than
- * quietly producing a misleading number.
- */
-const VECTOR_EXTENSION = '.svg';
-
-/**
  * Measure every asset.
  *
  * Never rejects for a bad image. A zero-byte file, a truncated PNG, a text file
@@ -241,7 +230,7 @@ function assetsWithinCap(
 /** Whether any requested format could produce a measurement, judged by extension alone. */
 function couldEncode(asset: Asset, formats: readonly EncodeFormat[]): boolean {
   const extension = extensionOf(asset.path);
-  if (extension === VECTOR_EXTENSION) return false;
+  if (isVectorExtension(extension)) return false;
   return formats.some((format) => extension !== `.${format}`);
 }
 
@@ -313,7 +302,7 @@ function encodeSkipReason(
       reason: 'the header could not be read, so there is nothing to encode',
     };
   }
-  if (extensionOf(asset.path) === VECTOR_EXTENSION) {
+  if (isVectorExtension(extensionOf(asset.path))) {
     return {
       code: 'vector',
       reason: 'SVG is a vector: encoding it measures a rasterisation, not a saving',

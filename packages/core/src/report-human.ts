@@ -70,7 +70,42 @@ function headline(report: Report): string[] {
     `  scanned ${count(summary.sourceFiles, 'source file')} and found ${count(summary.assets, 'image')}, ${bytes(summary.assetBytes)} in total`,
     `  ${summary.linkedReferences} of ${count(summary.references, 'reference')} resolve, and they point at ${summary.referencedAssets} of those images`,
     `  the other ${count(unreferenced, 'image')} have no reference Upfly could follow`,
+    ...vectorLine(report),
     '',
+  ];
+}
+
+/**
+ * R22's counted line, in the headline rather than only in the caveats.
+ *
+ * ⚠️ **This line exists because R22 would otherwise have recreated R21 #4.** The line
+ * above says `the other 150 images have no reference Upfly could follow`; the findings
+ * list beneath it now holds 24, because 126 were demoted. Two overlapping counts with
+ * no stated relationship is the precise defect R21 #4 was raised about, and burying
+ * the explanation forty lines down in the caveats is what R21 #4's own lesson forbids:
+ * a limitation printed after eighty findings is a limitation nobody reads.
+ *
+ * So the relationship is stated where the ten seconds are spent, and the caveat keeps
+ * carrying it for the JSON. That is the same split `encode-capped` already uses — the
+ * cap is in `savingsLine` *and* in a caveat — and it is the one place in this renderer
+ * where saying it twice is right rather than a violation of R25 #3.
+ *
+ * `including` ties it to the preceding line on purpose: it is a subset of the
+ * unreferenced count, not a fourth independent number.
+ *
+ * ⚠️ **`including` is also what makes the line agreement-proof, and the first version
+ * was not.** It read `${n} of those are unreferenced vectors`, which renders
+ * "1 of those are unreferenced vectors" — the verb-agreement bug for the sixth time in
+ * this renderer, written by a chat that had read the warning about it twice and had
+ * already hit it once the same hour. Only reading the rendered output caught it. There
+ * is no finite verb here now: `including` takes a noun phrase, and
+ * "Upfly will neither convert a vector nor delete an asset" has an invariant subject.
+ */
+function vectorLine(report: Report): string[] {
+  const { count: vectors, bytes: vectorBytes } = report.unusedVectors;
+  if (vectors === 0) return [];
+  return [
+    `  including ${count(vectors, 'unreferenced vector')}, ${bytes(vectorBytes)} — counted, not listed: Upfly will neither convert a vector nor delete an asset`,
   ];
 }
 
@@ -241,10 +276,50 @@ function showsAnImageFilename(rawPath: string): boolean {
   return extension !== '' && isImageExtension(extension);
 }
 
+/**
+ * R23, rendered first because it is the most actionable thing in the report.
+ *
+ * A broken reference to a file that does not exist is a broken image on the site, and
+ * an unreferenced vector with the same stem is the likely explanation. Neither finding
+ * says that alone.
+ *
+ * ⚠️ **Hedged on purpose.** `may have been` is the whole sentence's honesty: the
+ * pairing is two facts and their proximity, and `hero.svg` next to a broken
+ * `hero.png` could as easily be two unrelated files a designer named alike. R15
+ * established that a weak resolution must not drive an action; a weak inference must
+ * not drive a confident sentence either. Both facts are printed so the reader can
+ * judge, and `may` is invariant, so the count has no verb to disagree with.
+ */
+function staleConversionSection(report: Report): string[] {
+  if (report.staleConversions.length === 0) return [];
+
+  const lines = [
+    `  ${count(report.staleConversions.length, 'image')} may have been converted by hand without updating the reference`,
+  ];
+  for (const pair of report.staleConversions) {
+    lines.push(`    ${pair.vector} is unreferenced, and ${pair.where} asks for ${pair.rawPath}`);
+  }
+  lines.push('');
+  return lines;
+}
+
 function findingsSection(report: Report): string[] {
-  if (report.findings.length === 0) return ['No findings.', ''];
+  // ⚠️ `No findings.` became a lie the moment R22 started demoting. A repository whose
+  // only unreferenced assets are vectors produces an empty `findings` array and a
+  // non-zero `unusedVectors.count`, and the old line would have reported "nothing to
+  // see here" over 126 demoted items. None of the three validation repos reaches this
+  // branch — all of them have other findings — which is exactly the condition that
+  // makes fixtures unable to test it, so it has a hand-built case in report.test.ts.
+  if (report.findings.length === 0) {
+    if (report.unusedVectors.count === 0) return ['No findings.', ''];
+    return [
+      `No findings, apart from ${count(report.unusedVectors.count, 'unreferenced vector')} counted above.`,
+      '',
+    ];
+  }
 
   const lines = [`Findings — ${count(report.findings.length, 'item')}`, ''];
+  lines.push(...staleConversionSection(report));
   let previous: Finding['kind'] | null = null;
 
   for (const finding of report.findings) {

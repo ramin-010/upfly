@@ -259,9 +259,14 @@ describe('framework fixtures', () => {
     it('counts an SVG as unread even though it is also an asset', async () => {
       // An SVG can carry `<image href="hero.png">`, and no adapter reads one. It is
       // both an asset and a file we did not scan.
+      //
+      // Two of them: `public/favicon.svg` is referenced and `src/assets/unused-icon.svg`
+      // is not. The second was added for R22, whose demotion no fixture tree reached —
+      // every one of the five produced `unusedVectors.count: 0`, which is the stated
+      // condition under which fixtures cannot test a thing at all.
       const graph = await graphTree('vite-react');
 
-      expect(graph.unscannedExtensions).toEqual([{ ext: '.svg', fileCount: 1 }]);
+      expect(graph.unscannedExtensions).toEqual([{ ext: '.svg', fileCount: 2 }]);
       expect(graph.assets.some((node) => node.asset.relative.endsWith('.svg'))).toBe(true);
     });
 

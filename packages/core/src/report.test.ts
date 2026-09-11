@@ -266,6 +266,14 @@ describe('buildReport', () => {
     // fixture-driven assertion about the other two sources could never fire — which
     // is precisely how a heading that is false for 119 of astro-docs' 140 findings
     // shipped past a green suite.
+    //
+    // ⚠️ **Rasters, deliberately, and they used to be the `.svg` logos this defect was
+    // found on.** R22 demotes an unreferenced vector out of `findings` entirely, so
+    // vector assets here would leave this block asserting over the one raster that
+    // survived — three headings tested by nothing. The block is about *which evidence
+    // source heads a hedge*, and that question does not depend on the file's format,
+    // so the fix is to hedge assets R22 keeps. R22's own demotion is asserted
+    // separately below, on data built for it.
     const ROOT = '/repo';
 
     function mention(source: Mention['source'], where: string, quote: string): Mention {
@@ -286,14 +294,14 @@ describe('buildReport', () => {
         audit: {
           findings: [
             // Two from one file, so the grouping has something to count.
-            hedge('public/logos/gitbook.svg', [
-              mention('unresolved-reference', 'src/data/logos.ts:56', 'gitbook.svg'),
+            hedge('public/logos/gitbook.png', [
+              mention('unresolved-reference', 'src/data/logos.ts:56', 'gitbook.png'),
             ]),
-            hedge('public/logos/hugo.svg', [
-              mention('unresolved-reference', 'src/data/logos.ts:65', 'hugo.svg'),
+            hedge('public/logos/hugo.png', [
+              mention('unresolved-reference', 'src/data/logos.ts:65', 'hugo.png'),
             ]),
-            hedge('src/assets/docs.svg', [
-              mention('unscanned-file', 'src/components/SiteTitle.astro:3', 'docs.svg'),
+            hedge('src/assets/docs.png', [
+              mention('unscanned-file', 'src/components/SiteTitle.astro:3', 'docs.png'),
             ]),
             hedge('public/assets/arc.webp', [
               mention('scanned-file', 'src/content/tutorial.mdx:119', 'arc.webp'),
@@ -319,7 +327,7 @@ describe('buildReport', () => {
 
     it('never claims a file could not be read when the engine read it fine', () => {
       // The defect R16 was ruled on. `src/data/logos.ts` is ordinary TypeScript that
-      // parses perfectly; `'gitbook.svg'` is simply not a resolvable path. A user who
+      // parses perfectly; `'gitbook.png'` is simply not a resolvable path. A user who
       // follows that citation under a "cannot read" heading opens a readable file and
       // concludes the tool is broken — one wrong sentence costing a correct finding.
       const text = renderReport(hedgedReport());
@@ -355,19 +363,20 @@ describe('buildReport', () => {
     it('files an asset under its most actionable evidence, and still prints the rest', () => {
       // A real case: `Sponsors.astro` imports `./logos/mux.svg` and `logos.ts` names
       // `mux.svg` too, so the asset carries both. It belongs under the heading with
-      // something to do about it, and neither citation may be dropped.
+      // something to do about it, and neither citation may be dropped. Spelled `.png`
+      // here for the reason given above: R22 would demote the vector it really is.
       const both = buildReport({
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [
             {
               kind: 'possibly-dead',
-              asset: 'public/logos/mux.svg',
+              asset: 'public/logos/mux.png',
               bytes: 809,
               inPublicDir: true,
               evidence: [
-                mention('unresolved-reference', 'src/data/logos.ts:80', 'mux.svg'),
-                mention('unscanned-file', 'src/components/Sponsors.astro:4', 'mux.svg'),
+                mention('unresolved-reference', 'src/data/logos.ts:80', 'mux.png'),
+                mention('unscanned-file', 'src/components/Sponsors.astro:4', 'mux.png'),
               ],
             },
           ],
@@ -1006,6 +1015,228 @@ describe('buildReport', () => {
       const text = renderReport(await reportFor('plain-html'));
 
       expect(text).not.toMatch(/\d,\d/);
+    });
+  });
+
+  /**
+   * R22 and R23, hand-built — and they have to be.
+   *
+   * ⚠️ **Every one of the five fixture trees produced `unusedVectors.count: 0`.** That
+   * is the stated trigger for building a case by hand: when every fixture has the same
+   * value for the thing under test, the fixtures cannot test it, and a green suite says
+   * only that nothing changed. `vite-react` gained `src/assets/unused-icon.svg` so the
+   * demotion runs end to end, but the plural wording, the flag, the rescue, the
+   * no-pair cases and the empty-findings branch are all reachable only from here.
+   *
+   * R23 is worse than untested by fixtures: **it produces zero pairs on all three
+   * validation repos too.** `shadcn-ui` has 20 broken references and 10 unreferenced
+   * vectors and pairs none of them, because all 20 broken references are themselves
+   * `.svg` — `/next.svg`, `/vercel.svg`, `/vite.svg` from framework scaffolds. So the
+   * only evidence R23 works at all is below, and the only evidence it does not
+   * over-fire is the scaffold case it is asserted against.
+   */
+  describe('unreferenced vectors — R22 and R23', () => {
+    const ROOT = '/repo';
+
+    function deadVector(asset: string, bytes: number): Finding {
+      return { kind: 'dead', asset, bytes, inPublicDir: false };
+    }
+
+    function brokenAt(rawPath: string, where: string): Finding {
+      return { kind: 'broken', file: where.split(':')[0] ?? where, line: 1, where, rawPath };
+    }
+
+    function reportOf(findings: readonly Finding[], includeUnusedVectors = false): Report {
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+        audit: {
+          findings,
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        includeUnusedVectors,
+      });
+    }
+
+    it('demotes an unreferenced vector out of findings, carrying count and size', () => {
+      const report = reportOf([
+        deadVector('public/logo.svg', 1200),
+        deadVector('public/icon.svg', 800),
+        { kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false },
+      ]);
+
+      const named = report.findings.map((finding) =>
+        finding.kind === 'broken' ? finding.rawPath : finding.asset,
+      );
+      expect(named).toEqual(['public/photo.png']);
+      expect(report.unusedVectors.count).toBe(2);
+      expect(report.unusedVectors.bytes).toBe(2000);
+    });
+
+    it('counts the itemised array in the summary, so the two can never disagree', () => {
+      // The arithmetic R17's caveat exists to protect, one step further on. A reader
+      // who adds up the findings must get the headline number, and the difference has
+      // to be explained by something on the page rather than by a bug.
+      const report = reportOf([
+        deadVector('public/logo.svg', 1200),
+        { kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false },
+      ]);
+
+      expect(report.summary.findings.dead).toBe(report.findings.length);
+      expect(report.summary.findings.dead).toBe(1);
+    });
+
+    it('hedged vectors are demoted too, not only confident ones', () => {
+      // `possibly-dead` is where the volume actually is: 122 of astro-docs' 140
+      // hedges are vectors. Demoting only `dead` would have moved 4 findings.
+      const report = reportOf([
+        {
+          kind: 'possibly-dead',
+          asset: 'public/logos/gitbook.svg',
+          bytes: 900,
+          inPublicDir: true,
+          evidence: [
+            {
+              asset: 'gitbook.svg',
+              source: 'unresolved-reference',
+              where: 'src/data/logos.ts:56',
+              quote: 'gitbook.svg',
+            },
+          ],
+        },
+      ]);
+
+      expect(report.findings).toEqual([]);
+      expect(report.unusedVectors.count).toBe(1);
+    });
+
+    it('itemises them behind the flag, and says null rather than empty without it', () => {
+      const findings = [deadVector('public/logo.svg', 1200)];
+
+      expect(reportOf(findings).unusedVectors.assets).toBeNull();
+      expect(reportOf(findings, true).unusedVectors.assets).toEqual([
+        { asset: 'public/logo.svg', bytes: 1200, kind: 'dead' },
+      ]);
+    });
+
+    it('keeps a vector itemised when a broken reference asks for its raster twin', () => {
+      // R23's rescue, and the reason R22 cannot simply filter: for *this* vector there
+      // is an action — fix the reference — so demoting it would hide the one unused
+      // vector in the repository worth looking at.
+      const report = reportOf([
+        deadVector('images/hero.svg', 1200),
+        brokenAt('images/hero.png', 'about.html:10'),
+      ]);
+
+      expect(report.unusedVectors.count).toBe(0);
+      const kept = report.findings.map((finding) =>
+        finding.kind === 'broken' ? finding.rawPath : finding.asset,
+      );
+      expect(kept).toContain('images/hero.svg');
+      expect(report.staleConversions).toEqual([
+        { vector: 'images/hero.svg', rawPath: 'images/hero.png', where: 'about.html:10' },
+      ]);
+    });
+
+    it('says both facts and asserts neither, because the pairing is an inference', () => {
+      const text = renderReport(
+        reportOf([
+          deadVector('images/hero.svg', 1200),
+          brokenAt('images/hero.png', 'about.html:10'),
+        ]),
+      );
+
+      expect(text).toContain('may have been converted by hand without updating the reference');
+      expect(text).toContain(
+        'images/hero.svg is unreferenced, and about.html:10 asks for images/hero.png',
+      );
+    });
+
+    it('does not pair a vector with a broken reference to another vector', () => {
+      // `shadcn-ui`'s real shape: 20 broken references, every one an `.svg` from a
+      // framework scaffold, beside 10 unreferenced vectors. Pairing on stem alone
+      // would have invented a conversion story for `next.svg` against `next.svg`.
+      const report = reportOf([
+        deadVector('public/next.svg', 1200),
+        brokenAt('/next.svg', 'app/page.tsx:34'),
+      ]);
+
+      expect(report.staleConversions).toEqual([]);
+      expect(report.unusedVectors.count).toBe(1);
+    });
+
+    it('does not pair on a stem a broken reference only resembles', () => {
+      const report = reportOf([
+        deadVector('images/hero.svg', 1200),
+        brokenAt('images/hero-wide.png', 'about.html:10'),
+        brokenAt('images/Hero.png', 'about.html:11'),
+      ]);
+
+      // Exact and case-sensitive. `Hero.png` is a different file on the platform most
+      // of this runs on, and a hint nobody asked for costs more trust than a missed one.
+      expect(report.staleConversions).toEqual([]);
+    });
+
+    it('does not claim there is nothing to see when everything was demoted', () => {
+      // ⚠️ `No findings.` was a lie the moment R22 started demoting, and no fixture and
+      // no validation repo reaches it — all eight have other findings. A repository
+      // whose only unreferenced assets are vectors gets this branch.
+      const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
+
+      expect(text).toContain('No findings, apart from 1 unreferenced vector counted above');
+      expect(text).not.toContain('No findings.');
+    });
+
+    it('agrees with itself about one vector and about several', () => {
+      // The verb-agreement bug has shipped six times in this renderer, twice from the
+      // chat that wrote R22 — once in the caveat and once in the headline, the second
+      // caught only by reading the rendered text. Both counts are asserted so neither
+      // wording can drift back.
+      const one = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
+      const two = renderReport(
+        reportOf([deadVector('public/logo.svg', 1200), deadVector('public/icon.svg', 800)]),
+      );
+
+      expect(one).toContain('including 1 unreferenced vector, 1.2 KB');
+      expect(one).toContain('1 unreferenced vector totalling 1.2 KB, not listed');
+      expect(two).toContain('including 2 unreferenced vectors, 2 KB');
+      expect(two).toContain('2 unreferenced vectors totalling 2 KB, not listed');
+    });
+
+    it('explains the gap where the reader is, not forty lines below it', () => {
+      // R21 #4's lesson applied to R22's own consequence: the headline says how many
+      // images have no reference, and the findings list now shows fewer. If the only
+      // explanation sat in the caveats, R22 would have recreated the defect R21 #4
+      // was raised about.
+      const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
+      const headlineMention = text.indexOf('including 1 unreferenced vector');
+      const findingsHeading = text.indexOf('No findings');
+
+      expect(headlineMention).toBeGreaterThan(-1);
+      expect(headlineMention).toBeLessThan(findingsHeading);
+    });
+
+    it('says nothing at all when there are no unreferenced vectors', () => {
+      // The other half of every count: a report with no vectors must not grow a line
+      // reading "0 unreferenced vectors", which is the noise R21 was raised about.
+      const text = renderReport(
+        reportOf([{ kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false }]),
+      );
+
+      expect(text).not.toContain('unreferenced vector');
+      expect(text).not.toContain('--include-unused-svg');
     });
   });
 });

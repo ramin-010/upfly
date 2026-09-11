@@ -34,6 +34,31 @@ export const IMAGE_EXTENSIONS: readonly string[] = Object.freeze([
 const IMAGE_EXTENSION_SET = new Set(IMAGE_EXTENSIONS);
 
 /**
+ * Image extensions that are vectors, lowercase and dot-prefixed.
+ *
+ * Encoding one rasterises it at some arbitrary density, so the resulting byte count
+ * answers a question nobody asked: not "how much would this asset shrink" but "how
+ * big would a picture of this asset be". SVG is audit-only until an SVGO adapter
+ * exists, so the encode is declined *with a reason* rather than quietly producing a
+ * misleading number.
+ *
+ * ⚠️ **This set is the reason two separate decisions agree, and it lives here so
+ * they cannot drift apart** (R22). The probe declines to *encode* a vector — "a
+ * rasterisation, not a saving" — and the report declines to *itemise an unused* one,
+ * and R22's ruling rests on those being the same set: an unused vector is demoted to
+ * a counted line precisely because there is no action we would offer for it. If one
+ * site learned about a second vector format and the other did not, the report would
+ * either itemise something the encoder still refuses to touch or stay silent about
+ * something it would happily convert. Both are wrong and neither would throw.
+ *
+ * A subset of `IMAGE_EXTENSIONS` by construction, asserted in `paths.test.ts` —
+ * demoting an unused asset we do not even track as an image would be incoherent.
+ */
+export const VECTOR_EXTENSIONS: readonly string[] = Object.freeze(['.svg']);
+
+const VECTOR_EXTENSION_SET = new Set(VECTOR_EXTENSIONS);
+
+/**
  * Convert native separators to POSIX ones.
  *
  * The `sep` check is not cosmetic: a backslash is a legal character in a POSIX
@@ -60,6 +85,17 @@ export function extensionOf(filePath: string): string {
 /** Whether an extension (as returned by `extensionOf`) names an image format. */
 export function isImageExtension(extension: string): boolean {
   return IMAGE_EXTENSION_SET.has(extension);
+}
+
+/**
+ * Whether an extension (as returned by `extensionOf`) names a vector format.
+ *
+ * A predicate rather than an exported `=== '.svg'` comparison, for the reason
+ * `isLinked` exists: a comparison spelled out at each call site is a place the next
+ * format can be forgotten, and the compiler cannot see the omission.
+ */
+export function isVectorExtension(extension: string): boolean {
+  return VECTOR_EXTENSION_SET.has(extension);
 }
 
 /**

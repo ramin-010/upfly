@@ -105,6 +105,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "unsafe": [],
   },
   "skipped": [],
+  "staleConversions": [],
   "summary": {
     "assetBytes": 490,
     "assets": 7,
@@ -122,7 +123,12 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "references": 3,
     "sourceFiles": 4,
   },
-  "version": 1,
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 2,
 }
 `;
 
@@ -288,6 +294,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     ],
   },
   "skipped": [],
+  "staleConversions": [],
   "summary": {
     "assetBytes": 650,
     "assets": 8,
@@ -305,7 +312,12 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "references": 4,
     "sourceFiles": 4,
   },
-  "version": 1,
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 2,
 }
 `;
 
@@ -406,6 +418,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "unsafe": [],
   },
   "skipped": [],
+  "staleConversions": [],
   "summary": {
     "assetBytes": 700,
     "assets": 10,
@@ -423,7 +436,12 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "references": 11,
     "sourceFiles": 7,
   },
-  "version": 1,
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 2,
 }
 `;
 
@@ -507,6 +525,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "unsafe": [],
   },
   "skipped": [],
+  "staleConversions": [],
   "summary": {
     "assetBytes": 1040,
     "assets": 11,
@@ -524,7 +543,12 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "references": 11,
     "sourceFiles": 3,
   },
-  "version": 1,
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 2,
 }
 `;
 
@@ -558,6 +582,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
 {
   "caveats": [
     {
+      "code": "unused-vectors",
+      "count": 1,
+      "detail": [],
+      "message": "1 unreferenced vector totalling 307 B, not listed — Upfly neither converts a vector nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.",
+    },
+    {
       "code": "not-probed",
       "count": 0,
       "detail": [],
@@ -565,9 +595,9 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     },
     {
       "code": "svg-both-ways",
-      "count": 1,
+      "count": 2,
       "detail": [],
-      "message": "SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (1 SVG here)",
+      "message": "SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)",
     },
   ],
   "coverage": {
@@ -575,10 +605,10 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "unscannedExtensions": [
       {
         "ext": ".svg",
-        "fileCount": 1,
+        "fileCount": 2,
       },
     ],
-    "unscannedFileCount": 1,
+    "unscannedFileCount": 2,
   },
   "findings": [
     {
@@ -609,9 +639,10 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "unsafe": [],
   },
   "skipped": [],
+  "staleConversions": [],
   "summary": {
-    "assetBytes": 1063,
-    "assets": 11,
+    "assetBytes": 1370,
+    "assets": 12,
     "findings": {
       "broken": 0,
       "dead": 1,
@@ -626,7 +657,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "references": 12,
     "sourceFiles": 5,
   },
-  "version": 1,
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 307,
+    "count": 1,
+  },
+  "version": 2,
 }
 `;
 
@@ -635,9 +671,10 @@ exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 5 source files and found 11 images, 1.1 KB in total
+  scanned 5 source files and found 12 images, 1.4 KB in total
   12 of 12 references resolve, and they point at 10 of those images
-  the other 1 image have no reference Upfly could follow
+  the other 2 images have no reference Upfly could follow
+  including 1 unreferenced vector, 307 B — counted, not listed: Upfly will neither convert a vector nor delete an asset
 
 Nothing was skipped.
 
@@ -648,7 +685,8 @@ Findings — 1 item
 
 Worth knowing
 
+  1 unreferenced vector totalling 307 B, not listed — Upfly neither converts a vector nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
   images were not decoded, so oversized assets and format opportunities are unknown
-  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (1 SVG here)
+  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
 "
 `;

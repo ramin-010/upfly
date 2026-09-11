@@ -22,9 +22,16 @@
  * forget to append to than five per-stage ones.
  */
 
-import type { AuditResult, Finding } from './audit.js';
+import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
+import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
-import { compareStrings, relativePath } from './paths.js';
+import {
+  compareStrings,
+  extensionOf,
+  isImageExtension,
+  isVectorExtension,
+  relativePath,
+} from './paths.js';
 import type { AssetProbe, ProbeSkipCode } from './probe.js';
 import type { SweepResult } from './sweep.js';
 import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from './types.js';
@@ -34,8 +41,16 @@ import type { Confidence, DiscoveryResult, Resolution, UnscannedExtension } from
  *
  * Bumped when a field changes meaning or disappears — never for an addition, since
  * a consumer that ignores unknown fields keeps working.
+ *
+ * **2 — R22.** `findings` no longer holds every finding the audit produced: an
+ * unreferenced vector nothing can act on is demoted to `unusedVectors`, and
+ * `summary.findings` counts the itemised set so the two can never disagree. That is a
+ * change of meaning in the array a consumer is most likely to read, so it earns the
+ * bump even though `unusedVectors` and `staleConversions` are themselves additions.
+ * The alternative — leaving the vectors in place and flagging them — would have kept
+ * the version at 1 by making an agent and a person disagree about the same run.
  */
-export const REPORT_SCHEMA_VERSION = 1;
+export const REPORT_SCHEMA_VERSION = 2;
 
 /** The numbers people screenshot. */
 export interface ReportSummary {
@@ -121,6 +136,66 @@ export interface SkippedItem {
   readonly reason: string;
 }
 
+/** One unreferenced vector, as it appears behind the flag. */
+export interface UnusedVectorEntry {
+  /** POSIX-relative path. */
+  readonly asset: string;
+  readonly bytes: number;
+  /** Which finding it would have been itemised as, had we offered an action for it. */
+  readonly kind: 'dead' | 'possibly-dead';
+}
+
+/**
+ * R22: unreferenced vectors, counted rather than itemised.
+ *
+ * **The argument is that we offer no action, not that vectors are small** — that
+ * second claim was measured and is false: SVG is 96% of `shadcn-ui`'s hedged bytes.
+ * We already decline to encode a vector (`VECTOR_EXTENSIONS`) and §8 decision 7 says
+ * Upfly never deletes an asset, so itemising an unused one proposes the only two
+ * things we will not do. On `astro-docs` this is 126 of 150 unreferenced-asset
+ * findings, which is why the list was unreadable rather than merely long.
+ *
+ * Rule 9 is satisfied by `count` — nothing is silently dropped. `bytes` is here
+ * because §8 decision 7 leaves the reader holding the decision, and a total is what
+ * turns a list into one: `eleventy-docs`'s nine vectors are 210 KB, and nine
+ * filenames would not have said that.
+ */
+export interface UnusedVectorReport {
+  readonly count: number;
+  /** Their total size, which is the fact that makes the count actionable. */
+  readonly bytes: number;
+  /**
+   * The vectors themselves, when `includeUnusedVectors` asked for them.
+   *
+   * `null` — not `[]` — when they were not requested, for the same reason
+   * `ReferenceReport.discarded` is: an empty array reads as "there were none", which
+   * is the same class of lie as silence reading as "no opportunity here".
+   */
+  readonly assets: readonly UnusedVectorEntry[] | null;
+}
+
+/**
+ * R23: an unreferenced vector standing beside a broken reference to its raster twin.
+ *
+ * Both halves are already findings on their own. Said together they mean *"you
+ * converted this by hand and forgot the reference"*, which neither says alone — and
+ * it is the one case where an unused vector **does** have an action, so these stay
+ * itemised in `findings` rather than being demoted by R22.
+ *
+ * ⚠️ Deliberately **not** phrased as a conclusion. The pairing is two facts and their
+ * proximity; the reader decides whether it is a forgotten conversion or a
+ * coincidence of naming. R15's rule — a weak resolution must not drive an action —
+ * applies to sentences as much as to rewrites.
+ */
+export interface StaleConversion {
+  /** POSIX-relative path of the unreferenced vector. */
+  readonly vector: string;
+  /** The broken reference's path exactly as written. */
+  readonly rawPath: string;
+  /** `file:line` of the broken reference, so the reader can open it. */
+  readonly where: string;
+}
+
 /** A limitation that applies to the report as a whole rather than to one finding. */
 export interface Caveat {
   readonly code:
@@ -132,7 +207,8 @@ export interface Caveat {
     | 'excluded-roots'
     | 'unscanned-extensions'
     | 'binary-file-types'
-    | 'svg-both-ways';
+    | 'svg-both-ways'
+    | 'unused-vectors';
   readonly count: number;
   /**
    * Rendered verbatim, and complete on its own.
@@ -154,8 +230,19 @@ export interface Caveat {
 export interface Report {
   readonly version: number;
   readonly summary: ReportSummary;
-  /** Every finding, in the audit's report order. */
+  /**
+   * Every finding there is something to do about, in the audit's report order.
+   *
+   * ⚠️ **Not every finding the audit produced** (R22, schema 2). An unreferenced
+   * vector is in `unusedVectors` instead — unless it pairs with a broken reference to
+   * its raster twin, which gives it an action and keeps it here. `summary.findings`
+   * counts this array, so the two always agree.
+   */
   readonly findings: readonly Finding[];
+  /** R22: the unreferenced vectors this report declines to itemise, and their size. */
+  readonly unusedVectors: UnusedVectorReport;
+  /** R23: unreferenced vectors beside a broken reference to their raster twin. */
+  readonly staleConversions: readonly StaleConversion[];
   readonly references: ReferenceReport;
   readonly coverage: CoverageReport;
   /** Everything declined, from every stage, sorted. */
@@ -179,21 +266,125 @@ export interface ReportInput {
    * started eating.
    */
   readonly includeDiscarded?: boolean;
+  /**
+   * Itemise the unreferenced vectors R22 demotes. Off by default
+   * (`--include-unused-svg`).
+   *
+   * Off because on `astro-docs` they are 126 of 150 unreferenced-asset findings and
+   * there is no action to offer for any of them; available because a reader who wants
+   * to audit our judgement should not have to take the count on trust.
+   */
+  readonly includeUnusedVectors?: boolean;
 }
 
 /** Build the report. Pure, and the only place that decides what the public shape is. */
 export function buildReport(input: ReportInput): Report {
-  const findings = input.audit.findings;
+  const vectors = partitionUnusedVectors(input.audit.findings);
 
   return {
     version: REPORT_SCHEMA_VERSION,
-    summary: summarise(input, findings),
-    findings,
+    // The itemised set, not `audit.findings`: the summary counts what the report
+    // shows, so a reader can never add up the findings and get a different number
+    // from the one in the headline.
+    summary: summarise(input, vectors.itemised),
+    findings: vectors.itemised,
+    unusedVectors: {
+      count: vectors.demoted.length,
+      bytes: vectors.demoted.reduce((total, entry) => total + entry.bytes, 0),
+      assets: input.includeUnusedVectors ? vectors.demoted : null,
+    },
+    staleConversions: vectors.staleConversions,
     references: referenceReport(input.graph, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
-    caveats: caveats(input),
+    caveats: caveats(input, vectors),
   };
+}
+
+/** The last path segment, tolerating either separator — a raw path is as written. */
+function baseNameOf(rawPath: string): string {
+  const cut = Math.max(rawPath.lastIndexOf('/'), rawPath.lastIndexOf('\\'));
+  return cut === -1 ? rawPath : rawPath.slice(cut + 1);
+}
+
+/** The filename without its extension. `''` for a dotfile, which pairs with nothing. */
+function stemOf(rawPath: string): string {
+  const base = baseNameOf(rawPath);
+  const dot = base.lastIndexOf('.');
+  return dot <= 0 ? '' : base.slice(0, dot);
+}
+
+/**
+ * R22 and R23 in one pass, because they partition the same set.
+ *
+ * Order matters and is the whole design: R23's pairs are found **first**, and a paired
+ * vector stays itemised. Demoting first and pairing afterwards would need the demoted
+ * list back again, and the version of this that ran R22 alone would have hidden
+ * exactly the 'you forgot the reference' cases R23 exists to surface.
+ *
+ * The audit still emits every finding (`audit.findings` is unchanged) — the graph's
+ * account of what is unreferenced is not what R22 disputes. What the report decides is
+ * which of them it can offer a reader an action for.
+ */
+function partitionUnusedVectors(findings: readonly Finding[]): {
+  itemised: readonly Finding[];
+  demoted: readonly UnusedVectorEntry[];
+  staleConversions: readonly StaleConversion[];
+} {
+  const isUnusedVector = (finding: Finding): finding is DeadFinding | PossiblyDeadFinding =>
+    (finding.kind === 'dead' || finding.kind === 'possibly-dead') &&
+    isVectorExtension(extensionOf(finding.asset));
+
+  // Broken references to a *raster* twin only. A broken reference to another vector
+  // says nothing about a conversion: `shadcn-ui`'s 20 broken references are all
+  // `/next.svg`, `/vercel.svg` and `/vite.svg` from framework scaffolds, and pairing
+  // those with its 10 unused vectors would have invented ten conversion stories.
+  const brokenByStem = new Map<string, { rawPath: string; where: string }[]>();
+  for (const finding of findings) {
+    if (finding.kind !== 'broken') continue;
+    const extension = extensionOf(baseNameOf(finding.rawPath));
+    if (!isImageExtension(extension) || isVectorExtension(extension)) continue;
+    const stem = stemOf(finding.rawPath);
+    if (stem === '') continue;
+    const list = brokenByStem.get(stem) ?? [];
+    list.push({ rawPath: finding.rawPath, where: finding.where });
+    brokenByStem.set(stem, list);
+  }
+
+  const staleConversions: StaleConversion[] = [];
+  const paired = new Set<string>();
+  for (const finding of findings) {
+    if (!isUnusedVector(finding)) continue;
+    // Exact, case-sensitive: paths are case-sensitive on the platform this runs on
+    // most often, and a hint nobody asked for costs more trust than one we skipped.
+    const stem = stemOf(finding.asset);
+    for (const broken of brokenByStem.get(stem) ?? []) {
+      staleConversions.push({
+        vector: finding.asset,
+        rawPath: broken.rawPath,
+        where: broken.where,
+      });
+      paired.add(finding.asset);
+    }
+  }
+  staleConversions.sort(
+    (a, b) =>
+      compareStrings(a.vector, b.vector) ||
+      compareStrings(a.rawPath, b.rawPath) ||
+      compareStrings(a.where, b.where),
+  );
+
+  const itemised: Finding[] = [];
+  const demoted: UnusedVectorEntry[] = [];
+  for (const finding of findings) {
+    if (isUnusedVector(finding) && !paired.has(finding.asset)) {
+      demoted.push({ asset: finding.asset, bytes: finding.bytes, kind: finding.kind });
+    } else {
+      itemised.push(finding);
+    }
+  }
+
+  return { itemised, demoted, staleConversions };
 }
 
 function summarise(input: ReportInput, findings: readonly Finding[]): ReportSummary {
@@ -459,8 +650,28 @@ const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 
 /** The limitations that apply to the whole run rather than to one finding. */
-function caveats(input: ReportInput): Caveat[] {
+function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEntry[] }): Caveat[] {
   const list: Caveat[] = [];
+
+  // R22. Rule 9 lives here: the demoted vectors are declined, so they reach the
+  // report with a reason. The reason is the honest one — there is no action we would
+  // offer — and not "they are small", which is measurably false.
+  //
+  // ⚠️ `not listed` is a participle, not a finite verb, and that is deliberate. The
+  // first draft of this line read `${plural(n, 'unreferenced vector')} ... are not
+  // listed`, which says "1 unreferenced vector are not listed" — the fifth instance
+  // of that bug in this file, written directly underneath a comment about avoiding
+  // it. There is nothing here for the count to disagree with now, and
+  // "there is no action to offer" has an invariant subject.
+  if (vectors.demoted.length > 0) {
+    const bytes = vectors.demoted.reduce((total, entry) => total + entry.bytes, 0);
+    list.push({
+      code: 'unused-vectors',
+      count: vectors.demoted.length,
+      message: `${plural(vectors.demoted.length, 'unreferenced vector')} totalling ${formatBytes(bytes)}, not listed — Upfly neither converts a vector nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
+      detail: [],
+    });
+  }
   const deadInPublic = input.audit.publicDirDeadCount;
 
   if (deadInPublic > 0) {
