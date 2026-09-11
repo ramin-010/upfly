@@ -54,6 +54,7 @@ function memoryStore(
       limit = Number.POSITIVE_INFINITY;
     },
     store: {
+      hashAlgorithm: 'sha256',
       async hash(path) {
         const text = files.get(path);
         return text === undefined ? null : sha(text);
@@ -136,7 +137,13 @@ function context(): RunContext {
     runId: 'r1',
     runDir: RUN_DIR,
     now: () => `2026-01-01T00:00:0${tick++}.000Z`,
-    declined: [{ path: 'src/dynamic.png', reason: 'referenced only by a runtime expression' }],
+    declined: [
+      {
+        path: 'src/data/logos.ts',
+        line: 55,
+        reason: 'the reference is assembled at runtime and cannot be rewritten safely',
+      },
+    ],
   };
 }
 
@@ -250,7 +257,11 @@ describe('commit', () => {
     const manifest = await commit(plan(), harness.store, context());
 
     expect(manifest.declined).toEqual([
-      { path: 'src/dynamic.png', reason: 'referenced only by a runtime expression' },
+      {
+        path: 'src/data/logos.ts',
+        line: 55,
+        reason: 'the reference is assembled at runtime and cannot be rewritten safely',
+      },
     ]);
   });
 });
@@ -343,7 +354,10 @@ describe('the manifest is deterministic except where it says it is not', () => {
 
   it('fails when a field outside the allow-list varies', async () => {
     const manifest = await commit(plan(), memoryStore(tree()).store, context());
-    const drifted = { ...manifest, declined: [{ path: 'other.png', reason: 'different' }] };
+    const drifted = {
+      ...manifest,
+      declined: [{ path: 'other.png', line: 1, reason: 'different' }],
+    };
 
     expect(withoutVolatileFields(manifest)).not.toEqual(withoutVolatileFields(drifted));
   });
@@ -356,7 +370,13 @@ describe('the manifest is deterministic except where it says it is not', () => {
   });
 
   it('names every volatile field', () => {
-    expect([...MANIFEST_VOLATILE_FIELDS]).toEqual(['runId', 'startedAt', 'completedAt', 'runDir']);
+    expect([...MANIFEST_VOLATILE_FIELDS]).toEqual([
+      'runId',
+      'startedAt',
+      'completedAt',
+      'revertedAt',
+      'runDir',
+    ]);
   });
 });
 
@@ -382,5 +402,78 @@ describe('inspect', () => {
     const states = await inspect(manifest, harness.store);
     const move = states.find((state) => state.operation.kind === 'move');
     expect(move?.status).toBe('partial');
+  });
+});
+
+describe('the manifest names the function that made its hashes', () => {
+  it('records the algorithm its store reported', async () => {
+    const manifest = await commit(plan(), memoryStore(tree()).store, context());
+    expect(manifest.hashAlgorithm).toBe('sha256');
+  });
+
+  it('refuses to check hashes made by a different function', async () => {
+    // Comparing sha256 against something else would call every file foreign, which
+    // is the most alarming thing this tool can say and would be entirely an artefact
+    // of the mismatch.
+    const harness = memoryStore(tree());
+    const manifest = await commit(plan(), harness.store, context());
+    const older = { ...manifest, hashAlgorithm: 'sha1' };
+
+    await expect(inspect(older, harness.store)).rejects.toThrow(/none of them can be checked/);
+    await expect(revert(older, harness.store)).rejects.toThrow(/none of them can be checked/);
+  });
+});
+
+describe('a reverted manifest says so', () => {
+  it('does not leave the manifest claiming the changes are live', async () => {
+    const harness = memoryStore(tree());
+    const manifest = await commit(plan(), harness.store, context());
+    const reverted = await revert(manifest, harness.store, () => '2026-01-02T00:00:00.000Z');
+
+    expect(reverted.state).toBe('reverted');
+    expect(reverted.revertedAt).toBe('2026-01-02T00:00:00.000Z');
+    expect(JSON.parse(harness.files.get(MANIFEST_PATH) as string).state).toBe('reverted');
+  });
+
+  it('keeps the first undo time when run a second time', async () => {
+    const harness = memoryStore(tree());
+    const manifest = await commit(plan(), harness.store, context());
+
+    const first = await revert(manifest, harness.store, () => '2026-01-02T00:00:00.000Z');
+    const second = await revert(first, harness.store, () => '2026-01-03T00:00:00.000Z');
+
+    // The second call reverts nothing, so stamping a new time would claim otherwise.
+    expect(second.revertedAt).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  it('is distinguishable from an interrupted run', async () => {
+    const harness = memoryStore(tree());
+    const manifest = await commit(plan(), harness.store, context());
+    const reverted = await revert(manifest, harness.store, () => '2026-01-02T00:00:00.000Z');
+
+    // The distinction recovery needs: pending means finish cleaning up, reverted
+    // means there is nothing left to do.
+    expect(manifest.state).toBe('committed');
+    expect(reverted.state).not.toBe('pending');
+  });
+});
+
+describe('a declined item points at a place', () => {
+  it('carries the line as well as the file', async () => {
+    const manifest = await commit(plan(), memoryStore(tree()).store, context());
+    const [declined] = manifest.declined;
+
+    expect(declined?.path).toBe('src/data/logos.ts');
+    expect(declined?.line).toBe(55);
+  });
+});
+
+describe('the manifest schema is public API', () => {
+  it('matches the approved shape', async () => {
+    // Rule 6: a change to this snapshot is a schema change, and a schema change is
+    // something a reviewer approves rather than something that lands because the
+    // tests were updated alongside it.
+    const manifest = await commit(plan(), memoryStore(tree()).store, context());
+    expect(withoutVolatileFields(manifest)).toMatchSnapshot();
   });
 });

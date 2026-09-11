@@ -40,6 +40,13 @@ import type { Edit } from './types.js';
  * absolute path, which is also why no absolute path reaches the manifest.
  */
 export interface FileStore {
+  /**
+   * Names the function `hash` uses, so the manifest can record it.
+   *
+   * It comes from the store rather than from a constant here, which is what stops a
+   * manifest ever naming an algorithm other than the one that made its hashes.
+   */
+  readonly hashAlgorithm: string;
   /** Content hash, or null when the path does not exist. */
   hash(path: string): Promise<string | null>;
   readText(path: string): Promise<string>;
@@ -176,9 +183,11 @@ export async function commit(
 ): Promise<Manifest> {
   const pending: Manifest = {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
+    hashAlgorithm: store.hashAlgorithm,
     runId: context.runId,
     startedAt: context.now(),
     completedAt: null,
+    revertedAt: null,
     state: 'pending',
     runDir: context.runDir,
     operations: await manifestOperations(plan, store),
@@ -221,6 +230,7 @@ export async function inspect(
   manifest: Manifest,
   store: FileStore,
 ): Promise<readonly OperationState[]> {
+  requireSameHashFunction(manifest, store);
   const states: OperationState[] = [];
 
   for (const operation of manifest.operations) {
@@ -277,7 +287,11 @@ export async function inspect(
  *         something other than this run. Nothing is reverted in that case, so the
  *         tree is never left in a third state nobody planned.
  */
-export async function revert(manifest: Manifest, store: FileStore): Promise<Manifest> {
+export async function revert(
+  manifest: Manifest,
+  store: FileStore,
+  now: () => string = () => new Date().toISOString(),
+): Promise<Manifest> {
   const states = await inspect(manifest, store);
   const foreign = states.filter((state) => state.status === 'foreign');
 
@@ -292,32 +306,58 @@ export async function revert(manifest: Manifest, store: FileStore): Promise<Mani
     );
   }
 
-  // The mirror of commit's phases: bring originals back before anything points at
-  // them again, and remove what was created only once nothing points at it.
+  // The mirror of commit's phases, and it has to be, for the same reason: originals
+  // come back before anything points at them again, and what the run created goes
+  // only once nothing points at it.
+  await restoreOriginals(states, manifest, store);
+  await undoEdits(states, store);
+  await removeCreated(states, store);
+
+  const reverted: Manifest = {
+    ...manifest,
+    state: 'reverted',
+    // Keep the first undo's time. Running revert again on an already-reverted
+    // manifest does nothing, and stamping a fresh time would claim otherwise.
+    revertedAt: manifest.revertedAt ?? now(),
+  };
+  await store.writeText(MANIFEST_PATH, serialiseManifest(reverted));
+  return reverted;
+}
+
+/** Undo's first phase: put back what the run took away. */
+async function restoreOriginals(
+  states: readonly OperationState[],
+  manifest: Manifest,
+  store: FileStore,
+): Promise<void> {
   for (const state of states) {
     if (state.status === 'not-applied') continue;
     if (state.operation.kind === 'delete') {
       await store.copy(`${manifest.runDir}/${state.operation.backup}`, state.operation.path);
     } else if (state.operation.kind === 'move' && state.status === 'applied') {
+      // A `partial` move still has its source, so only a completed one needs the
+      // bytes copied back from the destination.
       await store.copy(state.operation.to, state.operation.from);
     }
   }
+}
 
+/** Undo's second phase: point the references back at the originals. */
+async function undoEdits(states: readonly OperationState[], store: FileStore): Promise<void> {
   for (const state of states) {
     if (state.status !== 'applied' || state.operation.kind !== 'edit') continue;
     const current = await store.readText(state.operation.path);
     await store.writeText(state.operation.path, applyEdits(current, state.operation.inverse));
   }
+}
 
+/** Undo's third phase: take away what the run added, now that nothing names it. */
+async function removeCreated(states: readonly OperationState[], store: FileStore): Promise<void> {
   for (const state of states) {
     if (state.status === 'not-applied') continue;
     if (state.operation.kind === 'create') await store.remove(state.operation.path);
     else if (state.operation.kind === 'move') await store.remove(state.operation.to);
   }
-
-  const reverted: Manifest = { ...manifest, state: 'committed' };
-  await store.writeText(MANIFEST_PATH, serialiseManifest(reverted));
-  return reverted;
 }
 
 /** Read the manifest of the last run, or null when there has not been one. */
@@ -356,6 +396,22 @@ async function manifestOperations(
     });
   }
   return operations;
+}
+
+/**
+ * Refuse to compare hashes that were not made the same way.
+ *
+ * Every status below is decided by comparing a stored hash against a fresh one. If
+ * the two came from different functions none of them match, so every file would be
+ * reported as changed by somebody else. That is the most alarming thing this tool
+ * can say, and it would be entirely an artefact of the mismatch.
+ */
+function requireSameHashFunction(manifest: Manifest, store: FileStore): void {
+  if (manifest.hashAlgorithm === store.hashAlgorithm) return;
+  throw new UpflyError(
+    'MANIFEST_VERSION_UNSUPPORTED',
+    `The manifest's hashes were made with ${manifest.hashAlgorithm} and this build uses ${store.hashAlgorithm}, so none of them can be checked. Undo it with the version that wrote it.`,
+  );
 }
 
 /** A file the run was to put there: absent means it never ran. */

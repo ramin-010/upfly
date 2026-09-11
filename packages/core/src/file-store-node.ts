@@ -17,6 +17,16 @@ const BUSY_RETRIES = 5;
 const BUSY_BACKOFF_MS = 20;
 
 /**
+ * The digest every hash in a manifest is made with.
+ *
+ * Named in one place and reported through `hashAlgorithm` so the manifest records
+ * what actually produced its hashes. Changing it here changes what new manifests
+ * declare, and an older manifest declaring the old name is then refused rather than
+ * compared against incomparable values.
+ */
+const HASH_ALGORITHM = 'sha256';
+
+/**
  * Build a store rooted at a project directory.
  *
  * Every path handed to the returned store is POSIX-relative to `root`. Resolving
@@ -27,10 +37,12 @@ export function createNodeFileStore(root: string): FileStore {
   const absolute = (path: string): string => resolve(root, path);
 
   return {
+    hashAlgorithm: HASH_ALGORITHM,
+
     async hash(path: string): Promise<string | null> {
       try {
         const bytes = await readFile(absolute(path));
-        return createHash('sha256').update(bytes).digest('hex');
+        return createHash(HASH_ALGORITHM).update(bytes).digest('hex');
       } catch (cause) {
         if (isMissing(cause)) return null;
         throw cause;

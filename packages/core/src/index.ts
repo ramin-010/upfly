@@ -33,7 +33,36 @@ export {
   discover,
 } from './discover.js';
 export type { DiscoverOptions } from './discover.js';
-export { applyEdits, validateEdits } from './edits.js';
+export { applyEdits, invertEdits, validateEdits } from './edits.js';
+export {
+  MANIFEST_PATH,
+  MANIFEST_SCHEMA_VERSION,
+  MANIFEST_VOLATILE_FIELDS,
+  parseManifest,
+  serialiseManifest,
+  withoutVolatileFields,
+} from './manifest.js';
+export type {
+  CreateOperation,
+  Declined,
+  DeleteOperation,
+  EditOperation,
+  Manifest,
+  ManifestState,
+  ManifestVolatileField,
+  MoveOperation,
+  Operation,
+} from './manifest.js';
+export { commit, inspect, prepare, readManifest, revert } from './transaction.js';
+export type {
+  FileStore,
+  OperationState,
+  OperationStatus,
+  PlannedEdit,
+  PlannedOperation,
+  RunContext,
+} from './transaction.js';
+export { createNodeFileStore } from './file-store-node.js';
 export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './reference.js';
 export { buildGraph, unreferencedAssets } from './graph.js';

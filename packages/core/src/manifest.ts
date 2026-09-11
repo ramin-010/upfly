@@ -79,24 +79,50 @@ export interface DeleteOperation {
 
 export type Operation = CreateOperation | EditOperation | MoveOperation | DeleteOperation;
 
-/** Something the run chose not to do, and why. Never an empty explanation. */
+/**
+ * Something the run chose not to do, and why. Never an empty explanation.
+ *
+ * `path` and `line` are kept apart rather than joined into the `file:line` string
+ * the report uses, because every other path in this schema is a bare path that can
+ * be handed straight to a file store, and one field that cannot would be the only
+ * exception a reader has to remember.
+ */
 export interface Declined {
   readonly path: string;
+  /** 1-based, or null when the decline is about a whole file rather than one line. */
+  readonly line: number | null;
   readonly reason: string;
 }
 
 /**
- * `pending` is written before anything is touched and means "these operations may or
- * may not have happened". `committed` means every operation finished. A manifest
- * found in `pending` state on a later run is an interrupted run to recover from.
+ * `pending` is written before anything is touched and means these operations may or
+ * may not have happened, so a manifest found in that state is an interrupted run to
+ * recover from. `committed` means every operation finished. `reverted` means an undo
+ * has since put everything back.
+ *
+ * The third state is not bookkeeping. Without it a finished undo has to either leave
+ * the manifest saying `committed`, which tells the next reader the changes are live
+ * when they are not, or delete it, which throws away the only record that a tool
+ * edited somebody's files.
  */
-export type ManifestState = 'pending' | 'committed';
+export type ManifestState = 'pending' | 'committed' | 'reverted';
 
 export interface Manifest {
   readonly schemaVersion: number;
+  /**
+   * The function every hash in this file was made with.
+   *
+   * Recorded because the integrity of the whole record rests on those hashes, and
+   * without naming the function nothing but the exact build that wrote the manifest
+   * can check one. It also means the algorithm can change without a schema bump: a
+   * reader compares this field rather than assuming.
+   */
+  readonly hashAlgorithm: string;
   readonly runId: string;
   readonly startedAt: string;
   readonly completedAt: string | null;
+  /** When an undo put the tree back, or null while the run still stands. */
+  readonly revertedAt: string | null;
   readonly state: ManifestState;
   /**
    * Run directory, POSIX-relative to the project root.
@@ -118,7 +144,13 @@ export interface Manifest {
  * than normalising ad hoc in each test is that a new field which happens to vary
  * will fail the comparison instead of being quietly added to a normaliser.
  */
-export const MANIFEST_VOLATILE_FIELDS = ['runId', 'startedAt', 'completedAt', 'runDir'] as const;
+export const MANIFEST_VOLATILE_FIELDS = [
+  'runId',
+  'startedAt',
+  'completedAt',
+  'revertedAt',
+  'runDir',
+] as const;
 
 export type ManifestVolatileField = (typeof MANIFEST_VOLATILE_FIELDS)[number];
 

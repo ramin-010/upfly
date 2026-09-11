@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the manifest schema is public API > matches the approved shape 1`] = `
+{
+  "completedAt": "<completedAt>",
+  "declined": [
+    {
+      "line": 55,
+      "path": "src/data/logos.ts",
+      "reason": "the reference is assembled at runtime and cannot be rewritten safely",
+    },
+  ],
+  "hashAlgorithm": "sha256",
+  "operations": [
+    {
+      "afterHash": "c9c3b6f111ba6517d897ce35043cc5cda1be0a664dd18188f742a74fbe5ed3e4",
+      "kind": "create",
+      "path": "src/logo.webp",
+      "staged": "staged/logo.webp",
+    },
+    {
+      "afterHash": "e486328b6a3cb1ebb81e1e13708256d170d1043e32555be3b8ea1265122c7272",
+      "beforeHash": "217dc73433cc3a746b7ad9acd5559eaf9cf14c6ed05eeaf06ea795c2d9a75fdb",
+      "inverse": [
+        {
+          "end": 29,
+          "replacement": "./logo.png",
+          "start": 18,
+        },
+        {
+          "end": 63,
+          "replacement": "./logo.png",
+          "start": 52,
+        },
+      ],
+      "kind": "edit",
+      "path": "src/App.jsx",
+    },
+    {
+      "from": "public/hero.png",
+      "hash": "16f7ee53f98c922cdf26b7cea44287dbf3ffe433ae2c68f6de59de3737ca12e3",
+      "kind": "move",
+      "to": "public/images/hero.png",
+    },
+    {
+      "backup": "backup/old.png",
+      "beforeHash": "352fcbd39911b8f743f5455d67b47b02f933b90fe412da5fdb5c65f1bb704f39",
+      "kind": "delete",
+      "path": "images/old.png",
+    },
+  ],
+  "revertedAt": "<revertedAt>",
+  "runDir": "<runDir>",
+  "runId": "<runId>",
+  "schemaVersion": 1,
+  "startedAt": "<startedAt>",
+  "state": "committed",
+}
+`;
