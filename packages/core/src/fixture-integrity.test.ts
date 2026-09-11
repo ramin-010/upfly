@@ -3,11 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { cssAdapter } from './adapters/css.js';
-import { htmlAdapter } from './adapters/html.js';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { jsonAdapter } from './adapters/json.js';
-import { markdownAdapter } from './adapters/markdown.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover } from './discover.js';
 import type { Adapter } from './types.js';
 
@@ -29,13 +25,7 @@ import type { Adapter } from './types.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const BY_ID = new Map(ADAPTERS.map((adapter) => [adapter.id, adapter]));
 

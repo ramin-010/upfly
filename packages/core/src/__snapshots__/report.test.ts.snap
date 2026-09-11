@@ -15,24 +15,11 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "detail": [],
       "message": "images were not decoded, so oversized assets and format opportunities are unknown",
     },
-    {
-      "code": "unscanned-extensions",
-      "count": 1,
-      "detail": [
-        ".astro — 1 file",
-      ],
-      "message": "1 file type had no adapter, so 1 file went unread",
-    },
   ],
   "coverage": {
     "excludedRoots": [],
-    "unscannedExtensions": [
-      {
-        "ext": ".astro",
-        "fileCount": 1,
-      },
-    ],
-    "unscannedFileCount": 1,
+    "unscannedExtensions": [],
+    "unscannedFileCount": 0,
   },
   "findings": [
     {
@@ -41,53 +28,11 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "inPublicDir": true,
       "kind": "dead",
     },
-    {
-      "asset": "public/banner.png",
-      "bytes": 70,
-      "evidence": [
-        {
-          "asset": "public/banner.png",
-          "quote": "banner.png",
-          "source": "unscanned-file",
-          "where": "src/pages/index.astro:11",
-        },
-      ],
-      "inPublicDir": true,
-      "kind": "possibly-dead",
-    },
-    {
-      "asset": "public/favicon.png",
-      "bytes": 70,
-      "evidence": [
-        {
-          "asset": "public/favicon.png",
-          "quote": "favicon.png",
-          "source": "unscanned-file",
-          "where": "src/pages/index.astro:7",
-        },
-      ],
-      "inPublicDir": true,
-      "kind": "possibly-dead",
-    },
-    {
-      "asset": "src/assets/logo.png",
-      "bytes": 70,
-      "evidence": [
-        {
-          "asset": "src/assets/logo.png",
-          "quote": "logo.png",
-          "source": "unscanned-file",
-          "where": "src/pages/index.astro:2",
-        },
-      ],
-      "inPublicDir": false,
-      "kind": "possibly-dead",
-    },
   ],
   "references": {
     "byConfidence": {
-      "certain": 0,
-      "high": 3,
+      "certain": 1,
+      "high": 6,
       "medium": 0,
       "unsafe": 0,
     },
@@ -96,14 +41,14 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "discarded": 0,
       "dynamic": 0,
       "out-of-scope": 0,
-      "resolved": 3,
+      "resolved": 7,
       "resolved-pattern": 0,
       "unresolved-alias": 0,
     },
     "byResolvedVia": {
-      "file": 1,
+      "file": 2,
       "project-root": 0,
-      "serving-root": 2,
+      "serving-root": 5,
       "speculative-root": 0,
     },
     "discarded": null,
@@ -120,14 +65,14 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "dead": 1,
       "format-opportunity": 0,
       "oversized": 0,
-      "possibly-dead": 3,
+      "possibly-dead": 0,
     },
-    "linkedReferences": 3,
+    "linkedReferences": 7,
     "potentialSavingBytes": 0,
     "probed": false,
-    "referencedAssets": 3,
-    "references": 3,
-    "sourceFiles": 4,
+    "referencedAssets": 6,
+    "references": 7,
+    "sourceFiles": 5,
   },
   "unusedVectors": {
     "assets": null,
@@ -143,34 +88,21 @@ exports[`buildReport > astro: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 4 source files and found 7 images, 490 B in total
-  3 of 3 references resolve, and they point at 3 of those images
-  the other 4 images have no reference Upfly could follow
+  scanned 5 source files and found 7 images, 490 B in total
+  7 of 7 references resolved, pointing at 6 of those images
+  1 image with no reference Upfly could follow
 
 Nothing was skipped.
 
-Findings — 4 items
+Findings — 1 item
 
   unreferenced images (1)
     public/never-used.png  70 B
-
-  possibly unreferenced (3) — each is named somewhere, but not by a reference Upfly could follow
-
-    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
-      src/pages/index.astro — 3 assets
-        public/banner.png  70 B
-          named in src/pages/index.astro:11: banner.png
-        public/favicon.png  70 B
-          named in src/pages/index.astro:7: favicon.png
-        src/assets/logo.png  70 B
-          named in src/pages/index.astro:2: logo.png
 
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
   images were not decoded, so oversized assets and format opportunities are unknown
-  1 file type had no adapter, so 1 file went unread:
-    .astro — 1 file
 "
 `;
 
@@ -339,8 +271,8 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
   savings not measured — images were not decoded (--no-probe)
 
   scanned 4 source files and found 8 images, 650 B in total
-  3 of 4 references resolve, and they point at 3 of those images
-  the other 5 images have no reference Upfly could follow
+  3 of 4 references resolved, pointing at 3 of those images
+  5 images with no reference Upfly could follow
 
 1 reference could not be resolved safely
 
@@ -469,8 +401,8 @@ exports[`buildReport > next-app: matches the approved human rendering 1`] = `
   savings not measured — images were not decoded (--no-probe)
 
   scanned 7 source files and found 10 images, 700 B in total
-  11 of 11 references resolve, and they point at 9 of those images
-  the other 1 image have no reference Upfly could follow
+  11 of 11 references resolved, pointing at 9 of those images
+  1 image with no reference Upfly could follow
 
 Nothing was skipped.
 
@@ -582,8 +514,8 @@ exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
   savings not measured — images were not decoded (--no-probe)
 
   scanned 3 source files and found 11 images, 1 KB in total
-  10 of 11 references resolve, and they point at 9 of those images
-  the other 2 images have no reference Upfly could follow
+  10 of 11 references resolved, pointing at 9 of those images
+  2 images with no reference Upfly could follow
 
 Nothing was skipped.
 
@@ -702,8 +634,8 @@ exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
   savings not measured — images were not decoded (--no-probe)
 
   scanned 5 source files and found 12 images, 1.4 KB in total
-  12 of 12 references resolve, and they point at 10 of those images
-  the other 2 images have no reference Upfly could follow
+  12 of 12 references resolved, pointing at 10 of those images
+  2 images with no reference Upfly could follow
   including 1 unreferenced SVG, 307 B — counted, not listed: Upfly will neither convert an SVG nor delete an asset
 
 Nothing was skipped.

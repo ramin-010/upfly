@@ -15,8 +15,12 @@ export { citeReferences, lineOf } from './citation.js';
 export type { Citation, CitationOptions, CitationResult, UnreadableSource } from './citation.js';
 export { cssAdapter, findCssReferences } from './adapters/css.js';
 export { htmlAdapter } from './adapters/html.js';
-export { javascriptAdapter } from './adapters/javascript.js';
+export { findJavaScriptReferences, javascriptAdapter } from './adapters/javascript.js';
 export { jsonAdapter } from './adapters/json.js';
+export { astroAdapter } from './adapters/astro.js';
+export { defaultAdapters } from './adapters/default-adapters.js';
+export { defineAdapter, rewriteByEdits } from './adapters/define.js';
+export type { AdapterDefinition } from './adapters/define.js';
 export { markdownAdapter, maskInactiveRegions } from './adapters/markdown.js';
 export {
   isExternalUrl,

@@ -3,11 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { cssAdapter } from './adapters/css.js';
-import { htmlAdapter } from './adapters/html.js';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { jsonAdapter } from './adapters/json.js';
-import { markdownAdapter } from './adapters/markdown.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
@@ -34,13 +30,7 @@ import type { Adapter } from './types.js';
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const PUBLIC_DIRS: Record<string, string> = {
   'vite-react': 'public',
@@ -1321,5 +1311,84 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
 
       expect(via).toBe(linked);
     }
+  });
+});
+
+describe('the headline reads correctly at a count of one (R21 / the agreement bug)', () => {
+  const ROOT = resolve('/repo');
+
+  /** One reference, one linked asset, one unreferenced asset — every count is 1. */
+  function singularReport(): Report {
+    const linked = {
+      path: join(ROOT, 'used.png'),
+      relative: 'used.png',
+      extension: '.png',
+      bytes: 10,
+    };
+    const orphan = {
+      path: join(ROOT, 'spare.png'),
+      relative: 'spare.png',
+      extension: '.png',
+      bytes: 10,
+    };
+    const references = resolveReferences(
+      [
+        {
+          file: join(ROOT, 'index.html'),
+          start: 0,
+          end: '/used.png'.length,
+          rawPath: '/used.png',
+          kind: 'attr',
+          ceiling: 'high',
+          asserted: true,
+        },
+      ],
+      { root: ROOT, assets: [linked, orphan], publicDirs: [''], exists: () => false },
+    );
+
+    return buildReport({
+      graph: buildGraph({
+        root: ROOT,
+        assets: [linked, orphan],
+        references,
+        unscannedFiles: [],
+      }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [linked, orphan],
+        sourceFiles: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+    });
+  }
+
+  it('says nothing that disagrees with itself', () => {
+    // Every fixture tree has plural counts here, so the fixtures cannot test this --
+    // and that is exactly how "1 image have no reference" shipped. The assertions are
+    // written against English rather than against the current output.
+    const rendered = renderReport(singularReport());
+
+    expect(rendered).not.toMatch(/\b1 image have\b/);
+    expect(rendered).not.toMatch(/\b1 reference resolve\b/);
+    expect(rendered).not.toMatch(/\bthey point at\b.*\n?/);
+  });
+
+  it('renders the singular lines in full, so the wording is reviewable', () => {
+    const rendered = renderReport(singularReport());
+
+    // Derived by writing the sentence out, not by pasting what the renderer emits.
+    expect(rendered).toContain('1 of 1 reference resolved, pointing at 1 of those images');
+    expect(rendered).toContain('1 image with no reference Upfly could follow');
   });
 });

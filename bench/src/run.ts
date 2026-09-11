@@ -31,12 +31,8 @@ import {
   buildGraph,
   buildReport,
   createSharpProbe,
-  cssAdapter,
+  defaultAdapters,
   discover,
-  htmlAdapter,
-  javascriptAdapter,
-  jsonAdapter,
-  markdownAdapter,
   probeAssets,
   resolveReferences,
   scanSources,
@@ -63,13 +59,7 @@ const BUDGET_MS = Number(
   process.env.UPFLY_BENCH_BUDGET_MS ?? (process.platform === 'win32' ? 5_000 : 3_500),
 );
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 interface Timing {
   readonly label: string;

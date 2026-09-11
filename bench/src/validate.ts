@@ -31,14 +31,10 @@ import {
   buildGraph,
   buildReport,
   createSharpProbe,
-  cssAdapter,
+  defaultAdapters,
   detectConventionRoots,
   discover,
-  htmlAdapter,
-  javascriptAdapter,
-  jsonAdapter,
   linkedPaths,
-  markdownAdapter,
   probeAssets,
   renderReport,
   resolveReferences,
@@ -48,13 +44,7 @@ import {
 import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
 

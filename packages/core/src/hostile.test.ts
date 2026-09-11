@@ -12,11 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cssAdapter } from './adapters/css.js';
-import { htmlAdapter } from './adapters/html.js';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { jsonAdapter } from './adapters/json.js';
-import { markdownAdapter } from './adapters/markdown.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
 import { audit } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
@@ -42,13 +38,7 @@ import type { Adapter } from './types.js';
  * other 9 999 files; a silent skip is worse than a crash because nobody learns.
  */
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const roots: string[] = [];
 

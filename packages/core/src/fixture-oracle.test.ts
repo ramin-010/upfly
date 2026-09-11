@@ -48,11 +48,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { cssAdapter } from './adapters/css.js';
-import { htmlAdapter } from './adapters/html.js';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { jsonAdapter } from './adapters/json.js';
-import { markdownAdapter } from './adapters/markdown.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover } from './discover.js';
 import { IMAGE_EXTENSIONS, toPosix } from './paths.js';
 import { scanSources } from './scan.js';
@@ -62,13 +58,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const TREES = join(HERE, '../../../fixtures');
 const ADAPTER_FIXTURES = join(HERE, '../fixtures');
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 /**
  * Every fixture root, and both kinds matter.
@@ -267,36 +257,17 @@ type NotDetected =
  * sits on — not inferred from the shape of the path — and the reason states why a
  * *correct* engine behaves this way. If a reason is hard to write, that is the signal the
  * behaviour is a defect rather than a decision, which is how this list is meant to be
- * used. 32 entries out of 119 harvested (file, path) pairs: 23 `ignored`, 7 `no-adapter`,
- * 2 `oracle-boundary`.
+ * used. 32 entries: 25 `ignored`, 3 `no-adapter`, 4 `oracle-boundary` — the `.astro`
+ * gap having closed in B1 and the adapter fixture having added four of its own.
  */
 const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDetected>>>> = {
-  // ── The coverage gap, in full. Seven references, three files, two file types. ───────
+  // ── The coverage gap, in full. Three references, one file, one file type. ──────────
   //
-  // `.astro` and `.njk` have no adapter, so *every* reference in these files is
-  // invisible — not filtered, never read. This is the clearest thing the harvest
-  // produced: `fixtures.test.ts` has a test named "rescues three astro assets that only
-  // index.astro references", and here is the same gap stated as the four paths it
-  // actually costs. When either adapter lands, these entries must be deleted, and the
-  // `no longer detected` check above will insist on it.
-  'astro/src/pages/index.astro': {
-    '../assets/logo.png': {
-      why: 'no-adapter',
-      because: 'an `import` in .astro frontmatter; no adapter claims .astro',
-    },
-    '/favicon.png': {
-      why: 'no-adapter',
-      because: 'a `<link rel=icon>` in .astro markup; no adapter claims .astro',
-    },
-    '/banner.png': {
-      why: 'no-adapter',
-      because: 'an `<img src>` in .astro markup; no adapter claims .astro',
-    },
-    '/texture.png': {
-      why: 'no-adapter',
-      because: 'a `url()` in an .astro `<style>`; no adapter claims .astro',
-    },
-  },
+  // ⚠️ **This block used to be seven references across two file types, and the four
+  // `.astro` ones are gone because B1's adapter reads them.** They were deleted because
+  // the `no longer detected` check above insisted: it fails on an exception for a path
+  // the pipeline now finds, which is exactly the mechanism that stops a stale excuse
+  // outliving the gap it described. `.njk` is what remains.
   'eleventy/src/index.njk': {
     '/img/logo.png': {
       why: 'no-adapter',
@@ -319,6 +290,31 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
   // JavaScript" is a rule: every one of these is what a regex would have taken. ───────
   'plain-html/index.html': {
     'images/removed.png': { why: 'ignored', because: 'inside an HTML comment' },
+  },
+  // ── The Astro adapter's own fixture, added in B1. ─────────────────────────────────
+  //
+  // Two deliberate non-references and two artefacts of the harvest's tokenizer, which
+  // is the split the categories exist to keep visible: the first pair says something
+  // about the engine, the second pair says something about this oracle.
+  'adapter-fixtures/astro/Page.astro': {
+    './commented.png': {
+      why: 'ignored',
+      because: 'inside a `//` comment in the frontmatter fence, which Babel discards',
+    },
+    './ignored.png': {
+      why: 'ignored',
+      because: 'inside an HTML comment in the template body, which parse5 discards',
+    },
+    '/assets/houston.png': {
+      why: 'oracle-boundary',
+      because:
+        'detected as `~/assets/houston.png`; the harvest tokenizes from the `/` and cannot see the alias prefix',
+    },
+    '}.png': {
+      why: 'oracle-boundary',
+      because:
+        'the tail of `` `/gallery/${gallery[0]}.png` ``, detected whole as a templated path with an `unsafe` ceiling',
+    },
   },
   'adapter-fixtures/html/page.html': {
     'deleted.png': { why: 'ignored', because: 'a CSS comment inside the `<style>` element' },
@@ -552,6 +548,8 @@ describe('§5.1(i) fixture references, derived rather than pasted', () => {
       for (const entry of Object.values(excused)) byKind[entry.why] += 1;
     }
 
-    expect(byKind).toEqual({ ignored: 23, 'no-adapter': 7, 'oracle-boundary': 2 });
+    // ⚠️ `no-adapter` fell 7 -> 3 when the Astro adapter landed. That is the number
+    // moving on purpose, which is what this assertion exists to force.
+    expect(byKind).toEqual({ ignored: 25, 'no-adapter': 3, 'oracle-boundary': 4 });
   });
 });

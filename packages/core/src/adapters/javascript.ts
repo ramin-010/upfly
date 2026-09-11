@@ -92,11 +92,36 @@ export const javascriptAdapter: Adapter = defineAdapter({
   extensions: ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'],
 
   findReferences({ file, text }): RawReference[] {
-    const plugins = PLUGINS_BY_EXTENSION.get(extensionOf(file));
+    return findJavaScriptReferences({ file, text, extension: extensionOf(file) });
+  },
+});
+
+/**
+ * Parse JavaScript or TypeScript and collect its image references.
+ *
+ * Exported for the same reason `findCssReferences` is: another adapter needs to hand
+ * this one a *region* of a file it owns. The Astro adapter's frontmatter fence is
+ * TypeScript inside a `.astro` file, and `file` must stay the real `.astro` path so
+ * every reference cites where a reader will actually find it — which is why the
+ * dialect is a parameter here rather than being re-derived from the extension.
+ *
+ * Offsets are absolute in `text`, so a caller that pads a region with spaces rather
+ * than slicing it gets file-absolute ranges for free and the range invariant
+ * (`source.slice(start, end) === rawPath`) keeps holding against the original file.
+ */
+export function findJavaScriptReferences(input: {
+  readonly file: string;
+  readonly text: string;
+  /** Dialect to parse as, as a dotted extension. */
+  readonly extension: string;
+}): RawReference[] {
+  {
+    const { file, text, extension } = input;
+    const plugins = PLUGINS_BY_EXTENSION.get(extension);
     if (plugins === undefined) {
       throw new UpflyError(
         'ADAPTER_PARSE_FAILED',
-        `The javascript adapter does not handle ${extensionOf(file) || 'files without an extension'} (${file}).`,
+        `The javascript adapter does not handle ${extension || 'files without an extension'} (${file}).`,
       );
     }
 
@@ -136,8 +161,8 @@ export const javascriptAdapter: Adapter = defineAdapter({
     );
 
     return [...context.references, ...guesses].sort((a, b) => a.start - b.start);
-  },
-});
+  }
+}
 
 /**
  * Whether a file that will not parse is a **template** wearing a code extension.

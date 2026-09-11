@@ -1,0 +1,35 @@
+---
+import { Image } from 'astro:assets';
+import Houston from '~/assets/houston.png';
+import local from './sidebar.webp';
+import Button from '~/components/Button.astro';
+
+const label = 'Read more';
+const gallery = ['gallery/one.png', 'gallery/two.png'];
+
+// A string that looks like a path but is not one, in a comment: ./commented.png
+---
+
+<section class="promo">
+  <link rel="icon" href="/favicon.png" />
+
+  <!-- The binding, not a path. The import above is the reference. -->
+  <Image src={Houston} alt="Houston" width="72" />
+  <Image src={local} alt="Sidebar" />
+
+  <img src="/banner.png" alt="Banner" />
+  <img src="./relative.png" alt="Relative" />
+
+  <!-- Not a static path: the resolver must call this dynamic, never broken. -->
+  <img src={`/gallery/${gallery[0]}.png`} alt="Templated" />
+
+  <a href="/docs/"><img src="/nested/icon.png" alt="Nested" /></a>
+
+  <!-- A commented-out reference: ./ignored.png -->
+
+  <style>
+    .promo {
+      background: url('/texture.png');
+    }
+  </style>
+</section>

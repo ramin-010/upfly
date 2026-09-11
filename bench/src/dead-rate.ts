@@ -36,26 +36,16 @@ import {
   audit,
   buildGraph,
   buildReport,
-  cssAdapter,
+  defaultAdapters,
   detectConventionRoots,
   discover,
-  htmlAdapter,
-  javascriptAdapter,
-  jsonAdapter,
-  markdownAdapter,
   resolveReferences,
   scanSources,
   sweepForMentions,
 } from 'upfly-core';
 import { type ItemVerdict, verifyFindings } from './verify.js';
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 interface Options {
   readonly root: string;

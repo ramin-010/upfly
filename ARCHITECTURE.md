@@ -241,7 +241,7 @@ would have had nothing to cite when it declined one — and a silent decline is 
 
 `url(inter.woff2)` in an `@font-face` is a perfectly asserted reference to a file the engine
 does not track. Adapters deliberately do **not** filter by extension: the tracked-extension
-policy lives in one place so it is not re-implemented across five adapters and forgotten by the
+policy lives in one place so it is not re-implemented across six adapters and forgotten by the
 sixth contributor, and so that adding SVG or video later flows through automatically.
 
 These are dropped without a report line. That is not a silent skip — a `.woff2` was never a
@@ -251,11 +251,17 @@ candidate asset, so declining it is not declining to do work, and counting fonts
 
 ### `possibly-dead`, and why "zero references" is usually a lie
 
-An asset referenced only from a `.vue`, `.svelte`, `.astro` or `.njk` file has zero references
-for a reason that has nothing to do with the asset: no adapter reads that format yet. Calling it
-dead is a false positive we manufactured ourselves. The `astro` fixture has three of them —
-`logo.png`, `favicon.png` and `banner.png` are all referenced from `index.astro`, and every one
-would otherwise be reported dead.
+An asset referenced only from a `.vue`, `.svelte` or `.njk` file has zero references for a reason
+that has nothing to do with the asset: no adapter reads that format yet. Calling it dead is a false
+positive we manufactured ourselves. The `eleventy` fixture has two of them — `logo.png` and
+`favicon.png` are referenced only from `.njk` templates, and both would otherwise be reported dead.
+
+⚠️ **`.astro` used to be the example here, and it is the best evidence for why this rule exists.**
+The `astro` fixture's `logo.png`, `favicon.png` and `banner.png` were all hedged; the Astro adapter
+landed in B1 and all three became ordinary links, taking that tree's hedges from three to zero and
+leaving its one genuinely unused asset still reported `dead`. **The hedge was doing exactly its job
+— standing in for coverage we did not have yet — and the fix for a hedge is an adapter, not a
+softer label.**
 
 The obvious rule — hedge globally whenever some extension went unread — degenerates. Measured on
 this repository, the unread list is `.astro`, `.njk`, `.yaml`, `.yml`, three dotfiles and
@@ -335,10 +341,11 @@ Parsing strategy: use a real parser wherever one is cheap and correct — `@babe
 JSON only. **Never regex JavaScript**; it will find references inside comments and strings and
 produce exactly the silent corruption this design exists to prevent.
 
-### The five that exist
+### The six that exist
 
 | Adapter | Extensions | Reads | Parser |
 |---|---|---|---|
+| `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, icon and preloaded-image `<link>`, `<style>`, `style=""` | `parse5` |
 | `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster`, CSS-in-JS | `@babel/parser` |

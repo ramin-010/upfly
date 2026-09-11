@@ -68,8 +68,20 @@ function headline(report: Report): string[] {
     `  ${savingsLine(summary, capped)}`,
     '',
     `  scanned ${count(summary.sourceFiles, 'source file')} and found ${count(summary.assets, 'image')}, ${bytes(summary.assetBytes)} in total`,
-    `  ${summary.linkedReferences} of ${count(summary.references, 'reference')} resolve, and they point at ${summary.referencedAssets} of those images`,
-    `  the other ${count(unreferenced, 'image')} have no reference Upfly could follow`,
+    // `resolved` and `pointing`, not `resolve` and `they point`: both are invariant,
+    // so neither can disagree with a count of one. Latent rather than live — measured
+    // scope today is zero, because no fixture has a single reference — but this is the
+    // same construction as the line below, which WAS live, and the lesson this project
+    // keeps relearning is to remove the possibility rather than to notice it later.
+    `  ${summary.linkedReferences} of ${count(summary.references, 'reference')} resolved, pointing at ${summary.referencedAssets} of those images`,
+    // ⚠️ No finite verb, and that is the whole point. This read `${…} have no
+    // reference…`, which renders "the other 1 image have no reference" — the
+    // subject–verb agreement bug for the seventh time in this renderer. It could not
+    // fire until the Astro adapter landed, because every fixture had a plural count
+    // here; the astro fixture's three hedged assets became ordinary links and left
+    // exactly one unreferenced image behind. A noun phrase has no verb to disagree
+    // with, so the fix is structural rather than another reminder to remember.
+    `  ${count(unreferenced, 'image')} with no reference Upfly could follow`,
     ...vectorLine(report),
     '',
   ];
@@ -79,7 +91,7 @@ function headline(report: Report): string[] {
  * R22's counted line, in the headline rather than only in the caveats.
  *
  * ⚠️ **This line exists because R22 would otherwise have recreated R21 #4.** The line
- * above says `the other 150 images have no reference Upfly could follow`; the findings
+ * above says `150 images with no reference Upfly could follow`; the findings
  * list beneath it now holds 24, because 126 were demoted. Two overlapping counts with
  * no stated relationship is the precise defect R21 #4 was raised about, and burying
  * the explanation forty lines down in the caveats is what R21 #4's own lesson forbids:

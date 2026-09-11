@@ -3,11 +3,7 @@ import { readFile as readFile_ } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { cssAdapter } from './adapters/css.js';
-import { htmlAdapter } from './adapters/html.js';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { jsonAdapter } from './adapters/json.js';
-import { markdownAdapter } from './adapters/markdown.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
 import { audit } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph, unreferencedAssets } from './graph.js';
@@ -31,13 +27,7 @@ import type { Adapter, Reference } from './types.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
 
-const ADAPTERS: readonly Adapter[] = [
-  cssAdapter,
-  htmlAdapter,
-  javascriptAdapter,
-  markdownAdapter,
-  jsonAdapter,
-];
+const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const NAMES = ['vite-react', 'next-app', 'astro', 'plain-html', 'eleventy'] as const;
 
@@ -235,18 +225,21 @@ describe('framework fixtures', () => {
       },
     );
 
-    it('rescues three astro assets that only index.astro references', async () => {
-      // The gap made concrete. `.astro` is unclaimed, so `logo.png` (an import),
-      // `favicon.png` (a `<link rel=icon>`) and `banner.png` (an `<img src>`) all
-      // have zero references for a reason that has nothing to do with the assets.
+    it('links all three astro assets now that an adapter reads .astro', async () => {
+      // ⚠️ This test used to assert the opposite, and the inversion is the point of
+      // B1. `logo.png` (a fence import), `favicon.png` (a `<link rel=icon>`) and
+      // `banner.png` (an `<img src>`) had zero references for a reason that had
+      // nothing to do with the assets: no adapter read the file naming them. All
+      // three are ordinary links now, and the tree has no unread file types left.
+      //
+      // Both halves of the file are represented here on purpose — the import comes
+      // from the frontmatter fence and the other two from the template body — so a
+      // fence-only or body-only adapter would fail this.
       const graph = await graphTree('astro');
 
-      expect(graph.unscannedExtensions).toEqual([{ ext: '.astro', fileCount: 1 }]);
+      expect(graph.unscannedExtensions).toEqual([]);
       expect(unreferencedAssets(graph).map((node) => node.asset.relative)).toEqual([
-        'public/banner.png',
-        'public/favicon.png',
         'public/never-used.png',
-        'src/assets/logo.png',
       ]);
     });
 
@@ -288,17 +281,20 @@ describe('framework fixtures', () => {
         });
       }
 
-      it('rescues the three astro assets that only index.astro references', async () => {
-        // Haystack (a). No adapter reads `.astro`, so all three have zero
-        // references for a reason that has nothing to do with the assets.
+      it('has nothing left to rescue in the astro tree', async () => {
+        // ⚠️ Inverted by B1. This was haystack (a)'s end-to-end case: three assets
+        // named only by an unread `.astro` file. They are linked now, so the sweep
+        // correctly finds nothing — a hedge here would be the engine hedging about
+        // a reference it can follow perfectly well.
+        //
+        // Haystack (a) has NOT lost its coverage: `sweep.test.ts` exercises it
+        // directly, and the eleventy tree still names assets only from unread `.njk`
+        // templates — see "rescues the eleventy assets that only .njk templates
+        // reference" below. That was checked rather than assumed before this test
+        // was changed.
         const { mentions } = await sweep('astro');
 
-        expect([...mentions.keys()].sort()).toEqual([
-          'public/banner.png',
-          'public/favicon.png',
-          'src/assets/logo.png',
-        ]);
-        expect(mentions.get('public/banner.png')?.[0]?.where).toBe('src/pages/index.astro:11');
+        expect([...mentions.keys()].sort()).toEqual([]);
       });
 
       it('leaves astro-s deliberately dead asset confidently dead', async () => {
@@ -398,16 +394,16 @@ describe('framework fixtures', () => {
         ]);
       });
 
-      it('reports astro-s three .astro-only assets as possibly-dead and one as dead', async () => {
+      it('reports astro-s one genuinely unused asset as dead, and hedges nothing', async () => {
+        // ⚠️ Inverted by B1: three hedges became zero. The one asset nothing names
+        // is still `dead`, which is what stops this reading as "the adapter made the
+        // findings go away" -- coverage removed three FALSE hedges and left the true
+        // finding untouched.
         const result = await auditTree('astro', false);
         const dead = result.findings.filter((finding) => finding.kind === 'dead');
         const hedged = result.findings.filter((finding) => finding.kind === 'possibly-dead');
 
-        expect(hedged.map((finding) => finding.asset)).toEqual([
-          'public/banner.png',
-          'public/favicon.png',
-          'src/assets/logo.png',
-        ]);
+        expect(hedged).toEqual([]);
         expect(dead.map((finding) => finding.asset)).toEqual(['public/never-used.png']);
       });
 
@@ -474,15 +470,25 @@ describe('framework fixtures', () => {
       for (const sourceFile of discovered.sourceFiles) seen.add(sourceFile.adapterId);
     }
 
-    expect([...seen].sort()).toEqual(['css', 'html', 'javascript', 'json', 'markdown']);
+    expect([...seen].sort()).toEqual(['astro', 'css', 'html', 'javascript', 'json', 'markdown']);
   });
 
-  it('leaves .astro and .njk unclaimed, which is the known gap', async () => {
-    // No adapter handles these yet — they are the empty cells in the compatibility
-    // matrix and the intended first community contributions (§1.5, §5 Phase 5).
-    const { discovered } = await scan('astro');
-    const claimed = discovered.sourceFiles.map((file) => file.relative);
+  it('claims .astro and still leaves .njk unclaimed, which is the remaining gap', async () => {
+    // ⚠️ Half of this test inverted. `.astro` is claimed as of B1; `.njk` is still
+    // an empty cell in the compatibility matrix and an intended community
+    // contribution (§1.5, §5 Phase 5).
+    //
+    // The `.njk` half is kept rather than dropped because it is the assertion that
+    // can still fail: a test that only says "everything is claimed" stops being able
+    // to notice the next gap.
+    const astro = await scan('astro');
+    const eleventy = await scan('eleventy');
 
-    expect(claimed.some((relative) => relative.endsWith('.astro'))).toBe(false);
+    expect(astro.discovered.sourceFiles.some((file) => file.relative.endsWith('.astro'))).toBe(
+      true,
+    );
+    expect(eleventy.discovered.sourceFiles.some((file) => file.relative.endsWith('.njk'))).toBe(
+      false,
+    );
   });
 });
