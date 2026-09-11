@@ -214,6 +214,24 @@ export interface ProbeOptions {
    */
   readonly maxEncodedAssets?: number;
   /**
+   * Assets to measure whatever the cap says.
+   *
+   * R35 requires every asset a pattern reference could match to be measured. A
+   * pattern is one edit covering N assets, so rewriting it is only safe if all N
+   * convert alike — which means an unmeasured target does not cost detail, it makes
+   * the condition impossible to establish and the pattern permanently undecidable. A
+   * cap that limits what we report is a convenience; a cap that limits what we can
+   * prove is a correctness bug.
+   *
+   * ⚠️ `Asset` objects rather than paths, and that is the whole point of the type.
+   * The cap is keyed on `asset.path`, which is absolute, while much of the planner
+   * speaks in project-relative paths; a set of bare strings here would line up with
+   * the probe by convention alone, and the day either side changed convention every
+   * pattern would become undecidable in total silence. Taking the objects means
+   * there is no string to be the wrong kind of string.
+   */
+  readonly alwaysMeasure?: readonly Asset[];
+  /**
    * Assets measured at once. Defaults to 4.
    *
    * Deliberately small: libvips already multithreads inside a single encode, so this
@@ -273,14 +291,21 @@ function assetsWithinCap(
   const eligible = assets.filter((asset) => couldEncode(asset, options.formats));
   if (eligible.length <= cap) return null;
 
-  const ordered = [...eligible].sort(
-    // Largest source first, ties broken by path so two runs over the same
-    // repository choose the same assets — rule 11 reaches the *selection*, not
-    // only the output order.
-    (a, b) => b.bytes - a.bytes || compareStrings(a.relative, b.relative),
-  );
+  // Exempt before the cap is applied rather than added back afterwards: added back,
+  // they would take slots from the largest assets and quietly turn "the 500 largest"
+  // into some smaller number. Exempted, the cap still means what it says and these
+  // sit outside it.
+  const exempt = new Set((options.alwaysMeasure ?? []).map((asset) => asset.path));
+  const ordered = [...eligible]
+    .filter((asset) => !exempt.has(asset.path))
+    .sort(
+      // Largest source first, ties broken by path so two runs over the same
+      // repository choose the same assets — rule 11 reaches the *selection*, not
+      // only the output order.
+      (a, b) => b.bytes - a.bytes || compareStrings(a.relative, b.relative),
+    );
 
-  return new Set(ordered.slice(0, Math.max(0, cap)).map((asset) => asset.path));
+  return new Set([...exempt, ...ordered.slice(0, Math.max(0, cap)).map((asset) => asset.path)]);
 }
 
 /** Whether any requested format could produce a measurement, judged by extension alone. */

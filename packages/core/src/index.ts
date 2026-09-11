@@ -55,6 +55,8 @@ export type {
   Operation,
 } from './manifest.js';
 export { patternTargets, planOptimization } from './plan.js';
+export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
+export type { OptimizeInput, OptimizeResult } from './optimize.js';
 export type {
   OptimizationPlan,
   PlanInput,

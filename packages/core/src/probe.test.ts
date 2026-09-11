@@ -255,6 +255,67 @@ describe('probeAssets', () => {
     });
   });
 
+  describe('alwaysMeasure, which is what R35 needs to be true', () => {
+    it('measures an exempt asset the cap would otherwise have excluded', async () => {
+      const small = asset('small.png', 100);
+
+      const results = await probeAssets([small, asset('huge.png', 9000), asset('mid.png', 500)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 1,
+        alwaysMeasure: [small],
+      });
+
+      const measured = results.filter((result) => result.encoded.length > 0);
+      expect(measured.map((result) => result.relative).sort()).toEqual(['huge.png', 'small.png']);
+    });
+
+    it('does not spend a capped slot on the exempt asset', async () => {
+      // Exempting has to happen before the cap applies, not by adding the asset back
+      // afterwards. Added back, it would take a slot from the largest assets and
+      // quietly turn "the 1 largest" into "the 0 largest".
+      const small = asset('small.png', 100);
+
+      const results = await probeAssets([small, asset('huge.png', 9000), asset('mid.png', 500)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 1,
+        alwaysMeasure: [small],
+      });
+
+      const huge = results.find((result) => result.relative === 'huge.png');
+      expect(huge?.encoded).toHaveLength(1);
+      expect(huge?.skipped).toEqual([]);
+    });
+
+    it('still caps everything that was not exempted', async () => {
+      const small = asset('small.png', 100);
+
+      const results = await probeAssets([small, asset('huge.png', 9000), asset('mid.png', 500)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        maxEncodedAssets: 1,
+        alwaysMeasure: [small],
+      });
+
+      const mid = results.find((result) => result.relative === 'mid.png');
+      expect(mid?.encoded).toEqual([]);
+      expect(mid?.skipped[0]).toMatchObject({ code: 'beyond-encode-cap' });
+    });
+
+    it('changes nothing when no cap is in force', async () => {
+      const small = asset('small.png', 100);
+
+      const results = await probeAssets([small, asset('huge.png', 9000)], {
+        probe: fakeProbe(),
+        formats: ['webp'],
+        alwaysMeasure: [small],
+      });
+
+      expect(results.every((result) => result.encoded.length === 1)).toBe(true);
+    });
+  });
+
   describe('the encode cap', () => {
     it('measures the largest sources and reports the rest as unmeasured', async () => {
       const results = await probeAssets(
