@@ -449,6 +449,7 @@ describe('discover', () => {
       root,
       assets: [],
       sourceFiles: [],
+      directories: ['empty'],
       ignoredCount: 0,
       skipped: [],
       excludedRoots: [],
@@ -463,5 +464,69 @@ describe('discover', () => {
 
     expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
     expect(result.sourceFiles).toEqual([]);
+  });
+
+  describe('the walked directories', () => {
+    it('lists every directory it descended into, sorted, without the root', async () => {
+      const root = await makeTree({
+        'index.html': '',
+        'public/hero.png': '',
+        'src/components/button.css': '',
+        'src/hero.png': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.directories).toEqual(['public', 'src', 'src/components']);
+    });
+
+    it('lists a directory holding only files nothing tracks', async () => {
+      // The case that decides why this is recorded rather than derived. Deriving
+      // directories from the paths in `assets` and `sourceFiles` loses this one
+      // entirely, and on shadcn-ui that is the difference between finding 12 serving
+      // roots and finding 11: `templates/next-app/public` holds only a `.gitkeep`.
+      const root = await makeTree({
+        'public/.gitkeep': '',
+        'static/robots.txt': '',
+        'src/hero.png': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.assets.map((asset) => asset.relative)).toEqual(['src/hero.png']);
+      expect(result.directories).toEqual(['public', 'src', 'static']);
+    });
+
+    it('lists an entirely empty directory', async () => {
+      const root = await makeTree({ 'assets/': '', 'a.png': '' });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.directories).toEqual(['assets']);
+    });
+
+    it('omits a directory an ignore rule excluded, because the walk never entered it', async () => {
+      const root = await makeTree({
+        '.upflyignore': 'legacy/\n',
+        'legacy/public/old.png': '',
+        'public/hero.png': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.directories).toEqual(['public']);
+      expect(result.excludedRoots.map((excluded) => excluded.relative)).toEqual(['legacy']);
+    });
+
+    it('omits node_modules, which is where a detector would otherwise find hundreds', async () => {
+      const root = await makeTree({
+        'node_modules/some-package/public/demo.png': '',
+        'public/hero.png': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.directories).toEqual(['public']);
+    });
   });
 });

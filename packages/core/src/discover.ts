@@ -98,6 +98,7 @@ interface AssetCandidate {
 interface WalkState {
   readonly assetCandidates: AssetCandidate[];
   readonly sourceFiles: SourceFile[];
+  readonly directories: string[];
   readonly skipped: SkippedEntry[];
   readonly excludedRoots: ExcludedRoot[];
   readonly unscannedFiles: UnscannedFile[];
@@ -119,6 +120,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
   const state: WalkState = {
     assetCandidates: [],
     sourceFiles: [],
+    directories: [],
     skipped: [],
     excludedRoots: [],
     unscannedFiles: [],
@@ -135,6 +137,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     root,
     assets: assets.sort(byRelativePath),
     sourceFiles: state.sourceFiles.sort(byRelativePath),
+    directories: state.directories.sort(compareStrings),
     ignoredCount: state.ignoredCount,
     skipped: state.skipped.sort(byRelativePath),
     excludedRoots: state.excludedRoots.sort(byRelativePath),
@@ -356,6 +359,10 @@ function classifyEntry(
       return;
     }
     nextLevel.push(path);
+    // Recorded here rather than derived later from the file paths: a directory
+    // holding only files nothing tracks leaves no trace in the asset or source
+    // lists, and serving-root detection needs the directory itself.
+    input.state.directories.push(relative);
     return;
   }
 

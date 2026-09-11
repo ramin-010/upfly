@@ -368,6 +368,20 @@ export interface DiscoveryResult {
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
   /**
+   * Every directory the walk descended into, POSIX-relative to `root` and sorted.
+   * The root itself is not included.
+   *
+   * Recorded rather than derived from the paths in `assets` and `sourceFiles`, and
+   * the difference is not theoretical: a directory holding only files nothing tracks
+   * leaves no trace in either list. Measured on `shadcn-ui`, deriving finds 11 of its
+   * 12 serving roots, because `templates/next-app/public` holds a single `.gitkeep`.
+   * A recorded list cannot disagree with the walk, because it is the walk.
+   *
+   * Excluded directories are absent: the walk never entered them, and serving-root
+   * detection reading them would contradict the ignore rules.
+   */
+  readonly directories: readonly string[];
+  /**
    * Files no adapter claimed, sorted by `relative`.
    *
    * Excluded and ignored entries are deliberately absent: an ignore rule is an
