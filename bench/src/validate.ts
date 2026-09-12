@@ -15,52 +15,34 @@
  */
 
 import type { Dirent } from 'node:fs';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { argv, chdir, cwd, stdout } from 'node:process';
 import {
   type Adapter,
-  type Asset,
   CONVENTIONAL_SERVING_ROOTS,
   type Graph,
   IMAGE_EXTENSIONS,
   type Reference,
   type Report,
   type ServingRoots,
-  audit,
-  buildGraph,
   buildReport,
-  createSharpProbe,
   defaultAdapters,
-  detectConventionRoots,
-  discover,
   linkedPaths,
-  loadAliases,
-  probeAssets,
   renderReport,
-  resolveReferences,
-  scanSources,
-  sweepForMentions,
 } from 'upfly-core';
+import { type PipelineOutput, runPipeline as enginePipeline } from './pipeline.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
 import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
-/** Lowercased asset basenames, for the mention pass `scan` does while reading. */
-function basenamesOf(assets: readonly Asset[]): Set<string> {
-  return new Set(
-    assets.map((asset) => asset.relative.slice(asset.relative.lastIndexOf('/') + 1).toLowerCase()),
-  );
-}
-
 /** One complete pass over a repository, from the walk to the rendered report. */
 interface PipelineResult {
-  readonly discovery: Awaited<ReturnType<typeof discover>>;
-  readonly scanned: Awaited<ReturnType<typeof scanSources>>;
+  readonly discovery: PipelineOutput['discovery'];
+  readonly scanned: PipelineOutput['scanned'];
   readonly references: readonly Reference[];
   readonly graph: Graph;
   readonly report: Report;
@@ -191,103 +173,50 @@ function servingRootsFor(repo: RepoSpec): ServingRoots {
     : { dirs: repo.publicDirs, declared: true };
 }
 
+/**
+ * One repository, through the shared pipeline, then rendered.
+ *
+ * The engine wiring lives in `pipeline.ts` and is the same code `optimize` runs
+ * against. It used to live here in its own copy, which is how the headline accuracy
+ * figure and the write path came to describe two different pipelines (R55).
+ *
+ * ⚠️ The two `publicDirs` arguments below are deliberately not the same value, and
+ * that is a wart rather than a design. On an `unconfigured` entry the resolver gets
+ * the convention guess while the sweep and the audit get `repo.publicDirs`, which is
+ * empty. Preserved exactly so the extraction could be proved byte-identical against
+ * the reports it produced before; raised in STATE.md rather than fixed in the same
+ * change that was supposed to change nothing.
+ */
 async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
-  const root = join(VALIDATION_ROOT, repo.name);
-  const readFileText = (path: string) => readFile(path, 'utf8');
+  const output = await enginePipeline({
+    root: join(VALIDATION_ROOT, repo.name),
+    servingRoots: () => servingRootsFor(repo),
+    publicDirs: () => repo.publicDirs,
+    probeOptions: () => (probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null),
+  });
 
-  const started = performance.now();
-  const discovery = await discover({ root, adapters: ADAPTERS });
-  const scanned = await scanSources({
-    sourceFiles: discovery.sourceFiles,
-    adapters: ADAPTERS,
-    readFile: readFileText,
-    assetBasenames: basenamesOf(discovery.assets),
-  });
-  // B1: the aliases the project declares, read from the files `discover` already
-  // found. No second walk — the config files are ordinary discovered files.
-  const aliases = await loadAliases({
-    root: discovery.root,
-    files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
-    readFile: readFileText,
-    exists: (path) => existsSync(path),
-  });
-  const references = resolveReferences(scanned.references, {
-    root: discovery.root,
-    assets: discovery.assets,
-    servingRoots: servingRootsFor(repo),
-    excludedRoots: discovery.excludedRoots,
-    aliases,
-    exists: (path) => existsSync(path),
-  });
-  const graph = buildGraph({
-    root: discovery.root,
-    assets: discovery.assets,
-    references,
-    unscannedFiles: [...discovery.unscannedFiles, ...scanned.unscanned],
-  });
-  const graphMs = Math.round(performance.now() - started);
-
-  // --- the audit and report, which (c) and (d) are reviews of ---------------------
-  const sweep = await sweepForMentions({
-    graph,
-    readFile: readFileText,
-    // Haystack (c): only read if the cheaper two leave something unexplained.
-    scannedMentions: scanned.mentions,
-    publicDirs: repo.publicDirs,
-  });
-  // ⚠️ **The dominant cost of a validate run, and irrelevant to nearly every question this
-  // phase asked.** Encoding 300 images with sharp says nothing about whether a reference
-  // was detected, yet it ran on every invocation — including ones that changed a single
-  // word in a report heading. `--no-probe` skips it; §3.5 says when to use which tier.
-  //
-  // `undefined` rather than `[]`: `audit` reads `probes !== undefined` as "was probed", so
-  // an empty array would claim a measurement happened and report no savings, which is the
-  // silent-lie shape rather than the honest one.
-  const probes = probed
-    ? await probeAssets(
-        graph.assets.map((node) => node.asset),
-        {
-          probe: await createSharpProbe(),
-          formats: ['webp'],
-          maxEncodedAssets: 100,
-        },
-      )
-    : undefined;
-  // R17: which directories a framework reads certain filenames from. Derived from
-  // the file list `discover` already produced, so no extra walk and no disk access
-  // in `audit` — `next.config.mjs` is claimed by the JavaScript adapter, so it is
-  // already a source file by the time this runs.
-  const conventionRoots = detectConventionRoots([
-    ...discovery.sourceFiles.map((file) => file.relative),
-    ...discovery.unscannedFiles.map((file) => file.relative),
-  ]);
-
-  // Spread rather than `probes: probes`: under `exactOptionalPropertyTypes` an explicit
-  // `undefined` is not the same as an absent key, and `audit` reads the key's presence as
-  // "was probed". Omitting it is what makes `--no-probe` say *"savings not measured"*
-  // rather than *"no savings found"*.
-  const auditResult = await audit({
-    graph,
-    conventionRoots,
-    sweep,
-    readFile: readFileText,
-    publicDirs: repo.publicDirs,
-    ...(probes === undefined ? {} : { probes }),
-  });
-  // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes only
-  // whether `unusedVectors.assets` is populated, never a finding or a count, so the
-  // determinism comparison and every number in the artefacts are unaffected.
+  // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes
+  // only whether `unusedVectors.assets` is populated, never a finding or a count, so
+  // the determinism comparison and every number in the artefacts are unaffected.
   const report = buildReport({
-    graph,
-    audit: auditResult,
-    discovery,
-    sweep,
-    servingRoots: servingRootsFor(repo),
-    ...(probes === undefined ? {} : { probes }),
+    graph: output.graph,
+    audit: output.audit,
+    discovery: output.discovery,
+    sweep: output.sweep,
+    servingRoots: output.servingRoots,
+    ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeUnusedVectors: true,
   });
 
-  return { discovery, scanned, references, graph, report, human: renderReport(report), graphMs };
+  return {
+    discovery: output.discovery,
+    scanned: output.scanned,
+    references: output.references,
+    graph: output.graph,
+    report,
+    human: renderReport(report),
+    graphMs: output.graphMs,
+  };
 }
 
 /**
