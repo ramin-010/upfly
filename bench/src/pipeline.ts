@@ -17,6 +17,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import {
   type Adapter,
+  type AliasMap,
   type Asset,
   type AssetProbe,
   type AuditResult,
@@ -110,6 +111,14 @@ export interface PipelineOutput {
    * carry `<css input>:144:13: Unknown word /` verbatim.
    */
   readonly scanDiagnostics: readonly ScanDiagnostic[];
+  /**
+   * The aliases the resolver used, carried out so `relocate` can invert them.
+   *
+   * The graph does not record that a reference came through an alias, so a caller
+   * planning a move needs the same map the resolver had or it will re-spell an aliased
+   * import as though it were relative (R70).
+   */
+  readonly aliases: AliasMap;
   /** Milliseconds to build the graph, excluding the probe (the §3.4 budget). */
   readonly graphMs: number;
 }
@@ -213,6 +222,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     probes,
     diagnostics,
     scanDiagnostics,
+    aliases,
     graphMs,
   };
 }

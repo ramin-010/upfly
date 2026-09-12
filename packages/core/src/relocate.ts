@@ -82,6 +82,14 @@ export type RefusalCode =
   | 'destination-occupied'
   /** Two moves in one request target the same destination. */
   | 'destination-claimed-twice'
+  /**
+   * Two moves in one request move the same file to different places.
+   *
+   * Found by writing the real-repository runner: `accepted` is keyed on the source, so
+   * the second move silently replaced the first and the plan reported one move having
+   * been asked for two. A quiet wrong answer, and the kind only a second caller finds.
+   */
+  | 'source-claimed-twice'
   /** The asset is not in the graph, so we cannot know what points at it. */
   | 'not-an-asset';
 
@@ -149,7 +157,7 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
   const claimed = new Map<string, string>();
 
   for (const move of [...input.moves].sort((a, b) => compareStrings(a.from, b.from))) {
-    const refusal = refuse(move, input, byRelative, claimed);
+    const refusal = refuse(move, input, byRelative, claimed, accepted);
     if (refusal !== null) {
       refused.push(refusal);
       continue;
@@ -188,6 +196,7 @@ function refuse(
   input: RelocateInput,
   byRelative: ReadonlyMap<string, string>,
   claimed: ReadonlyMap<string, string>,
+  accepted: ReadonlyMap<string, Move>,
 ): RefusedMove | null {
   const say = (code: RefusalCode, reason: string): RefusedMove => ({ ...move, code, reason });
 
@@ -207,6 +216,14 @@ function refuse(
     return say(
       'outside-project',
       `${move.to} is outside this project. Upfly can only rewrite references to files it can see, so every reference to ${move.from} would break.`,
+    );
+  }
+
+  const already = accepted.get(move.from);
+  if (already !== undefined) {
+    return say(
+      'source-claimed-twice',
+      `${move.from} is already being moved to ${already.to}, so Upfly cannot also move it to ${move.to}.`,
     );
   }
 

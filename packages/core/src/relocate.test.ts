@@ -401,6 +401,27 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(plan.declined[0]?.reason).toContain('no static path to replace');
   });
 
+  it('refuses a second move of the SAME file, rather than quietly taking the last', () => {
+    // 🔴 Found by writing the real-repository runner, not by a test. `accepted` is keyed
+    // on the source, so the second move silently replaced the first and the plan
+    // reported one move having been asked for two — a quiet wrong answer, and the kind
+    // only a second caller ever finds.
+    const graph = graphFor({ assets: ['src/a.png'], references: [] });
+    const plan = planRelocation({
+      graph,
+      moves: [
+        { from: 'src/a.png', to: 'src/one/a.png' },
+        { from: 'src/a.png', to: 'src/two/a.png' },
+      ],
+      servingRoots: SERVING,
+      publicDir: 'public',
+      aliases: NO_ALIASES,
+    });
+
+    expect(plan.moves).toEqual([{ from: 'src/a.png', to: 'src/one/a.png' }]);
+    expect(plan.refused.map((refusal) => refusal.code)).toEqual(['source-claimed-twice']);
+  });
+
   it('refuses two moves that both claim one destination', () => {
     const graph = graphFor({ assets: ['src/a.png', 'src/b.png'], references: [] });
     const plan = planRelocation({
