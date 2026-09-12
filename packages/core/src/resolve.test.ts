@@ -228,8 +228,9 @@ describe('resolveReferences', () => {
     });
 
     it('tries every serving root a monorepo has', () => {
-      // R13. shadcn-ui has six `public/` directories, and resolving a file under
-      // `apps/v4/` against a single one produced 93 false `broken` findings.
+      // R13. shadcn-ui has twelve `public/` directories and none at its workspace
+      // root, so resolving a file under `apps/v4/` against a single one produced 93
+      // false `broken` findings when measured, and 96 when measured again.
       const monorepo = [asset('apps/v4/public/images/hero.png')];
 
       const [resolved] = resolveReferences(

@@ -39,11 +39,14 @@ import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from '
  * One value with both halves means a caller cannot supply the dirs without also
  * saying where they came from.
  *
- * **`dirs` is a list, because a monorepo has more than one.** shadcn-ui has six, and a
- * file under `apps/v4/` that references `/images/hero.png` means `apps/v4/public/`,
- * not the one at the workspace root. Resolving that against a single serving root
- * produced 93 false `broken` findings on it. Order does not decide precedence: the
- * nearest ancestor of the referencing file wins, which is what a bundler does.
+ * **`dirs` is a list, because a monorepo has more than one.** shadcn-ui has twelve,
+ * and a file under `apps/v4/` that references `/images/hero.png` means
+ * `apps/v4/public/` — there is no `public/` at its workspace root at all. Resolving
+ * against a single serving root produced 93 false `broken` findings when that was
+ * first measured; the same measurement today gives 96, and **all 96 resolve under a
+ * nested app's public directory**, so the two numbers are one finding taken twice
+ * rather than two. Order does not decide precedence: the nearest ancestor of the
+ * referencing file wins, which is what a bundler does.
  */
 export interface ServingRoots {
   /** Relative to the project root. A plain static site serves from the root: `['']`. */
@@ -462,8 +465,12 @@ class AssetIndex {
  * 1. The serving root whose app directory is the **nearest ancestor** of the
  *    referencing file. A monorepo has one `public/` per app, and `/images/hero.png`
  *    inside `apps/v4/` means `apps/v4/public/` — that is what the bundler serving
- *    that app does, and resolving it against a sibling app's public directory is
- *    how 93 false `broken` findings happened on shadcn-ui.
+ *    that app does. Two distinct failures have been measured here and they must not
+ *    be confused: resolving against a **single** serving root produces false `broken`
+ *    findings (96 on shadcn-ui), while trying **every** root regardless of ancestry
+ *    produces false *links* to another app's asset (23), which is the worse of the
+ *    two. This rung is why the first does not happen; `servingRootsFor` is why the
+ *    second does not.
  * 2. The project root, because a plain static site serves `/hero.png` from there.
  *
  * A serving root that is **not** an ancestor of the referencing file is not tried at
