@@ -179,7 +179,21 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     runId: input.runId,
     runDir,
     now: input.now,
-    declined: plan.declined,
+    // R66: both lists, because `Declined` in the manifest is *"something the run
+    // chose not to do"* — action-scoped — and not removing an original is exactly
+    // that. It is kept out of `plan.declined` only because the REPORT renders that
+    // list under "Examined and not converted", which these assets were. The manifest
+    // has no such heading to contradict, and it is the record that outlives the run,
+    // so leaving the kept originals out of it would put the silence back where it
+    // matters most.
+    declined: [
+      ...plan.declined,
+      ...plan.keptOriginals.map((kept) => ({
+        path: kept.asset,
+        line: null,
+        reason: kept.reason,
+      })),
+    ],
   };
 
   return {

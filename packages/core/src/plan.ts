@@ -111,11 +111,39 @@ export interface PlanRefusal {
   readonly checkable: number;
 }
 
+/**
+ * An asset that converted while its original was deliberately left in place (R66).
+ *
+ * ⚠️ **Its own list, and not `declined`, because `declined` would make a heading
+ * false.** The report renders that list under *"Examined and not converted"*, and
+ * these assets **were** converted — filing them there would put a converted asset
+ * under a heading saying it was not, which is the R21 #4 shape of two counts that
+ * cannot both be true. Kept disjoint instead: an asset appears here **or** in
+ * `declined`, never in both, and `conversions` still holds every conversion.
+ */
+export interface KeptOriginal {
+  /** POSIX-relative path of the asset whose original survives. */
+  readonly asset: string;
+  /** Why it survives, in a sentence a user can act on. */
+  readonly reason: string;
+}
+
 export interface OptimizationPlan {
   readonly conversions: readonly PlannedConversion[];
   readonly rewrites: readonly PlannedRewrite[];
   /** Everything the planner decided against, each with the reason it decided. */
   readonly declined: readonly Declined[];
+  /**
+   * Conversions under `replace` whose original was kept anyway, and why (R66).
+   *
+   * 🔴 **The behaviour is correct and the silence was not.** Measured on
+   * `scratch-www`: 374 conversions produced **373** deletes, and the one asset whose
+   * original survived said so nowhere — a user who asked for `replace` got 373
+   * originals removed and 1 kept with nothing accounting for the difference. That is
+   * the fifth silent omission of this phase, and the first where the *behaviour* under
+   * it was right all along.
+   */
+  readonly keptOriginals: readonly KeptOriginal[];
   /**
    * Set when the planner refused to plan anything, and null on an ordinary run.
    *
@@ -157,6 +185,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
       conversions: [],
       rewrites: [],
       declined: [],
+      keptOriginals: [],
       refusal: {
         code: 'serving-root-unknown',
         reason: `Only ${health.linked} of ${health.checkable} root-relative references resolved, so Upfly cannot tell where this project serves files from. Declare the directory your site serves from and run again.`,
@@ -210,6 +239,11 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     declined: declined.sort(
       (a, b) => a.path.localeCompare(b.path) || a.reason.localeCompare(b.reason),
     ),
+    // Derived from the surviving conversions rather than collected as they were
+    // decided, so it cannot drift: an asset withdrawn later by `vetoPatterns` is no
+    // longer a conversion and therefore no longer claims a kept original. Collecting
+    // it earlier would have reported a kept original for a file that never converted.
+    keptOriginals: keptOriginals([...converting.values()], input),
     refusal: null,
   };
 }
@@ -350,6 +384,42 @@ function convertDecision(
  * different plan on three operating systems for one repository is the worse trade,
  * and a wrong image is not a failure anybody would notice in time.
  */
+/**
+ * The conversions under `replace` whose originals survive, and why (R66).
+ *
+ * 🔴 **The behaviour is correct — this reports it, it does not change it.** Inside a
+ * served directory a reference we failed to rewrite is a **404**: bad, but visible, and
+ * the user sees a missing image. Outside one the asset is bundler-managed, and the
+ * same miss is a **build failure**. Those are different severities, so they get
+ * different defaults, and the option is called `publicPolicy` precisely because it
+ * governs public assets — it does not authorise deleting anything else.
+ *
+ * ⚠️ **What was wrong was the silence.** `scratch-www` produced 374 conversions and 373
+ * deletes with nothing anywhere accounting for the difference. A user who asks for
+ * `replace` and gets one original back needs the sentence, not the arithmetic.
+ *
+ * Empty under `keep-original`, where every original is kept and saying so 374 times
+ * would bury the one case that means something.
+ */
+function keptOriginals(
+  conversions: readonly PlannedConversion[],
+  input: PlanInput,
+): KeptOriginal[] {
+  if (input.publicPolicy !== 'replace') return [];
+
+  return conversions
+    .filter((conversion) => !conversion.replacesOriginal)
+    .map((conversion) => ({
+      asset: conversion.asset,
+      reason:
+        'converted, but the original was kept: it is outside a directory this project serves, ' +
+        'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
+        'failed to rewrite would break the build instead of showing a missing image. ' +
+        '`--replace` governs assets in a served directory.',
+    }))
+    .sort((a, b) => compareStrings(a.asset, b.asset));
+}
+
 /**
  * Why one asset in a colliding set is declined, naming everything in its way.
  *

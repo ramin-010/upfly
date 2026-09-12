@@ -512,6 +512,87 @@ describe('the public policy', () => {
 
     expect(plan.conversions[0]?.replacesOriginal).toBe(false);
   });
+
+  describe('R66: keeping that original is correct, and saying so is the fix', () => {
+    /**
+     * 🔴 **The behaviour was right and the silence was not.** Measured on `scratch-www`:
+     * 374 conversions produced **373** deletes, and the one asset whose original
+     * survived said so nowhere — so a user who asked for `replace` got one original
+     * back with nothing accounting for the difference. Fifth silent omission of the
+     * phase, and the first where the behaviour under it needed no change at all.
+     *
+     * Why it is right: inside a served directory a reference we failed to rewrite is a
+     * **404** — bad, but visible. Outside one the asset is bundler-managed and the same
+     * miss is a **build failure**. Different severity, different default.
+     */
+    const outside = {
+      assets: [asset('src/logo.png')],
+      references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
+      publicPolicy: 'replace' as const,
+    };
+
+    it('reports the kept original with a reason naming the consequence', () => {
+      const plan = planOptimization(input(outside));
+
+      expect(plan.keptOriginals).toEqual([
+        { asset: 'src/logo.png', reason: expect.stringContaining('break the build') },
+      ]);
+      expect(plan.keptOriginals[0]?.reason).toContain('outside a directory this project serves');
+    });
+
+    it('keeps the asset OUT of declined, which says it was not converted', () => {
+      // ⚠️ The property the whole design rests on. The report renders `declined` under
+      // "Examined and not converted", so filing a converted asset there would put it
+      // under a heading saying the opposite — two counts that cannot both be true,
+      // which is R21 #4's shape. The lists are disjoint and `conversions` is complete.
+      const plan = planOptimization(input(outside));
+
+      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual(['src/logo.png']);
+      expect(plan.declined.map((entry) => entry.path)).not.toContain('src/logo.png');
+    });
+
+    it('says nothing under keep-original, where every original is kept', () => {
+      // Reporting it there would be 374 copies of a sentence that means nothing,
+      // which buries the one case that does. Same argument as `PlanRefusal`'s.
+      expect(
+        planOptimization(input({ ...outside, publicPolicy: 'keep-original' })).keptOriginals,
+      ).toEqual([]);
+    });
+
+    it('says nothing about a public asset, whose original really is removed', () => {
+      const plan = planOptimization(
+        input({
+          assets: [asset('public/hero.png')],
+          references: [resolved('index.html', '/hero.png', 'public/hero.png')],
+          publicPolicy: 'replace',
+        }),
+      );
+
+      expect(plan.conversions[0]?.replacesOriginal).toBe(true);
+      expect(plan.keptOriginals).toEqual([]);
+    });
+
+    it('does not claim a kept original for an asset that never converted', () => {
+      // 🔴 Derived from the SURVIVING conversions, not collected as they were decided.
+      // R65 withdraws a whole pattern's conversions after the fact, so a list built
+      // earlier would report a kept original for a file that was never written — a
+      // false statement about a file on disk, which is worse than the silence it
+      // replaced.
+      const plan = planOptimization(
+        input({
+          assets: [asset('src/a-light.png'), asset('src/a-dark.png', 1_000)],
+          references: [
+            pattern('src/App.jsx', './a-${mode}.png', ['src/a-light.png', 'src/a-dark.png']),
+          ],
+          probes: [probe('src/a-light.png', 4_000), probe('src/a-dark.png', 4_000)],
+          publicPolicy: 'replace',
+        }),
+      );
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.keptOriginals).toEqual([]);
+    });
+  });
 });
 
 describe('everything declined carries a reason', () => {

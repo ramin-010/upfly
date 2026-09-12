@@ -111,7 +111,7 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
       return true;
     }
 
-    const { conversions, rewrites, declined } = result.plan;
+    const { conversions, rewrites, declined, keptOriginals } = result.plan;
     stdout.write(
       `  plan      ${conversions.length} converted, ${rewrites.length} files rewritten, ${declined.length} declined  (${seconds}s)\n`,
     );
@@ -126,6 +126,18 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
       stdout.write(`    ${conversion.asset} -> ${conversion.target}  ${conversion.savedBytes} B\n`);
     }
     if (conversions.length > 5) stdout.write(`    ... and ${conversions.length - 5} more\n`);
+
+    // R66. The absence of this line is what made 374 conversions and 373 deletes read
+    // as an arithmetic slip: the behaviour was right and nothing said so.
+    if (keptOriginals.length > 0) {
+      stdout.write(
+        `  kept      ${keptOriginals.length} original${keptOriginals.length === 1 ? '' : 's'}, outside a served directory where a missed reference breaks the build\n`,
+      );
+      for (const kept of keptOriginals.slice(0, 5)) stdout.write(`    ${kept.asset}\n`);
+      if (keptOriginals.length > 5) {
+        stdout.write(`    ... and ${keptOriginals.length - 5} more\n`);
+      }
+    }
 
     // R54 asked what this number actually says. Grouped, because 44 lines of the
     // same sentence tells a reader nothing that one line and a count does not.
