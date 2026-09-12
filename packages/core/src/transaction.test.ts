@@ -221,6 +221,21 @@ describe('prepare', () => {
     );
   });
 
+  it('refuses two creates whose paths differ only in case, which are one file on Windows', async () => {
+    // Neither file exists yet, so the absent check passes for both and only this
+    // catches it. Comparing paths exactly let the second create land on top of the
+    // first and the run reported success.
+    const harness = memoryStore(tree());
+    const clash: PlannedOperation[] = [
+      ...plan(),
+      { kind: 'create', path: 'src/LOGO.webp', staged: 'staged/LOGO.webp', afterHash: sha('n') },
+    ];
+
+    await expect(prepare(clash, harness.store, RUN_DIR)).rejects.toThrow(
+      /are the same file on Windows and macOS/,
+    );
+  });
+
   it('refuses a delete whose backup was never written', async () => {
     const files = tree();
     delete files[`${RUN_DIR}/backup/old.png`];

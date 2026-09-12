@@ -117,17 +117,28 @@ export async function prepare(
   store: FileStore,
   runDir: string,
 ): Promise<void> {
-  const claimed = new Map<string, string>();
+  // Keyed case-insensitively, because two paths differing only in case are two files
+  // on Linux and one file on Windows and macOS. Comparing exactly let a plan holding
+  // a create at `Reaktor.webp` and another at `reaktor.webp` through, and neither
+  // existed yet so the absent check passed for both: the second write then landed on
+  // top of the first. Folding on every platform means a plan this refuses is refused
+  // everywhere rather than only where the filesystem happens to notice.
+  const claimed = new Map<string, { path: string; by: string }>();
 
   const claim = (path: string, by: string): void => {
-    const existing = claimed.get(path);
+    const key = path.toLowerCase();
+    const existing = claimed.get(key);
     if (existing !== undefined) {
+      const sameFile =
+        existing.path === path
+          ? ''
+          : ` (${existing.path} and ${path} are the same file on Windows and macOS)`;
       throw new UpflyError(
         'TRANSACTION_PLAN_INVALID',
-        `Two operations both target ${path}: ${existing} and ${by}. The result would depend on which ran first.`,
+        `Two operations both target ${path}: ${existing.by} and ${by}. The result would depend on which ran first.${sameFile}`,
       );
     }
-    claimed.set(path, by);
+    claimed.set(key, { path, by });
   };
 
   for (const operation of plan) {
