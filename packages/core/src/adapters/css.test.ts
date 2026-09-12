@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
 import { cssAdapter } from './css.js';
+import { parseFailure } from './parse-failure.js';
 
 /**
  * Table-driven, per the adapter contract. Every case states the source and the
@@ -301,6 +303,66 @@ describe('cssAdapter', () => {
       expect(() => find('a { background: url(hero.png);')).toThrow(
         expect.objectContaining({ code: 'ADAPTER_PARSE_FAILED' }),
       );
+    });
+
+    describe('R60: the message is ours and PostCSS is not quoted in it', () => {
+      /** The `UpflyError` a dialect throws for a given source, or `null` if it parses. */
+      function failure(source: string, file = '/project/a.css'): UpflyError | null {
+        try {
+          cssAdapter.findReferences({ file, text: source });
+          return null;
+        } catch (error) {
+          return error instanceof UpflyError ? error : null;
+        }
+      }
+
+      it.each([
+        ['/project/a.css', 'css'],
+        ['/project/a.scss', 'scss'],
+        ['/project/a.less', 'less'],
+      ])('%s: names the dialect we read it as and keeps the position', (file, dialect) => {
+        // `railsgirls-com` carried 23 of these reading
+        // `Could not parse: <css input>:144:13: Unknown word /`. `<css input>` is
+        // PostCSS's placeholder for a file we did name, `Unknown word` is PostCSS's
+        // vocabulary, and the position was the only part worth a reader's time.
+        const error = failure('a { color: red; } }', file);
+
+        expect(error?.message).toBe(
+          `Could not parse: invalid ${dialect} syntax at line 1, column 19`,
+        );
+      });
+
+      it('takes the position from the error, not from its message', () => {
+        // The reason this survives a dependency upgrade. PostCSS is free to reword
+        // `Unexpected }` or to stop prefixing `<css input>:1:19:` entirely; `line`
+        // and `column` are structured fields and our sentence does not move.
+        const error = failure(['a { color: red; }', '', 'b { c d e'].join('\n'));
+
+        expect(error?.message).toBe('Could not parse: invalid css syntax at line 3, column 5');
+      });
+
+      it.each(['<css input>', 'Unexpected', 'Unknown word'])(
+        'never puts %s in front of a user',
+        (fragment) => {
+          expect(failure('a { color: red; } }')?.message).not.toContain(fragment);
+          expect(failure('a { b c d')?.message).not.toContain(fragment);
+        },
+      );
+
+      it('keeps PostCSS-s own words on the diagnostic channel', () => {
+        // Not lost, just not in a rule-11 artefact. Somebody debugging an adapter
+        // wants exactly this string, and `scan` routes it to `onDiagnostic`.
+        expect(failure('a { color: red; } }')?.diagnostic).toBe('<css input>:1:19: Unexpected }');
+      });
+
+      it('says so plainly when there is no position to report', () => {
+        // Not every throw out of a parser is a syntax error with a location, and
+        // inventing `line 0, column 0` would be a number that means nothing.
+        expect(
+          parseFailure({ error: new Error('something else'), dialect: 'css', position: 'postcss' })
+            .message,
+        ).toBe('Could not parse: the file is not valid css');
+      });
     });
   });
 

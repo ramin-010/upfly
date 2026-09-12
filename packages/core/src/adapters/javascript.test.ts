@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
 import { javascriptAdapter } from './javascript.js';
 
@@ -375,6 +376,66 @@ describe('javascriptAdapter', () => {
       expect(() => find('const = = ;')).toThrow(
         expect.objectContaining({ code: 'ADAPTER_PARSE_FAILED' }),
       );
+    });
+
+    describe('R60: the message is ours and Babel is not quoted in it', () => {
+      /** The `UpflyError` this source throws, or `null` if it parses. */
+      function failure(source: string, file = '/project/a.js'): UpflyError | null {
+        try {
+          javascriptAdapter.findReferences({ file, text: source });
+          return null;
+        } catch (error) {
+          return error instanceof UpflyError ? error : null;
+        }
+      }
+
+      it('counts the column from one, where Babel counts it from zero', () => {
+        // 🔴 **The trap, and the reason `parseFailure` is told which parser ran rather
+        // than sniffing the error.** PostCSS puts a 1-based `line`/`column` on the
+        // error; Babel puts `loc: { line, column }` with the column counted from
+        // **zero**. Reading Babel's the way PostCSS's is read reports every JavaScript
+        // failure one column to the left — a wrong number indistinguishable from a
+        // right one, in the one field a reader would actually act on.
+        //
+        // Babel says `Unexpected token (1:6)` for this source. Every editor, and every
+        // other citation in this codebase, would call that column 7.
+        const error = failure('const = ;');
+
+        expect(error?.diagnostic).toBe('Unexpected token (1:6)');
+        expect(error?.message).toBe(
+          'Could not parse: invalid JavaScript syntax at line 1, column 7',
+        );
+      });
+
+      it.each(['a.js', 'a.jsx', 'a.ts', 'a.tsx', 'a.mjs', 'a.cjs'])(
+        '%s: says the same thing whichever dialect the extension claims',
+        (name) => {
+          // The extension picks Babel's plugin set, not our wording: a syntax error in
+          // TSX is still a JavaScript file we could not read, and inventing six
+          // spellings of that would be six strings to keep in step for no reader's
+          // benefit.
+          expect(failure('function (', `/project/${name}`)?.message).toBe(
+            'Could not parse: invalid JavaScript syntax at line 1, column 10',
+          );
+        },
+      );
+
+      it.each(['Unexpected token', '(1:6)'])('never puts %s in front of a user', (fragment) => {
+        expect(failure('const = ;')?.message).not.toContain(fragment);
+      });
+
+      it('still prefers our own sentence when the file is not JavaScript at all', () => {
+        // ⚠️ This one was already ours and must stay first. A Nunjucks template is not
+        // broken JavaScript, and `invalid JavaScript syntax at line 1, column 2` would
+        // be a true statement pointing into the wrong language — the position is
+        // precise and useless. Babel's text still reaches the diagnostic channel.
+        const error = failure('{% for x in y %}<img src="/a.png">{% endfor %}');
+
+        expect(error?.message).toBe(
+          'Could not parse: this looks like Nunjucks, Jinja or Liquid template source rather than JavaScript — it begins with `{%`',
+        );
+        expect(error?.diagnostic).toBe('Unexpected token (1:1)');
+      });
     });
   });
 

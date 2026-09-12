@@ -25,6 +25,7 @@ import {
   type ProbeDiagnostic,
   type ProbeOptions,
   type Reference,
+  type ScanDiagnostic,
   type ServingRoots,
   type SweepResult,
   alwaysMeasureFor,
@@ -100,6 +101,15 @@ export interface PipelineOutput {
    * identical inputs. It belongs in a file beside the report, not in it.
    */
   readonly diagnostics: readonly ProbeDiagnostic[];
+  /**
+   * What PostCSS and Babel said, for the same reason and going to the same place.
+   *
+   * R60 was ruled on the imaging library and applies unchanged to the parsers: their
+   * wording is theirs, it changes on a dependency upgrade, and the report carries our
+   * classification instead. Measured on `railsgirls-com`, 23 `scan` skips used to
+   * carry `<css input>:144:13: Unknown word /` verbatim.
+   */
+  readonly scanDiagnostics: readonly ScanDiagnostic[];
   /** Milliseconds to build the graph, excluding the probe (the §3.4 budget). */
   readonly graphMs: number;
 }
@@ -113,11 +123,13 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
 
   const started = performance.now();
   const discovery = await discover({ root: input.root, adapters: ADAPTERS });
+  const scanDiagnostics: ScanDiagnostic[] = [];
   const scanned = await scanSources({
     sourceFiles: discovery.sourceFiles,
     adapters: ADAPTERS,
     readFile: readFileText,
     assetBasenames: basenamesOf(discovery.assets),
+    onDiagnostic: (entry) => scanDiagnostics.push(entry),
   });
   // The aliases the project declares, read from the files `discover` already found.
   // No second walk: a config file is an ordinary discovered file.
@@ -200,6 +212,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     sweep,
     probes,
     diagnostics,
+    scanDiagnostics,
     graphMs,
   };
 }

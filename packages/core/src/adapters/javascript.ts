@@ -29,6 +29,7 @@ import { extensionOf } from '../paths.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
+import { parseFailure } from './parse-failure.js';
 import { isExternalUrl, parseSrcset, splitPathSuffix } from './reference-path.js';
 
 /**
@@ -137,11 +138,25 @@ export function findJavaScriptReferences(input: {
     } catch (error) {
       // Returning [] would report a file we could not read as having no references,
       // which is a silent skip and a P0 bug under rule 9.
-      const detail = error instanceof Error ? error.message : String(error);
+      // R60. The template sentence was already ours and stays first, because it says
+      // something Babel's position cannot: the file is not JavaScript at all, so a
+      // column number would point into the wrong language. Everything else used to
+      // fall through to Babel's raw text -- `Unexpected token (1:6)` -- which is the
+      // same defect as PostCSS's and reaches the report the same way.
+      //
+      // ⚠️ Zero instances in the corpus, because every JS parse failure across the
+      // five repositories is the template case. Fixed anyway: a construction that
+      // emits a library's wording is the defect, and whether the corpus happens to
+      // enter it is not evidence about the code. That is R63, where the same wrong
+      // answer sat in `plan.ts` and nobody had asked.
+      const template = templateSourceReason(text);
+      const failure = parseFailure({ error, dialect: 'JavaScript', position: 'babel' });
       throw new UpflyError(
         'ADAPTER_PARSE_FAILED',
         // No `${file}` — see the note in `css.ts`. The report already names it.
-        `Could not parse: ${templateSourceReason(text) ?? detail}`,
+        template === null ? failure.message : `Could not parse: ${template}`,
+        [],
+        failure.diagnostic,
       );
     }
 

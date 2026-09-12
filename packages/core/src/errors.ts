@@ -66,10 +66,38 @@ export class UpflyError extends Error {
    */
   readonly partial: readonly unknown[];
 
-  constructor(code: UpflyErrorCode, message: string, partial: readonly unknown[] = []) {
+  /**
+   * What a third-party parser said, on its way somewhere that is not a report (R60).
+   *
+   * `message` is ours and is what reaches the report. This is PostCSS's or Babel's
+   * own wording, kept because it is the only thing that helps somebody debugging an
+   * adapter, and kept *here* because a report must not carry it: it is not ours, it
+   * describes the library rather than describing what Upfly did, and it changes on a
+   * dependency upgrade — which makes rule 11 quietly false, since the same repository
+   * audited either side of a `pnpm up` produces different bytes.
+   *
+   * ⚠️ **The important half is where this is NOT.** `UnscannedFile` — the value the
+   * report is built from — has exactly one `detail` field and it holds our sentence.
+   * Had the library's text been a second field there, keeping it out of the output
+   * would be a rule somebody has to remember, which is the shape B3 was burned by
+   * when a guard it recorded as structural was still discipline. `scan` reads this
+   * off the error and hands it to a diagnostic channel; nothing deterministic can
+   * reach it, because it is never in the value a renderer or a sort is given.
+   *
+   * `''` when the failure was ours to begin with and no library spoke.
+   */
+  readonly diagnostic: string;
+
+  constructor(
+    code: UpflyErrorCode,
+    message: string,
+    partial: readonly unknown[] = [],
+    diagnostic = '',
+  ) {
     super(message);
     this.name = 'UpflyError';
     this.code = code;
     this.partial = partial;
+    this.diagnostic = diagnostic;
   }
 }

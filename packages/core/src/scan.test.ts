@@ -168,6 +168,103 @@ describe('scanSources', () => {
       ]);
     });
 
+    describe('R60: a parser-s own words leave by a different door', () => {
+      /** An adapter that fails the way the real ones now do: our sentence, their text. */
+      const real: Adapter = {
+        ...css,
+        findReferences: () => {
+          throw new UpflyError(
+            'ADAPTER_PARSE_FAILED',
+            'Could not parse: invalid css syntax at line 144, column 13',
+            [],
+            '<css input>:144:13: Unknown word /',
+          );
+        },
+      };
+
+      async function scanOneBroken(
+        onDiagnostic?: Parameters<typeof scanSources>[0]['onDiagnostic'],
+      ) {
+        return scanSources({
+          sourceFiles: [sourceFile('styles/site.css', 'css')],
+          adapters: [real],
+          readFile: filesystem({ '/repo/styles/site.css': 'a {' }),
+          ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+        });
+      }
+
+      it('never lets the library text reach the value the report is built from', async () => {
+        // 🔴 **The structural half, and the only assertion here that would survive
+        // somebody rewriting the renderer.** `railsgirls-com` carried 23 skips reading
+        // `<css input>:144:13: Unknown word /`, which is PostCSS describing PostCSS in
+        // a rule-11 artefact that changes on a dependency upgrade.
+        //
+        // Asserted over the whole serialised result rather than over `detail`, because
+        // the claim is that the string is not *anywhere* a renderer or a sort can
+        // reach — the same assertion R60 wrote against the serialised probe result,
+        // for the same reason.
+        const result = await scanOneBroken();
+
+        expect(JSON.stringify(result)).not.toContain('<css input>');
+        expect(JSON.stringify(result)).not.toContain('Unknown word');
+        expect(result.unscanned[0]?.detail).toBe(
+          'ADAPTER_PARSE_FAILED: Could not parse: invalid css syntax at line 144, column 13',
+        );
+      });
+
+      it('hands it to the diagnostic channel instead', async () => {
+        // Not lost. Somebody debugging an adapter wants exactly this string, and it
+        // answers a different question from the one the report answers.
+        const seen: unknown[] = [];
+        await scanOneBroken((diagnostic) => seen.push(diagnostic));
+
+        expect(seen).toEqual([
+          {
+            relative: 'styles/site.css',
+            adapterId: 'css',
+            detail: '<css input>:144:13: Unknown word /',
+          },
+        ]);
+      });
+
+      it('drops it when nobody is listening, rather than storing it somewhere', async () => {
+        // ⚠️ The property that makes this safe by construction. An absent sink *drops*
+        // the text; it does not park it on the result for a later caller to find. A
+        // caller with nowhere to put an unstable string therefore cannot quietly
+        // acquire one — which is R60's argument for why `ProbeSkip` has no
+        // `diagnostic` field either.
+        const result = await scanOneBroken();
+
+        expect(result.unscanned).toHaveLength(1);
+        expect(JSON.stringify(result)).not.toContain('144:13');
+      });
+
+      it('says nothing at all when the failure was ours', async () => {
+        // An `UpflyError` we raised ourselves has no library text, and inventing an
+        // empty diagnostic entry for it would make the channel noisier than the
+        // report it exists to keep clean.
+        const ours: Adapter = {
+          ...css,
+          findReferences: () => {
+            throw new UpflyError(
+              'ADAPTER_PARSE_FAILED',
+              'Could not parse: the file is not valid css',
+            );
+          },
+        };
+        const seen: unknown[] = [];
+
+        await scanSources({
+          sourceFiles: [sourceFile('styles/site.css', 'css')],
+          adapters: [ours],
+          readFile: filesystem({ '/repo/styles/site.css': 'a {' }),
+          onDiagnostic: (diagnostic) => seen.push(diagnostic),
+        });
+
+        expect(seen).toEqual([]);
+      });
+    });
+
     it('writes the relative path into the detail, never the absolute one', async () => {
       // §5.1(f) found this on `eleventy-docs`: `css.ts` and `javascript.ts` both
       // throw `Could not parse ${file}: …` with the absolute path they were handed,

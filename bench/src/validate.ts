@@ -27,6 +27,7 @@ import {
   type ProbeDiagnostic,
   type Reference,
   type Report,
+  type ScanDiagnostic,
   type ServingRoots,
   buildReport,
   defaultAdapters,
@@ -49,6 +50,7 @@ interface PipelineResult {
   readonly report: Report;
   readonly human: string;
   readonly diagnostics: readonly ProbeDiagnostic[];
+  readonly scanDiagnostics: readonly ScanDiagnostic[];
   readonly graphMs: number;
 }
 
@@ -85,6 +87,15 @@ interface RepoResult {
    * diagnose, so it goes in a file nothing compares.
    */
   readonly diagnostics: readonly ProbeDiagnostic[];
+  /**
+   * What PostCSS and Babel said, here for the same reason as the above.
+   *
+   * R60 applied to the parsers. `railsgirls-com` carried 23 of these in the report
+   * itself, reading `<css input>:144:13: Unknown word /` — PostCSS's placeholder for a
+   * file we did name, PostCSS's vocabulary for the fault, and a position that was the
+   * only part worth reading. The position is in the report now; the wording is here.
+   */
+  readonly scanDiagnostics: readonly ScanDiagnostic[];
 }
 
 async function main(): Promise<void> {
@@ -231,6 +242,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     report,
     human: renderReport(report),
     diagnostics: output.diagnostics,
+    scanDiagnostics: output.scanDiagnostics,
     graphMs: output.graphMs,
   };
 }
@@ -383,6 +395,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
     report: first.report,
     human: first.human,
     diagnostics: first.diagnostics,
+    scanDiagnostics: first.scanDiagnostics,
   };
 }
 
@@ -613,14 +626,23 @@ function diagnosticsLog(result: RepoResult): string {
     .map((entry) => `${entry.asset}\t${entry.measurement}\t${entry.code}\t${entry.detail}`)
     .sort();
 
+  const parserLines = result.scanDiagnostics
+    .map((entry) => `${entry.relative}\t${entry.adapterId}\t${entry.detail}`)
+    .sort();
+
   return [
-    `# ${labelOf(result.repo)} - what the imaging library said`,
+    `# ${labelOf(result.repo)} - what the libraries said`,
     '#',
     '# Not part of the report, and not compared between runs. libvips does not word the',
-    '# same failure identically every time, so this text cannot appear in an artefact',
-    '# that is promised to be byte-identical. Upfly own classification is in the report.',
+    '# same failure identically every time, and PostCSS and Babel are free to reword',
+    '# theirs on any upgrade, so none of this text can appear in an artefact that is',
+    '# promised to be byte-identical. Upfly own classification is in the report.',
     '',
+    '## the imaging library, on assets it could not measure',
     ...(lines.length === 0 ? ['(nothing failed to decode)'] : lines),
+    '',
+    '## the parsers, on source files they could not read',
+    ...(parserLines.length === 0 ? ['(nothing failed to parse)'] : parserLines),
     '',
   ].join('\n');
 }

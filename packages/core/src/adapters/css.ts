@@ -20,6 +20,7 @@ import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
+import { parseFailure } from './parse-failure.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
 
 /**
@@ -79,14 +80,21 @@ export function findCssReferences(input: {
   } catch (error) {
     // A malformed stylesheet is the caller's problem to report, not ours to
     // swallow: returning [] here would silently claim the file has no references.
-    throw new UpflyError(
-      'ADAPTER_PARSE_FAILED',
-      // No `${file}`: `scan` records the path in its own field and the report
-      // prints it immediately before this message, so interpolating it here put the
-      // filename on every line twice. R20's scrub in `unscannedFile` stays as the
-      // net for community adapters that do interpolate one.
-      `Could not parse: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    //
+    // No `${file}`: `scan` records the path in its own field and the report
+    // prints it immediately before this message, so interpolating it here put the
+    // filename on every line twice. R20's scrub in `unscannedFile` stays as the
+    // net for community adapters that do interpolate one.
+    //
+    // R60: the sentence is ours and carries PostCSS's position; PostCSS's wording
+    // goes to the diagnostic channel and never to the report.
+    const failure = parseFailure({
+      error,
+      // What we tried to read it as, which is the dialect the extension claimed.
+      dialect: extension.replace(/^\./, '') || 'css',
+      position: 'postcss',
+    });
+    throw new UpflyError('ADAPTER_PARSE_FAILED', failure.message, [], failure.diagnostic);
   }
 
   const references: RawReference[] = [];

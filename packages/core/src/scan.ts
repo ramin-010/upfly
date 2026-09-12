@@ -59,6 +59,25 @@ export interface ScannedMention {
   readonly quote: string;
 }
 
+/**
+ * What a parser said, on its way somewhere that is not a report (R60).
+ *
+ * The mirror of `ProbeDiagnostic`, and deliberately the same shape: the report
+ * carries our classification, and the library's verbatim wording goes to a channel
+ * nothing deterministic reads. `bench` writes it beside the report as
+ * `<repo>.diagnostics.txt`; a caller that supplies no sink simply drops it, which is
+ * the point — an absent sink *drops* the text rather than storing it, so nothing can
+ * quietly acquire an unstable string it has nowhere to put.
+ */
+export interface ScanDiagnostic {
+  /** POSIX-relative path of the file that would not parse. */
+  readonly relative: string;
+  /** Which adapter was reading it. */
+  readonly adapterId: string;
+  /** Verbatim from PostCSS or Babel. Unstable across versions, never a report's business. */
+  readonly detail: string;
+}
+
 export interface ScanOptions {
   /** Files to read, as returned by `discover`. Output order follows this order. */
   readonly sourceFiles: readonly SourceFile[];
@@ -76,6 +95,13 @@ export interface ScanOptions {
   readonly assetBasenames?: ReadonlySet<string>;
   /** Files read in parallel. Defaults to 16. */
   readonly concurrency?: number;
+  /**
+   * Where a parser's own error text goes, if anywhere.
+   *
+   * Optional, and omitting it is a real answer rather than a degraded one: the text
+   * is not needed to produce a correct report, only to debug an adapter.
+   */
+  readonly onDiagnostic?: (diagnostic: ScanDiagnostic) => void;
 }
 
 export interface ScanResult {
@@ -139,6 +165,12 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
       references.push(...result.references);
       if (result.failure !== null) unscanned.push(result.failure);
       mentions.push(...result.mentions);
+      // Emitted here rather than inside the concurrent map above, so diagnostics
+      // arrive in source-file order instead of in whichever order the reads finished.
+      // Nothing deterministic reads this channel, so the ordering is not load-bearing
+      // -- but a debugging aid whose lines shuffle between runs is a worse debugging
+      // aid, and the ordered loop was already here.
+      if (result.diagnostic !== null) options.onDiagnostic?.(result.diagnostic);
     }
   }
 
@@ -161,6 +193,8 @@ interface ScannedFile {
   /** `null` when the file was read and parsed. */
   readonly failure: UnscannedFile | null;
   readonly mentions: readonly ScannedMention[];
+  /** `null` unless a third-party parser said something (R60). */
+  readonly diagnostic: ScanDiagnostic | null;
 }
 
 async function scanOne(
@@ -179,6 +213,7 @@ async function scanOne(
       references: [],
       failure: unscannedFile(file, 'unreadable', describe(error)),
       mentions: [],
+      diagnostic: null,
     };
   }
 
@@ -192,6 +227,7 @@ async function scanOne(
       references: adapter.findReferences({ file: file.path, text }),
       failure: null,
       mentions,
+      diagnostic: null,
     };
   } catch (error) {
     // Every throw, not only `ADAPTER_PARSE_FAILED`. Adapters are the contribution
@@ -208,6 +244,7 @@ async function scanOne(
       references: partialOf(error),
       failure: unscannedFile(file, 'parse-failed', describe(error)),
       mentions,
+      diagnostic: diagnosticOf(error, file, adapter),
     };
   }
 }
@@ -257,6 +294,19 @@ function collectMentions(
  * The single place `UpflyError.partial` is narrowed — it is typed `unknown[]` there
  * so `errors.ts` need not depend on `types.ts`, and this is the one consumer.
  */
+/**
+ * The parser's own words, if it said any, addressed to the diagnostic channel.
+ *
+ * ⚠️ **Read off the error and never off `UnscannedFile`.** The report value has one
+ * `detail` field and it holds our sentence; this text takes a different route out of
+ * the engine and rejoins nothing. That is what makes rule 11 a property of the shape
+ * rather than a rule a future renderer has to remember (R60).
+ */
+function diagnosticOf(error: unknown, file: SourceFile, adapter: Adapter): ScanDiagnostic | null {
+  if (!(error instanceof UpflyError) || error.diagnostic === '') return null;
+  return { relative: file.relative, adapterId: adapter.id, detail: error.diagnostic };
+}
+
 function partialOf(error: unknown): RawReference[] {
   return error instanceof UpflyError ? [...(error.partial as RawReference[])] : [];
 }
