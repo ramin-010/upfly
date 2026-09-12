@@ -340,42 +340,90 @@ function convertDecision(
  * was never going to convert is not a collision: nothing is overwritten, the other
  * file stays where it is, and every reference to it keeps resolving. Declining it
  * would cost a real saving to avoid a hazard that is not there.
+ *
+ * Targets are compared case-insensitively, on every platform. `Reaktor.jpg` and
+ * `reaktor.png` produce two target names that are two files on Linux and one file on
+ * Windows and macOS, so an exact comparison writes one image over the other and
+ * repoints a reference at the survivor, silently, on most people's machines. Comparing
+ * case-folded everywhere costs a conversion on Linux that would have been safe there,
+ * and buys an engine that decides the same thing wherever it runs. Reporting a
+ * different plan on three operating systems for one repository is the worse trade,
+ * and a wrong image is not a failure anybody would notice in time.
  */
+/**
+ * Why one asset in a colliding set is declined, naming everything in its way.
+ *
+ * Every obstacle, not the first one that matched. A pair that collides with each other
+ * AND with a file already there is still blocked after one of the pair is renamed, and
+ * a sentence mentioning only the pair would send somebody round twice.
+ *
+ * Assets heading for the identically spelled target share a clause, because repeating
+ * one sentence per file is how a three-way collision becomes unreadable. A target that
+ * differs only in case gets its own clause and says why two names are one file, since
+ * a reader looking at `Reaktor.webp` and `reaktor.webp` will otherwise conclude the
+ * engine is broken.
+ */
+function collisionReason(
+  asset: string,
+  colliding: readonly string[],
+  existing: string | undefined,
+  converting: ReadonlyMap<string, PlannedConversion>,
+  key: string,
+): string {
+  const targetOf = (path: string) => converting.get(path)?.target ?? key;
+  const target = targetOf(asset);
+  const sameFile = `which is the same file as ${target} on Windows and macOS`;
+
+  const sameSpelling = colliding.filter((other) => other !== asset && targetOf(other) === target);
+  const blockers: string[] = [];
+  if (sameSpelling.length > 0) {
+    blockers.push(`${sameSpelling.join(' and ')} would also convert to ${target}`);
+  }
+  for (const other of colliding) {
+    if (other === asset || targetOf(other) === target) continue;
+    blockers.push(`${other} would convert to ${targetOf(other)}, ${sameFile}`);
+  }
+  if (existing !== undefined) {
+    blockers.push(
+      existing === target
+        ? `${target} already exists`
+        : `${existing} already exists, and is the same file as ${target} on Windows and macOS`,
+    );
+  }
+
+  return `${blockers.join(', and ')}, so converting it would replace a file rather than add one. Rename one of them and run again.`;
+}
+
 function vetoCollisions(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
   declined: Declined[],
 ): ReadonlySet<string> {
-  const alreadyThere = new Set(input.graph.assets.map((node) => node.asset.relative));
+  const alreadyThere = new Map(
+    input.graph.assets.map((node) => [node.asset.relative.toLowerCase(), node.asset.relative]),
+  );
 
   const claimants = new Map<string, string[]>();
   for (const conversion of converting.values()) {
-    const list = claimants.get(conversion.target) ?? [];
+    const key = conversion.target.toLowerCase();
+    const list = claimants.get(key) ?? [];
     list.push(conversion.asset);
-    claimants.set(conversion.target, list);
+    claimants.set(key, list);
   }
 
   const withdraw = new Set<string>();
-  for (const [target, assets] of claimants) {
+  for (const [key, assets] of claimants) {
     const contested = assets.length > 1;
-    const occupied = alreadyThere.has(target);
-    if (!contested && !occupied) continue;
+    const existing = alreadyThere.get(key);
+
+    if (!contested && existing === undefined) continue;
 
     const sorted = [...assets].sort();
     for (const asset of sorted) {
-      // Both facts, not the first one that matched. A pair that collides with each
-      // other AND with an existing file is still blocked after renaming one of them,
-      // and a reason that mentioned only the pair would send somebody round twice.
-      const blockers: string[] = [];
-      const others = sorted.filter((other) => other !== asset);
-      if (others.length > 0)
-        blockers.push(`${others.join(' and ')} would also convert to ${target}`);
-      if (occupied) blockers.push(`${target} already exists`);
-
       declined.push({
         path: asset,
         line: null,
-        reason: `${blockers.join(', and ')}, so converting it would replace a file rather than add one. Rename one of them and run again.`,
+        reason: collisionReason(asset, sorted, existing, converting, key),
       });
       withdraw.add(asset);
     }

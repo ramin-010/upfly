@@ -595,3 +595,48 @@ describe('an asset whose converted name is already taken', () => {
     ]);
   });
 });
+
+describe('two assets whose converted names differ only in case', () => {
+  // Found by asking what the exact-string comparison above cannot see. railsgirls-com
+  // carries four of these: Reaktor.jpg and reaktor.png produce Reaktor.webp and
+  // reaktor.webp, which are two files on Linux and one file on Windows and macOS.
+  // Nothing caught it. prepare claims paths by exact string and both creates pass its
+  // absent check, because at that point neither file exists yet, so commit wrote one
+  // image over the other and repointed a reference at whichever landed second.
+  const assets = [asset('images/Reaktor.jpg'), asset('images/reaktor.png')];
+  const references = [
+    resolved('index.html', 'images/Reaktor.jpg', 'images/Reaktor.jpg'),
+    resolved('index.html', 'images/reaktor.png', 'images/reaktor.png'),
+  ];
+
+  it('declines both rather than silently writing one image over the other', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: 'images' }));
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.rewrites).toEqual([]);
+  });
+
+  it('says why two different names are one file, so the report does not look broken', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: 'images' }));
+
+    expect(plan.declined.map((d) => d.reason)).toEqual([
+      'images/reaktor.png would convert to images/reaktor.webp, which is the same file as images/Reaktor.webp on Windows and macOS, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      'images/Reaktor.jpg would convert to images/Reaktor.webp, which is the same file as images/reaktor.webp on Windows and macOS, so converting it would replace a file rather than add one. Rename one of them and run again.',
+    ]);
+  });
+
+  it('declines when the existing file differs from the target only in case', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('img/Logo.png'), asset('img/logo.webp')],
+        references: [resolved('index.html', 'img/Logo.png', 'img/Logo.png')],
+        publicDir: 'img',
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined[0]?.reason).toContain(
+      'img/logo.webp already exists, and is the same file as img/Logo.webp on Windows and macOS',
+    );
+  });
+});
