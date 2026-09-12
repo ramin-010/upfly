@@ -1638,3 +1638,63 @@ describe('the assets a plan examined and offered nothing for', () => {
     expect(report.declined.assets?.[0]).toMatchObject({ asset: 'ghost.png', bytes: 0 });
   });
 });
+
+describe('the public-dir caveat counts what the report lists', () => {
+  // Hand-built, because NO fixture can reach this. It needs an unreferenced vector
+  // that is also inside a public directory, and the five trees between them have
+  // unreferenced vectors only outside one. The defect was found on railsgirls-com the
+  // moment the caveat became reachable at all: 950 claimed against 903 dead findings
+  // listed, alongside a third number saying 61 SVGs were not listed, and no
+  // arithmetic a reader can do that reconciles them.
+  const ROOT = resolve('/repo');
+  const png = { path: join(ROOT, 'a.png'), relative: 'a.png', extension: '.png', bytes: 10 };
+  const svg = { path: join(ROOT, 'b.svg'), relative: 'b.svg', extension: '.svg', bytes: 10 };
+
+  function reportWithDeadPublicAssets(): Report {
+    return buildReport({
+      graph: buildGraph({ root: ROOT, assets: [png, svg], references: [], unscannedFiles: [] }),
+      audit: {
+        findings: [
+          { kind: 'dead', asset: 'a.png', bytes: 10, inPublicDir: true },
+          { kind: 'dead', asset: 'b.svg', bytes: 10, inPublicDir: true },
+        ],
+        // What the audit produces, before this report demotes the vector.
+        publicDirDeadCount: 2,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [png, svg],
+        sourceFiles: [],
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: [''], declared: true },
+    });
+  }
+
+  it('does not count a vector it demoted out of the findings', () => {
+    const report = reportWithDeadPublicAssets();
+    const caveat = report.caveats.find((entry) => entry.code === 'public-dir-dead');
+
+    // The SVG is demoted to unusedVectors and is not in findings, so counting it
+    // would promise a reader two entries and show them one.
+    expect(caveat?.count).toBe(1);
+  });
+
+  it('agrees with the number of dead public findings it actually lists', () => {
+    const report = reportWithDeadPublicAssets();
+    const caveat = report.caveats.find((entry) => entry.code === 'public-dir-dead');
+    const listed = report.findings.filter(
+      (finding) => finding.kind === 'dead' && finding.inPublicDir,
+    ).length;
+
+    expect(caveat?.count).toBe(listed);
+  });
+});

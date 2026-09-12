@@ -894,7 +894,20 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
       detail: [],
     });
   }
-  const deadInPublic = input.audit.publicDirDeadCount;
+  // Counted over what this report actually lists, not over what the audit produced.
+  //
+  // `publicDirDeadCount` is computed before unreferenced vectors are demoted, and the
+  // demotion happens here, so quoting it directly puts a number in a caveat that the
+  // findings underneath cannot account for. Measured on railsgirls-com the moment the
+  // caveat became reachable: 950 claimed against 903 `dead` findings listed, with a
+  // second caveat saying 61 SVGs were not listed, and no arithmetic a reader can do
+  // that reconciles the three. This project has already shipped that exact shape once,
+  // as a suppressed count of 116 against 115 checkable references.
+  const demotedAssets = new Set(vectors.demoted.map((entry) => entry.asset));
+  const deadInPublic = input.audit.findings.filter(
+    (finding) =>
+      finding.kind === 'dead' && finding.inPublicDir && !demotedAssets.has(finding.asset),
+  ).length;
 
   if (deadInPublic > 0) {
     // A project serving from its own root is a different sentence, not a louder one.
