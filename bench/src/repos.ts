@@ -8,7 +8,52 @@
  * directory is a failure this project has already had once.
  */
 
+import { resolve, sep } from 'node:path';
+
 export const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
+
+/**
+ * Refuse to let a writing run point at the pinned corpus.
+ *
+ * The corpus is 394 images across five repositories pinned at specific commits, and
+ * every measurement this project quotes is stated against those pins. Converting one
+ * of those images would invalidate all of it SILENTLY: a converted image still reads
+ * as an image and the pinned commit still checks out, so the first anyone would know
+ * is a number that stopped reproducing days later.
+ *
+ * This has already happened once in a different form. The v2 extension converted 19
+ * fixture images in place seconds after they were generated and nobody noticed for a
+ * day, which is why the corpus lives outside the workspace at all. That kill switch
+ * protects it from the extension. This protects it from us.
+ *
+ * A run against a real repository works on a copy, and this exists because a workflow
+ * is followed until the night it is not. Callers that only read are not the hazard and
+ * do not call this: `validate.ts` writes reports into an output directory and never
+ * touches the tree.
+ */
+export function refuseValidationCorpus(root: string): void {
+  const target = normaliseForCompare(root);
+  const corpus = normaliseForCompare(VALIDATION_ROOT);
+
+  // Resolved absolute paths rather than the strings as given, so a relative path or
+  // one walking back in through `..` cannot slip past a prefix test.
+  if (target !== corpus && !target.startsWith(`${corpus}${sep}`)) return;
+
+  throw new Error(
+    `Refusing to run a writing operation inside the pinned validation corpus: ${resolve(root)}. Every measurement in this project is stated against those commits, and converting an image there would invalidate them without producing an error. Copy the repository somewhere else and run against the copy.`,
+  );
+}
+
+/**
+ * Case-folded, because a guard that a different capitalisation walks past is not one.
+ *
+ * Folded on every platform rather than only on Windows. On a case-sensitive
+ * filesystem this can only refuse a path it did not strictly have to, and refusing one
+ * directory too many costs somebody a rename while missing one costs the corpus.
+ */
+function normaliseForCompare(path: string): string {
+  return resolve(path).toLowerCase();
+}
 
 export interface RepoSpec {
   readonly name: string;

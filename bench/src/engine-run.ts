@@ -38,6 +38,7 @@ import {
   scanSources,
   sweepForMentions,
 } from 'upfly-core';
+import { refuseValidationCorpus } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
@@ -124,8 +125,17 @@ export async function runEngine(root: string): Promise<EngineRun> {
   return { graph, audit: findings, servingRoots, probes };
 }
 
-/** Run the engine over `root` and apply what it plans. */
+/**
+ * Run the engine over `root` and apply what it plans.
+ *
+ * The refusal is the first statement on purpose. This function converts images and
+ * rewrites files under whatever path it is handed, and the pinned corpus is an
+ * exported constant in this same package, so the distance between a correct call and
+ * a catastrophic one is one argument.
+ */
 export async function optimizeTree(root: string): Promise<OptimizeResult> {
+  refuseValidationCorpus(root);
+
   const { graph, audit: findings, servingRoots, probes } = await runEngine(root);
 
   return optimize({
