@@ -694,7 +694,7 @@ function rewriteRefusal(
  * here it decides whether an unlinked asset is worth converting at all and whether an
  * original may be removed once its references move.
  */
-function isUnderPublicDir(relative: string, publicDir: string | null): boolean {
+export function isUnderPublicDir(relative: string, publicDir: string | null): boolean {
   if (publicDir === null) return false;
   if (publicDir === '') return true;
   const prefix = publicDir.endsWith('/') ? publicDir : `${publicDir}/`;
