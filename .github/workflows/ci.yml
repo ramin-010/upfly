@@ -56,6 +56,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The matrix jobs get `dist` as a side effect of `pnpm typecheck`, which is
+      # `tsc --build --force`. This job ran neither, so on a fresh checkout there was
+      # no `packages/core/dist` and the one test that loads the built package could
+      # not be collected. Building here is what makes that test meaningful rather
+      # than merely absent.
+      - run: pnpm build
       # Thresholds live in vitest.config.ts; this job fails if core drops below them.
       - run: pnpm coverage
 
