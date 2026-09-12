@@ -552,9 +552,24 @@ function rewriteRefusal(
   return null;
 }
 
-/** Is this asset served from the public directory, where something outside may load it? */
+/**
+ * Is this asset served from the public directory, where something outside may load it?
+ *
+ * `null` means the project serves nothing publicly. `''` is the opposite and means the
+ * project serves from its own root, so every asset is public: a hand-written static
+ * site with no build step is the repository it uploads.
+ *
+ * The empty case needs saying out loud because the arithmetic silently got it backwards.
+ * Appending a slash to `''` gives `'/'`, and a project-relative path never begins with
+ * one, so a root-served site scored false for every asset it has. That is the same
+ * mistake the audit made about the same value, in different code, reached a different
+ * way: there it decided which unreferenced assets carry an outside-link warning, and
+ * here it decides whether an unlinked asset is worth converting at all and whether an
+ * original may be removed once its references move.
+ */
 function isUnderPublicDir(relative: string, publicDir: string | null): boolean {
   if (publicDir === null) return false;
+  if (publicDir === '') return true;
   const prefix = publicDir.endsWith('/') ? publicDir : `${publicDir}/`;
   return relative === publicDir || relative.startsWith(prefix);
 }

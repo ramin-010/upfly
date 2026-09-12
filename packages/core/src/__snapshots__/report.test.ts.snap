@@ -476,6 +476,12 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
 {
   "caveats": [
     {
+      "code": "public-dir-dead",
+      "count": 2,
+      "detail": [],
+      "message": "this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove",
+    },
+    {
       "code": "not-probed",
       "count": 0,
       "detail": [],
@@ -509,13 +515,13 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     {
       "asset": "images/never-referenced.png",
       "bytes": 70,
-      "inPublicDir": false,
+      "inPublicDir": true,
       "kind": "dead",
     },
     {
       "asset": "images/removed.png",
       "bytes": 70,
-      "inPublicDir": false,
+      "inPublicDir": true,
       "kind": "dead",
     },
   ],
@@ -597,6 +603,7 @@ Findings — 3 items
 
 Worth knowing
 
+  this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;

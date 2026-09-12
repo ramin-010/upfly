@@ -640,3 +640,39 @@ describe('two assets whose converted names differ only in case', () => {
     );
   });
 });
+
+describe('a project that serves from its own project root', () => {
+  // The same empty-string defect the audit had, in different code, reached a different
+  // way. Appending a slash to '' gives '/', and a project-relative path never begins
+  // with one, so every asset on a root-served site scored as not public. Here that
+  // decides whether an unlinked asset is worth converting and whether an original may
+  // be removed, rather than which findings carry an outside-link warning.
+  const assets = [asset('images/orphan.png'), asset('images/hero.png')];
+  const references = [resolved('index.html', '/images/hero.png', 'images/hero.png')];
+
+  it('converts an unlinked asset, because outside the repository may still load it', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: '' }));
+
+    // With '' misread as "nothing is public", orphan.png declined for having no
+    // references. On a site that uploads its own repository that is wrong: nothing
+    // in the reference graph can show a file is unreachable from outside.
+    expect(plan.conversions.map((c) => c.asset)).toEqual(['images/hero.png', 'images/orphan.png']);
+  });
+
+  it('removes the original under replace, because the whole tree is the public dir', () => {
+    const plan = planOptimization(
+      input({ assets, references, publicDir: '', publicPolicy: 'replace' }),
+    );
+
+    expect(plan.conversions.every((c) => c.replacesOriginal)).toBe(true);
+  });
+
+  it('still treats null as serving nothing publicly, which is the opposite', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: null }));
+
+    // An unlinked asset outside any public directory gains only bytes, so it is
+    // declined. The empty string and the absent directory must not collapse together.
+    expect(plan.conversions.map((c) => c.asset)).toEqual(['images/hero.png']);
+    expect(plan.declined.map((d) => d.path)).toContain('images/orphan.png');
+  });
+});

@@ -897,10 +897,19 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
   const deadInPublic = input.audit.publicDirDeadCount;
 
   if (deadInPublic > 0) {
+    // A project serving from its own root is a different sentence, not a louder one.
+    // "Under the public directory" is meaningless when the public directory is the
+    // whole repository, and the honest consequence is stronger than the general case:
+    // there is no directory to exclude, so the reference graph cannot show that any
+    // unreferenced file is unreachable. Saying that plainly is worth more than a
+    // number the reader cannot act on.
+    const servesFromRoot = input.servingRoots.dirs.includes('');
     list.push({
       code: 'public-dir-dead',
       count: deadInPublic,
-      message: `${plural(deadInPublic, 'unreferenced image')} under the public directory may be linked from outside this repository`,
+      message: servesFromRoot
+        ? `this project is served from its own root, so ${plural(deadInPublic, 'unreferenced image')} may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove`
+        : `${plural(deadInPublic, 'unreferenced image')} under the public directory may be linked from outside this repository`,
       detail: [],
     });
   }

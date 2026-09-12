@@ -208,14 +208,36 @@ describe('audit', () => {
       ).toEqual([true, false]);
     });
 
-    it('counts nothing as public when the public dir is the project root', async () => {
-      // `plain-html` serves from the root, and marking every asset public would
-      // make the caveat meaningless.
+    it('counts everything as public when the project serves from its own root', async () => {
+      // A hand-written static site with no build step uploads the repository, so
+      // every file in it is reachable from outside and none of it can be called
+      // safe to delete on the strength of the reference graph alone.
+      //
+      // This used to assert zero, on the reasoning that marking everything public
+      // would make the caveat meaningless. The reasoning inverted the fact: the
+      // caveat is least meaningful where it is silently absent. Measured on
+      // railsgirls-com, which is in the corpus for precisely this property, it
+      // suppressed the warning across 903 unreferenced assets.
+      const result = await audit({
+        graph: graphOf({ assets: [asset('images/orphan.png'), asset('deep/nested/logo.png')] }),
+        sweep: NO_SWEEP,
+        readFile: files(),
+        publicDirs: [''],
+      });
+
+      expect(result.publicDirDeadCount).toBe(2);
+      expect(result.findings.every((f) => f.kind !== 'dead' || f.inPublicDir)).toBe(true);
+    });
+
+    it('still counts nothing as public when the project serves nothing publicly', async () => {
+      // The empty LIST and the empty STRING are opposites, and the distinction is
+      // the whole of this rule: no public directories at all, against one public
+      // directory that happens to be the project root.
       const result = await audit({
         graph: graphOf({ assets: [asset('images/orphan.png')] }),
         sweep: NO_SWEEP,
         readFile: files(),
-        publicDirs: [''],
+        publicDirs: [],
       });
 
       expect(result.publicDirDeadCount).toBe(0);

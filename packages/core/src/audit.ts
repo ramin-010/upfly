@@ -480,10 +480,28 @@ function* opportunities(
  * prefix at all rather than one matching everything: marking every asset public
  * would make the caveat meaningless.
  */
+/**
+ * Public directories as path prefixes, where the empty string means the whole tree.
+ *
+ * A project can serve from its own root. A hand-written static site with no build step
+ * is the ordinary case: there is no `public/`, the repository *is* what gets uploaded,
+ * and every file in it is reachable from outside. That is spelled `''`.
+ *
+ * This used to filter `''` out. The filter looks defensive and reads as though it is
+ * removing a meaningless entry, but `''` is not meaningless here: it is the statement
+ * that everything is public, and dropping it produced an empty prefix list, which says
+ * the opposite. Every asset then scored `inPublicDir: false`, `publicDirDeadCount`
+ * summed to zero, and the caveat warning that an unreferenced image may be linked from
+ * outside the repository was never emitted at all. On `railsgirls-com` that was 903
+ * unreferenced assets offered with no such warning, on the one repository in the corpus
+ * where the whole tree is the public directory.
+ *
+ * An empty prefix matches every path, which is what it should mean.
+ */
 function normalisePublicDirs(publicDirs: readonly string[] | undefined): readonly string[] {
-  return (publicDirs ?? [])
-    .filter((publicDir) => publicDir !== '')
-    .map((publicDir) => (publicDir.endsWith('/') ? publicDir : `${publicDir}/`));
+  return (publicDirs ?? []).map((publicDir) =>
+    publicDir === '' || publicDir.endsWith('/') ? publicDir : `${publicDir}/`,
+  );
 }
 
 /**
