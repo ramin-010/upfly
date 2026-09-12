@@ -423,13 +423,28 @@ function candidatePaths(text: string): string[] {
   const list = /\b(?:srcset|image-set)\s*[=(]\s*["']?([^"'>)]+)/gi;
   for (const match of text.matchAll(list)) {
     for (const candidate of (match[1] ?? '').split(',')) {
-      add(
-        found,
-        candidate
-          .trim()
-          .split(/\s+/)[0]
-          ?.replace(/^["']|["']$/g, ''),
-      );
+      const path = candidate
+        .trim()
+        .split(/\s+/)[0]
+        ?.replace(/^["']|["']$/g, '');
+
+      // ⚠️ `image-set()` has two legal spellings and this scanner only reads one of
+      // them. `image-set("a.png" 1x, …)` is a comma-separated list of strings, which
+      // is what the pattern above was written for; `image-set(url("a.png") 1x, …)`
+      // wraps each candidate in `url()`, and against that the capture stops at the
+      // first quote and yields the literal token `url(` — a path that names nothing,
+      // reported as dangling on a tree where nothing is wrong.
+      //
+      // It is skipped rather than parsed because the `url()` scanner below already
+      // reads that spelling completely, so nothing is lost: this drops a tokenizer
+      // artefact, not a reference. Found by the eleventy baseline the moment the
+      // fixture gained an `image-set(url(…))` for R58, which is the loud-and-blocking
+      // behaviour a baseline failure is supposed to have — and because that fixture
+      // now carries the spelling, reverting this fix turns the baseline red again
+      // rather than going unnoticed.
+      if (path?.includes('url(')) continue;
+
+      add(found, path);
     }
   }
 

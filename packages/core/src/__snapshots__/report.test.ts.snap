@@ -176,6 +176,13 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
   },
   "findings": [
     {
+      "file": "src/posts/second.md",
+      "kind": "broken",
+      "line": 17,
+      "rawPath": "../img/missing-on-purpose.png",
+      "where": "src/posts/second.md:17",
+    },
+    {
       "asset": "src/img/unused.png",
       "bytes": 70,
       "inPublicDir": true,
@@ -241,23 +248,23 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
   "references": {
     "byConfidence": {
       "certain": 0,
-      "high": 3,
+      "high": 10,
       "medium": 0,
-      "unsafe": 1,
+      "unsafe": 2,
     },
     "byResolution": {
-      "broken": 0,
+      "broken": 1,
       "discarded": 0,
       "dynamic": 1,
       "out-of-scope": 0,
-      "resolved": 3,
+      "resolved": 10,
       "resolved-pattern": 0,
       "unresolved-alias": 0,
     },
     "byResolvedVia": {
       "file": 0,
       "project-root": 0,
-      "serving-root": 3,
+      "serving-root": 10,
       "speculative-root": 0,
     },
     "discarded": null,
@@ -277,20 +284,20 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "assetBytes": 91846,
     "assets": 8,
     "findings": {
-      "broken": 0,
+      "broken": 1,
       "dead": 1,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 4,
       "serving-root-unknown": 0,
     },
-    "linkedReferences": 3,
+    "linkedReferences": 10,
     "potentialSavingBytes": 0,
     "probed": false,
     "referencedAssets": 3,
-    "references": 4,
+    "references": 12,
     "savingQuality": {},
-    "sourceFiles": 4,
+    "sourceFiles": 5,
   },
   "unusedVectors": {
     "assets": null,
@@ -306,8 +313,8 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 4 source files and found 8 images, 91.8 KB in total
-  3 of 4 references resolved, pointing at 3 of those images
+  scanned 5 source files and found 8 images, 91.8 KB in total
+  10 of 12 references resolved, pointing at 3 of those images
   5 images with no reference Upfly could follow
 
 1 reference could not be resolved safely
@@ -317,7 +324,10 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
   src/posts/first.md  {{ site.url }}/img/templated.png
     dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
 
-Findings — 5 items
+Findings — 6 items
+
+  broken references (1) — these point at nothing
+    src/posts/second.md:17  ../img/missing-on-purpose.png
 
   unreferenced images (1)
     src/img/unused.png  70 B

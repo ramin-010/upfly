@@ -1,3 +1,13 @@
 body {
   background: url('/img/texture.png');
 }
+
+/* Eleventy serves `src/img` at `/img`, so a stylesheet addresses an image from the
+   site root exactly the way a template does. */
+.post figure {
+  background-image: image-set(url('/img/inline.png') 1x, url('/img/diagram.png') 2x);
+}
+
+.post header {
+  background: url('/img/diagram.png') no-repeat center / cover;
+}

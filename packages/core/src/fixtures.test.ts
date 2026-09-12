@@ -10,9 +10,11 @@ import { buildGraph, unreferencedAssets } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import { isLinked } from './reference.js';
+import { MINIMUM_ROOT_RELATIVE, resolutionHealth } from './resolution-health.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
 import type { ReadFilePort } from './scan.js';
+import { detectServingRoots } from './serving-roots.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 
@@ -506,5 +508,159 @@ describe('framework fixtures', () => {
     expect(eleventy.discovered.sourceFiles.some((file) => file.relative.endsWith('.njk'))).toBe(
       false,
     );
+  });
+});
+
+/**
+ * R58 — the serving-root diagnosis, exercised by a fixture for the first time.
+ *
+ * `resolutionHealth` suppresses findings, which makes it the most dangerous behaviour
+ * the engine has, and until this block it was the least covered: unit tests reached it
+ * with hand-built graphs and the real corpus reached it by accident, but **no fixture
+ * could produce it**. `MINIMUM_ROOT_RELATIVE` is 10 and no tree came close, so the
+ * layer that runs the whole pipeline over a real directory could not see the feature
+ * at all.
+ *
+ * ⚠️ **The threshold was not lowered to fix that, and lowering it is the wrong repair**
+ * — it is a product judgement about when a diagnosis is trustworthy, and fitting it to
+ * the corpus is letting the corpus decide the product. `eleventy` gained seven more
+ * root-relative references instead, which is what a real Eleventy site looks like: it
+ * serves `src/img` at `/img` through `addPassthroughCopy`, so everything is addressed
+ * from the site root and nothing name-based should ever detect `src` as a serving root.
+ *
+ * **The corpus splits the predicate in half, which is why the pair below matters more
+ * than either half alone.** `next-app` has the count (10 root-relative references) and
+ * a perfect rate; `eleventy` has the rate (0.00) and, before this, failed the count.
+ * Only both conditions together fire the guard, so a fixture that satisfies one and not
+ * the other proves the conjunction is real rather than decorative.
+ */
+describe('R58: the serving-root diagnosis, reached through a real tree', () => {
+  /**
+   * The tree as a **first run** sees it: the serving root detected, never declared.
+   *
+   * Every other fixture test hands the resolver the right answer out of `PUBLIC_DIRS`,
+   * which is the configuration a user arrives at *after* reading a report. This is the
+   * state they are in before that, and it is the only state in which this diagnosis
+   * can happen — so a helper that declared the root could not reach the feature.
+   */
+  async function undetected(name: (typeof NAMES)[number]) {
+    const { discovered, references, unscanned } = await scan(name);
+    const servingRoots = detectServingRoots(discovered.directories);
+    const resolved = await resolveReferences(references, {
+      root: discovered.root,
+      assets: discovered.assets,
+      servingRoots,
+      excludedRoots: discovered.excludedRoots,
+      exists: (path) => existsSync(path),
+    });
+    const graph = buildGraph({
+      root: discovered.root,
+      assets: discovered.assets,
+      references: resolved,
+      unscannedFiles: [...discovered.unscannedFiles, ...unscanned],
+    });
+    const readFile: ReadFilePort = (path) => readFile_(path, 'utf8');
+
+    return {
+      servingRoots,
+      health: resolutionHealth(graph),
+      result: await audit({
+        graph,
+        sweep: await sweepForMentions({ graph, readFile }),
+        readFile,
+        publicDirs: servingRoots.dirs,
+      }),
+    };
+  }
+
+  it('finds no serving root in the eleventy tree at all', async () => {
+    // The premise the rest of this block stands on. `src` is a source directory, not a
+    // serving root by convention, so a name-based detector must not claim it — and if
+    // one ever did, every assertion below would go green for the wrong reason.
+    expect((await undetected('eleventy')).servingRoots).toEqual({ dirs: [], declared: false });
+  });
+
+  it('fires the guard on a real tree, through the whole pipeline', async () => {
+    const { health } = await undetected('eleventy');
+
+    // ⚠️ Asserted as a RELATIONSHIP to the constant, never as the literal 10. The
+    // fixture sits at exactly the minimum on purpose — no padding, so the threshold is
+    // crossed naturally rather than by references added to pass a test — but pinning
+    // the literal here would make this fail the first time somebody legitimately adds a
+    // reference to this tree, and a test that cries wolf teaches people to edit the
+    // assertion. The boundary itself is pinned where it belongs, in
+    // `resolution-health.test.ts`, at the minimum and one below it.
+    expect(health.checkable).toBeGreaterThanOrEqual(MINIMUM_ROOT_RELATIVE);
+    expect(health.linked).toBe(0);
+    expect(health.servingRootUnknown).toBe(true);
+  });
+
+  it('reports one diagnosis instead of every root-relative symptom', async () => {
+    const { result } = await undetected('eleventy');
+    const diagnoses = result.findings.filter((finding) => finding.kind === 'serving-root-unknown');
+
+    expect(diagnoses).toHaveLength(1);
+    const [diagnosis] = diagnoses;
+    if (diagnosis?.kind !== 'serving-root-unknown') throw new Error('unreachable');
+    // Every root-relative reference in the tree, and nothing else: the count the user
+    // reads has to agree with the findings that were taken away, which is the defect
+    // the public-dir caveat had when it claimed 950 against 903 listed.
+    expect(diagnosis.suppressedBroken).toBe(diagnosis.checkable);
+    expect(diagnosis.linked).toBe(0);
+  });
+
+  it('suppresses only what it explains, and the relative break survives', async () => {
+    // 🔴 **The whole reason R58 named a relative reference as part of the fixture.** The
+    // first version of `diagnoseServingRoot` swallowed all 116 broken findings on
+    // unconfigured shadcn-ui when only 115 were root-relative, and the odd one out was a
+    // genuinely broken relative path — a real defect hidden behind an unrelated
+    // explanation. That shape was only ever reachable on a real repository, and only
+    // ever found by a person reading a report. It is reachable here now.
+    const { result } = await undetected('eleventy');
+    const broken = result.findings.filter((finding) => finding.kind === 'broken');
+
+    expect(broken.map((finding) => finding.kind === 'broken' && finding.rawPath)).toEqual([
+      '../img/missing-on-purpose.png',
+    ]);
+  });
+
+  it.each(NAMES.filter((name) => name !== 'eleventy'))(
+    'does not fire on %s, which resolves its root-relative references',
+    async (name) => {
+      // The other direction, and it is not padding: a diagnosis that fired everywhere
+      // would pass all four assertions above while suppressing every real finding in
+      // the corpus. `next-app` is the one that matters most here — it reaches the count
+      // with a perfect rate, so it is the fixture that proves the guard reads both
+      // conditions rather than the count alone.
+      const { health } = await undetected(name);
+
+      expect(health.servingRootUnknown).toBe(false);
+    },
+  );
+
+  it('is healthy again once the same tree declares its serving root', async () => {
+    // The diagnosis is about our knowledge, not about the user's code. Nothing on disk
+    // changes between this and the run above — only whether `src` was declared — so a
+    // guard that stayed lit here would be calling a correctly configured project broken.
+    const { discovered, references, unscanned } = await scan('eleventy');
+    const resolved = await resolveReferences(references, {
+      root: discovered.root,
+      assets: discovered.assets,
+      servingRoots: { declared: true, dirs: [PUBLIC_DIRS.eleventy] },
+      excludedRoots: discovered.excludedRoots,
+      exists: (path) => existsSync(path),
+    });
+    const health = resolutionHealth(
+      buildGraph({
+        root: discovered.root,
+        assets: discovered.assets,
+        references: resolved,
+        unscannedFiles: [...discovered.unscannedFiles, ...unscanned],
+      }),
+    );
+
+    expect(health.checkable).toBeGreaterThanOrEqual(MINIMUM_ROOT_RELATIVE);
+    expect(health.rate).toBe(1);
+    expect(health.servingRootUnknown).toBe(false);
   });
 });
