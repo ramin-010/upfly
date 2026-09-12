@@ -181,6 +181,12 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     }
   }
 
+  // Before the pattern veto, because that veto asks whether every asset a pattern
+  // matches converts. An asset withdrawn after the question is answered leaves the
+  // reference rewritten for a conversion that never happened, which breaks it for
+  // every asset the pattern matches rather than just the withdrawn one.
+  for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
+
   const vetoed = vetoPatterns(input, converting, relativeOf, declined);
   for (const asset of vetoed) converting.delete(asset);
 
@@ -314,6 +320,67 @@ function convertDecision(
       replacesOriginal: inPublic && input.publicPolicy === 'replace',
     },
   };
+}
+
+/**
+ * Drop the conversions that would write over each other, or over a file already there.
+ *
+ * Swapping an extension is not injective. `distance.png` and `distance.gif` both
+ * become `distance.webp`, and a plan holding two creates at one path produces a result
+ * that depends on which of them ran first. Separately, a target may already exist:
+ * converting `logo.png` where `logo.webp` is already in the repository destroys a file
+ * somebody made.
+ *
+ * Both cases decline every asset involved. Which of two files a user deliberately kept
+ * under separate names should win is not a question this engine is in a position to
+ * answer, and disambiguating the destination would put a filename in their repository
+ * that they did not choose. Naming the other file is what lets them decide.
+ *
+ * Only planned conversions collide. Two assets sharing a basename where one of them
+ * was never going to convert is not a collision: nothing is overwritten, the other
+ * file stays where it is, and every reference to it keeps resolving. Declining it
+ * would cost a real saving to avoid a hazard that is not there.
+ */
+function vetoCollisions(
+  input: PlanInput,
+  converting: ReadonlyMap<string, PlannedConversion>,
+  declined: Declined[],
+): ReadonlySet<string> {
+  const alreadyThere = new Set(input.graph.assets.map((node) => node.asset.relative));
+
+  const claimants = new Map<string, string[]>();
+  for (const conversion of converting.values()) {
+    const list = claimants.get(conversion.target) ?? [];
+    list.push(conversion.asset);
+    claimants.set(conversion.target, list);
+  }
+
+  const withdraw = new Set<string>();
+  for (const [target, assets] of claimants) {
+    const contested = assets.length > 1;
+    const occupied = alreadyThere.has(target);
+    if (!contested && !occupied) continue;
+
+    const sorted = [...assets].sort();
+    for (const asset of sorted) {
+      // Both facts, not the first one that matched. A pair that collides with each
+      // other AND with an existing file is still blocked after renaming one of them,
+      // and a reason that mentioned only the pair would send somebody round twice.
+      const blockers: string[] = [];
+      const others = sorted.filter((other) => other !== asset);
+      if (others.length > 0)
+        blockers.push(`${others.join(' and ')} would also convert to ${target}`);
+      if (occupied) blockers.push(`${target} already exists`);
+
+      declined.push({
+        path: asset,
+        line: null,
+        reason: `${blockers.join(', and ')}, so converting it would replace a file rather than add one. Rename one of them and run again.`,
+      });
+      withdraw.add(asset);
+    }
+  }
+  return withdraw;
 }
 
 /**

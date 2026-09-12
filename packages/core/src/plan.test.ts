@@ -455,3 +455,143 @@ describe('an asset that was measured and gained nothing', () => {
     expect(plan.declined).toEqual([]);
   });
 });
+
+describe('two assets that would convert to one name', () => {
+  // The case that made optimize --apply unusable on three of five real repositories.
+  // Swapping the extension is not injective, so a repository holding both distance.png
+  // and distance.gif produces a plan with two creates at distance.webp.
+  const assets = [asset('static/distance.gif'), asset('static/distance.png')];
+  const references = [
+    resolved('index.html', 'static/distance.gif', 'static/distance.gif'),
+    resolved('index.html', 'static/distance.png', 'static/distance.png'),
+  ];
+
+  it('converts neither, and tells each one which file it collided with', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: 'static' }));
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'static/distance.gif',
+        line: null,
+        reason:
+          'static/distance.png would also convert to static/distance.webp, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      },
+      {
+        path: 'static/distance.png',
+        line: null,
+        reason:
+          'static/distance.gif would also convert to static/distance.webp, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      },
+    ]);
+  });
+
+  it('leaves the references to both of them exactly as they were', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: 'static' }));
+
+    expect(plan.rewrites).toEqual([]);
+  });
+
+  it('names all the others when three collide, in a fixed order', () => {
+    const three = [asset('img/a.gif'), asset('img/a.jpeg'), asset('img/a.png')];
+    const plan = planOptimization(
+      input({
+        assets: three,
+        references: three.map((a) => resolved('index.html', a.relative, a.relative)),
+        publicDir: 'img',
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined.map((d) => d.reason)).toEqual([
+      expect.stringContaining('img/a.jpeg and img/a.png would also convert to img/a.webp'),
+      expect.stringContaining('img/a.gif and img/a.png would also convert to img/a.webp'),
+      expect.stringContaining('img/a.gif and img/a.jpeg would also convert to img/a.webp'),
+    ]);
+  });
+
+  // The near miss, and the reason the count of colliding basenames in a repository is
+  // not the count of conversions this costs. Sharing a basename is not a collision
+  // when only one of the two was ever going to be written: nothing is overwritten, the
+  // other file stays where it is, and every reference to it keeps resolving.
+  it('still converts the one that converts when the other was never going to', () => {
+    const plan = planOptimization(
+      input({
+        assets,
+        references,
+        publicDir: 'static',
+        probes: [probe('static/distance.gif', 40_000), probe('static/distance.png', 4_000)],
+      }),
+    );
+
+    expect(plan.conversions.map((c) => c.asset)).toEqual(['static/distance.png']);
+    expect(plan.declined.map((d) => d.reason)).not.toContainEqual(
+      expect.stringContaining('would also convert'),
+    );
+  });
+
+  it('withdraws the rewrite of a template that matches a collided asset', () => {
+    const three = [
+      asset('public/a-light.png'),
+      asset('public/a-light.gif'),
+      asset('public/a-dark.png'),
+    ];
+    const plan = planOptimization(
+      input({
+        assets: three,
+        references: [
+          pattern('src/App.jsx', './a-${mode}.png', ['public/a-light.png', 'public/a-dark.png']),
+        ],
+      }),
+    );
+
+    // a-light collided with a-light.gif and was withdrawn, so the pattern no longer
+    // has every target converting and its single edit would break the reference for
+    // both. Rewriting it here is what would happen if the collision were detected
+    // after the pattern veto rather than before it.
+    expect(plan.conversions.map((c) => c.asset)).toEqual(['public/a-dark.png']);
+    expect(plan.rewrites).toEqual([]);
+  });
+});
+
+describe('an asset whose converted name is already taken', () => {
+  // Never reached on the corpus, because the repositories that have it abort on the
+  // mutual collision first. prepare would refuse the create, which aborts the whole
+  // run rather than declining the one asset.
+  const assets = [asset('img/possum.png'), asset('img/possum.webp')];
+  const references = [resolved('index.html', 'img/possum.png', 'img/possum.png')];
+
+  it('declines rather than writing over the file that is there', () => {
+    const plan = planOptimization(input({ assets, references, publicDir: 'img' }));
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'img/possum.png',
+        line: null,
+        reason:
+          'img/possum.webp already exists, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      },
+    ]);
+  });
+
+  it('reports both obstacles when a colliding pair also lands on an existing file', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('img/possum.jpg'), asset('img/possum.png'), asset('img/possum.webp')],
+        references: [
+          resolved('index.html', 'img/possum.jpg', 'img/possum.jpg'),
+          resolved('index.html', 'img/possum.png', 'img/possum.png'),
+        ],
+        publicDir: 'img',
+      }),
+    );
+
+    // Renaming one of the pair leaves the other still blocked by the file that is
+    // already there, so a reason naming only the pair would send somebody round twice.
+    expect(plan.declined.map((d) => d.reason)).toEqual([
+      'img/possum.png would also convert to img/possum.webp, and img/possum.webp already exists, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      'img/possum.jpg would also convert to img/possum.webp, and img/possum.webp already exists, so converting it would replace a file rather than add one. Rename one of them and run again.',
+    ]);
+  });
+});
