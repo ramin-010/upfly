@@ -92,7 +92,7 @@ function byReason(declined: readonly { readonly reason: string }[]): [string, nu
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
-async function run(name: string, keep: boolean): Promise<boolean> {
+async function run(name: string, keep: boolean, replace: boolean): Promise<boolean> {
   stdout.write(`\n${name}\n`);
   const root = await copyRepository(name);
   stdout.write(`  copy      ${root}\n`);
@@ -103,7 +103,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     const brokenBefore = (await runEngine(root)).graph.byResolution.broken.length;
 
     const started = performance.now();
-    const result = await optimizeTree(root);
+    const result = await optimizeTree(root, undefined, replace ? 'replace' : 'keep-original');
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
 
     if (result.refusal !== null) {
@@ -157,6 +157,10 @@ async function main(): Promise<void> {
   const flags = argv.slice(2);
   const only = flags.find((flag) => flag.startsWith('--repo='))?.slice('--repo='.length);
   const keep = flags.includes('--keep');
+  // The replace policy deletes originals once their references have moved. It is
+  // shipped code that had never been executed, because every runner hardcoded
+  // keep-original, so there was no way to reach it without editing source.
+  const replace = flags.includes('--replace');
 
   // One entry per repository, not one per configuration: the unconfigured duplicates
   // exist to compare reports and there is nothing different to apply for them.
@@ -170,7 +174,10 @@ async function main(): Promise<void> {
   }
 
   let ok = true;
-  for (const name of names) ok = (await run(name, keep)) && ok;
+  if (replace) {
+    stdout.write('\npolicy    replace: originals are removed once their references move\n');
+  }
+  for (const name of names) ok = (await run(name, keep, replace)) && ok;
 
   exit(ok ? 0 : 1);
 }

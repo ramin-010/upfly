@@ -12,6 +12,7 @@ import {
   type AuditResult,
   type Graph,
   type OptimizeResult,
+  type PublicPolicy,
   type ServingRoots,
   createNodeFileStore,
   createSharpProbe,
@@ -68,7 +69,11 @@ export async function runEngine(root: string, declared?: ServingRoots): Promise<
  * exported constant in this same package, so the distance between a correct call and
  * a catastrophic one is one argument.
  */
-export async function optimizeTree(root: string, declared?: ServingRoots): Promise<OptimizeResult> {
+export async function optimizeTree(
+  root: string,
+  declared?: ServingRoots,
+  publicPolicy: PublicPolicy = 'keep-original',
+): Promise<OptimizeResult> {
   refuseValidationCorpus(root);
 
   const { graph, audit: findings, servingRoots, probes } = await runEngine(root, declared);
@@ -82,7 +87,7 @@ export async function optimizeTree(root: string, declared?: ServingRoots): Promi
     servingRoots,
     format: 'webp',
     publicDir: servingRoots.dirs[0] ?? 'public',
-    publicPolicy: 'keep-original',
+    publicPolicy,
     apply: true,
     runId: newRunId(new Date()),
     now: () => new Date().toISOString(),
