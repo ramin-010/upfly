@@ -44,6 +44,13 @@ const TREES: readonly Tree[] = [
   // Eleventy copies `src/img` through to `/img`, so `src` is what serves a
   // root-relative path.
   { name: 'eleventy', publicDir: 'src' },
+  // R67's hand-built partial-failure tree. It is not a framework fixture and joins
+  // neither the audit corpus in `fixtures.test.ts` nor the exit criterion in
+  // `bench/src/fixture-build.ts` — it is not a buildable project and has no business
+  // in either. It belongs HERE because the hygiene this file checks is exactly what a
+  // hand-built tree is most likely to lose: a reference that stops resolving would
+  // dissolve the partial state while every planner assertion kept passing.
+  { name: 'partial-pattern', publicDir: 'public' },
 ];
 
 /**

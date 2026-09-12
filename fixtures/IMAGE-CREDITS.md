@@ -60,3 +60,20 @@ cannot improve, and it would make the saving figures describe the wrong thing.
 | `plain-html` | `images/hero@2x.jpg` | Blue Marble | 480x320 |
 | `plain-html` | `images/team.jpg` | Earthrise | 240x160 |
 | `plain-html` | `images/texture.png` | Earthrise | 160x160 |
+| `partial-pattern` | `public/banner.png` | Blue Marble | 200x150 |
+| `partial-pattern` | `public/theme-light.png` | Earthrise | 160x120 |
+| `partial-pattern` | `public/theme-sepia.png` | Earthrise | 200x150 |
+| `partial-pattern` | `src/inline-logo.jpg` | Earthrise | 240x160 |
+
+## `partial-pattern/public/theme-dark.png` is a placeholder ON PURPOSE (R67)
+
+It is one of the 70-byte placeholders the note above describes as the reason the other
+fixtures stopped using them — images **WebP makes larger**. Here that is the point rather
+than the problem: it measures 70 bytes as PNG and **94 as WebP**, so it genuinely does not
+convert, and one sibling that will not convert is what makes its pattern reference a
+*partial* failure rather than a total one.
+
+⚠️ **Do not replace it with a photograph.** Doing so converts all three siblings, the
+withdrawal stops firing, and `partial-states.test.ts` loses the only state it exists to
+test. It is checked: swapping this file for a real image turns four tests in that file red,
+including the premise test that guards exactly this.
