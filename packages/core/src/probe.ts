@@ -369,8 +369,43 @@ const FAILURE_REASON: Record<
   'not-an-image': 'this file could not be read as an image, so nothing about it could be measured',
   'svg-unreadable':
     'this SVG could not be read — its dimensions, its XML or its size defeated the parser — so nothing about it could be measured',
-  'too-large-to-encode': `this image is larger than the ${MAX_ENCODE_PIXELS.toLocaleString('en-US')} pixels we will decode to measure an encode, so there is no size to compare (resize it, or raise the limit)`,
+  'too-large-to-encode': `this image is larger than the ${groupDigits(MAX_ENCODE_PIXELS)} pixels we will decode to measure an encode, so there is no size to compare (resize it, or raise the limit)`,
   'encode-failed': 'the image decoded but re-encoding it failed, so there is no size to compare',
+};
+
+/**
+ * Thousands separators, by hand, because `toLocaleString` is not allowed here.
+ *
+ * ⚠️ **The first version of this used `toLocaleString('en-US')` and an explicit locale
+ * is not enough.** Number formatting goes through ICU, and a Node built with
+ * `small-icu` can format the same number differently — so the same repository would
+ * render different bytes on two machines, which is rule 11 broken by exactly the
+ * mechanism the renderer already forbids `toLocaleString` for. Found by reading the
+ * rendered report, not by a test.
+ */
+function groupDigits(value: number): string {
+  const digits = String(value);
+  let out = '';
+  for (let index = 0; index < digits.length; index += 1) {
+    const fromEnd = digits.length - index;
+    out += digits[index];
+    if (fromEnd > 1 && fromEnd % 3 === 1) out += ',';
+  }
+  return out;
+}
+
+/**
+ * A short form of the same failure, for the encode entry that follows it.
+ *
+ * ⚠️ **The long reason cannot be reused here, and reading the rendered report is what
+ * showed it.** Appending to it produced `this file could not be read as an image, so
+ * nothing about it could be measured, so there is nothing to encode` — two `so` clauses
+ * in one sentence, on every such asset in the report. The metadata entry directly above
+ * has already said what went wrong; this one only has to say what follows from it.
+ */
+const ENCODE_FOLLOWS: Record<'not-an-image' | 'svg-unreadable', string> = {
+  'not-an-image': 'this file could not be read as an image, so there is nothing to encode',
+  'svg-unreadable': 'this SVG could not be read, so there is nothing to encode',
 };
 
 /**
@@ -553,7 +588,7 @@ function encodeSkipReason(
     // already has a code saying whether it is an unreadable SVG or not an image, and
     // the encode entry saying something vaguer would contradict it in the same report.
     const code = headerFailureCode(asset);
-    return { code, reason: `${FAILURE_REASON[code]}, so there is nothing to encode` };
+    return { code, reason: ENCODE_FOLLOWS[code] };
   }
   if (isVectorExtension(extensionOf(asset.path))) {
     return {

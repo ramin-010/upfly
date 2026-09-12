@@ -187,8 +187,7 @@ describe('probeAssets', () => {
         {
           measurement: 'webp',
           code: 'not-an-image',
-          reason:
-            'this file could not be read as an image, so nothing about it could be measured, so there is nothing to encode',
+          reason: 'this file could not be read as an image, so there is nothing to encode',
         },
       ]);
     });
@@ -262,6 +261,23 @@ describe('probeAssets', () => {
         expect(vector?.skipped[0]?.reason).toContain('SVG');
         expect(vector?.skipped[0]?.reason).not.toContain('libvips');
         expect(vector?.skipped[0]?.reason).not.toContain('whatever');
+      });
+
+      it('formats the limit without asking the platform how to write a number', async () => {
+        // ⚠️ Rule 11. The first version used `toLocaleString('en-US')`, and an explicit
+        // locale is NOT enough: number formatting goes through ICU, and a Node built
+        // with `small-icu` can render the same number differently — so the same
+        // repository would produce different bytes on two machines, by exactly the
+        // mechanism `report-human.ts` already bans `toLocaleString` for.
+        //
+        // Found by reading the rendered report on a real repository, not by a test,
+        // which is this phase's most reliable instrument and its least automated one.
+        const [result] = await probeAssets([asset('huge.png')], {
+          probe: fakeProbe({ width: 40_000, height: 40_000, encodeFails: 'boom' }),
+          formats: ['webp'],
+        });
+
+        expect(result?.skipped[0]?.reason).toContain('268,402,689');
       });
 
       it('names the pixel limit when the source is past it', async () => {
