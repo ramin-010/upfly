@@ -43,8 +43,13 @@ export async function createSharpProbe(
   //
   // It is set here rather than by the caller because a caller who forgets gets a
   // failure that looks like a virus scanner or a flaky disk, which is the version of
-  // this that already cost a day. The cache buys little on this workload in any case:
-  // a file is measured once and encoded once, so there is almost nothing to reuse.
+  // this that already cost a day.
+  //
+  // The cost of turning it off is not known. An applied run decodes the same source up
+  // to three times, for the header, for the measurement and for the file it writes, so
+  // there was something here for the cache to do. Correctness decides it either way,
+  // because a file the process cannot delete is not a tradeable amount of slowness,
+  // but nobody should quote this as free until it has been measured.
   sharp.cache(false);
 
   /**
