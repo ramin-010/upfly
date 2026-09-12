@@ -251,6 +251,21 @@ function skippedSection(report: Report): string[] {
       lines.push(...collapseByReason(items));
       lines.push('');
     }
+
+    // R64. The reasons above are ours, deliberately: a third-party library's wording
+    // is not stable enough for an artefact promised to be byte-identical. But a reader
+    // who wants to know what libvips or PostCSS actually said was left with nowhere to
+    // look and no hint that anywhere existed — the text had been moved, and only half
+    // of rule 9 was being kept. One line closes that, and a filename is deterministic
+    // content, so the promise above is untouched.
+    if (report.diagnosticsFile !== null) {
+      lines.push(
+        `  What the underlying libraries said about these is in ${report.diagnosticsFile}.`,
+        '  It is their wording, not ours, and it can change when they are upgraded —',
+        '  which is why it is there and not here.',
+        '',
+      );
+    }
   }
 
   if (references.unsafe.length > 0) {

@@ -101,11 +101,58 @@ export interface ImageProbe {
   }): Promise<number>;
 }
 
-/** Why a measurement was not taken. Machine-readable so a report can group by it. */
+/**
+ * Why a measurement was not taken. Machine-readable so a report can group by it.
+ *
+ * ⚠️ **Enumerated by what the USER can do, never by what the library said (R64).**
+ * R60 correctly took libvips' wording out of the report, and the measured cost was
+ * that 21 failures across the corpus collapsed into 2 sentences and lost 5
+ * distinguishable causes — 20 of them under one code carrying four different
+ * meanings, and `Input image exceeds pixel limit`, the single most actionable string
+ * we had, becoming the vaguest.
+ *
+ * The repair is not to mirror libvips' failure modes back in, which is an open-ended
+ * list that grows on every upgrade. It is to ask what a reader would *do* about each,
+ * which has only three answers: supply a real image, fix the SVG, or make the image
+ * smaller. **That enumeration is bounded** — it does not grow when libvips adds a
+ * message — and every code below is decided from our own data: the asset's extension
+ * and its measured dimensions, never from matching the text of an error.
+ */
 export type ProbeSkipCode =
-  /** The header would not decode, so there was nothing to measure. */
-  | 'header-unreadable'
-  /** The header read, but the encode itself failed. */
+  /**
+   * Not readable as an image at all. Measured: 8 of the corpus's 21 failures.
+   *
+   * What a user does: nothing, or supply a real image. Usually a file with an image
+   * extension that is not one — an HTML error page saved as `.png`, a Git LFS
+   * pointer, a zero-byte placeholder.
+   */
+  | 'not-an-image'
+  /**
+   * An SVG the vector parser would not read. Measured: 12 of 21, in three flavours —
+   * no usable width/height, malformed XML, and a file past the XML parser's buffer.
+   *
+   * What a user does: fix the SVG. One code rather than three because the action is
+   * the same in all three cases, and because the three are distinguishable only by
+   * reading libvips' wording, which is precisely what must not decide this.
+   */
+  | 'svg-unreadable'
+  /**
+   * The image decoded, but it is larger than we will decode again to measure an
+   * encode. Measured: 1 of 21, and the most actionable of the five causes.
+   *
+   * 🔴 **Not optional, and not foldable back into `encode-failed`.** Folding it in is
+   * the one regression R60 actually caused, and it is the only one of the five with a
+   * fix the reader controls: resize the image, or raise `MAX_ENCODE_PIXELS`.
+   */
+  | 'too-large-to-encode'
+  /**
+   * The header read, but the encode failed for a reason we cannot attribute.
+   *
+   * The residual, and it stays: deleting it would turn an unclassifiable failure into
+   * a silent one, which rule 9 makes a P0. It should be rare — no instance in the
+   * corpus once `too-large-to-encode` takes the pixel-limit case — and an instance of
+   * it is a prompt to look, not a category to grow.
+   */
   | 'encode-failed'
   /** An SVG: encoding it measures a rasterisation, not a saving. */
   | 'vector'
@@ -151,7 +198,10 @@ export interface ProbeDiagnostic {
   /** POSIX-relative path of the asset being measured. */
   readonly asset: string;
   readonly measurement: 'metadata' | EncodeFormat;
-  readonly code: Extract<ProbeSkipCode, 'header-unreadable' | 'encode-failed'>;
+  readonly code: Extract<
+    ProbeSkipCode,
+    'not-an-image' | 'svg-unreadable' | 'too-large-to-encode' | 'encode-failed'
+  >;
   /** Verbatim from the library. Unstable between runs, and never a report's business. */
   readonly detail: string;
 }
@@ -193,6 +243,22 @@ export const DEFAULT_ENCODE_QUALITY: Readonly<Record<EncodeFormat, number>> = Ob
   webp: 80,
   avif: 75,
 });
+
+/**
+ * The largest source we will decode in order to measure an encode, in pixels.
+ *
+ * ⚠️ **Adopted as ours rather than left to the library, and that is the point (R64).**
+ * The number is sharp's own historical default (`0x3FFF²`), so declaring it changes no
+ * behaviour — what changes is who owns it. `too-large-to-encode` has to be decided
+ * from our own data, and the only honest way to say *this image is past the limit* is
+ * to compare measured dimensions against a limit we set. Reading libvips' `Input image
+ * exceeds pixel limit` instead would put the classification back under a string that
+ * is free to change, which is the whole defect R60 fixed.
+ *
+ * It is also what makes the reason actionable: *raise the limit* names something we
+ * can actually offer, rather than a libvips build flag nobody can reach.
+ */
+export const MAX_ENCODE_PIXELS = 0x3fff * 0x3fff;
 
 /** Everything measured about one asset. */
 export interface AssetProbe {
@@ -296,11 +362,44 @@ const DEFAULT_CONCURRENCY = 4;
  * the same bytes. The library's text that used to stand here is not stable enough to
  * put in an artefact that rule 11 is a promise about.
  */
-const FAILURE_REASON: Record<'header-unreadable' | 'encode-failed', string> = {
-  'header-unreadable':
-    'the image header would not decode, so nothing about this image could be measured',
+const FAILURE_REASON: Record<
+  'not-an-image' | 'svg-unreadable' | 'too-large-to-encode' | 'encode-failed',
+  string
+> = {
+  'not-an-image': 'this file could not be read as an image, so nothing about it could be measured',
+  'svg-unreadable':
+    'this SVG could not be read — its dimensions, its XML or its size defeated the parser — so nothing about it could be measured',
+  'too-large-to-encode': `this image is larger than the ${MAX_ENCODE_PIXELS.toLocaleString('en-US')} pixels we will decode to measure an encode, so there is no size to compare (resize it, or raise the limit)`,
   'encode-failed': 'the image decoded but re-encoding it failed, so there is no size to compare',
 };
+
+/**
+ * Which of the two header failures this asset is, decided by its extension.
+ *
+ * ⚠️ **From our data, not from libvips' message, and that is the whole point of R64.**
+ * The corpus's 20 header failures are 8 files that are not images and 12 SVGs the
+ * vector parser refused, and libvips distinguishes them only in prose we have
+ * promised not to print. The extension separates them perfectly and costs nothing:
+ * a `.svg` that will not read is an SVG to fix, and anything else is not an image.
+ */
+function headerFailureCode(asset: Asset): 'not-an-image' | 'svg-unreadable' {
+  return isVectorExtension(extensionOf(asset.path)) ? 'svg-unreadable' : 'not-an-image';
+}
+
+/**
+ * Whether this asset is past the pixel budget, which is arithmetic rather than prose.
+ *
+ * `pages` is included because an animated source is decoded with every frame stacked
+ * into one strip, so a ten-frame GIF presents ten times its own area to the decoder —
+ * which is exactly the case a per-frame count would misjudge.
+ *
+ * Returns false when the metadata never read: that asset already has a header code,
+ * and claiming it is also too large would be inventing a second cause from nothing.
+ */
+function isBeyondPixelBudget(metadata: ImageMetadata | null): boolean {
+  if (metadata === null) return false;
+  return metadata.width * metadata.height * Math.max(1, metadata.pages) > MAX_ENCODE_PIXELS;
+}
 
 /**
  * Measure every asset.
@@ -393,7 +492,7 @@ async function probeOne(
   try {
     metadata = await options.probe.metadata(asset.path);
   } catch (error) {
-    fail('metadata', 'header-unreadable', error);
+    fail('metadata', headerFailureCode(asset), error);
   }
 
   const capped = withinCap !== null && !withinCap.has(asset.path);
@@ -432,7 +531,11 @@ async function probeOne(
         }),
       });
     } catch (error) {
-      fail(format, 'encode-failed', error);
+      // R64. The pixel limit is the one failure of the five with a fix the reader
+      // controls, and folding it into a generic encode failure is the single
+      // regression R60 caused. Decided by arithmetic against our own limit, not by
+      // reading libvips' `Input image exceeds pixel limit`.
+      fail(format, isBeyondPixelBudget(metadata) ? 'too-large-to-encode' : 'encode-failed', error);
     }
   }
 
@@ -446,10 +549,11 @@ function encodeSkipReason(
   format: EncodeFormat,
 ): Pick<ProbeSkip, 'code' | 'reason'> | null {
   if (metadata === null) {
-    return {
-      code: 'header-unreadable',
-      reason: 'the header could not be read, so there is nothing to encode',
-    };
+    // The same split as the metadata failure above, for the same reason: this asset
+    // already has a code saying whether it is an unreadable SVG or not an image, and
+    // the encode entry saying something vaguer would contradict it in the same report.
+    const code = headerFailureCode(asset);
+    return { code, reason: `${FAILURE_REASON[code]}, so there is nothing to encode` };
   }
   if (isVectorExtension(extensionOf(asset.path))) {
     return {

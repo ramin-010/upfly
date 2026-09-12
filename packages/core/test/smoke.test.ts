@@ -38,35 +38,67 @@ async function loadBuiltPackage(): Promise<Record<string, unknown>> {
   return (await import(BUILT_ENTRY)) as Record<string, unknown>;
 }
 
+/**
+ * Long enough that the clock is never what fails, because the clock asserts nothing.
+ *
+ * ⚠️ **Measured before it was raised, rather than raised because the test went red.**
+ * This is the only test that resolves and loads the real `dist` through Node's module
+ * resolution, which is genuine filesystem work, and it runs alongside the rest of the
+ * suite. Standalone the import takes ~440 ms; inside the full suite it was measured at
+ * **5 263 ms** against vitest's 5 000 ms default, so the failure moved with how many
+ * other tests happened to be running and not with anything about the package.
+ *
+ * The claim here is *the packaged entry point resolves and loads*. A duration is not
+ * part of that claim, and a threshold the suite's own size can cross is a test that
+ * will eventually be silenced by whoever meets it at the wrong moment — which would
+ * cost exactly what R62 bought. If the import ever genuinely takes thirty seconds,
+ * this still fails.
+ */
+const LOAD_TIMEOUT_MS = 30_000;
+
 describe('the built package', () => {
-  it('resolves and loads through its own entry point', async () => {
-    const built = await loadBuiltPackage();
+  it(
+    'resolves and loads through its own entry point',
+    async () => {
+      const built = await loadBuiltPackage();
 
-    expect(typeof built).toBe('object');
-  });
+      expect(typeof built).toBe('object');
+    },
+    LOAD_TIMEOUT_MS,
+  );
 
-  it('exports the functions the CLI and the extension import by name', async () => {
-    const built = await loadBuiltPackage();
+  // The same timeout, for the same reason: it loads the same artefact, so it is
+  // exposed to exactly the same contention. It passed only because module resolution
+  // is cached by the time it runs, which is an accident of ordering rather than a
+  // property worth relying on.
+  it(
+    'exports the functions the CLI and the extension import by name',
+    async () => {
+      const built = await loadBuiltPackage();
 
-    // A representative slice across the modules an outside caller actually reaches:
-    // discovery, planning, the transaction, the report and the probe. A name missing
-    // here means the emitted entry point does not match the source's public surface.
-    for (const name of [
-      'discover',
-      'planOptimization',
-      'buildReport',
-      'renderReport',
-      'optimize',
-      'prepare',
-      'commit',
-      'probeAssets',
-      'createSharpProbe',
-      'parseManifest',
-      'serialiseManifest',
-    ]) {
-      expect(typeof built[name], `${name} is missing from the built entry point`).toBe('function');
-    }
-  });
+      // A representative slice across the modules an outside caller actually reaches:
+      // discovery, planning, the transaction, the report and the probe. A name missing
+      // here means the emitted entry point does not match the source's public surface.
+      for (const name of [
+        'discover',
+        'planOptimization',
+        'buildReport',
+        'renderReport',
+        'optimize',
+        'prepare',
+        'commit',
+        'probeAssets',
+        'createSharpProbe',
+        'parseManifest',
+        'serialiseManifest',
+      ]) {
+        expect(typeof built[name], `${name} is missing from the built entry point`).toBe(
+          'function',
+        );
+      }
+    },
+    LOAD_TIMEOUT_MS,
+  );
 
   it('exports the adapter set, which is a value rather than a function', async () => {
     const built = await loadBuiltPackage();

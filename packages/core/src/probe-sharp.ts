@@ -15,7 +15,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { EncodeFormat, ImageMetadata, ImageProbe } from './probe.js';
-import { DEFAULT_ENCODE_QUALITY } from './probe.js';
+import { DEFAULT_ENCODE_QUALITY, MAX_ENCODE_PIXELS } from './probe.js';
 
 /**
  * Build the sharp-backed probe.
@@ -64,7 +64,15 @@ export async function createSharpProbe(
     // frame and nothing else: a ten-frame fixture encodes to 616 bytes instead of
     // 8370, so every animated GIF would report a saving only achievable by
     // destroying the animation.
-    const pipeline = sharp(path, { animated });
+    //
+    // `limitInputPixels` is passed explicitly at exactly sharp's own default, so it
+    // changes no behaviour and moves no measurement. What it changes is ownership:
+    // R64 classifies a too-large source by comparing its measured dimensions against
+    // `MAX_ENCODE_PIXELS`, and that comparison is only honest if the limit being
+    // compared to is the limit actually in force. Leaving it implicit would mean our
+    // arithmetic and libvips' threshold could drift apart on an upgrade, and the
+    // symptom would be a `too-large-to-encode` reason attached to the wrong images.
+    const pipeline = sharp(path, { animated, limitInputPixels: MAX_ENCODE_PIXELS });
     switch (format) {
       case 'webp':
         return pipeline.webp({ quality: quality.webp });

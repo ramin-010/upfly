@@ -65,6 +65,16 @@ import type {
  * (`project-root` split in two), but that is the exported TypeScript API rather than
  * the report schema, and it belongs to package versioning. Bumping here for an
  * addition would train readers to ignore the number.
+ *
+ * ⚠️ **Deliberately NOT bumped for `diagnosticsFile` or for R64's probe codes either**,
+ * and both halves follow the rule above rather than bending it. `diagnosticsFile` is a
+ * pure addition; nothing that existed changes meaning. R64 replaced `header-unreadable`
+ * with `not-an-image` and `svg-unreadable` and added `too-large-to-encode` — which
+ * *sounds* like a breaking change and is not one **here**, because `SkippedItem` carries
+ * `what`, `stage` and `reason` and never a code. `ProbeSkipCode` is the exported
+ * TypeScript API, so it belongs to package versioning, exactly as `ResolvedVia` did.
+ * Checked rather than assumed: the fixtures cannot show it, because not one of them has
+ * an asset that fails to decode.
  */
 export const REPORT_SCHEMA_VERSION = 3;
 
@@ -357,6 +367,20 @@ export interface Report {
   readonly coverage: CoverageReport;
   /** Everything declined, from every stage, sorted. */
   readonly skipped: readonly SkippedItem[];
+  /**
+   * Where a reader can find what the third-party libraries actually said, or `null`.
+   *
+   * R64's second half. R60 moved libvips', PostCSS's and Babel's own wording out of
+   * this artefact and into a diagnostic channel, which was right — the text is not
+   * ours and it changes on a dependency upgrade — but it left a reader who wants that
+   * detail with nowhere to look and nothing telling them one exists. **Naming the
+   * file is what keeps rule 9 true across the move**: the text was relocated, not
+   * dropped, and the report says so.
+   *
+   * A filename is deterministic content, so rule 11 is untouched — which is the whole
+   * reason this is a name rather than the text it names.
+   */
+  readonly diagnosticsFile: string | null;
   readonly caveats: readonly Caveat[];
 }
 
@@ -403,6 +427,18 @@ export interface ReportInput {
   readonly declined?: readonly Declined[];
   /** Itemise the declined assets. Off by default (`--include-declined`). */
   readonly includeDeclined?: boolean;
+  /**
+   * The name of the file this run wrote the libraries' own error text to.
+   *
+   * Optional, and absent is the honest answer for a caller that writes no such file —
+   * naming one that does not exist would send a reader looking for nothing. `bench`
+   * supplies it; the CLI will when it starts writing one.
+   *
+   * A **name**, not a path: an absolute path in the report would break rule 11 the
+   * moment the same repository was audited from two checkouts, which is a defect this
+   * codebase has already had once.
+   */
+  readonly diagnosticsFile?: string;
 }
 
 /** Build the report. Pure, and the only place that decides what the public shape is. */
@@ -426,6 +462,7 @@ export function buildReport(input: ReportInput): Report {
     references: referenceReport(input.graph, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
+    diagnosticsFile: input.diagnosticsFile ?? null,
     caveats: caveats(input, vectors),
   };
 }

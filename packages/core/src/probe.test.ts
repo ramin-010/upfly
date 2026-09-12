@@ -181,14 +181,14 @@ describe('probeAssets', () => {
       expect(result?.skipped).toEqual([
         {
           measurement: 'metadata',
-          code: 'header-unreadable',
-          reason:
-            'the image header would not decode, so nothing about this image could be measured',
+          code: 'not-an-image',
+          reason: 'this file could not be read as an image, so nothing about it could be measured',
         },
         {
           measurement: 'webp',
-          code: 'header-unreadable',
-          reason: 'the header could not be read, so there is nothing to encode',
+          code: 'not-an-image',
+          reason:
+            'this file could not be read as an image, so nothing about it could be measured, so there is nothing to encode',
         },
       ]);
     });
@@ -211,7 +211,7 @@ describe('probeAssets', () => {
         {
           asset: 'zero.png',
           measurement: 'metadata',
-          code: 'header-unreadable',
+          code: 'not-an-image',
           detail: 'Input file contains unsupported image format',
         },
       ]);
@@ -226,6 +226,108 @@ describe('probeAssets', () => {
       });
 
       expect(JSON.stringify(result)).not.toContain('Input file');
+    });
+
+    describe('R64: classified by what the reader can do, not by what libvips said', () => {
+      it('calls an unreadable SVG an SVG, and an unreadable PNG not an image', async () => {
+        // 🔴 **The split that R60 cost us, restored without reading libvips' prose.**
+        // Measured across the corpus, the 20 header failures are 8 files that are not
+        // images and 12 SVGs the vector parser refused — and libvips distinguishes
+        // them only in wording we have promised not to print. The extension separates
+        // them perfectly, and it is our data.
+        //
+        // Both are fed the *same* libvips message on purpose: if the error text were
+        // deciding this, both would land in the same bucket and this test would fail.
+        const failing = { metadataFails: 'Input file has corrupt header: svgload: bad dimensions' };
+
+        const [vector] = await probeAssets([asset('icon.svg')], {
+          probe: fakeProbe(failing),
+          formats: [],
+        });
+        const [raster] = await probeAssets([asset('photo.png')], {
+          probe: fakeProbe(failing),
+          formats: [],
+        });
+
+        expect(vector?.skipped[0]?.code).toBe('svg-unreadable');
+        expect(raster?.skipped[0]?.code).toBe('not-an-image');
+      });
+
+      it('says what to do about each, in the reason a reader actually meets', async () => {
+        const [vector] = await probeAssets([asset('icon.svg')], {
+          probe: fakeProbe({ metadataFails: 'whatever libvips felt like saying' }),
+          formats: [],
+        });
+
+        expect(vector?.skipped[0]?.reason).toContain('SVG');
+        expect(vector?.skipped[0]?.reason).not.toContain('libvips');
+        expect(vector?.skipped[0]?.reason).not.toContain('whatever');
+      });
+
+      it('names the pixel limit when the source is past it', async () => {
+        // 🔴 **The one regression R60 actually caused.** `Input image exceeds pixel
+        // limit` was the single most actionable string we had and became the vaguest
+        // sentence in the report. It is the only one of the five causes with a fix the
+        // reader controls, so it gets its own code.
+        //
+        // Decided by arithmetic against `MAX_ENCODE_PIXELS` — a limit we set — rather
+        // than by matching libvips' text. The message below is deliberately unrelated
+        // to pixels, so a string-matching implementation would fail here.
+        const [result] = await probeAssets([asset('huge.png')], {
+          probe: fakeProbe({
+            width: 40_000,
+            height: 40_000,
+            encodeFails: 'something else entirely',
+          }),
+          formats: ['webp'],
+        });
+
+        expect(result?.skipped[0]?.code).toBe('too-large-to-encode');
+        expect(result?.skipped[0]?.reason).toContain('resize it');
+      });
+
+      it('counts every frame, because an animation is decoded as one strip', async () => {
+        // A source read with `{ animated: true }` presents all its frames stacked, so
+        // a ten-frame image offers ten times its own area to the decoder. Judging it
+        // per frame would let an animation past the budget report the wrong cause.
+        const perFrame = { width: 10_000, height: 2_000, encodeFails: 'boom' };
+
+        const [still] = await probeAssets([asset('still.png')], {
+          probe: fakeProbe({ ...perFrame, pages: 1 }),
+          formats: ['webp'],
+        });
+        const [animated] = await probeAssets([asset('anim.gif')], {
+          probe: fakeProbe({ ...perFrame, pages: 20 }),
+          formats: ['webp'],
+        });
+
+        expect(still?.skipped[0]?.code).toBe('encode-failed');
+        expect(animated?.skipped[0]?.code).toBe('too-large-to-encode');
+      });
+
+      it('keeps a plain encode failure unclassified rather than guessing', async () => {
+        // The residual stays. An encode that failed for a reason we cannot attribute
+        // is not a silent skip — it is reported as what it is. Deleting this code to
+        // make the enumeration look tidy would turn an unexplained failure into an
+        // invented explanation, and rule 9 prefers the honest one.
+        const [result] = await probeAssets([asset('hero.png')], {
+          probe: fakeProbe({ width: 100, height: 50, encodeFails: 'out of memory' }),
+          formats: ['webp'],
+        });
+
+        expect(result?.skipped[0]?.code).toBe('encode-failed');
+      });
+
+      it('does not claim a too-large source when the header never read', async () => {
+        // The asset already has a header code. Adding `too-large-to-encode` on top
+        // would be a second cause invented from dimensions we never measured.
+        const [result] = await probeAssets([asset('broken.png')], {
+          probe: fakeProbe({ metadataFails: 'nope' }),
+          formats: ['webp'],
+        });
+
+        expect(result?.skipped.map((skip) => skip.code)).toEqual(['not-an-image', 'not-an-image']);
+      });
     });
 
     it('records a reason when an encode fails after a good header', async () => {

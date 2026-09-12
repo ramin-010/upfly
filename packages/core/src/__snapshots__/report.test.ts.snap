@@ -37,6 +37,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "diagnosticsFile": null,
   "findings": [
     {
       "asset": "public/never-used.png",
@@ -174,6 +175,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "diagnosticsFile": null,
   "findings": [
     {
       "file": "src/posts/second.md",
@@ -395,6 +397,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "diagnosticsFile": null,
   "findings": [
     {
       "asset": "public/unreferenced.png",
@@ -514,6 +517,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "diagnosticsFile": null,
   "findings": [
     {
       "file": "about.html",
@@ -666,6 +670,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "diagnosticsFile": null,
   "findings": [
     {
       "asset": "src/assets/orphan.png",

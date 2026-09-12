@@ -232,6 +232,10 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     servingRoots: output.servingRoots,
     ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeUnusedVectors: true,
+    // R64: the report names the file this run writes the libraries' own words to.
+    // A bare name rather than a path, because the report must read the same from
+    // any checkout — `writeArtifacts` puts it beside the report it belongs to.
+    diagnosticsFile: `${labelOf(repo)}.diagnostics.txt`,
   });
 
   return {

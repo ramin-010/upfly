@@ -787,6 +787,51 @@ describe('buildReport', () => {
       ]);
     });
 
+    describe('R64: the report names where the libraries own words went', () => {
+      /**
+       * Hand-built for the same reason the block around it is: **no fixture can reach
+       * this line.** Every fixture report passes no `diagnosticsFile`, so it renders
+       * as `null` in all five approved snapshots and the rendered sentence is executed
+       * by nothing — the same trap this file already names for the discarded line and
+       * the encode cap.
+       */
+      function rendered(diagnosticsFile?: string) {
+        const report = reportWith([probe('broken.png', 'encode-failed')]);
+        return renderReport(
+          diagnosticsFile === undefined ? report : { ...report, diagnosticsFile },
+        );
+      }
+
+      it('names the file when the run wrote one', () => {
+        // R60 moved this text out of the report, which was right. What it left behind
+        // was a reader with nowhere to look and nothing saying anywhere existed — the
+        // text had been relocated and only half of rule 9 was being kept.
+        const text = rendered('railsgirls-com.diagnostics.txt');
+
+        expect(text).toContain('railsgirls-com.diagnostics.txt');
+        expect(text).toContain('their wording, not ours');
+      });
+
+      it('says nothing at all when no such file was written', () => {
+        // Absent is the honest answer, not a default name. Naming a file that does
+        // not exist sends a reader looking for nothing, which is worse than silence —
+        // and the CLI writes none of these yet.
+        const text = rendered();
+
+        expect(text).not.toContain('diagnostics');
+        expect(text).toContain('broken.png');
+      });
+
+      it('is a name and never a path, so two checkouts render the same bytes', () => {
+        // Rule 11. An absolute path in the report is a defect this codebase has had
+        // once already, found by §5.1(f) on `eleventy-docs`.
+        const report = reportWith([probe('broken.png', 'encode-failed')]);
+
+        expect(report.diagnosticsFile).toBeNull();
+        expect(JSON.stringify(report)).not.toContain(ROOT);
+      });
+    });
+
     it('still reports a measurement that genuinely failed', () => {
       // The control, and the thing that must not be lost: an encoder rejecting an
       // image is a failure, not a determination, and it belongs in the list.
