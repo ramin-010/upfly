@@ -98,6 +98,56 @@ describe('on a real filesystem', () => {
     });
   });
 
+  describe('createExclusive, which is what makes R68 lock rather than pretend to', () => {
+    /**
+     * ⚠️ **Every other test of the lock runs against the in-memory store**, where
+     * exclusivity is three lines this project wrote and could therefore have written
+     * to agree with itself. The real guarantee is `O_EXCL` in the kernel, and it is
+     * only real on a real filesystem — so it is tested here, on one.
+     */
+    it('creates a file that is not there and reports that it did', async () => {
+      expect(await store.createExclusive('lock', 'FIRST')).toBe(true);
+      expect(await store.readText('lock')).toBe('FIRST');
+    });
+
+    it('refuses a file that exists, and does not touch what is in it', async () => {
+      // 🔴 The half that matters. If this overwrote, the lock would hand itself to
+      // every run that asked and the refusal would never fire on a real machine, while
+      // every in-memory test stayed green.
+      await store.createExclusive('lock', 'FIRST');
+
+      expect(await store.createExclusive('lock', 'SECOND')).toBe(false);
+      expect(await store.readText('lock')).toBe('FIRST');
+    });
+
+    it('creates the directory leading to it, because .upfly may not exist yet', async () => {
+      // The lock lives beside the manifest, and on a first run nothing has made that
+      // directory. Failing here would mean the very first applied run could not lock.
+      expect(await store.createExclusive('.upfly/lock', 'HELD')).toBe(true);
+      expect(await store.readText('.upfly/lock')).toBe('HELD');
+    });
+
+    it('lets a cleared lock be taken again', async () => {
+      // Stale-lock recovery removes the file and immediately re-creates it. If the
+      // second create failed the recovery path would refuse forever.
+      await store.createExclusive('lock', 'FIRST');
+      await store.remove('lock');
+
+      expect(await store.createExclusive('lock', 'SECOND')).toBe(true);
+    });
+
+    it('only ONE of many simultaneous creates wins', async () => {
+      // The property the whole design rests on, asserted against the kernel rather
+      // than against our own map. Twenty callers race for one path; exactly one may be
+      // told it created it, or two runs would both believe they hold the lock.
+      const results = await Promise.all(
+        Array.from({ length: 20 }, (_, index) => store.createExclusive('race', `w${index}`)),
+      );
+
+      expect(results.filter(Boolean)).toHaveLength(1);
+    });
+  });
+
   describe('copy', () => {
     it('creates the directories leading to the destination', async () => {
       await store.writeText('src/logo.txt', 'BYTES');

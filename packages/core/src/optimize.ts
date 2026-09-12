@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
 import type { Graph } from './graph.js';
+import { acquireLock } from './lock.js';
 import type { Manifest } from './manifest.js';
 import {
   type OptimizationPlan,
@@ -31,6 +32,7 @@ import type { AssetProbe, EncodeFormat, ImageProbe } from './probe.js';
 import type { ServingRoots } from './resolve.js';
 import {
   type FileStore,
+  type LockPorts,
   type PlannedOperation,
   type RunContext,
   commit,
@@ -69,6 +71,14 @@ export interface OptimizeInput {
   readonly apply: boolean;
   readonly runId: string;
   readonly now: () => string;
+  /**
+   * Test seams for R68's lock. Both default to the truth; omitting them is correct.
+   *
+   * Here rather than as positional arguments because an applied run passes them on to
+   * `commit`, and two places that each had their own copy could disagree about which
+   * process this is.
+   */
+  readonly lock?: LockPorts;
 }
 
 export interface OptimizeResult {
@@ -174,6 +184,37 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     return { plan, runId: input.runId, runDir, manifest: null, refusal: null };
   }
 
+  // 🔴 R68, and the reason the lock is taken HERE and not only inside `commit`.
+  // `commit` holds it across its own two manifest writes, which closes the failure as
+  // ruled. It does not close the gap between staging and committing: a second run that
+  // starts and finishes entirely inside that gap has its committed manifest overwritten
+  // by this run's pending one the moment this run resumes, and its backups are orphaned
+  // exactly as if it had been interrupted mid-write. Held from before `prepare` to
+  // after `commit`, that window does not exist.
+  //
+  // The inner acquisition in `commit` re-enters on `runId` and its release is a no-op,
+  // so the two holds nest rather than fight.
+  const held = await acquireLock({
+    store: input.store,
+    runId: input.runId,
+    now: input.now,
+    ...input.lock,
+  });
+
+  try {
+    return await applyUnderLock(plan, operations, runDir, input);
+  } finally {
+    await held.release();
+  }
+}
+
+/** Everything an applied run does while it holds the lock. */
+async function applyUnderLock(
+  plan: OptimizationPlan,
+  operations: readonly PlannedOperation[],
+  runDir: string,
+  input: OptimizeInput,
+): Promise<OptimizeResult> {
   await prepare(operations, input.store, runDir);
   const context: RunContext = {
     runId: input.runId,
@@ -200,7 +241,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     plan,
     runId: input.runId,
     runDir,
-    manifest: await commit(operations, input.store, context),
+    manifest: await commit(operations, input.store, context, input.lock ?? {}),
     refusal: null,
   };
 }

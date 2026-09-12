@@ -53,6 +53,14 @@ export interface FileOperations {
   read(path: string): Promise<Uint8Array>;
   readText(path: string): Promise<string>;
   write(path: string, text: string): Promise<void>;
+  /**
+   * Create only if absent, atomically. `false` when the file was already there.
+   *
+   * Separate from `write` because the whole value is the `O_EXCL` flag: a caller that
+   * checked first and then wrote would race, which is the failure the lock exists to
+   * prevent.
+   */
+  createExclusive(path: string, text: string): Promise<boolean>;
   ensureDirectory(path: string): Promise<void>;
   /** Fails rather than overwriting an existing destination. */
   copy(from: string, to: string): Promise<void>;
@@ -65,6 +73,19 @@ export const nodeFileOperations: FileOperations = {
   read: (path) => readFile(path),
   readText: (path) => readFile(path, 'utf8'),
   write: (path, text) => writeFile(path, text, 'utf8'),
+  // `wx` is write-exclusive: the kernel creates the file or fails with EEXIST, and
+  // nothing can interleave between the two. EEXIST is the ordinary answer here rather
+  // than an error, so it is the only code turned into `false` — anything else (a
+  // read-only directory, a bad path) is a real failure and still throws.
+  createExclusive: async (path, text) => {
+    try {
+      await writeFile(path, text, { encoding: 'utf8', flag: 'wx' });
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw error;
+    }
+  },
   ensureDirectory: async (path) => {
     await mkdir(path, { recursive: true });
   },
@@ -124,6 +145,17 @@ export function createFileStoreOn(operations: FileOperations, root: string): Fil
       const target = absolute(path);
       await operations.ensureDirectory(dirname(target));
       await retryWhileBusy(() => operations.write(target, text));
+    },
+
+    async createExclusive(path: string, text: string): Promise<boolean> {
+      const target = absolute(path);
+      await operations.ensureDirectory(dirname(target));
+      // ⚠️ **Deliberately not wrapped in `retryWhileBusy`.** The busy retry exists for
+      // a file another process is holding open, and retrying an exclusive create would
+      // do something different and wrong: it would keep asking until the other run
+      // released its lock, which is *queueing*. R68 ruled refuse over queue, and a
+      // retry loop here would smuggle the rejected behaviour in under a helper.
+      return operations.createExclusive(target, text);
     },
 
     async copy(from: string, to: string): Promise<void> {

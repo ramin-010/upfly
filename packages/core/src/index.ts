@@ -69,12 +69,18 @@ export type {
 export { commit, inspect, prepare, readManifest, revert } from './transaction.js';
 export type {
   FileStore,
+  LockPorts,
   OperationState,
   OperationStatus,
   PlannedEdit,
   PlannedOperation,
   RunContext,
 } from './transaction.js';
+// R68. `LOCK_PATH` so a host can say which file to delete if it ever has to, and
+// `processIsAlive` because a caller supplying its own liveness check should be able to
+// fall back to the real one rather than reimplementing it slightly differently.
+export { LOCK_PATH, processIsAlive } from './lock.js';
+export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
 export { createNodeFileStore } from './file-store-node.js';
 export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './reference.js';

@@ -14,6 +14,7 @@
 
 import { applyEdits, invertEdits, validateEdits } from './edits.js';
 import { UpflyError } from './errors.js';
+import { type ProcessLiveness, acquireLock } from './lock.js';
 import {
   type CreateOperation,
   type Declined,
@@ -27,6 +28,19 @@ import {
   serialiseManifest,
 } from './manifest.js';
 import type { Edit } from './types.js';
+
+/**
+ * The two things about the outside world the lock needs, injected only for tests.
+ *
+ * ⚠️ Both default to the truth. A caller that passes nothing gets the real process id
+ * and the real liveness check, so forgetting them cannot weaken the lock — which is
+ * the property an optional port has to have before it is allowed to be optional.
+ */
+export interface LockPorts {
+  /** This process. A test overrides it to act convincingly as a different one. */
+  readonly pid?: number;
+  readonly isAlive?: ProcessLiveness;
+}
 
 /**
  * Everything the transaction is allowed to do to a disk.
@@ -51,6 +65,17 @@ export interface FileStore {
   hash(path: string): Promise<string | null>;
   readText(path: string): Promise<string>;
   writeText(path: string, text: string): Promise<void>;
+  /**
+   * Create a file **only if it does not exist**, atomically. `false` if it did.
+   *
+   * ⚠️ **A method rather than a composition of `hash` and `writeText`, because the
+   * composition is a race.** Two runs both see no file, both write, both believe they
+   * are alone — which is the precise shape of the bug R68's lock exists to prevent, so
+   * building the lock out of it would be a guard with the defect inside it. The
+   * atomicity must come from the filesystem (`O_EXCL`), which means it has to be
+   * visible at the port.
+   */
+  createExclusive(path: string, text: string): Promise<boolean>;
   copy(from: string, to: string): Promise<void>;
   remove(path: string): Promise<void>;
 }
@@ -195,6 +220,30 @@ export async function commit(
   plan: readonly PlannedOperation[],
   store: FileStore,
   context: RunContext,
+  lock: LockPorts = {},
+): Promise<Manifest> {
+  // R68. Held for the whole of commit, which is the window in which this run writes
+  // the one shared manifest twice — pending on the way in, committed on the way out.
+  // A second run landing between those two writes is what loses the first run's
+  // record, and with it the only pointer to its backups.
+  //
+  // Re-entrant: `optimize` already holds it across `prepare` and this call, because
+  // the gap between staging and committing is a window too. A consumer calling
+  // `commit` directly is protected all the same, which is the point of locking here
+  // rather than only in `optimize`.
+  const held = await acquireLock({ store, runId: context.runId, now: context.now, ...lock });
+  try {
+    return await commitUnderLock(plan, store, context);
+  } finally {
+    await held.release();
+  }
+}
+
+/** The body of `commit`, once the lock is held. Split so the lock cannot be skipped. */
+async function commitUnderLock(
+  plan: readonly PlannedOperation[],
+  store: FileStore,
+  context: RunContext,
 ): Promise<Manifest> {
   const pending: Manifest = {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
@@ -293,6 +342,24 @@ export async function revert(
   manifest: Manifest,
   store: FileStore,
   now: () => string = () => new Date().toISOString(),
+  lock: LockPorts = {},
+): Promise<Manifest> {
+  // Undo writes the same shared manifest, so it is a writer and takes the same lock.
+  // Re-entrant on `runId`, which is what lets a run recover ITSELF after a failure
+  // without deadlocking against the lock it is still holding.
+  const held = await acquireLock({ store, runId: manifest.runId, now, ...lock });
+  try {
+    return await revertUnderLock(manifest, store, now);
+  } finally {
+    await held.release();
+  }
+}
+
+/** The body of `revert`, once the lock is held. */
+async function revertUnderLock(
+  manifest: Manifest,
+  store: FileStore,
+  now: () => string,
 ): Promise<Manifest> {
   const states = await inspect(manifest, store);
   const foreign = states.filter((state) => state.status === 'foreign');

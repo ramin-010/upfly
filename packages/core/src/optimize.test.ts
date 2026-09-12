@@ -10,10 +10,11 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { AuditResult } from './audit.js';
 import { buildGraph } from './graph.js';
+import { LOCK_PATH } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';
 import { type OptimizeInput, alwaysMeasureFor, newRunId, optimize } from './optimize.js';
 import type { AssetProbe, ImageProbe } from './probe.js';
-import type { FileStore } from './transaction.js';
+import { type FileStore, type RunContext, commit } from './transaction.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 const ROOT = '/repo';
@@ -86,6 +87,14 @@ function harness(initial: Record<string, string>) {
     },
     async writeText(path, text) {
       files.set(path, text);
+    },
+    // Real exclusive semantics, not a stub that always succeeds. A memory store that
+    // happily overwrote here would let every lock test pass against a lock that could
+    // never refuse — the fake would be asserting its own politeness.
+    async createExclusive(path, text) {
+      if (files.has(path)) return false;
+      files.set(path, text);
+      return true;
     },
     async copy(from, to) {
       const text = files.get(from);
@@ -298,5 +307,90 @@ describe('the pattern-target lookup', () => {
     );
 
     expect(target).toBe(assets[0]);
+  });
+});
+
+describe('R68: the lock covers the gap between staging and committing', () => {
+  /**
+   * 🔴 **The failure `commit`-scoped locking does NOT close, and the reason the lock is
+   * taken in `optimize` as well.**
+   *
+   * `commit` holds the lock across its own two manifest writes, which closes the
+   * failure exactly as R68 describes it. It leaves a second window: between this run's
+   * `prepare` and its `commit`, another run can start AND FINISH completely. Its
+   * committed manifest is then overwritten the moment this run resumes and writes its
+   * own pending one -- and its backups are orphaned exactly as if it had been
+   * interrupted mid-write. Same lost record, different route.
+   *
+   * Note this is NOT the case B3's fix already covers: `commit` re-verifies
+   * `beforeHash`, so two runs cannot corrupt the same FILE. Two runs touching
+   * different files corrupt nothing and still destroy one of the two records.
+   */
+  it('refuses a second run while the first is between prepare and commit', async () => {
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    let reached = (): void => {};
+    const inside = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release = (): void => {};
+    const suspended = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let armed = true;
+
+    const suspending: FileStore = {
+      ...project.store,
+      async hash(path) {
+        // Suspends on a staged-path hash taken AFTER the lock exists, which lands
+        // inside `prepare`. `stage` hashes staged paths too and runs before the lock,
+        // so keying on the path alone stopped the run in the wrong place -- caught by
+        // the assertion below, which is why it asserts a position and not a feeling.
+        if (armed && project.files.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
+          armed = false;
+          reached();
+          await suspended;
+        }
+        return project.store.hash(path);
+      },
+    };
+
+    const running = optimize(inputFor({ ...project, store: suspending, apply: true }));
+    await inside;
+
+    // ⚠️ **The position is asserted, not assumed.** The run is past `prepare`'s first
+    // staged-path check and has not written a manifest yet, which IS the gap -- and it
+    // is precisely where a commit-scoped lock would not be holding anything.
+    expect(project.files.has(MANIFEST_PATH)).toBe(false);
+
+    const other: RunContext = {
+      runId: 'run-other',
+      runDir: '.upfly/runs/run-other',
+      now: () => '2026-09-13T00:00:00.000Z',
+      declined: [],
+    };
+    await expect(commit([], project.store, other)).rejects.toThrow(
+      expect.objectContaining({ code: 'TRANSACTION_LOCKED' }),
+    );
+
+    release();
+    await running;
+
+    // And the run cleans up after itself, or the next one inherits a locked project.
+    expect(project.files.has(LOCK_PATH)).toBe(false);
+  });
+
+  it('lets that same second run through once the lock is gone', async () => {
+    // ⚠️ The fixture mutation, kept as a control. Without it the refusal above could
+    // be caused by anything at all in a half-finished run, and would still read as
+    // proof of a lock.
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    const other: RunContext = {
+      runId: 'run-other',
+      runDir: '.upfly/runs/run-other',
+      now: () => '2026-09-13T00:00:00.000Z',
+      declined: [],
+    };
+
+    await expect(commit([], project.store, other)).resolves.toMatchObject({ state: 'committed' });
   });
 });

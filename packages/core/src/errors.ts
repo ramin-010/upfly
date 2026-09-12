@@ -34,6 +34,15 @@ export type UpflyErrorCode =
    * is always named, because the quiet alternative is losing whoever changed it.
    */
   | 'TRANSACTION_FOREIGN_CHANGE'
+  /**
+   * Another run holds the project lock, so this one will not start (R68).
+   *
+   * A refusal rather than a queue: a queued run stalls silently behind a long one and
+   * the extension simply looks frozen. The message names the run, the process and when
+   * it started, because “wait and try again” is only actionable if the user can tell
+   * whether anything is actually running.
+   */
+  | 'TRANSACTION_LOCKED'
   /** A manifest written by a build whose schema this one does not understand. */
   | 'MANIFEST_VERSION_UNSUPPORTED';
 

@@ -74,6 +74,11 @@ function interruptible(store: FileStore): {
         mutate();
         await store.writeText(path, text);
       },
+      // Passed through WITHOUT `mutate()`. The crash harness counts mutations to fail
+      // at every step of a commit, and taking the lock is not a step of the commit --
+      // counting it would shift every injected failure by one and silently re-aim the
+      // whole crash matrix at the wrong operations.
+      createExclusive: (path, text) => store.createExclusive(path, text),
       async copy(from, to) {
         mutate();
         await store.copy(from, to);
@@ -101,6 +106,14 @@ function memoryFiles(files: Map<string, string>): FileStore {
     },
     async writeText(path, text) {
       files.set(path, text);
+    },
+    // Real exclusive semantics, not a stub that always succeeds. A memory store that
+    // happily overwrote here would let every lock test pass against a lock that could
+    // never refuse — the fake would be asserting its own politeness.
+    async createExclusive(path, text) {
+      if (files.has(path)) return false;
+      files.set(path, text);
+      return true;
     },
     async copy(from, to) {
       const text = files.get(from);
