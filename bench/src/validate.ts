@@ -192,7 +192,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     root: join(VALIDATION_ROOT, repo.name),
     servingRoots: () => servingRootsFor(repo),
     publicDirs: () => repo.publicDirs,
-    probeOptions: () => (probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null),
+    probeOptions: probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null,
   });
 
   // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes

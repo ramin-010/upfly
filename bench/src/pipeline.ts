@@ -26,6 +26,7 @@ import {
   type Reference,
   type ServingRoots,
   type SweepResult,
+  alwaysMeasureFor,
   audit,
   buildGraph,
   createSharpProbe,
@@ -62,17 +63,19 @@ export interface PipelineInput {
    */
   readonly publicDirs: (servingRoots: ServingRoots) => readonly string[];
   /**
-   * Probe options for the completed graph, or null for `--no-probe`.
+   * Probe options, or null for `--no-probe`.
    *
-   * A function of the graph for the same reason `servingRoots` is a function of the
-   * walk: the set of assets a pattern reference could match is not knowable until the
-   * graph exists, and R35 requires exactly those to escape the encode cap.
+   * ⚠️ A plain value rather than a function, and that is what makes `alwaysMeasure`
+   * genuinely unavailable to a caller rather than merely discouraged. An object
+   * literal passed here is checked for excess properties, so naming `alwaysMeasure`
+   * is a compile error; the same type behind a function loses that freshness and the
+   * property slips through silently, which was the first attempt at this fix.
    *
    * Null rather than an empty object: `audit` reads the presence of `probes` as "was
    * probed", so an empty array would claim a measurement happened and report no
    * savings, which is the silent lie rather than the honest absence.
    */
-  readonly probeOptions: (graph: Graph) => Omit<ProbeOptions, 'probe'> | null;
+  readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure'> | null;
 }
 
 export interface PipelineOutput {
@@ -138,13 +141,22 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     scannedMentions: scanned.mentions,
     publicDirs,
   });
-  const probeOptions = input.probeOptions(graph);
   const probes =
-    probeOptions === null
+    input.probeOptions === null
       ? undefined
       : await probeAssets(
           graph.assets.map((node) => node.asset),
-          { probe: await createSharpProbe(), ...probeOptions },
+          {
+            probe: await createSharpProbe(),
+            ...input.probeOptions,
+            // R35, and deliberately not the caller's decision, which is why the type
+            // above forbids passing it. Every asset a pattern reference could match is
+            // measured whatever the cap says: an unmeasured target does not cost detail,
+            // it makes the pattern permanently undecidable. A caller who forgot lost that
+            // guarantee with no symptom at all, and validate.ts forgetting it for four
+            // days is the proof that documenting it does not work.
+            alwaysMeasure: alwaysMeasureFor(graph),
+          },
         );
   // R17: the directories whose framework reads certain filenames without being told
   // to. Derived from the file list `discover` already produced, so `audit` stays off

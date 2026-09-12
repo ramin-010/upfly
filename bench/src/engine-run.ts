@@ -13,7 +13,6 @@ import {
   type Graph,
   type OptimizeResult,
   type ServingRoots,
-  alwaysMeasureFor,
   createNodeFileStore,
   createSharpProbe,
   detectServingRoots,
@@ -47,7 +46,7 @@ export async function runEngine(root: string): Promise<EngineRun> {
     root,
     servingRoots: (discovery) => detectServingRoots(discovery.directories),
     publicDirs: (servingRoots) => servingRoots.dirs,
-    probeOptions: (graph) => ({ formats: ['webp'], alwaysMeasure: alwaysMeasureFor(graph) }),
+    probeOptions: { formats: ['webp'] },
   });
 
   return {
