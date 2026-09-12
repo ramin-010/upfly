@@ -730,6 +730,39 @@ shipped one built for a single platform and was broken everywhere else for month
 would load the binary the moment anything in `upfly-core` is imported, so `upfly audit --no-probe`
 would fail on a machine that needs no pixels at all.
 
+### The recorded reason is ours, and the library's is not in the report
+
+Rule 11 promises the same inputs produce a byte-identical report, and a failing decode is where that
+promise nearly died. libvips does not word the same failure the same way twice: reading four corrupt
+SVGs 160 times at probe concurrency gives the full message on most reads and a bare
+`Input file has corrupt header:` with nothing after it on the rest. Because the report sorts its
+skipped list by reason, an unstable sentence moved entries as well as changing them.
+
+So the report carries one sentence per failure code, written by us, and the library's own text goes to
+`ProbeOptions.onDiagnostic`. **There is deliberately no field for it on `ProbeSkip`.** A field would
+sit inside the value the report is built from, and keeping it out of the output would then be a rule
+someone has to remember; with no field there is nothing for a renderer to print or a sort to key on.
+An absent sink drops the text rather than storing it, so a caller with nowhere to put it does not
+quietly acquire an unstable string.
+
+The general form is worth more than the instance: **a third-party library's error text does not belong
+in an artefact we make a determinism promise about.** It is free to change between versions, and it
+describes the library rather than describing what Upfly did. The cost is real and unresolved -
+`Input image exceeds pixel limit` was stable and useful, and it now reads as a generic encode failure,
+which argues for finer codes rather than for putting the text back.
+
+### Two paths are the same file more often than they look
+
+Windows and macOS fold case; Linux does not. `Reaktor.jpg` and `reaktor.png` convert to `Reaktor.webp`
+and `reaktor.webp`, which are two files on one platform in the CI matrix and one file on the other
+two. Every comparison here folds case when the question is *would these end up as the same file*: the
+planner when it groups conversions by target, and the transaction when `prepare` claims a path.
+
+Folded on **every** platform, not only where the filesystem demands it. Folding everywhere costs a
+conversion on Linux that would have been safe there. Not folding means one repository gets a different
+plan, a different report and a different set of files depending on where it runs, which no promise
+about determinism survives.
+
 ## Offsets are UTF-16 code units
 
 `start` and `end` are indices into the JavaScript string — the same units every JS parser and
