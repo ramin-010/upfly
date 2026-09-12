@@ -25,6 +25,7 @@
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
+import type { Declined } from './manifest.js';
 import {
   compareStrings,
   extensionOf,
@@ -235,6 +236,38 @@ export type UnusedVectorEntry =
  * turns a list into one: `eleventy-docs`'s nine vectors are 210 KB, and nine
  * filenames would not have said that.
  */
+/**
+ * The assets the planner looked at and offered no action on.
+ *
+ * R22's shape, verbatim, because it is R22's situation: one counted line carrying the
+ * total size, itemised behind a flag, because there is nothing to offer rather than
+ * because the list is long. The discriminator is whether a user can act, never how
+ * many there are.
+ *
+ * Empty on a run that never planned. Declines only exist once something has decided
+ * what to convert, so an audit-only report carries a zero here rather than a guess.
+ */
+export interface DeclinedReport {
+  readonly count: number;
+  /** Their total size: the fact that turns a count into something worth reading. */
+  readonly bytes: number;
+  /**
+   * The assets themselves, when `includeDeclined` asked for them.
+   *
+   * `null` rather than `[]` when not requested, for the reason the other two use it:
+   * an empty array reads as "there were none".
+   */
+  readonly assets: readonly DeclinedEntry[] | null;
+}
+
+export interface DeclinedEntry {
+  /** POSIX-relative path. */
+  readonly asset: string;
+  readonly bytes: number;
+  /** Why the planner offered no action, in the planner's own words. */
+  readonly reason: string;
+}
+
 export interface UnusedVectorReport {
   readonly count: number;
   /** Their total size, which is the fact that makes the count actionable. */
@@ -316,6 +349,8 @@ export interface Report {
   readonly findings: readonly Finding[];
   /** R22: the unreferenced vectors this report declines to itemise, and their size. */
   readonly unusedVectors: UnusedVectorReport;
+  /** R54: the assets a plan examined and offered no action on. */
+  readonly declined: DeclinedReport;
   /** R23: unreferenced vectors beside a broken reference to their raster twin. */
   readonly staleConversions: readonly StaleConversion[];
   readonly references: ReferenceReport;
@@ -358,6 +393,16 @@ export interface ReportInput {
    * to audit our judgement should not have to take the count on trust.
    */
   readonly includeUnusedVectors?: boolean;
+  /**
+   * What a plan declined, if one was made.
+   *
+   * Absent for an audit-only run, which has no plan and therefore nothing to decline.
+   * Bytes are not carried on `Declined` itself: they are looked up in the graph here,
+   * so the manifest schema does not gain a field for the report's benefit.
+   */
+  readonly declined?: readonly Declined[];
+  /** Itemise the declined assets. Off by default (`--include-declined`). */
+  readonly includeDeclined?: boolean;
 }
 
 /** Build the report. Pure, and the only place that decides what the public shape is. */
@@ -377,6 +422,7 @@ export function buildReport(input: ReportInput): Report {
       assets: input.includeUnusedVectors ? vectors.demoted : null,
     },
     staleConversions: vectors.staleConversions,
+    declined: declinedReport(input),
     references: referenceReport(input.graph, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
@@ -620,6 +666,31 @@ function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {
   return resolution === 'dynamic'
     ? 'no static path to resolve'
     : 'alias-shaped; alias resolution arrives in Phase 2';
+}
+
+/**
+ * The declined assets, sized from the graph.
+ *
+ * Deliberately tolerant of a declined path the graph does not know: the planner
+ * declines by project-relative path and the graph is keyed the same way, so a miss
+ * means the two disagree, and reporting the asset with zero bytes is better than
+ * dropping it. Dropping it is the silence rule 9 forbids.
+ */
+function declinedReport(input: ReportInput): DeclinedReport {
+  const declined = input.declined ?? [];
+  const sizeOf = new Map(input.graph.assets.map((node) => [node.asset.relative, node.asset.bytes]));
+
+  const assets = declined.map((entry) => ({
+    asset: entry.path,
+    bytes: sizeOf.get(entry.path) ?? 0,
+    reason: entry.reason,
+  }));
+
+  return {
+    count: assets.length,
+    bytes: assets.reduce((total, entry) => total + entry.bytes, 0),
+    assets: input.includeDeclined ? assets : null,
+  };
 }
 
 function coverageReport(input: ReportInput): CoverageReport {

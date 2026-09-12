@@ -1547,3 +1547,94 @@ describe('the serving roots the report discloses', () => {
     }
   });
 });
+
+describe('the assets a plan examined and offered nothing for', () => {
+  const ROOT = '/repo';
+
+  function reportWith(over: {
+    declined?: { path: string; line: null; reason: string }[];
+    include?: boolean;
+  }) {
+    return buildReport({
+      graph: buildGraph({
+        root: ROOT,
+        assets: [
+          { path: `${ROOT}/a.png`, relative: 'a.png', extension: '.png', bytes: 3_000 },
+          { path: `${ROOT}/b.png`, relative: 'b.png', extension: '.png', bytes: 1_000 },
+        ],
+        references: [],
+        unscannedFiles: [],
+      }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: true,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [],
+        sourceFiles: [],
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: ['public'], declared: true },
+      ...(over.declined === undefined ? {} : { declined: over.declined }),
+      ...(over.include === undefined ? {} : { includeDeclined: over.include }),
+    });
+  }
+
+  const TWO = [
+    { path: 'a.png', line: null, reason: 'measured as webp and came out no smaller' },
+    { path: 'b.png', line: null, reason: 'nothing links to it' },
+  ];
+
+  it('counts them and totals their size', () => {
+    expect(reportWith({ declined: TWO }).declined).toMatchObject({ count: 2, bytes: 4_000 });
+  });
+
+  it('withholds the list unless it was asked for, and says so', () => {
+    // R22's shape: withheld because there is no action to offer, not because it is
+    // long. `null` rather than `[]`, because an empty array reads as "there were none".
+    const report = reportWith({ declined: TWO });
+
+    expect(report.declined.assets).toBeNull();
+    expect(renderReport(report)).toContain('use --include-declined to list them');
+  });
+
+  it('itemises them behind the flag, with the planner’s own reason', () => {
+    const report = reportWith({ declined: TWO, include: true });
+
+    expect(report.declined.assets).toHaveLength(2);
+    const rendered = renderReport(report);
+    expect(rendered).toContain('a.png');
+    expect(rendered).toContain('measured as webp and came out no smaller');
+    expect(rendered).not.toContain('use --include-declined');
+  });
+
+  it('says nothing at all on a run that never planned', () => {
+    // An audit-only report has no plan and therefore no declines. Printing "0 images"
+    // would invite a reader to conclude the planner ran and found nothing.
+    const report = reportWith({});
+
+    expect(report.declined).toEqual({ count: 0, bytes: 0, assets: null });
+    expect(renderReport(report)).not.toContain('Examined and not converted');
+  });
+
+  it('keeps a declined asset the graph does not know, at zero bytes', () => {
+    // A miss means the planner and the graph disagree about a path. Reporting it with
+    // no size is worse than reporting it; dropping it is the silence rule 9 forbids.
+    const report = reportWith({
+      declined: [{ path: 'ghost.png', line: null, reason: 'no measured saving' }],
+      include: true,
+    });
+
+    expect(report.declined).toMatchObject({ count: 1, bytes: 0 });
+    expect(report.declined.assets?.[0]).toMatchObject({ asset: 'ghost.png', bytes: 0 });
+  });
+});

@@ -32,6 +32,7 @@ export function renderReport(report: Report): string {
   lines.push(...headline(report));
   lines.push(...skippedSection(report));
   lines.push(...findingsSection(report));
+  lines.push(...declinedSection(report));
   lines.push(...caveatSection(report));
 
   return `${lines.join('\n').trimEnd()}\n`;
@@ -653,6 +654,39 @@ function describe(finding: Finding): string[] {
       return unhandled;
     }
   }
+}
+
+/**
+ * What the plan looked at and offered nothing for.
+ *
+ * R54, which is R22's shape applied to R22's situation. One counted line with the
+ * total size, and the list only when it was asked for, because the reason to withhold
+ * it is that there is no action to offer rather than that it is long.
+ *
+ * Silent when there is nothing to say, which includes every audit-only run: a report
+ * built without a plan has no declines, and printing "0 images" would invite a reader
+ * to conclude the planner had run and found nothing.
+ */
+function declinedSection(report: Report): string[] {
+  const { count: declined, bytes: declinedBytes, assets } = report.declined;
+  if (declined === 0) return [];
+
+  const hint = assets === null ? ' (use --include-declined to list them)' : '';
+  const lines = [
+    'Examined and not converted',
+    '',
+    // No noun agreeing with a number: `count` pluralises the head noun and this
+    // renderer has produced eight agreement bugs, every one caught by reading.
+    `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, with no conversion to offer${hint}`,
+    '',
+  ];
+
+  for (const entry of assets ?? []) {
+    lines.push(`    ${entry.asset}  ${bytes(entry.bytes)}  ${entry.reason}`);
+  }
+  if (assets !== null) lines.push('');
+
+  return lines;
 }
 
 function caveatSection(report: Report): string[] {

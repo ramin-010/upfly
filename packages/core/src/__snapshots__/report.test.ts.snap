@@ -32,6 +32,11 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
   "findings": [
     {
       "asset": "public/never-used.png",
@@ -163,6 +168,11 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       },
     ],
     "unscannedFileCount": 2,
+  },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
   },
   "findings": [
     {
@@ -370,6 +380,11 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
   },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
   "findings": [
     {
       "asset": "public/unreferenced.png",
@@ -477,6 +492,11 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     },
     "unscannedExtensions": [],
     "unscannedFileCount": 0,
+  },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
   },
   "findings": [
     {
@@ -623,6 +643,11 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       },
     ],
     "unscannedFileCount": 2,
+  },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
   },
   "findings": [
     {
