@@ -436,15 +436,31 @@ describe('framework fixtures', () => {
         expect(result.findings.some((finding) => finding.kind === 'dead')).toBe(true);
       });
 
-      it('probes the real fixture images without inventing an opportunity', async () => {
-        // The fixture images are 1x1, so there is nothing to save. A finding here
-        // would mean the audit is estimating rather than measuring.
+      it('reports a saving on the real fixture images, and every figure is arithmetic', async () => {
+        // ⚠️ This assertion used to be its own opposite: the fixture images were 1x1,
+        // so it asserted that NO opportunity was found. That was a fair test of "do
+        // not estimate" and it also meant the fixtures could not exercise conversion
+        // at all, which is the hole R53 was about.
+        //
+        // The half worth keeping is that every number is measured rather than guessed,
+        // so it now checks the arithmetic of each finding against itself. An estimate
+        // would have no reason to be self-consistent to the byte.
         const result = await auditTree('plain-html');
+        const opportunities = result.findings.filter(
+          (finding) => finding.kind === 'format-opportunity',
+        );
 
         expect(result.probed).toBe(true);
-        expect(result.findings.some((finding) => finding.kind === 'format-opportunity')).toBe(
-          false,
-        );
+        expect(opportunities.length).toBeGreaterThan(0);
+
+        for (const finding of opportunities) {
+          if (finding.kind !== 'format-opportunity') continue;
+          expect(finding.wouldBe).toBeGreaterThan(0);
+          expect(finding.wouldBe).toBeLessThan(finding.bytes);
+          expect(finding.savedBytes).toBe(finding.bytes - finding.wouldBe);
+        }
+
+        // Still nothing oversized: real photographs, but small ones.
         expect(result.findings.some((finding) => finding.kind === 'oversized')).toBe(false);
       });
 

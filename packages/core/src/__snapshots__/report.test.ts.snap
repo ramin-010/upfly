@@ -74,7 +74,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
   "skipped": [],
   "staleConversions": [],
   "summary": {
-    "assetBytes": 490,
+    "assetBytes": 83761,
     "assets": 7,
     "findings": {
       "broken": 0,
@@ -106,7 +106,7 @@ exports[`buildReport > astro: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 5 source files and found 7 images, 490 B in total
+  scanned 5 source files and found 7 images, 83.8 KB in total
   7 of 7 references resolved, pointing at 6 of those images
   1 image with no reference Upfly could follow
 
@@ -197,7 +197,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
     {
       "asset": "src/img/hero.jpg",
-      "bytes": 160,
+      "bytes": 12557,
       "evidence": [
         {
           "asset": "src/img/hero.jpg",
@@ -211,7 +211,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
     {
       "asset": "src/img/logo.png",
-      "bytes": 70,
+      "bytes": 7195,
       "evidence": [
         {
           "asset": "src/img/logo.png",
@@ -274,7 +274,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
   "skipped": [],
   "staleConversions": [],
   "summary": {
-    "assetBytes": 650,
+    "assetBytes": 91846,
     "assets": 8,
     "findings": {
       "broken": 0,
@@ -306,7 +306,7 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 4 source files and found 8 images, 650 B in total
+  scanned 4 source files and found 8 images, 91.8 KB in total
   3 of 4 references resolved, pointing at 3 of those images
   5 images with no reference Upfly could follow
 
@@ -326,9 +326,9 @@ Findings — 5 items
 
     named in a file no adapter reads — an adapter or a config entry would resolve these (3)
       src/index.njk — 2 assets
-        src/img/hero.jpg  160 B
+        src/img/hero.jpg  12.6 KB
           named in src/index.njk:6: hero.jpg
-        src/img/logo.png  70 B
+        src/img/logo.png  7.2 KB
           named in src/index.njk:5: logo.png
       src/_includes/base.njk — 1 asset
         src/img/favicon.png  70 B
@@ -422,7 +422,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
   "skipped": [],
   "staleConversions": [],
   "summary": {
-    "assetBytes": 700,
+    "assetBytes": 338489,
     "assets": 10,
     "findings": {
       "broken": 0,
@@ -454,7 +454,7 @@ exports[`buildReport > next-app: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 8 source files and found 10 images, 700 B in total
+  scanned 8 source files and found 10 images, 338.5 KB in total
   11 of 11 references resolved, pointing at 9 of those images
   1 image with no reference Upfly could follow
 
@@ -548,7 +548,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
   "skipped": [],
   "staleConversions": [],
   "summary": {
-    "assetBytes": 1040,
+    "assetBytes": 152483,
     "assets": 11,
     "findings": {
       "broken": 1,
@@ -580,7 +580,7 @@ exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 3 source files and found 11 images, 1 KB in total
+  scanned 3 source files and found 11 images, 152.5 KB in total
   10 of 11 references resolved, pointing at 9 of those images
   2 images with no reference Upfly could follow
 
@@ -686,7 +686,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
   "skipped": [],
   "staleConversions": [],
   "summary": {
-    "assetBytes": 1370,
+    "assetBytes": 126939,
     "assets": 12,
     "findings": {
       "broken": 0,
@@ -718,7 +718,7 @@ exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
 
   savings not measured — images were not decoded (--no-probe)
 
-  scanned 5 source files and found 12 images, 1.4 KB in total
+  scanned 5 source files and found 12 images, 126.9 KB in total
   12 of 12 references resolved, pointing at 10 of those images
   2 images with no reference Upfly could follow
   including 1 unreferenced SVG, 307 B — counted, not listed: Upfly will neither convert an SVG nor delete an asset

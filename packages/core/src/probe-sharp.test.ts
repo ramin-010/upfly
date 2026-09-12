@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,9 +85,12 @@ async function animatedGif(name: string, frames: number): Promise<string> {
 
 describe('createSharpProbe', () => {
   it('reads a real fixture image', async () => {
+    // 240x160 since R53 replaced the placeholders with real photographs. It used to be
+    // 1x1, which is what a fixture looks like when it cannot exercise the thing it is
+    // for.
     const result = await probe.metadata(join(FIXTURES, 'plain-html/images/hero.jpg'));
 
-    expect(result).toEqual({ width: 1, height: 1, format: 'jpeg', pages: 1 });
+    expect(result).toEqual({ width: 240, height: 160, format: 'jpeg', pages: 1 });
   });
 
   it('reports a still image as one page', async () => {
@@ -133,6 +136,57 @@ describe('createSharpProbe', () => {
     const bytes = await probe.encodedBytes({ path, format: 'avif', animated: false });
 
     expect(bytes).toBeGreaterThan(0);
+  });
+
+  describe('what it writes is what it measured', () => {
+    it('writes exactly as many bytes as it reported', async () => {
+      const path = await noisyJpeg('measured.jpg', 120, 90);
+      const destination = join(temp, 'measured.webp');
+
+      const measured = await probe.encodedBytes({ path, format: 'webp', animated: false });
+      const written = await probe.encodeToFile({
+        path,
+        format: 'webp',
+        animated: false,
+        destination,
+      });
+
+      expect(written).toBe(measured);
+      expect((await stat(destination)).size).toBe(measured);
+    });
+
+    it('writes at the quality it reports, byte for byte', async () => {
+      // B3's unease (h): R30(b) holds "by construction" because the same object both
+      // measures and writes, and nobody had checked that the construction is real. A
+      // saving quoted at a quality the file was not written at is exactly the figure
+      // R30 exists to forbid.
+      //
+      // Compared against an independent encode at the declared quality rather than
+      // against the probe's own output, because comparing a thing to itself proves
+      // nothing.
+      const { default: sharp } = await import('sharp');
+      const path = await noisyJpeg('quality.jpg', 120, 90);
+      const destination = join(temp, 'quality.webp');
+
+      await probe.encodeToFile({ path, format: 'webp', animated: false, destination });
+      const atDeclared = await sharp(path).webp({ quality: probe.quality.webp }).toBuffer();
+
+      expect(Buffer.compare(await readFile(destination), atDeclared)).toBe(0);
+    });
+
+    it('would notice if the two used different qualities', async () => {
+      // The control. If an encode at a different quality produced the same bytes, the
+      // test above would pass whatever the probe did.
+      const { default: sharp } = await import('sharp');
+      const path = await noisyJpeg('control.jpg', 120, 90);
+
+      const declared = await sharp(path).webp({ quality: probe.quality.webp }).toBuffer();
+      const other = await sharp(path)
+        .webp({ quality: probe.quality.webp - 30 })
+        .toBuffer();
+
+      expect(Buffer.compare(declared, other)).not.toBe(0);
+    });
   });
 
   describe('hostile inputs — §5.1(e)', () => {
