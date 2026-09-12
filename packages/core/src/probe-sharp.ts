@@ -33,6 +33,20 @@ export async function createSharpProbe(
 ): Promise<ImageProbe> {
   const { default: sharp } = await import('sharp');
 
+  // libvips memoises operations, and holding an operation means holding the file it
+  // read open for the lifetime of the process. On Windows that makes a file this
+  // probe has looked at undeletable by the same process: a recursive remove of a tree
+  // the run had just measured failed with EBUSY on the same file six times over
+  // sixteen seconds, while a fresh shell deleted it instantly. No amount of waiting
+  // wins against a handle nobody is going to release, and the retry that appears to
+  // fix it becomes folklore.
+  //
+  // It is set here rather than by the caller because a caller who forgets gets a
+  // failure that looks like a virus scanner or a flaky disk, which is the version of
+  // this that already cost a day. The cache buys little on this workload in any case:
+  // a file is measured once and encoded once, so there is almost nothing to reuse.
+  sharp.cache(false);
+
   /**
    * Build the output pipeline for one encode.
    *
