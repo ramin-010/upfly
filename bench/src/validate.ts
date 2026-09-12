@@ -206,7 +206,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
   const output = await enginePipeline({
     root: join(VALIDATION_ROOT, repo.name),
     servingRoots: () => servingRootsFor(repo),
-    publicDirs: () => repo.publicDirs,
+    publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null,
   });
 
