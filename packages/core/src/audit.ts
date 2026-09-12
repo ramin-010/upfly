@@ -28,7 +28,7 @@ import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
 import type { AssetProbe, EncodeFormat } from './probe.js';
-import { resolutionHealth } from './resolution-health.js';
+import { type ResolutionHealth, resolutionHealth } from './resolution-health.js';
 import type { ReadFilePort } from './scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
@@ -260,14 +260,7 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   // rather than about the user's code.
   const health = resolutionHealth(options.graph);
   const reported: (BrokenFinding | ServingRootUnknownFinding)[] = health.servingRootUnknown
-    ? [
-        {
-          kind: 'serving-root-unknown',
-          linked: health.linked,
-          checkable: health.checkable,
-          suppressedBroken: broken.length,
-        },
-      ]
+    ? diagnoseServingRoot(broken, health)
     : broken;
   const { findings: dead, conventionLinked } = deadFindings(options, publicPrefixes);
   // `AssetProbe` measures pixels and `discover` measured bytes, so the two are
@@ -287,6 +280,36 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
     unreadableSources,
     probed: options.probes !== undefined,
   };
+}
+
+/**
+ * Replace the broken findings this diagnosis explains, and only those.
+ *
+ * ⚠️ It explains root-relative references and nothing else. A file-relative path that
+ * points at nothing is broken whatever the serving root turns out to be, so folding it
+ * into this finding would hide a real defect behind an unrelated explanation and leave
+ * the user with no way to see it.
+ *
+ * Measured on unconfigured shadcn-ui: 116 broken findings, of which 115 are
+ * root-relative. The first version of this suppressed all 116, and the odd one out was
+ * a genuinely broken relative path.
+ */
+function diagnoseServingRoot(
+  broken: readonly BrokenFinding[],
+  health: ResolutionHealth,
+): (BrokenFinding | ServingRootUnknownFinding)[] {
+  const explained = broken.filter((finding) => finding.rawPath.startsWith('/'));
+  const unexplained = broken.filter((finding) => !finding.rawPath.startsWith('/'));
+
+  return [
+    {
+      kind: 'serving-root-unknown',
+      linked: health.linked,
+      checkable: health.checkable,
+      suppressedBroken: explained.length,
+    },
+    ...unexplained,
+  ];
 }
 
 /**

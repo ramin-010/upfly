@@ -731,6 +731,26 @@ describe('a run that could not find the serving root', () => {
     expect(finding).toMatchObject({ kind: 'serving-root-unknown', suppressedBroken: 28 });
   });
 
+  it('keeps a broken relative reference that the diagnosis does not explain', async () => {
+    // Measured on unconfigured shadcn-ui: 116 broken findings, 115 of them
+    // root-relative. The first version of this suppressed all 116, and the odd one out
+    // was a genuinely broken relative path that would still be broken with the serving
+    // root corrected. Hiding it behind an unrelated explanation leaves the user with
+    // no way to see it at all.
+    const { assets, references } = rootRelative(20, 1);
+    const alsoBroken = broken('index.html', './genuinely-gone.png', 9_000);
+
+    const result = await audit({
+      graph: graphOf({ assets, references: [...references, alsoBroken] }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    expect(kinds(result.findings)).toEqual(['serving-root-unknown', 'broken']);
+    expect(result.findings[0]).toMatchObject({ suppressedBroken: 19 });
+    expect(result.findings[1]).toMatchObject({ rawPath: './genuinely-gone.png' });
+  });
+
   it('leaves an ordinary run alone, broken findings and all', async () => {
     const { assets, references } = rootRelative(20, 19);
 
