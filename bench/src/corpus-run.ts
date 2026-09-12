@@ -19,7 +19,8 @@
 import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
-import { optimizeTree } from './engine-run.js';
+import sharp from 'sharp';
+import { optimizeTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 
 /**
@@ -51,12 +52,56 @@ async function copyRepository(name: string): Promise<string> {
   return destination;
 }
 
+/**
+ * Delete a run copy, after letting go of the files this process still has open.
+ *
+ * 🔴 The handle is ours, and the first version of this got that wrong. A recursive
+ * remove failed with EBUSY on a `.webp` the run had just written, so this retried with
+ * backoff on the assumption that a scanner or the indexer was holding it briefly.
+ * **Six retries over sixteen seconds failed on the same file both times, and a fresh
+ * shell deleted it instantly.** A handle nobody is going to release does not care how
+ * long you wait.
+ *
+ * libvips keeps an operation cache of open images, and the re-audit above probes every
+ * file the run just wrote, so those stay open for the lifetime of the process.
+ * `sharp.cache(false)` drops it. The retry is kept for the genuinely transient case,
+ * but it is no longer the mechanism.
+ */
+async function removeTree(root: string): Promise<void> {
+  sharp.cache(false);
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if ((code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY') || attempt >= 6) {
+        stdout.write(`  cleanup   left ${root} behind: ${(cause as Error).message}\n`);
+        return;
+      }
+      await new Promise((done) => setTimeout(done, 250 * 2 ** attempt));
+    }
+  }
+}
+
+/** Declined reasons with their counts, most common first. */
+function byReason(declined: readonly { readonly reason: string }[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const entry of declined) counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
 async function run(name: string, keep: boolean): Promise<boolean> {
   stdout.write(`\n${name}\n`);
   const root = await copyRepository(name);
   stdout.write(`  copy      ${root}\n`);
 
   try {
+    // Measured before anything is written, so "no new broken references" is a
+    // comparison rather than a claim about a number nobody recorded.
+    const brokenBefore = (await runEngine(root)).graph.byResolution.broken.length;
+
     const started = performance.now();
     const result = await optimizeTree(root);
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
@@ -82,13 +127,29 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     }
     if (conversions.length > 5) stdout.write(`    ... and ${conversions.length - 5} more\n`);
 
-    return true;
+    // R54 asked what this number actually says. Grouped, because 44 lines of the
+    // same sentence tells a reader nothing that one line and a count does not.
+    stdout.write('  declined, by reason\n');
+    for (const [reason, count] of byReason(declined)) {
+      stdout.write(`    ${String(count).padStart(4)}  ${reason}\n`);
+    }
+
+    // The check that matters. Rewriting references is the whole product, so the
+    // question is not whether it ran but whether the tree still resolves after it.
+    // The same engine over the tree it just wrote: any reference broken now is one
+    // this run broke.
+    const after = await runEngine(root);
+    const brokenAfter = after.graph.byResolution.broken.length;
+    stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
+    stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
+
+    return brokenAfter <= brokenBefore;
   } catch (cause) {
     stdout.write(`  FAILED    ${(cause as Error).message}\n`);
     return false;
   } finally {
     if (keep) stdout.write(`  kept      ${root}\n`);
-    else await rm(root, { recursive: true, force: true });
+    else await removeTree(root);
   }
 }
 
