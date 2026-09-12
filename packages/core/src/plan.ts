@@ -14,7 +14,7 @@
 
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
-import { extensionOf, relativePath, toPosix } from './paths.js';
+import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
@@ -465,10 +465,67 @@ function vetoPatterns(
     declined.push({ path: relativePath(input.graph.root, reference.file), line: null, reason });
 
     if (input.publicPolicy === 'replace') {
-      for (const target of targets) withdraw.add(target);
+      // 🔴 **R65, and it is a P0 rather than a polish item.** Withdrawing every target
+      // is correct — under `replace` the originals are removed, so a pattern can only
+      // be rewritten if all N convert, and one decline takes the whole set with it.
+      // **The silence was the defect.** Measured on a pattern matching three assets
+      // where one measured no smaller: `a-dark.png` was declined for its own reason
+      // and the reference was declined for the withdrawal, while `a-light.png` and
+      // `a-mid.png` — which were going to convert and then were not — appeared in
+      // neither list and nowhere else.
+      //
+      // ⚠️ **Rule 9 has always been read as "no silent SKIP", and this is not a skip.**
+      // A skip is *we never tried*. A withdrawal is *we decided to, then un-decided*,
+      // which is more surprising to a reader and was less reported. Fourth
+      // silent-omission defect of the phase, and like the other three it was found by
+      // reading what a real run produced.
+      //
+      // Naming the sibling is what makes the entry worth having: fix one file and
+      // three assets convert, which is more actionable than anything else in the
+      // report.
+      const blockers = [...unmeasured].sort(compareStrings);
+      for (const target of targets) {
+        // Only an asset that was actually going to convert. The rest are the blockers
+        // themselves, already declined above for their own reasons, and a second entry
+        // would report one failure twice under two different explanations.
+        if (!converting.has(target)) continue;
+        // A target matched by two patterns is withdrawn once and reported once. The
+        // set is the record of what has already been accounted for, so this stays true
+        // however many patterns name the same asset.
+        if (withdraw.has(target)) continue;
+        withdraw.add(target);
+        declined.push({ path: target, line: null, reason: withdrawnReason(blockers) });
+      }
     }
   }
   return withdraw;
+}
+
+/**
+ * Why an asset that was going to convert no longer is, naming the file to fix.
+ *
+ * Sorted before it gets here, so two runs over the same repository name the same
+ * sibling — a reason that picked whichever blocker the graph happened to list first
+ * would make the report differ between runs of an unchanged tree (rule 11).
+ */
+function withdrawnReason(blockers: readonly string[]): string {
+  const [first, ...rest] = blockers;
+  const consequence =
+    ' — that reference is one edit for every asset it matches, so converting some and ' +
+    'deleting their originals would break it for all of them';
+
+  // ⚠️ **Two whole sentences rather than one with an interpolated fragment, and that
+  // is deliberate.** The shared-fragment version read `\`a-dark.png\` and 2 other
+  // assets sharing that reference, which shares a pattern reference with it, could
+  // not be converted` — a relative clause agreeing with a singular subject that had
+  // become plural. This codebase's renderer has produced that exact class of bug
+  // eight times, and the fix that finally worked each time was removing the shared
+  // fragment rather than remembering to check it.
+  if (rest.length === 0) {
+    return `not converted because \`${first}\`, which shares a pattern reference with it, could not be converted${consequence}`;
+  }
+
+  return `not converted because \`${first}\` and ${rest.length} other ${rest.length === 1 ? 'asset' : 'assets'} sharing a pattern reference with it could not be converted${consequence}`;
 }
 
 interface RewriteContext {

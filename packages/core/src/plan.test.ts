@@ -253,6 +253,11 @@ describe('a root-relative path that resolved at the project root', () => {
   });
 });
 
+/** Declined reasons keyed by path, so two plans compare without depending on order. */
+function reasonsByPath(plan: { declined: readonly { path: string; reason: string }[] }) {
+  return Object.fromEntries(plan.declined.map((entry) => [entry.path, entry.reason]));
+}
+
 describe('a template reference standing for many assets', () => {
   const assets = [asset('public/a-light.png'), asset('public/a-dark.png', 1_000)];
   const references = [
@@ -285,6 +290,177 @@ describe('a template reference standing for many assets', () => {
     const plan = planOptimization(input({ assets, references, probes, publicPolicy: 'replace' }));
 
     expect(plan.conversions).toEqual([]);
+  });
+
+  describe('R65: a withdrawal is reported, not only a skip', () => {
+    /**
+     * 🔴 **P0, and the fourth silent-omission defect of the phase.**
+     *
+     * Rule 9 has always been read as *no silent SKIP*. A skip is *we never tried*. A
+     * withdrawal is *we decided to, then un-decided* — more surprising to a reader,
+     * and until now less reported. Measured on exactly this shape: `a-dark.png` was
+     * declined for its own reason and `src/App.jsx` for the withdrawn rewrite, while
+     * the assets that were going to convert and then were not appeared **nowhere**.
+     *
+     * ⚠️ The test above this one passes whether or not any of this works. It asserts
+     * the conversions are withdrawn, which was always true — the silence was never
+     * visible from there, which is why it survived.
+     */
+    const three = [
+      asset('public/a-light.png'),
+      asset('public/a-mid.png'),
+      asset('public/a-dark.png', 1_000),
+    ];
+    const threeReferences = [
+      pattern('src/App.jsx', './a-${mode}.png', [
+        'public/a-light.png',
+        'public/a-mid.png',
+        'public/a-dark.png',
+      ]),
+    ];
+    const threeProbes = [
+      probe('public/a-light.png', 4_000),
+      probe('public/a-mid.png', 4_000),
+      probe('public/a-dark.png', 4_000),
+    ];
+
+    function replacePlan() {
+      return planOptimization(
+        input({
+          assets: three,
+          references: threeReferences,
+          probes: threeProbes,
+          publicPolicy: 'replace',
+        }),
+      );
+    }
+
+    it('accounts for every asset the pattern matched, with nothing left over', () => {
+      // The whole claim, stated as arithmetic rather than as a spot check: three
+      // assets went in, none converted, and all three are declined. An asset in
+      // neither list is the defect, and this fails the moment one reappears there.
+      const plan = replacePlan();
+      const declinedAssets = plan.declined
+        .map((entry) => entry.path)
+        .filter((path) => path.startsWith('public/'));
+
+      expect(plan.conversions).toEqual([]);
+      expect(declinedAssets.sort()).toEqual([
+        'public/a-dark.png',
+        'public/a-light.png',
+        'public/a-mid.png',
+      ]);
+    });
+
+    it('names the sibling to fix, which is the actionable part', () => {
+      // "Fix one file and three assets convert" is more useful than anything else in
+      // the report, and it is only true if the entry says WHICH file.
+      const reason = replacePlan().declined.find(
+        (entry) => entry.path === 'public/a-light.png',
+      )?.reason;
+
+      expect(reason).toContain('a-dark.png');
+      expect(reason).toContain('shares a pattern reference with it');
+    });
+
+    it('does not report a blocker twice under two different explanations', () => {
+      // `a-dark.png` failed for its own reason and already has an entry. Adding a
+      // second one saying it was withdrawn would describe one failure as two.
+      const entries = replacePlan().declined.filter((entry) => entry.path === 'public/a-dark.png');
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.reason).not.toContain('shares a pattern reference');
+    });
+
+    it('says nothing about withdrawal under keep-original, where nothing is withdrawn', () => {
+      // The originals survive, so the conversions stand and only the rewrite is
+      // declined. A withdrawal entry here would be describing something that did not
+      // happen, which is its own kind of wrong report.
+      const plan = planOptimization(
+        input({ assets: three, references: threeReferences, probes: threeProbes }),
+      );
+
+      expect(plan.conversions.map((conversion) => conversion.asset).sort()).toEqual([
+        'public/a-light.png',
+        'public/a-mid.png',
+      ]);
+      expect(plan.declined.some((entry) => entry.reason.includes('shares a pattern'))).toBe(false);
+    });
+
+    it('names the same sibling on every run, whatever order the graph listed them', () => {
+      // Rule 11, and it needs **two** blockers to mean anything. With one, there is
+      // nothing to choose between and the assertion passes against an unsorted
+      // implementation — which is what the first version of this test did, caught by
+      // mutating the sort away and watching it stay green.
+      //
+      // Here `a-mid` and `a-dark` both fail and only `a-light` would convert, so the
+      // reason has to pick one name. Picking whichever the graph listed first would
+      // make the report differ between runs over an unchanged tree.
+      // ⚠️ Its own assets, because `three` gives every asset 10 000 bytes by default
+      // and a 4 000-byte encode is a saving — so probing `a-mid` at 4 000 converts it
+      // and leaves one blocker again. That is how the first version of this test came
+      // to pass against an unsorted implementation. Here `a-mid` and `a-dark` are both
+      // smaller than their own encode, so both genuinely fail.
+      const twoSmall = [
+        asset('public/a-light.png'),
+        asset('public/a-mid.png', 1_000),
+        asset('public/a-dark.png', 1_000),
+      ];
+      const twoBlockers = [
+        probe('public/a-light.png', 400),
+        probe('public/a-mid.png', 4_000),
+        probe('public/a-dark.png', 4_000),
+      ];
+      const reversed = [
+        pattern('src/App.jsx', './a-${mode}.png', [
+          'public/a-dark.png',
+          'public/a-mid.png',
+          'public/a-light.png',
+        ]),
+      ];
+
+      const forwards = planOptimization(
+        input({
+          assets: twoSmall,
+          references: threeReferences,
+          probes: twoBlockers,
+          publicPolicy: 'replace',
+        }),
+      );
+      const backwards = planOptimization(
+        input({
+          assets: twoSmall,
+          references: reversed,
+          probes: twoBlockers,
+          publicPolicy: 'replace',
+        }),
+      );
+
+      // Stated as well as compared: an implementation that reversed both would satisfy
+      // the equality without naming anything stable.
+      expect(reasonsByPath(forwards)['public/a-light.png']).toContain('public/a-dark.png');
+      expect(reasonsByPath(backwards)).toEqual(reasonsByPath(forwards));
+    });
+
+    it('reports an asset once when two patterns both withdraw it', () => {
+      // The other branch a single-pattern fixture cannot reach, and it was also found
+      // by mutation rather than by reading. Two entries for one asset would report one
+      // withdrawal twice and inflate every count built from `declined`.
+      const twoPatterns = [
+        pattern('src/App.jsx', './a-${mode}.png', ['public/a-light.png', 'public/a-dark.png']),
+        pattern('src/Other.jsx', './a-${theme}.png', ['public/a-light.png', 'public/a-dark.png']),
+      ];
+      const plan = planOptimization(
+        input({
+          assets: three,
+          references: twoPatterns,
+          probes: threeProbes,
+          publicPolicy: 'replace',
+        }),
+      );
+
+      expect(plan.declined.filter((entry) => entry.path === 'public/a-light.png')).toHaveLength(1);
+    });
   });
 
   it('declines a template whose targets all convert, because the text is not a path', () => {
