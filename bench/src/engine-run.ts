@@ -40,11 +40,14 @@ export interface EngineRun {
  * No encode cap, and pattern targets exempted from one anyway. A cap that limits what
  * we report is a convenience; a cap that limits what we can prove makes a pattern
  * permanently undecidable, and this is the path that writes.
+ *
+ * `declared` is for a project that states its serving root, which is what a real user
+ * does once Upfly tells them to. Absent means detection, which is what a first run gets.
  */
-export async function runEngine(root: string): Promise<EngineRun> {
+export async function runEngine(root: string, declared?: ServingRoots): Promise<EngineRun> {
   const output = await runPipeline({
     root,
-    servingRoots: (discovery) => detectServingRoots(discovery.directories),
+    servingRoots: (discovery) => declared ?? detectServingRoots(discovery.directories),
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: { formats: ['webp'] },
   });
@@ -65,10 +68,10 @@ export async function runEngine(root: string): Promise<EngineRun> {
  * exported constant in this same package, so the distance between a correct call and
  * a catastrophic one is one argument.
  */
-export async function optimizeTree(root: string): Promise<OptimizeResult> {
+export async function optimizeTree(root: string, declared?: ServingRoots): Promise<OptimizeResult> {
   refuseValidationCorpus(root);
 
-  const { graph, audit: findings, servingRoots, probes } = await runEngine(root);
+  const { graph, audit: findings, servingRoots, probes } = await runEngine(root, declared);
 
   return optimize({
     graph,

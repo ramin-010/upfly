@@ -137,6 +137,17 @@ interface FixtureSpec {
    * the answer for.
    */
   readonly outputDir: string;
+  /**
+   * The serving root this project declares, when it declares one.
+   *
+   * eleventy is the case. It serves from `src` via `addPassthroughCopy`, which is a
+   * source directory rather than a serving root by convention, so no name-based
+   * detector should claim it and R51 ruled that the answer is to tell the user to
+   * declare it. A real eleventy user declares it once. Leaving this fixture in the
+   * undetected state would spend the only write-path test it has on demonstrating a
+   * failure that unit tests and eleventy-docs already cover.
+   */
+  readonly publicDirs?: readonly string[];
   readonly mutations: readonly Mutation[];
 }
 
@@ -243,6 +254,9 @@ const FIXTURES: readonly FixtureSpec[] = [
     name: 'eleventy',
     buildScript: 'eleventy',
     outputDir: '_site',
+    // Declared, because eleventy's `src` is a source directory rather than a serving
+    // root and no name-based detector should claim it (R51).
+    publicDirs: ['src'],
     mutations: [
       {
         referenceClass: 'public-root-relative',
@@ -663,7 +677,10 @@ async function runOptimized(fixture: FixtureSpec): Promise<string[]> {
   const root = await materialise(fixture);
 
   try {
-    const result = await optimizeTree(root);
+    const result = await optimizeTree(
+      root,
+      fixture.publicDirs === undefined ? undefined : { dirs: fixture.publicDirs, declared: true },
+    );
 
     if (result.refusal !== null) {
       stdout.write(`  optimize    REFUSED  ${result.refusal.code}\n`);
