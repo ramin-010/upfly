@@ -22,6 +22,7 @@ import {
   type AuditResult,
   type DiscoveryResult,
   type Graph,
+  type ProbeDiagnostic,
   type ProbeOptions,
   type Reference,
   type ServingRoots,
@@ -75,7 +76,7 @@ export interface PipelineInput {
    * probed", so an empty array would claim a measurement happened and report no
    * savings, which is the silent lie rather than the honest absence.
    */
-  readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure'> | null;
+  readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure' | 'onDiagnostic'> | null;
 }
 
 export interface PipelineOutput {
@@ -89,6 +90,16 @@ export interface PipelineOutput {
   readonly sweep: SweepResult;
   /** Absent for a `--no-probe` run, which is what makes the report say so. */
   readonly probes: readonly AssetProbe[] | undefined;
+  /**
+   * What the imaging library said about the files it could not read.
+   *
+   * Collected here rather than left to each caller, for the same reason
+   * `alwaysMeasure` is: a caller who forgets loses the information with no symptom.
+   * It is kept out of the report on purpose, because libvips does not word the same
+   * failure the same way twice and the report is promised to be byte-identical for
+   * identical inputs. It belongs in a file beside the report, not in it.
+   */
+  readonly diagnostics: readonly ProbeDiagnostic[];
   /** Milliseconds to build the graph, excluding the probe (the §3.4 budget). */
   readonly graphMs: number;
 }
@@ -141,6 +152,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     scannedMentions: scanned.mentions,
     publicDirs,
   });
+  const diagnostics: ProbeDiagnostic[] = [];
   const probes =
     input.probeOptions === null
       ? undefined
@@ -156,6 +168,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
             // guarantee with no symptom at all, and validate.ts forgetting it for four
             // days is the proof that documenting it does not work.
             alwaysMeasure: alwaysMeasureFor(graph),
+            onDiagnostic: (entry) => diagnostics.push(entry),
           },
         );
   // R17: the directories whose framework reads certain filenames without being told
@@ -186,6 +199,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     audit: auditResult,
     sweep,
     probes,
+    diagnostics,
     graphMs,
   };
 }

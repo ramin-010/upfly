@@ -24,6 +24,7 @@ import {
   CONVENTIONAL_SERVING_ROOTS,
   type Graph,
   IMAGE_EXTENSIONS,
+  type ProbeDiagnostic,
   type Reference,
   type Report,
   type ServingRoots,
@@ -47,6 +48,7 @@ interface PipelineResult {
   readonly graph: Graph;
   readonly report: Report;
   readonly human: string;
+  readonly diagnostics: readonly ProbeDiagnostic[];
   readonly graphMs: number;
 }
 
@@ -62,7 +64,7 @@ interface RepoResult {
   /** Where two runs disagreed, when they did. A bare `false` cannot be acted on. */
   readonly determinismDiff: readonly string[];
   readonly cwdDiff: readonly string[];
-  /** `skipped` entries that differed between runs. Environmental, not a defect. */
+  /** `skipped` entries that differed between runs, quoted so a red verdict names itself. */
   readonly environmentNotes: readonly string[];
   readonly cwdIndependent: boolean;
   readonly noAbsolutePath: boolean;
@@ -73,6 +75,16 @@ interface RepoResult {
   readonly verified: VerifyResult;
   readonly report: Report;
   readonly human: string;
+  /**
+   * What libvips said about the files it could not read.
+   *
+   * Kept out of the report and written beside it. The report is the artefact rule 11
+   * promises to be byte-identical for identical inputs, and this text is not: the same
+   * four corrupt SVGs give the full message on some reads and a truncated one on
+   * others. Losing it altogether would make a genuinely unreadable file harder to
+   * diagnose, so it goes in a file nothing compares.
+   */
+  readonly diagnostics: readonly ProbeDiagnostic[];
 }
 
 async function main(): Promise<void> {
@@ -180,12 +192,15 @@ function servingRootsFor(repo: RepoSpec): ServingRoots {
  * against. It used to live here in its own copy, which is how the headline accuracy
  * figure and the write path came to describe two different pipelines (R55).
  *
- * ⚠️ The two `publicDirs` arguments below are deliberately not the same value, and
- * that is a wart rather than a design. On an `unconfigured` entry the resolver gets
- * the convention guess while the sweep and the audit get `repo.publicDirs`, which is
- * empty. Preserved exactly so the extraction could be proved byte-identical against
- * the reports it produced before; raised in STATE.md rather than fixed in the same
- * change that was supposed to change nothing.
+ * The sweep and the audit are given the directories the resolver actually resolved
+ * against, rather than the table's column. Those were once two different values, so on
+ * an unconfigured entry the resolver used the convention guess while the audit was
+ * told there were no public directories at all. Every dead asset under one then
+ * carried `inPublicDir: false`, wrong by the resolver's own view, and the caveat
+ * warning that an unreferenced public image may be linked from outside the repository
+ * was suppressed entirely, on the run a first-time user gets, which is the run where
+ * that warning is worth most. A configured entry is unaffected, because there the
+ * declared list and the resolved list are the same list.
  */
 async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
   const output = await enginePipeline({
@@ -215,25 +230,29 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     graph: output.graph,
     report,
     human: renderReport(report),
+    diagnostics: output.diagnostics,
     graphMs: output.graphMs,
   };
 }
 
 /**
- * The part of a report a determinism claim is about (R38).
+ * The part of a report a determinism claim is about.
  *
- * Everything except `skipped`. Two runs that find the same images, the same
- * references and the same problems have agreed on what matters; a file that was
- * briefly unreadable under load has not changed what the engine concluded, only what
- * it managed to look at, and the report already says so in the entry itself.
+ * It is now the whole report, and the narrowing is the point. `skipped` used to be
+ * excluded on the grounds that a file briefly unreadable under load has not changed
+ * what the engine concluded, only what it managed to look at. That reason is sound and
+ * it covered a second case it was never argued for: an asset that failed identically
+ * in both runs, where only the third-party sentence describing the failure changed.
+ * The engine's own conclusion was stable and the check could not see that the artefact
+ * was not, so a live violation of the byte-identical promise sat behind a green tick.
+ *
+ * The library's wording no longer reaches the report, so there is nothing left in
+ * `skipped` that is outside Upfly's control, and the exclusion has nothing left to
+ * protect. An entry that still appears in one run and not the next is a finding to
+ * investigate rather than a reason to stop looking.
  */
-function substance(report: Report): Omit<Report, 'skipped'> {
-  const { skipped: _skipped, ...rest } = report;
-  return rest;
-}
-
-function sameSubstance(a: Report, b: Report): boolean {
-  return JSON.stringify(substance(a)) === JSON.stringify(substance(b));
+function sameReport(a: Report, b: Report): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
@@ -301,19 +320,20 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
 
   // --- (f) determinism: two whole runs -------------------------------------------
   //
-  // ⚠️ **A claim about the FINDINGS and REFERENCES, not about every byte (R38).** A
-  // `skipped` entry that appears in one run and not the next is an I/O failure under
-  // load — environmental, and rule 9 working exactly as designed by surfacing it. It
-  // must stay visible, but it is not a determinism defect and must not look like one:
-  // while the two were one boolean, a transient flake and a real correctness failure
-  // were indistinguishable, which is precisely what cost time on railsgirls-com.
+  // A claim about every byte of the report, which it did not used to be. `skipped`
+  // was held out so that a file briefly unreadable under load could not look like a
+  // correctness failure. That reason was sound, and it silently covered a second case
+  // nobody argued for: the same asset failing identically in both runs with only the
+  // imaging library's sentence about it changing. Upfly's own wording is what reaches
+  // the report now, so there is nothing left in `skipped` outside its control.
+  //
+  // `environmentNotes` below still quotes any entry that differs, because naming the
+  // asset is what makes a red verdict actionable. It reports; it no longer excuses.
   const second = await runPipeline(repo, probed);
-  const deterministic = sameSubstance(first.report, second.report);
+  const deterministic = sameReport(first.report, second.report);
   // A boolean that says `false` and nothing else cannot be acted on. This says WHERE,
   // which on a 24,000-line report is the whole difference.
-  const determinismDiff = deterministic
-    ? []
-    : firstDifferences(substance(first.report), substance(second.report));
+  const determinismDiff = deterministic ? [] : firstDifferences(first.report, second.report);
   const environmentNotes = skippedDifferences(first.report, second.report);
 
   // --- (f) and a third run from a different working directory ----------------------
@@ -324,10 +344,8 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   chdir(tmpdir());
   const elsewhere = await runPipeline(repo, probed);
   chdir(originalCwd);
-  const cwdIndependent = sameSubstance(first.report, elsewhere.report);
-  const cwdDiff = cwdIndependent
-    ? []
-    : firstDifferences(substance(first.report), substance(elsewhere.report));
+  const cwdIndependent = sameReport(first.report, elsewhere.report);
+  const cwdDiff = cwdIndependent ? [] : firstDifferences(first.report, elsewhere.report);
 
   // --- (f) and no absolute path in the output at all -------------------------------
   const { clean: noAbsolutePath, evidence: absolutePathEvidence } = checkNoAbsolutePath(
@@ -364,6 +382,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
     verified,
     report: first.report,
     human: first.human,
+    diagnostics: first.diagnostics,
   };
 }
 
@@ -579,6 +598,31 @@ async function writeArtifacts(outDir: string, result: RepoResult): Promise<void>
   await writeFile(join(outDir, `${name}.report.txt`), result.human, 'utf8');
   await writeFile(join(outDir, `${name}.review.md`), worksheet(result), 'utf8');
   await writeFile(join(outDir, `${name}.sweep.md`), sweepLog(result), 'utf8');
+  await writeFile(join(outDir, `${name}.diagnostics.txt`), diagnosticsLog(result), 'utf8');
+}
+
+/**
+ * The imaging library's own words, sorted, in a file no determinism check reads.
+ *
+ * Sorted so a person diffing two of these by hand sees real changes rather than
+ * scheduling noise. That is a convenience for a reader and not a determinism claim:
+ * the whole reason this text lives here is that it is not stable enough to make one.
+ */
+function diagnosticsLog(result: RepoResult): string {
+  const lines = result.diagnostics
+    .map((entry) => `${entry.asset}\t${entry.measurement}\t${entry.code}\t${entry.detail}`)
+    .sort();
+
+  return [
+    `# ${labelOf(result.repo)} - what the imaging library said`,
+    '#',
+    '# Not part of the report, and not compared between runs. libvips does not word the',
+    '# same failure identically every time, so this text cannot appear in an artefact',
+    '# that is promised to be byte-identical. Upfly own classification is in the report.',
+    '',
+    ...(lines.length === 0 ? ['(nothing failed to decode)'] : lines),
+    '',
+  ].join('\n');
 }
 
 /**
@@ -914,7 +958,7 @@ function summarise(result: RepoResult): string {
     ...result.determinismDiff.map((entry) => `      🔴 FINDINGS DIFFER between runs: ${entry}`),
     ...result.cwdDiff.map((entry) => `      🔴 FINDINGS DIFFER by cwd: ${entry}`),
     ...result.environmentNotes.map(
-      (entry) => `      note (environmental, not a determinism failure): ${entry}`,
+      (entry) => `      🔴 SKIPPED LIST DIFFERS between runs: ${entry}`,
     ),
     ...(result.absolutePathEvidence.length === 0
       ? []

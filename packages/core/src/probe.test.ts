@@ -3,6 +3,7 @@ import {
   DEFAULT_ENCODE_QUALITY,
   type EncodeFormat,
   type ImageProbe,
+  type ProbeDiagnostic,
   probeAssets,
 } from './probe.js';
 import type { Asset } from './types.js';
@@ -181,7 +182,8 @@ describe('probeAssets', () => {
         {
           measurement: 'metadata',
           code: 'header-unreadable',
-          reason: 'Input file contains unsupported image format',
+          reason:
+            'the image header would not decode, so nothing about this image could be measured',
         },
         {
           measurement: 'webp',
@@ -189,6 +191,41 @@ describe('probeAssets', () => {
           reason: 'the header could not be read, so there is nothing to encode',
         },
       ]);
+    });
+
+    it('keeps the library own words out of the skip and sends them to the sink', async () => {
+      // The report is promised to be byte-identical for identical inputs, and libvips
+      // does not give the same sentence twice: four corrupt SVGs read 160 times gave
+      // the full message 114 times and a truncated one 46. What Upfly concluded is
+      // stable; what libvips said about it is not, so only one of the two is allowed
+      // into the report.
+      const diagnostics: ProbeDiagnostic[] = [];
+      const [result] = await probeAssets([asset('zero.png')], {
+        probe: fakeProbe({ metadataFails: 'Input file contains unsupported image format' }),
+        formats: [],
+        onDiagnostic: (entry) => diagnostics.push(entry),
+      });
+
+      expect(result?.skipped[0]?.reason).not.toContain('Input file');
+      expect(diagnostics).toEqual([
+        {
+          asset: 'zero.png',
+          measurement: 'metadata',
+          code: 'header-unreadable',
+          detail: 'Input file contains unsupported image format',
+        },
+      ]);
+    });
+
+    it('drops the library text entirely when nobody asked for it', async () => {
+      // An absent sink means the unstable string is not quietly kept somewhere a
+      // future renderer could find it.
+      const [result] = await probeAssets([asset('zero.png')], {
+        probe: fakeProbe({ metadataFails: 'Input file contains unsupported image format' }),
+        formats: [],
+      });
+
+      expect(JSON.stringify(result)).not.toContain('Input file');
     });
 
     it('records a reason when an encode fails after a good header', async () => {
@@ -203,20 +240,22 @@ describe('probeAssets', () => {
         {
           measurement: 'webp',
           code: 'encode-failed',
-          reason: 'VipsJpeg: premature end of JPEG image',
+          reason: 'the image decoded but re-encoding it failed, so there is no size to compare',
         },
       ]);
     });
 
     it('keeps a multi-line failure to its first line', async () => {
-      const [result] = await probeAssets([asset('a.png')], {
+      const diagnostics: ProbeDiagnostic[] = [];
+      await probeAssets([asset('a.png')], {
         probe: fakeProbe({
           metadataFails: 'Input file is missing: /repo/a.png\n  at Sharp.metadata',
         }),
         formats: [],
+        onDiagnostic: (entry) => diagnostics.push(entry),
       });
 
-      expect(result?.skipped[0]?.reason).toBe('Input file is missing: /repo/a.png');
+      expect(diagnostics[0]?.detail).toBe('Input file is missing: /repo/a.png');
     });
 
     it('survives a port that throws something that is not an Error', async () => {
@@ -229,9 +268,14 @@ describe('probeAssets', () => {
         encodedBytes: async () => 0,
       };
 
-      const [result] = await probeAssets([asset('a.png')], { probe, formats: [] });
+      const diagnostics: ProbeDiagnostic[] = [];
+      await probeAssets([asset('a.png')], {
+        probe,
+        formats: [],
+        onDiagnostic: (entry) => diagnostics.push(entry),
+      });
 
-      expect(result?.skipped[0]?.reason).toBe('nope');
+      expect(diagnostics[0]?.detail).toBe('nope');
     });
 
     it('lets one unreadable asset not stop the others', async () => {

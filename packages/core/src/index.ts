@@ -89,6 +89,7 @@ export type {
   ImageMetadata,
   ImageProbe,
   ProbeOptions,
+  ProbeDiagnostic,
   ProbeSkip,
   ProbeSkipCode,
 } from './probe.js';

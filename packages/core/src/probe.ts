@@ -120,8 +120,40 @@ export interface ProbeSkip {
   readonly measurement: 'metadata' | EncodeFormat;
   /** Groupable: a report counts capped assets without matching on prose. */
   readonly code: ProbeSkipCode;
-  /** Rendered verbatim in the report. */
+  /**
+   * Rendered verbatim in the report, and written here rather than quoted from
+   * anywhere else.
+   *
+   * It used to be the imaging library's own error text for the two failure codes,
+   * which broke the promise that the same inputs produce a byte-identical report.
+   * Reading four corrupt SVGs 160 times gave the full libvips message 114 times and a
+   * truncated one 46, so both the entry and the sort order changed between runs of an
+   * unchanged repository. The library's wording is also not ours to put in front of a
+   * user: it is free to change between versions, and it describes libvips rather than
+   * describing what Upfly did.
+   *
+   * The underlying text is not lost. It goes to `ProbeOptions.onDiagnostic`, which is
+   * a channel nothing deterministic reads.
+   */
   readonly reason: string;
+}
+
+/**
+ * What a third-party imaging library said, on its way somewhere that is not a report.
+ *
+ * Deliberately not a field on `ProbeSkip`. A field would sit inside the value the
+ * report is built from, and keeping it out of the output would then be a rule somebody
+ * has to keep remembering. There is no field, so there is nothing for a renderer to
+ * print or for a sort to key on, which is a property of the shape rather than of
+ * anyone's care.
+ */
+export interface ProbeDiagnostic {
+  /** POSIX-relative path of the asset being measured. */
+  readonly asset: string;
+  readonly measurement: 'metadata' | EncodeFormat;
+  readonly code: Extract<ProbeSkipCode, 'header-unreadable' | 'encode-failed'>;
+  /** Verbatim from the library. Unstable between runs, and never a report's business. */
+  readonly detail: string;
 }
 
 /** What one encode measured. */
@@ -240,9 +272,35 @@ export interface ProbeOptions {
    * is a `bench/` question, not a guess — see rule 16.
    */
   readonly concurrency?: number;
+  /**
+   * Where a failing library's own words go, when a caller wants them.
+   *
+   * Absent by default, and an absent sink means the text is dropped rather than
+   * stored: a caller who has nowhere to put it does not silently acquire an unstable
+   * string. What Upfly concluded is in the skip's `code` and `reason` either way, so
+   * nothing a report needs depends on anyone passing this.
+   *
+   * Called during measurement, so an implementation that throws would fail the probe
+   * of an asset that had already failed for a different reason. Callers append to a
+   * list or write a line; they do not do work here.
+   */
+  readonly onDiagnostic?: (diagnostic: ProbeDiagnostic) => void;
 }
 
 const DEFAULT_CONCURRENCY = 4;
+
+/**
+ * What the report says when a measurement failed, by the code that classifies it.
+ *
+ * One sentence per code, written once, so two runs of an unchanged repository produce
+ * the same bytes. The library's text that used to stand here is not stable enough to
+ * put in an artefact that rule 11 is a promise about.
+ */
+const FAILURE_REASON: Record<'header-unreadable' | 'encode-failed', string> = {
+  'header-unreadable':
+    'the image header would not decode, so nothing about this image could be measured',
+  'encode-failed': 'the image decoded but re-encoding it failed, so there is no size to compare',
+};
 
 /**
  * Measure every asset.
@@ -322,11 +380,20 @@ async function probeOne(
 ): Promise<AssetProbe> {
   const skipped: ProbeSkip[] = [];
 
+  const fail = (
+    measurement: 'metadata' | EncodeFormat,
+    code: keyof typeof FAILURE_REASON,
+    error: unknown,
+  ): void => {
+    skipped.push({ measurement, code, reason: FAILURE_REASON[code] });
+    options.onDiagnostic?.({ asset: asset.relative, measurement, code, detail: describe(error) });
+  };
+
   let metadata: ImageMetadata | null = null;
   try {
     metadata = await options.probe.metadata(asset.path);
   } catch (error) {
-    skipped.push({ measurement: 'metadata', code: 'header-unreadable', reason: describe(error) });
+    fail('metadata', 'header-unreadable', error);
   }
 
   const capped = withinCap !== null && !withinCap.has(asset.path);
@@ -365,7 +432,7 @@ async function probeOne(
         }),
       });
     } catch (error) {
-      skipped.push({ measurement: format, code: 'encode-failed', reason: describe(error) });
+      fail(format, 'encode-failed', error);
     }
   }
 
