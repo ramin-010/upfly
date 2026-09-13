@@ -1355,24 +1355,35 @@
           "column": 11
         },
         {
+          "raw": "../../../public/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "resolved",
+          "why": "A third JSX attribute, relative rather than root-relative.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 662,
+          "line": 24,
+          "column": 11
+        },
+        {
           "raw": "/img/hero.jpg",
           "occurrence": 1,
           "shape": "js.string.literal",
           "expect": "resolved",
           "why": "An exported const in an MDX file.",
           "target": "apps/docs/public/img/hero.jpg",
-          "offset": 675,
-          "line": 24,
+          "offset": 751,
+          "line": 26,
           "column": 24
         },
         {
           "raw": "/img/screenshot.png",
-          "occurrence": 2,
+          "occurrence": 3,
           "shape": "md.code-fence",
           "expect": "discarded",
           "why": "Inside a jsx fence. An example, not a reference.",
-          "offset": 740,
-          "line": 29,
+          "offset": 816,
+          "line": 31,
           "column": 11
         }
       ]
@@ -1633,14 +1644,35 @@
           "column": 13
         },
         {
+          "raw": "/img/hero.jpg",
+          "occurrence": 3,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "A source@srcset inside raw HTML inside markdown.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 1204,
+          "line": 50,
+          "column": 19
+        },
+        {
+          "raw": "/img/absent-from-raw-html.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "broken",
+          "why": "And a broken one, so the row is not all green.",
+          "offset": 1261,
+          "line": 51,
+          "column": 13
+        },
+        {
           "raw": "/brand.png",
           "occurrence": 2,
           "shape": "md.style-attribute",
           "expect": "resolved",
           "why": "CSS inside an HTML attribute inside markdown — three parsers deep.",
           "target": "apps/docs/public/brand.png",
-          "offset": 1209,
-          "line": 49,
+          "offset": 1367,
+          "line": 54,
           "column": 34
         },
         {
@@ -1650,8 +1682,8 @@
           "expect": "resolved",
           "why": "A second style attribute, with the url() unquoted.",
           "target": "apps/docs/public/img/diagram.png",
-          "offset": 1291,
-          "line": 51,
+          "offset": 1449,
+          "line": 56,
           "column": 29
         },
         {
@@ -1662,18 +1694,18 @@
           "why": "A third, with the quotes written as &quot; entities — a character reference inside CSS inside HTML inside markdown.",
           "decoded": "/logo.png",
           "target": "apps/docs/public/logo.png",
-          "offset": 1395,
-          "line": 53,
+          "offset": 1553,
+          "line": 58,
           "column": 42
         },
         {
           "raw": "/img/hero.jpg",
-          "occurrence": 3,
+          "occurrence": 4,
           "shape": "md.prose-mention",
           "expect": "discarded",
           "why": "R24. The identical string to a real reference in this same file, in a sentence.",
-          "offset": 1515,
-          "line": 57,
+          "offset": 1673,
+          "line": 62,
           "column": 25
         },
         {
@@ -1682,8 +1714,8 @@
           "shape": "md.prose-mention",
           "expect": "discarded",
           "why": "R24. A path written as prose, not as a link.",
-          "offset": 1581,
-          "line": 58,
+          "offset": 1739,
+          "line": 63,
           "column": 1
         },
         {
@@ -1692,18 +1724,18 @@
           "shape": "md.prose-mention",
           "expect": "discarded",
           "why": "A bare basename in a sentence. Occurrence 5: four longer paths above contain it.",
-          "offset": 1688,
-          "line": 59,
+          "offset": 1846,
+          "line": 64,
           "column": 23
         },
         {
           "raw": "/img/hero.jpg",
-          "occurrence": 4,
+          "occurrence": 5,
           "shape": "md.code-fence",
           "expect": "discarded",
           "why": "Inside an html fence.",
-          "offset": 1849,
-          "line": 65,
+          "offset": 2007,
+          "line": 70,
           "column": 11
         },
         {
@@ -1712,8 +1744,8 @@
           "shape": "md.code-fence",
           "expect": "discarded",
           "why": "Inside the same fence, and pointing at a directory the docs app does not even have.",
-          "offset": 1911,
-          "line": 66,
+          "offset": 2069,
+          "line": 71,
           "column": 11
         },
         {
@@ -1722,8 +1754,8 @@
           "shape": "md.code-fence",
           "expect": "discarded",
           "why": "Inside a css fence.",
-          "offset": 2001,
-          "line": 71,
+          "offset": 2159,
+          "line": 76,
           "column": 26
         },
         {
@@ -1732,8 +1764,8 @@
           "shape": "md.indented-code",
           "expect": "discarded",
           "why": "A four-space indented code block, which is a code block too.",
-          "offset": 2096,
-          "line": 76,
+          "offset": 2254,
+          "line": 81,
           "column": 15
         },
         {
@@ -1742,8 +1774,8 @@
           "shape": "md.indented-code",
           "expect": "discarded",
           "why": "A second line of that block.",
-          "offset": 2160,
-          "line": 77,
+          "offset": 2318,
+          "line": 82,
           "column": 15
         },
         {
@@ -1752,8 +1784,8 @@
           "shape": "md.indented-code",
           "expect": "discarded",
           "why": "And a third, this time CSS rather than HTML.",
-          "offset": 2233,
-          "line": 78,
+          "offset": 2391,
+          "line": 83,
           "column": 39
         },
         {
@@ -1762,8 +1794,8 @@
           "shape": "md.inline-code",
           "expect": "discarded",
           "why": "Backticks mid-sentence: neither prose nor a fence.",
-          "offset": 2283,
-          "line": 80,
+          "offset": 2441,
+          "line": 85,
           "column": 25
         },
         {
@@ -1772,8 +1804,8 @@
           "shape": "md.inline-code",
           "expect": "discarded",
           "why": "A bare path in backticks.",
-          "offset": 2343,
-          "line": 81,
+          "offset": 2501,
+          "line": 86,
           "column": 2
         },
         {
@@ -1782,8 +1814,8 @@
           "shape": "md.inline-code",
           "expect": "discarded",
           "why": "And a url() in backticks.",
-          "offset": 2377,
-          "line": 81,
+          "offset": 2535,
+          "line": 86,
           "column": 36
         },
         {
@@ -1793,8 +1825,8 @@
           "expect": "resolved",
           "why": "Where ![The screenshot][shot] actually keeps its path.",
           "target": "apps/docs/public/img/screenshot.png",
-          "offset": 2407,
-          "line": 83,
+          "offset": 2565,
+          "line": 88,
           "column": 9
         },
         {
@@ -1804,8 +1836,8 @@
           "expect": "resolved",
           "why": "And where [avatar] keeps its.",
           "target": "apps/docs/public/img/avatar.png",
-          "offset": 2437,
-          "line": 84,
+          "offset": 2595,
+          "line": 89,
           "column": 11
         }
       ]
@@ -1836,6 +1868,17 @@
           "column": 22
         },
         {
+          "raw": "../../public/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "astro.import.frontmatter",
+          "expect": "resolved",
+          "why": "A third, imported and never used — which is still a reference.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 122,
+          "line": 4,
+          "column": 25
+        },
+        {
           "raw": "@img/hero.jpg",
           "occurrence": 1,
           "shape": "js.import.alias.mapped",
@@ -1843,8 +1886,8 @@
           "why": "An alias import in the fence.",
           "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/hero.jpg",
-          "offset": 122,
-          "line": 4,
+          "offset": 180,
+          "line": 5,
           "column": 25
         },
         {
@@ -1853,8 +1896,8 @@
           "shape": "js.import.alias.unmapped",
           "expect": "unresolved-alias",
           "why": "Alias-shaped, and tsconfig has no rule for @missing.",
-          "offset": 159,
-          "line": 5,
+          "offset": 217,
+          "line": 6,
           "column": 22
         },
         {
@@ -1864,8 +1907,8 @@
           "expect": "resolved",
           "why": "A const in the fence, used in the body.",
           "target": "apps/docs/public/img/hero.jpg",
-          "offset": 248,
-          "line": 8,
+          "offset": 306,
+          "line": 9,
           "column": 19
         },
         {
@@ -1875,8 +1918,8 @@
           "expect": "resolved",
           "why": "R13: resolves against the docs root, and the web app has a different brand.png.",
           "target": "apps/docs/public/brand.png",
-          "offset": 283,
-          "line": 9,
+          "offset": 341,
+          "line": 10,
           "column": 20
         },
         {
@@ -1886,19 +1929,19 @@
           "expect": "resolved",
           "why": "A link rel=icon in the template body.",
           "target": "apps/docs/public/img/avatar.png",
-          "offset": 438,
-          "line": 16,
+          "offset": 496,
+          "line": 17,
           "column": 28
         },
         {
           "raw": "/img/screenshot.png",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "astro.template.literal",
           "expect": "resolved",
           "why": "A literal img src in the body.",
           "target": "apps/docs/public/img/screenshot.png",
-          "offset": 884,
-          "line": 27,
+          "offset": 942,
+          "line": 28,
           "column": 15
         },
         {
@@ -1908,8 +1951,8 @@
           "expect": "resolved",
           "why": "Relative, in the body rather than the fence.",
           "target": "apps/docs/public/img/avatar.png",
-          "offset": 959,
-          "line": 28,
+          "offset": 1017,
+          "line": 29,
           "column": 15
         },
         {
@@ -1918,8 +1961,8 @@
           "shape": "astro.template.literal",
           "expect": "broken",
           "why": "Broken on purpose.",
-          "offset": 1042,
-          "line": 29,
+          "offset": 1100,
+          "line": 30,
           "column": 15
         },
         {
@@ -1933,8 +1976,8 @@
             "apps/docs/public/theme-dark.png",
             "apps/docs/public/theme-sepia.png"
           ],
-          "offset": 1114,
-          "line": 31,
+          "offset": 1172,
+          "line": 32,
           "column": 16
         },
         {
@@ -1944,8 +1987,8 @@
           "expect": "resolved",
           "why": "A <style> element in an .astro file.",
           "target": "apps/docs/public/img/hero.jpg",
-          "offset": 1301,
-          "line": 37,
+          "offset": 1359,
+          "line": 38,
           "column": 32
         },
         {
@@ -1955,8 +1998,8 @@
           "expect": "resolved",
           "why": "Relative, inside that style element.",
           "target": "apps/docs/public/brand.png",
-          "offset": 1378,
-          "line": 40,
+          "offset": 1436,
+          "line": 41,
           "column": 32
         }
       ]
@@ -2046,14 +2089,38 @@
           "column": 15
         },
         {
+          "raw": "/gallery/hero%20image%20(2)%20copy.png",
+          "occurrence": 1,
+          "shape": "html.percent-encoded",
+          "expect": "resolved",
+          "why": "Every space encoded and the parentheses left raw, which is what a browser address bar actually produces.",
+          "decoded": "/gallery/hero image (2) copy.png",
+          "target": "apps/web/public/gallery/hero image (2) copy.png",
+          "offset": 1593,
+          "line": 35,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/hero%20image%20%282%29%20copy.png",
+          "occurrence": 1,
+          "shape": "html.percent-encoded",
+          "expect": "resolved",
+          "why": "The same file with the parentheses encoded too. Both spellings must reach one file, and neither may reach a different one.",
+          "decoded": "/gallery/hero image (2) copy.png",
+          "target": "apps/web/public/gallery/hero image (2) copy.png",
+          "offset": 1700,
+          "line": 36,
+          "column": 15
+        },
+        {
           "raw": "/brand.png",
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
           "why": "Before the raw-text prose, so it is collected either way.",
           "target": "apps/web/public/brand.png",
-          "offset": 1719,
-          "line": 40,
+          "offset": 1924,
+          "line": 42,
           "column": 15
         },
         {
@@ -2063,8 +2130,8 @@
           "expect": "resolved",
           "why": "R20: after six raw-text tags named in prose and never closed. Must still be found.",
           "target": "apps/web/public/img/hero.jpg",
-          "offset": 2369,
-          "line": 55,
+          "offset": 2574,
+          "line": 57,
           "column": 15
         },
         {
@@ -2074,8 +2141,8 @@
           "expect": "resolved",
           "why": "As above.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 2453,
-          "line": 56,
+          "offset": 2658,
+          "line": 58,
           "column": 15
         },
         {
@@ -2085,8 +2152,8 @@
           "expect": "resolved",
           "why": "As above.",
           "target": "apps/web/public/srcset/tile@2x.png",
-          "offset": 2542,
-          "line": 57,
+          "offset": 2747,
+          "line": 59,
           "column": 15
         },
         {
@@ -2096,8 +2163,8 @@
           "expect": "resolved",
           "why": "As above, and relative rather than root-relative.",
           "target": "shared/assets/img/logo.png",
-          "offset": 2633,
-          "line": 58,
+          "offset": 2838,
+          "line": 60,
           "column": 15
         }
       ]
@@ -2153,9 +2220,30 @@
           "occurrence": 1,
           "shape": "html.link.href.other",
           "expect": "out-of-scope",
-          "why": "A stylesheet in the same attribute as the icons. It is scanned as a source file, never indexed as an asset.",
+          "why": "A stylesheet in the same attribute as the icons. It is scanned as a source file, never indexed as an asset. ⚠️ The token scan cannot see this line — .css is not an asset extension — so it is keyed by hand.",
           "offset": 379,
           "line": 11,
+          "column": 34
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.link.href.other",
+          "expect": "resolved",
+          "why": "rel=preload as=image: the same attribute again, this time holding a real asset. Three rel values, three different correct outcomes.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 438,
+          "line": 12,
+          "column": 42
+        },
+        {
+          "raw": "/css/print.css",
+          "occurrence": 1,
+          "shape": "html.link.href.other",
+          "expect": "out-of-scope",
+          "why": "A second stylesheet, media=print. Also invisible to the token scan and keyed by hand.",
+          "offset": 489,
+          "line": 13,
           "column": 34
         },
         {
@@ -2165,8 +2253,8 @@
           "expect": "resolved",
           "why": "CSS reached through a <style> element.",
           "target": "apps/web/public/img/banner.png",
-          "offset": 455,
-          "line": 15,
+          "offset": 580,
+          "line": 17,
           "column": 32
         },
         {
@@ -2176,8 +2264,8 @@
           "expect": "resolved",
           "why": "Unquoted url() inside that style element.",
           "target": "apps/web/public/img/texture.png",
-          "offset": 535,
-          "line": 18,
+          "offset": 660,
+          "line": 20,
           "column": 31
         },
         {
@@ -2186,8 +2274,8 @@
           "shape": "css.url.in-comment",
           "expect": "discarded",
           "why": "Inside a CSS comment in a <style> element. Never a reference.",
-          "offset": 623,
-          "line": 20,
+          "offset": 748,
+          "line": 22,
           "column": 62
         },
         {
@@ -2197,8 +2285,8 @@
           "expect": "resolved",
           "why": "A url() inside a shorthand background.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 714,
-          "line": 22,
+          "offset": 839,
+          "line": 24,
           "column": 49
         },
         {
@@ -2208,8 +2296,8 @@
           "expect": "resolved",
           "why": "CSS in a style=\"\" attribute, one element at a time.",
           "target": "apps/web/public/img/team.jpg",
-          "offset": 836,
-          "line": 28,
+          "offset": 961,
+          "line": 30,
           "column": 60
         },
         {
@@ -2219,8 +2307,8 @@
           "expect": "resolved",
           "why": "R13: the web app's brand.png, which is a different picture from the docs app's.",
           "target": "apps/web/public/brand.png",
-          "offset": 884,
-          "line": 29,
+          "offset": 1009,
+          "line": 31,
           "column": 31
         },
         {
@@ -2230,8 +2318,8 @@
           "expect": "resolved",
           "why": "Relative from the app root into its own public directory.",
           "target": "apps/web/public/logo.png",
-          "offset": 969,
-          "line": 30,
+          "offset": 1094,
+          "line": 32,
           "column": 34
         },
         {
@@ -2241,8 +2329,8 @@
           "expect": "resolved",
           "why": "The src beside a single-candidate srcset.",
           "target": "apps/web/public/srcset/tile.png",
-          "offset": 1127,
-          "line": 35,
+          "offset": 1252,
+          "line": 37,
           "column": 17
         },
         {
@@ -2252,8 +2340,8 @@
           "expect": "resolved",
           "why": "One candidate with a descriptor, which parses differently from a list.",
           "target": "apps/web/public/srcset/tile@2x.png",
-          "offset": 1153,
-          "line": 35,
+          "offset": 1278,
+          "line": 37,
           "column": 43
         },
         {
@@ -2263,8 +2351,8 @@
           "expect": "resolved",
           "why": "The src beside a three-candidate srcset.",
           "target": "apps/web/public/srcset/tile.png",
-          "offset": 1268,
-          "line": 39,
+          "offset": 1393,
+          "line": 41,
           "column": 14
         },
         {
@@ -2274,8 +2362,8 @@
           "expect": "resolved",
           "why": "Candidate 1 of 3, 1x.",
           "target": "apps/web/public/srcset/tile.png",
-          "offset": 1302,
-          "line": 40,
+          "offset": 1427,
+          "line": 42,
           "column": 17
         },
         {
@@ -2285,8 +2373,8 @@
           "expect": "resolved",
           "why": "Candidate 2 of 3, 2x.",
           "target": "apps/web/public/srcset/tile@2x.png",
-          "offset": 1323,
-          "line": 40,
+          "offset": 1448,
+          "line": 42,
           "column": 38
         },
         {
@@ -2296,8 +2384,8 @@
           "expect": "resolved",
           "why": "Candidate 3 of 3, 3x.",
           "target": "apps/web/public/srcset/tile@3x.png",
-          "offset": 1347,
-          "line": 40,
+          "offset": 1472,
+          "line": 42,
           "column": 62
         },
         {
@@ -2307,8 +2395,8 @@
           "expect": "resolved",
           "why": "The src beside a w-descriptor srcset.",
           "target": "apps/web/public/srcset/card-800.jpg",
-          "offset": 1535,
-          "line": 46,
+          "offset": 1660,
+          "line": 48,
           "column": 14
         },
         {
@@ -2318,8 +2406,8 @@
           "expect": "resolved",
           "why": "Candidate 1 of 3, 400w.",
           "target": "apps/web/public/srcset/card-400.jpg",
-          "offset": 1573,
-          "line": 47,
+          "offset": 1698,
+          "line": 49,
           "column": 17
         },
         {
@@ -2329,8 +2417,8 @@
           "expect": "resolved",
           "why": "Candidate 2 of 3, 800w.",
           "target": "apps/web/public/srcset/card-800.jpg",
-          "offset": 1600,
-          "line": 47,
+          "offset": 1725,
+          "line": 49,
           "column": 44
         },
         {
@@ -2340,8 +2428,8 @@
           "expect": "resolved",
           "why": "Candidate 3 of 3, 1200w. A sizes attribute sits beside it and names no path.",
           "target": "apps/web/public/srcset/card-1200.jpg",
-          "offset": 1627,
-          "line": 47,
+          "offset": 1752,
+          "line": 49,
           "column": 71
         },
         {
@@ -2351,8 +2439,8 @@
           "expect": "resolved",
           "why": "The src beside the five-candidate srcset.",
           "target": "apps/web/public/srcset/wide.jpg",
-          "offset": 1839,
-          "line": 54,
+          "offset": 1964,
+          "line": 56,
           "column": 14
         },
         {
@@ -2362,8 +2450,8 @@
           "expect": "resolved",
           "why": "Candidate 1 of 5, across several lines with ragged whitespace.",
           "target": "apps/web/public/srcset/narrow.jpg",
-          "offset": 1884,
-          "line": 56,
+          "offset": 2009,
+          "line": 58,
           "column": 11
         },
         {
@@ -2373,8 +2461,8 @@
           "expect": "resolved",
           "why": "Candidate 2 of 5.",
           "target": "apps/web/public/srcset/card-400.jpg",
-          "offset": 1921,
-          "line": 57,
+          "offset": 2046,
+          "line": 59,
           "column": 11
         },
         {
@@ -2384,8 +2472,8 @@
           "expect": "resolved",
           "why": "Candidate 3 of 5.",
           "target": "apps/web/public/srcset/card-800.jpg",
-          "offset": 1958,
-          "line": 58,
+          "offset": 2083,
+          "line": 60,
           "column": 11
         },
         {
@@ -2394,8 +2482,8 @@
           "shape": "html.img.srcset.w",
           "expect": "broken",
           "why": "🔴 Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5 — the case R75 names.",
-          "offset": 1995,
-          "line": 59,
+          "offset": 2120,
+          "line": 61,
           "column": 11
         },
         {
@@ -2405,8 +2493,8 @@
           "expect": "resolved",
           "why": "Candidate 5 of 5.",
           "target": "apps/web/public/srcset/wide.jpg",
-          "offset": 2042,
-          "line": 60,
+          "offset": 2167,
+          "line": 62,
           "column": 11
         },
         {
@@ -2416,8 +2504,8 @@
           "expect": "resolved",
           "why": "In a picture/source, where srcset is the whole content.",
           "target": "apps/web/public/srcset/card-1200.jpg",
-          "offset": 2192,
-          "line": 66,
+          "offset": 2317,
+          "line": 68,
           "column": 25
         },
         {
@@ -2427,8 +2515,8 @@
           "expect": "resolved",
           "why": "Second candidate of that source.",
           "target": "apps/web/public/srcset/card-800.jpg",
-          "offset": 2221,
-          "line": 66,
+          "offset": 2346,
+          "line": 68,
           "column": 54
         },
         {
@@ -2438,8 +2526,8 @@
           "expect": "resolved",
           "why": "A source with one candidate and no descriptor at all.",
           "target": "apps/web/public/srcset/card-400.jpg",
-          "offset": 2302,
-          "line": 67,
+          "offset": 2427,
+          "line": 69,
           "column": 25
         },
         {
@@ -2449,8 +2537,8 @@
           "expect": "resolved",
           "why": "The img fallback inside picture.",
           "target": "apps/web/public/srcset/card-400.jpg",
-          "offset": 2372,
-          "line": 68,
+          "offset": 2497,
+          "line": 70,
           "column": 19
         },
         {
@@ -2460,8 +2548,8 @@
           "expect": "resolved",
           "why": "A second picture, densities rather than widths.",
           "target": "apps/web/public/gallery/photo@2x.png",
-          "offset": 2478,
-          "line": 72,
+          "offset": 2603,
+          "line": 74,
           "column": 25
         },
         {
@@ -2471,8 +2559,8 @@
           "expect": "resolved",
           "why": "Its 1x sibling.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 2504,
-          "line": 72,
+          "offset": 2629,
+          "line": 74,
           "column": 51
         },
         {
@@ -2482,8 +2570,8 @@
           "expect": "resolved",
           "why": "And the fallback img.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 2565,
-          "line": 73,
+          "offset": 2690,
+          "line": 75,
           "column": 19
         },
         {
@@ -2493,8 +2581,8 @@
           "expect": "resolved",
           "why": "A bare relative path — no leading dot, no leading slash.",
           "target": "apps/web/src/assets/inline-logo.jpg",
-          "offset": 2676,
-          "line": 77,
+          "offset": 2801,
+          "line": 79,
           "column": 19
         },
         {
@@ -2504,8 +2592,8 @@
           "expect": "resolved",
           "why": "Explicitly relative.",
           "target": "apps/web/public/img/texture.png",
-          "offset": 2778,
-          "line": 78,
+          "offset": 2903,
+          "line": 80,
           "column": 19
         },
         {
@@ -2515,8 +2603,8 @@
           "expect": "resolved",
           "why": "Two levels up, out of the app and into the shared package.",
           "target": "shared/assets/img/thumb.png",
-          "offset": 2862,
-          "line": 79,
+          "offset": 2987,
+          "line": 81,
           "column": 19
         },
         {
@@ -2525,8 +2613,8 @@
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
           "why": "R32. Real and reachable, and not ours to rewrite.",
-          "offset": 3008,
-          "line": 83,
+          "offset": 3133,
+          "line": 85,
           "column": 19
         },
         {
@@ -2535,8 +2623,8 @@
           "shape": "path.protocol-relative",
           "expect": "out-of-scope",
           "why": "Starts with // and is not a path, which is exactly what it looks like.",
-          "offset": 3089,
-          "line": 84,
+          "offset": 3214,
+          "line": 86,
           "column": 19
         },
         {
@@ -2545,8 +2633,8 @@
           "shape": "path.data-uri",
           "expect": "discarded",
           "why": "The image is the attribute. There is no file, and rewriting it is a corruption.",
-          "offset": 3189,
-          "line": 86,
+          "offset": 3314,
+          "line": 88,
           "column": 16
         },
         {
@@ -2555,8 +2643,8 @@
           "shape": "html.img.src",
           "expect": "broken",
           "why": "The existing fixture convention for a deliberately broken reference.",
-          "offset": 3366,
-          "line": 89,
+          "offset": 3491,
+          "line": 91,
           "column": 19
         },
         {
@@ -2565,8 +2653,8 @@
           "shape": "decoy.comment",
           "expect": "discarded",
           "why": "Named in an HTML comment. Not a reference.",
-          "offset": 3479,
-          "line": 92,
+          "offset": 3604,
+          "line": 94,
           "column": 38
         }
       ]
@@ -2918,6 +3006,58 @@
           "offset": 2762,
           "line": 57,
           "column": 31
+        },
+        {
+          "raw": "../../shared/assets/img/thumb.png",
+          "occurrence": 1,
+          "shape": "html.audio.src",
+          "expect": "resolved",
+          "why": "A third audio@src — and it points at an IMAGE, which is nonsense as a page but is exactly the case where a tag-based guess and a target-based one disagree.",
+          "target": "shared/assets/img/thumb.png",
+          "offset": 2896,
+          "line": 60,
+          "column": 26
+        },
+        {
+          "raw": "/media/absent-sheet.pdf",
+          "occurrence": 1,
+          "shape": "html.embed.src",
+          "expect": "broken",
+          "why": "A third embed@src, pointing at nothing.",
+          "offset": 2956,
+          "line": 61,
+          "column": 17
+        },
+        {
+          "raw": "/media/absent-frame.html",
+          "occurrence": 1,
+          "shape": "html.iframe.src",
+          "expect": "discarded",
+          "why": "A third iframe. Still never an asset reference. ⚠️ Invisible to the token scan.",
+          "offset": 3049,
+          "line": 62,
+          "column": 18
+        },
+        {
+          "raw": "/gallery/hero image.png",
+          "occurrence": 1,
+          "shape": "html.video.poster",
+          "expect": "resolved",
+          "why": "A third video@poster, with a space in the filename.",
+          "target": "apps/web/public/gallery/hero image.png",
+          "offset": 3143,
+          "line": 63,
+          "column": 20
+        },
+        {
+          "raw": "/media/captions-fr.vtt",
+          "occurrence": 1,
+          "shape": "html.track.src",
+          "expect": "broken",
+          "why": "A third track@src, pointing at nothing.",
+          "offset": 3212,
+          "line": 64,
+          "column": 19
         }
       ]
     },
@@ -3010,14 +3150,24 @@
           "column": 15
         },
         {
+          "raw": "/img/screenshot-absent.png",
+          "occurrence": 1,
+          "shape": "json.webmanifest.other",
+          "expect": "discarded",
+          "why": "A second screenshots entry, pointing at nothing. `discarded` rather than `broken` for the same reason the icons entry above is UNDECIDED — except that nothing asserts a screenshot is required, so the speculative reading is the safe one here.",
+          "offset": 750,
+          "line": 38,
+          "column": 15
+        },
+        {
           "raw": "/gallery/photo.png",
           "occurrence": 1,
           "shape": "json.webmanifest.other",
           "expect": "resolved",
           "why": "A shortcut icon, nested two levels deeper again.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 833,
-          "line": 42,
+          "offset": 941,
+          "line": 47,
           "column": 27
         }
       ]
@@ -3427,8 +3577,8 @@
           "expect": "resolved",
           "why": "A second custom property holding a url().",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 3487,
-          "line": 149,
+          "offset": 3874,
+          "line": 164,
           "column": 17
         },
         {
@@ -3438,9 +3588,86 @@
           "expect": "resolved",
           "why": "A third, unquoted.",
           "target": "apps/web/public/img/texture.png",
-          "offset": 3524,
-          "line": 150,
+          "offset": 3911,
+          "line": 165,
           "column": 16
+        },
+        {
+          "raw": "/fonts/placeholder.woff2",
+          "occurrence": 2,
+          "shape": "css.font-face",
+          "expect": "out-of-scope",
+          "why": "A third @font-face, reusing the first one's file at a different weight. Occurrence 2: the first @font-face above names the same path.",
+          "offset": 3446,
+          "line": 149,
+          "column": 12
+        },
+        {
+          "raw": "//cdn.example.com/third.png",
+          "occurrence": 1,
+          "shape": "path.protocol-relative",
+          "expect": "out-of-scope",
+          "why": "A third protocol-relative URL, unquoted.",
+          "offset": 3610,
+          "line": 155,
+          "column": 25
+        },
+        {
+          "raw": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          "occurrence": 1,
+          "shape": "path.data-uri",
+          "expect": "discarded",
+          "why": "A third data URI, this one a real 1x1 GIF rather than an SVG.",
+          "offset": 3689,
+          "line": 159,
+          "column": 26
+        }
+      ]
+    },
+    {
+      "path": "apps/web/public/css/print.css",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "css.url.single",
+          "expect": "resolved",
+          "why": "A second stylesheet inside the serving root.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 159,
+          "line": 8,
+          "column": 26
+        },
+        {
+          "raw": "../gallery/photo.png",
+          "occurrence": 1,
+          "shape": "css.url.bare",
+          "expect": "resolved",
+          "why": "Relative, unquoted.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 214,
+          "line": 12,
+          "column": 25
+        },
+        {
+          "raw": "/img/print-decoy.png",
+          "occurrence": 1,
+          "shape": "css.url.in-selector",
+          "expect": "discarded",
+          "why": "A third url() inside a selector rather than a declaration.",
+          "offset": 319,
+          "line": 16,
+          "column": 19
+        },
+        {
+          "raw": "#print-clip",
+          "occurrence": 1,
+          "shape": "css.fragment",
+          "expect": "discarded",
+          "why": "A third same-document fragment.",
+          "offset": 434,
+          "line": 22,
+          "column": 18
         }
       ]
     },
@@ -4459,13 +4686,34 @@
           "column": 31
         },
         {
+          "raw": "/img/banner.png?v=2#top",
+          "occurrence": 1,
+          "shape": "decoy.query-or-hash",
+          "expect": "resolved",
+          "why": "Both at once, in the order a browser accepts them.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 2086,
+          "line": 62,
+          "column": 29
+        },
+        {
+          "raw": "/gallery",
+          "occurrence": 2,
+          "shape": "js.concat.dynamic",
+          "expect": "dynamic",
+          "why": "A third concatenation, with the extension folded into the caller's argument so no extension literal appears at all. ⚠️ Invisible to the token scan, which needs an extension — keyed by hand.",
+          "offset": 2272,
+          "line": 66,
+          "column": 11
+        },
+        {
           "raw": "https://cdn.example.com/remote/paths.png",
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
           "why": "R32.",
-          "offset": 2167,
-          "line": 64,
+          "offset": 2420,
+          "line": 70,
           "column": 24
         },
         {
@@ -4474,8 +4722,8 @@
           "shape": "js.import.package",
           "expect": "out-of-scope",
           "why": "A package specifier as a plain string rather than an import.",
-          "offset": 2235,
-          "line": 65,
+          "offset": 2488,
+          "line": 71,
           "column": 26
         },
         {
@@ -4486,8 +4734,8 @@
           "why": "An alias in a string rather than an import.",
           "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/hero.jpg",
-          "offset": 2340,
-          "line": 68,
+          "offset": 2593,
+          "line": 74,
           "column": 25
         },
         {
@@ -4496,8 +4744,8 @@
           "shape": "js.import.alias.unmapped",
           "expect": "unresolved-alias",
           "why": "And one that maps nowhere.",
-          "offset": 2389,
-          "line": 69,
+          "offset": 2642,
+          "line": 75,
           "column": 26
         }
       ]
@@ -4598,14 +4846,25 @@
           "column": 26
         },
         {
-          "raw": "/favicon.png",
+          "raw": "../../public/favicon.png",
           "occurrence": 1,
+          "shape": "js.require",
+          "expect": "resolved",
+          "why": "A third require, of the same file a literal below also names.",
+          "target": "apps/web/public/favicon.png",
+          "offset": 211,
+          "line": 5,
+          "column": 26
+        },
+        {
+          "raw": "/favicon.png",
+          "occurrence": 2,
           "shape": "js.string.literal",
           "expect": "resolved",
-          "why": "A literal in the exported object.",
+          "why": "A literal in the exported object. Occurrence 2: the require above contains this string.",
           "target": "apps/web/public/favicon.png",
-          "offset": 248,
-          "line": 8,
+          "offset": 301,
+          "line": 9,
           "column": 14
         },
         {
@@ -4615,8 +4874,8 @@
           "expect": "resolved",
           "why": "Pointing at an SVG.",
           "target": "apps/web/public/icons/mask.svg",
-          "offset": 276,
-          "line": 9,
+          "offset": 329,
+          "line": 10,
           "column": 14
         },
         {
@@ -4625,8 +4884,8 @@
           "shape": "js.string.literal",
           "expect": "discarded",
           "why": "A speculative string that resolves to nothing.",
-          "offset": 306,
-          "line": 10,
+          "offset": 359,
+          "line": 11,
           "column": 13
         },
         {
@@ -4635,8 +4894,8 @@
           "shape": "js.import.package",
           "expect": "out-of-scope",
           "why": "A package specifier inside require().",
-          "offset": 350,
-          "line": 11,
+          "offset": 403,
+          "line": 12,
           "column": 22
         }
       ]
@@ -4685,13 +4944,33 @@
           "column": 42
         },
         {
+          "raw": "/img/attempted.png",
+          "occurrence": 1,
+          "shape": "decoy.log-message",
+          "expect": "discarded",
+          "why": "A third, and this one names TWO paths in one template literal.",
+          "offset": 825,
+          "line": 18,
+          "column": 38
+        },
+        {
+          "raw": "/srcset/attempted.jpg",
+          "occurrence": 1,
+          "shape": "decoy.log-message",
+          "expect": "discarded",
+          "why": "The second path in that same message.",
+          "offset": 848,
+          "line": 18,
+          "column": 61
+        },
+        {
           "raw": "/img/her.jpg",
           "occurrence": 1,
           "shape": "decoy.typo",
           "expect": "discarded",
           "why": "One character from /img/hero.jpg.",
-          "offset": 873,
-          "line": 21,
+          "offset": 958,
+          "line": 22,
           "column": 26
         },
         {
@@ -4700,8 +4979,8 @@
           "shape": "decoy.typo",
           "expect": "discarded",
           "why": "One character from /gallery/photo.png.",
-          "offset": 913,
-          "line": 22,
+          "offset": 998,
+          "line": 23,
           "column": 26
         },
         {
@@ -4710,8 +4989,8 @@
           "shape": "decoy.typo",
           "expect": "discarded",
           "why": "One character from /brand.png. None of these three may be reported broken: they were never asserted.",
-          "offset": 960,
-          "line": 23,
+          "offset": 1045,
+          "line": 24,
           "column": 28
         },
         {
@@ -4720,8 +4999,8 @@
           "shape": "decoy.not-a-path",
           "expect": "discarded",
           "why": "A real filename with .bak after it. A backup, not an image.",
-          "offset": 1084,
-          "line": 26,
+          "offset": 1169,
+          "line": 27,
           "column": 24
         },
         {
@@ -4730,8 +5009,8 @@
           "shape": "decoy.typo",
           "expect": "discarded",
           "why": "A query string on a name that is not on disk.",
-          "offset": 1475,
-          "line": 37,
+          "offset": 1560,
+          "line": 38,
           "column": 28
         },
         {
@@ -4740,8 +5019,8 @@
           "shape": "decoy.typo",
           "expect": "discarded",
           "why": "And a fragment on one.",
-          "offset": 1530,
-          "line": 38,
+          "offset": 1615,
+          "line": 39,
           "column": 27
         },
         {
@@ -4750,8 +5029,8 @@
           "shape": "decoy.windows-path",
           "expect": "discarded",
           "why": "Backslash-separated. Nothing in this tree is addressed this way. The raw carries TWO backslashes because the .ts source escapes one — the key records what is in the file, not what the program sees.",
-          "offset": 1663,
-          "line": 41,
+          "offset": 1748,
+          "line": 42,
           "column": 31
         },
         {
@@ -4760,8 +5039,8 @@
           "shape": "decoy.glob",
           "expect": "discarded",
           "why": "A glob matches files without naming one.",
-          "offset": 1728,
-          "line": 44,
+          "offset": 1813,
+          "line": 45,
           "column": 22
         },
         {
@@ -4770,8 +5049,8 @@
           "shape": "decoy.glob",
           "expect": "discarded",
           "why": "A recursive glob, which looks even more like a path.",
-          "offset": 1771,
-          "line": 45,
+          "offset": 1856,
+          "line": 46,
           "column": 27
         },
         {
@@ -4780,8 +5059,8 @@
           "shape": "decoy.glob",
           "expect": "discarded",
           "why": "A brace expansion over a real basename. ⚠️ The token scan cannot see this one — `.{jpg` is not `.jpg` — so it is keyed without the scan demanding it.",
-          "offset": 1813,
-          "line": 46,
+          "offset": 1898,
+          "line": 47,
           "column": 28
         },
         {
@@ -4790,8 +5069,8 @@
           "shape": "decoy.windows-path",
           "expect": "discarded",
           "why": "The tail of a UNC path (\\\\server\\share\\img\\logo.png). The key records the token rather than the whole escaped string: what is being tested is that a backslash-separated path is not treated as a reference, not the escaping.",
-          "offset": 1958,
-          "line": 49,
+          "offset": 2043,
+          "line": 50,
           "column": 45
         },
         {
@@ -4800,8 +5079,8 @@
           "shape": "decoy.windows-path",
           "expect": "discarded",
           "why": "A Windows build-log path pasted into a comment. Occurrence 3: two earlier strings contain this basename.",
-          "offset": 2017,
-          "line": 50,
+          "offset": 2102,
+          "line": 51,
           "column": 49
         }
       ]
@@ -4909,14 +5188,24 @@
           "column": 32
         },
         {
+          "raw": "/img/absent-from-feimage.png",
+          "occurrence": 1,
+          "shape": "html.svg.feimage",
+          "expect": "broken",
+          "why": "A third feImage, pointing at nothing.",
+          "offset": 1453,
+          "line": 37,
+          "column": 26
+        },
+        {
           "raw": "/srcset/tile.png",
           "occurrence": 2,
           "shape": "html.svg.image.href",
           "expect": "resolved",
           "why": "Inside a <pattern>, which is a third context again.",
           "target": "apps/web/public/srcset/tile.png",
-          "offset": 1496,
-          "line": 37,
+          "offset": 1630,
+          "line": 40,
           "column": 24
         }
       ]
@@ -5183,6 +5472,16 @@
           "offset": 764,
           "line": 23,
           "column": 36
+        },
+        {
+          "raw": "assets/**/*.svg",
+          "occurrence": 1,
+          "shape": "json.config.glob",
+          "expect": "discarded",
+          "why": "A third, with a real directory prefix in front of the wildcard — which is the one a glob-aware resolver is most tempted by.",
+          "offset": 776,
+          "line": 23,
+          "column": 48
         }
       ]
     },

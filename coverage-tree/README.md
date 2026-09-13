@@ -45,7 +45,7 @@ already gone wrong, which is the most it can be.
 
 ```
 coverage-tree/
-  key/coverage-key.json      THE ANSWER KEY — shapes, assets, and 404 references
+  key/coverage-key.json      THE ANSWER KEY — shapes, assets, and 432 references
   tools/check-key.mjs        the self-check. Plain text and path arithmetic, nothing else
   tools/prove-can-fail.mjs   18 deliberate mutations, each asserted to turn the check red
   tools/stamp-positions.mjs  fills derived offsets; never touches an `expect`
@@ -68,7 +68,7 @@ docs-examples/  🔴 a public/ that is NOT a serving root
 shared/         the alias target for ~/* and @img/*
 ```
 
-371 files, of which **270 are ordinary and reference-free** — so referenced files are a
+372 files, of which **270 are ordinary and reference-free** — so referenced files are a
 minority the way they are in real code (§4k.5). The filler averages ~2 KB per file rather
 than being stubs, because R19's warning is about **bytes**, not file count: `bench/`'s
 generator once had real code's file count with a thirtieth of its bytes and inverted two
@@ -144,7 +144,7 @@ rule exists for exactly that and caught it twice while this was being built.
 Stated plainly, because a check whose limits are unstated is read as a guarantee:
 
 - **Only asset extensions are scanned.** A reference to a `.css` or `.ts` file added without
-  a key entry would not be caught. Two such references *are* keyed by hand.
+  a key entry would not be caught. Six such references *are* keyed by hand, which the checker accepts because it verifies any listed raw at its offset whether or not the scan can see it.
 - **A token whose path is split by syntax is found short.** `/gallery/hero image.png` matches
   as `image.png`, and `` `/theme-${mode}.png` `` as `.png`. Both are accounted for by
   containment within the listed reference's span, which is correct but is a weaker statement

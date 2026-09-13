@@ -143,7 +143,7 @@ const cases = [
     expect: 'no `absent` reason',
   },
   {
-    name: 'a shape has exactly one instance and does not say why',
+    name: 'a shape drops below three instances and does not say why',
     damage: (root) => editKey(root, (key) => {
       const group = key.files.find((f) => f.path === 'apps/web/media.html');
       let seen = 0;
@@ -156,7 +156,7 @@ const cases = [
       // failure; allowlist them so the shape rule is what actually fires.
       key.unreferencedOccurrences = key.unreferencedOccurrences ?? [];
     }),
-    expect: 'has one instance',
+    expect: 'asks for three to five',
   },
   {
     name: 'the checker gains an import of something that is not node: or ./',

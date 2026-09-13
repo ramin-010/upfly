@@ -144,6 +144,21 @@ a[href$="/img/suffix-match.png"] {
   font-style: italic;
 }
 
+@font-face {
+  font-family: 'Placeholder Bold';
+  src: url(/fonts/placeholder.woff2) format('woff2');
+  font-weight: 700;
+}
+
+/* A third protocol-relative URL and a third data URI. */
+.remote-third {
+  background-image: url(//cdn.example.com/third.png);
+}
+
+.inline-data-third {
+  background-image: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+}
+
 /* Two more custom properties holding a url(), so the row is not 1 of 1. */
 :root {
   --crest: url('/gallery/photo.png');

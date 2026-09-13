@@ -46,6 +46,11 @@ Raw HTML inside the markdown, which the markdown parser hands through untouched:
   <figcaption>Raw HTML is still HTML.</figcaption>
 </figure>
 
+<picture>
+  <source srcset="/img/hero.jpg" media="(min-width: 600px)" />
+  <img src="/img/absent-from-raw-html.png" alt="Raw HTML, and broken" />
+</picture>
+
 <p style="background-image: url('/brand.png')">A style attribute inside markdown.</p>
 
 <div style="background: url(/img/diagram.png) center/cover">A second one, unquoted.</div>

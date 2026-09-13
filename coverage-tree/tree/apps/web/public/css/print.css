@@ -1,0 +1,23 @@
+/* A second stylesheet in the serving root, so link@href has more than one non-icon target. */
+
+@page {
+  margin: 2cm;
+}
+
+.masthead {
+  background-image: url('/img/banner.png');
+}
+
+.crest {
+  background-image: url(../gallery/photo.png);
+}
+
+/* A third url() in a selector rather than a declaration. */
+a[data-print="url(/img/print-decoy.png)"] {
+  text-decoration: none;
+}
+
+/* And a third fragment. */
+.masked-print {
+  clip-path: url(#print-clip);
+}

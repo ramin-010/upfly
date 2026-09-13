@@ -300,11 +300,13 @@ for (const shape of key.shapes ?? []) {
   if (count === 0 && !shape.absent) {
     fail('shapes', `${shape.id} has no references and no \`absent\` reason`);
   }
-  if (count === 1 && !shape.singleReason) {
+  if (count > 0 && count < 3 && !shape.singleReason) {
     fail(
       'shapes',
-      `${shape.id} has one instance. Spec 4k.1: a shape may only be recorded as 1 of 1 ` +
-        'if varying it is genuinely impossible, and the key must say why (`singleReason`)',
+      `${shape.id} has ${count} instance(s). Spec §4k.1 asks for three to five, deliberately ` +
+        'varied: one example proves a shape parses once, and it takes several before a row can ' +
+        'say 4 of 5 and point at which one failed. Add instances, or say in `singleReason` why ' +
+        'varying it is genuinely impossible',
     );
   }
 }

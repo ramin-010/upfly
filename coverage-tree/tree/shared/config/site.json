@@ -20,6 +20,6 @@
   ],
   "build": {
     "outDir": "dist",
-    "assetsInclude": ["**/*.png", "**/*.jpg"]
+    "assetsInclude": ["**/*.png", "**/*.jpg", "assets/**/*.svg"]
   }
 }

@@ -2,6 +2,7 @@
 
 const icon192 = require('../../public/icons/icon-192.png');
 const icon512 = require('../../public/icons/icon-512.png');
+const favicon = require('../../public/favicon.png');
 
 module.exports = {
   icons: [icon192, icon512],

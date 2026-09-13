@@ -33,6 +33,11 @@
       "src": "/media/poster.jpg",
       "sizes": "640x360",
       "type": "image/jpeg"
+    },
+    {
+      "src": "/img/screenshot-absent.png",
+      "sizes": "640x480",
+      "type": "image/png"
     }
   ],
   "shortcuts": [

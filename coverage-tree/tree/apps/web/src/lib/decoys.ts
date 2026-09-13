@@ -15,6 +15,7 @@ export function reportMissing(name: string): void {
   // A path-shaped string inside a log message. Nothing on disk is named this.
   console.warn(`${LOG_PREFIX} could not load /img/not-a-real-file.png for ${name}`);
   console.warn('[assets] falling back to /gallery/also-not-real.png');
+  console.error(`${LOG_PREFIX} tried /img/attempted.png and /srcset/attempted.jpg`);
 }
 
 /** Off by one character from a file that does exist. */

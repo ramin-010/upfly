@@ -59,6 +59,12 @@ export const MISSING = '/img/missing-from-paths.png';
 /** Real files, addressed with a cache-buster and with a fragment. Both still resolve. */
 export const HERO_VERSIONED = '/img/hero.jpg?v=3';
 export const HERO_ANCHORED = '/img/team.jpg#face';
+export const BANNER_BOTH = '/img/banner.png?v=2#top';
+
+/** A third concatenation, this one with the extension folded into the variable. */
+export function galleryFile(nameWithExtension: string): string {
+  return '/gallery' + '/' + nameWithExtension;
+}
 
 /** An absolute URL and a package specifier, neither of which is ours to rewrite. */
 export const REMOTE = 'https://cdn.example.com/remote/paths.png';
