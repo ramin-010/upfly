@@ -20,11 +20,11 @@
  * Usage: `pnpm --filter upfly-bench run move-run -- --repo=<name> [--keep]`
  */
 
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import sharp from 'sharp';
-import { type Move, checkMoveRegression } from 'upfly-core';
+import { type Move, checkMoveRegression, findSurvivingPaths } from 'upfly-core';
 import { relocateTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 
@@ -173,6 +173,22 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     // A blank line stays blank: indenting it leaves trailing whitespace, which the
     // byte-identical-output rule (rule 11) has no patience for.
     for (const line of check.lines) stdout.write(line === '' ? '\n' : `  ${line}\n`);
+
+    // 🔴 R72 part 2, and it runs on the moves that were ACCEPTED — searching for a path
+    // that never moved would report the asset still sitting where it always was, which is
+    // true and useless. The file list comes from the walk, not from the graph's reference
+    // resolution: source files AND unscanned ones, which is strictly more than anything
+    // was ever parsed from.
+    stdout.write('\n');
+    const survived = await findSurvivingPaths({
+      moves: plan.moves,
+      files: [...after.discovery.sourceFiles, ...after.discovery.unscannedFiles].map(
+        (file) => file.relative,
+      ),
+      readFile: (relative) => readFile(join(root, relative), 'utf8'),
+      servingDirs: after.servingRoots.dirs,
+    });
+    for (const line of survived.lines) stdout.write(line === '' ? '\n' : `  ${line}\n`);
 
     return !check.regressed;
   } catch (cause) {

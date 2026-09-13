@@ -64,6 +64,16 @@ export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } fr
 // `relocate` may not reach a user without the second half.
 export { checkMoveRegression } from './move-check.js';
 export type { MoveCheckInput, MoveCoverageLimit, MoveRegressionReport } from './move-check.js';
+
+// R72 part 2. The independent check: it searches text for the old path and never reads a
+// graph, which is the only property that makes it worth having.
+export { findSurvivingPaths, spellingsFor } from './old-path-search.js';
+export type {
+  OldPathSearchInput,
+  OldPathSearchResult,
+  Survivor,
+  Unsearchable,
+} from './old-path-search.js';
 export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
 export type { OptimizeInput, OptimizeResult } from './optimize.js';
 export type {
