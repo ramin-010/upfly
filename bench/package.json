@@ -14,7 +14,8 @@
     "dead-rate": "tsc --build && node dist/dead-rate.js",
     "fixture-build": "tsc --build && node dist/fixture-build.js",
     "encode-quality": "tsc --build && node dist/encode-quality.js",
-    "move-run": "tsc --build && node dist/move-run.js"
+    "move-run": "tsc --build && node dist/move-run.js",
+    "noise": "tsc --build && node dist/noise.js"
   },
   "dependencies": {
     "sharp": "^0.35.4",
