@@ -49,3 +49,24 @@
 .legacy-image-set {
   background-image: -webkit-image-set(url("/srcset/tile.png") 1x, url("/srcset/tile@2x.png") 2x);
 }
+
+// Two more whole-value variables.
+@crest: "/gallery/photo.png";
+@grain: "/img/texture.png";
+
+.legacy-crest {
+  background-image: url(@crest);
+}
+
+.legacy-grain {
+  background-image: url(@grain);
+}
+
+// And two more interpolations.
+.legacy-interpolated-two {
+  background-image: url("@{image-root}/MixedCase.Png");
+}
+
+.legacy-interpolated-three {
+  background-image: url("@{image-root}/Banner.PNG");
+}

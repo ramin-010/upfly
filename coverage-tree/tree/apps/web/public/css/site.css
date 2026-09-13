@@ -137,3 +137,23 @@ a[href$="/img/suffix-match.png"] {
   font-family: 'Placeholder';
   src: url('/fonts/placeholder.woff2') format('woff2');
 }
+
+@font-face {
+  font-family: 'Placeholder Italic';
+  src: url('/fonts/placeholder-italic.woff2') format('woff2');
+  font-style: italic;
+}
+
+/* Two more custom properties holding a url(), so the row is not 1 of 1. */
+:root {
+  --crest: url('/gallery/photo.png');
+  --grain: url(/img/texture.png);
+}
+
+.crest-from-var {
+  background-image: var(--crest);
+}
+
+.grain-from-var {
+  background-image: var(--grain);
+}

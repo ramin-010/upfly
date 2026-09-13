@@ -51,6 +51,38 @@ $image-root: '/gallery';
   background-image: url('/gallery/absent-from-scss.png');
 }
 
+// Two more variables standing in for a whole path.
+$banner: '/img/banner.png';
+$crest: '/gallery/photo.png';
+
+.banner-from-variable {
+  background-image: url($banner);
+}
+
+.crest-from-variable {
+  background-image: url($crest);
+}
+
+// Two more trailing interpolations, over a different family of files.
+@each $density in (2, 3) {
+  .tile--#{$density}x {
+    background-image: url('/srcset/tile@#{$density}x.png');
+  }
+}
+
+.card-set {
+  background-image: url('/srcset/card-#{$width}.jpg');
+}
+
+// And two more leading ones, which carry the same open question.
+.leading-two {
+  background-image: url('#{$image-root}/photo@2x.png');
+}
+
+.leading-three {
+  background-image: url('#{$image-root}/MixedCase.Png');
+}
+
 // A comment, in both spellings Sass accepts.
 // background-image: url('/img/scss-line-comment.png');
 /* background-image: url('/img/scss-block-comment.png'); */

@@ -35,6 +35,19 @@ export function fromParts(dir: string, file: string, ext: string): string {
   return [dir, file].join('/') + ext;
 }
 
+/** Two more assembled paths, so neither dynamic row reads 1 of 1. */
+export function srcsetImage(width: number): string {
+  return '/srcset/' + 'card-' + String(width) + '.jpg';
+}
+
+export function iconImage(size: number, base: string): string {
+  return `${base}/icon-${size}.png`;
+}
+
+export function themedIcon(theme: string, size: string): string {
+  return `/icons/${theme}-${size}.png`;
+}
+
 /** A literal, sitting among the assembled ones so the difference is visible. */
 export const HERO = '/img/hero.jpg';
 export const BANNER = '/img/banner.png';

@@ -7,6 +7,12 @@ thumbnail: ../../../public/img/avatar.png
 socialCard:
   url: /brand.png
   alt: The docs brand mark
+  fallback: /logo.png
+gallery:
+  - src: /img/screenshot.png
+    caption: A screenshot
+  - src: /img/avatar.png
+    caption: An avatar
 tags:
   - guide
   - intro
@@ -42,6 +48,10 @@ Raw HTML inside the markdown, which the markdown parser hands through untouched:
 
 <p style="background-image: url('/brand.png')">A style attribute inside markdown.</p>
 
+<div style="background: url(/img/diagram.png) center/cover">A second one, unquoted.</div>
+
+<span style="background-image: url(&quot;/logo.png&quot;)">A third, with the quotes escaped.</span>
+
 ## Prose, which is not a reference
 
 The hero image lives at /img/hero.jpg and is 800 by 600. If you replace it, remember that
@@ -64,8 +74,11 @@ all different pictures.
 
     An indented code block, which is a code block too:
     <img src="/img/team.jpg" alt="Indented, not a reference" />
+    <img src="/img/spacer.png" alt="Nor this" />
+    .example { background-image: url('/gallery/Banner.PNG'); }
 
-Inline code, `<img src="/img/texture.png">`, is not a reference either.
+Inline code, `<img src="/img/texture.png">`, is not a reference either. Neither is
+`/gallery/photo@2x.png`, nor `url('/srcset/tile.png')`.
 
 [shot]: /img/screenshot.png
 [avatar]: ../../../public/img/avatar.png

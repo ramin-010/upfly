@@ -42,6 +42,12 @@ export const WINDOWS_STYLE = 'img\\hero.jpg';
 
 /** A glob, not a path. */
 export const GLOB = '/gallery/*.png';
+export const GLOB_DEEP = 'src/**/*.jpg';
+export const GLOB_BRACE = '/img/hero.{jpg,png}';
+
+/** More backslashes: a UNC path and an escaped Windows path in a comment. */
+export const UNC = '\\\\server\\share\\img\\logo.png';
+// Copied from a Windows build log: dist\assets\hero.jpg
 
 /** A regular expression that happens to contain an extension. */
 export const IMAGE_RE = /\.(png|jpe?g|svg)$/i;

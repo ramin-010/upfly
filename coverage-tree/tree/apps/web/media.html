@@ -37,7 +37,23 @@
     <input type="image" src="/icons/icon-nope.png" alt="Submit, broken on purpose" />
 
     <object data="/media/spec-sheet.pdf" type="application/pdf" width="600" height="400"></object>
+    <object data="/gallery/photo.png" type="image/png" width="200" height="150"></object>
+    <object data="/media/absent.pdf" type="application/pdf" width="600" height="400"></object>
 
     <iframe src="/media/preview.html" title="Preview" width="400" height="300"></iframe>
+    <iframe src="/media/absent-preview.html" title="Missing" width="400" height="300"></iframe>
+
+    <!-- A second video and a second audio, so neither row can read 1 of 1. -->
+    <video controls src="/media/trailer.mp4" poster="/media/poster.jpg" width="640" height="360"></video>
+    <video controls src="/media/absent-clip.mp4" width="320" height="180"></video>
+    <audio controls src="/media/absent-theme.mp3"></audio>
+
+    <!-- A second and third single-candidate srcset. -->
+    <img src="/gallery/photo.png" srcset="/gallery/photo@2x.png 2x" alt="Photo" />
+    <img src="/srcset/card-400.jpg" srcset="/srcset/card-800.jpg 2x" alt="Card" />
+
+    <!-- A second and third style attribute carrying CSS. -->
+    <div style="background-image: url('/img/texture.png')">Textured</div>
+    <p style="background: url(/gallery/Banner.PNG) no-repeat">Bannered</p>
   </body>
 </html>
