@@ -102,7 +102,9 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
   try {
     // Measured before anything is written, so "no new broken references" is a
     // comparison rather than a claim about a number nobody recorded.
-    const brokenBefore = (await runEngine(root)).graph.byResolution.broken.length;
+    // No probes: this call reads a broken count, not a measurement. `optimizeTree` below
+    // does its own engine run and DOES need them, uncapped and deliberately so.
+    const brokenBefore = (await runEngine(root, undefined, false)).graph.byResolution.broken.length;
 
     const started = performance.now();
     const result = await optimizeTree(root, undefined, replace ? 'replace' : 'keep-original');
@@ -152,7 +154,10 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
     // question is not whether it ran but whether the tree still resolves after it.
     // The same engine over the tree it just wrote: any reference broken now is one
     // this run broke.
-    const after = await runEngine(root);
+    // Likewise: the re-audit reads the graph, the serving roots and the walk. On
+    // `railsgirls-com` each of these two calls was encoding all 5,370 assets and throwing
+    // every measurement away.
+    const after = await runEngine(root, undefined, false);
     const brokenAfter = after.graph.byResolution.broken.length;
     stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
     stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
