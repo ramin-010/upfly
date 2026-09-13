@@ -8,6 +8,7 @@ import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
+import { MENTION_SURVIVES } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import { renderReport } from './report-human.js';
@@ -1661,6 +1662,33 @@ describe('the assets a plan examined and offered nothing for', () => {
 
   it('counts them and totals their size', () => {
     expect(reportWith({ declined: TWO }).declined).toMatchObject({ count: 2, bytes: 4_000 });
+  });
+
+  it('states R77’s bound once per run when replace held an image back', () => {
+    // 🔴 The interesting half of the guard is what it does NOT cover. Stated once,
+    // rather than inside every identical decline reason — on `scratch-www` there are 49.
+    //
+    // ⚠️ Built with the SHARED constant, not a copy of the sentence. If this test
+    // hardcoded the wording it would keep passing after somebody reworded `plan.ts`,
+    // while the caveat silently stopped appearing — a mechanism that fails invisibly,
+    // which is the exact defect this project keeps paying for.
+    const report = reportWith({
+      declined: [
+        { path: 'public/logo.png', line: null, reason: `deploy.yml:1 ${MENTION_SURVIVES}` },
+      ],
+    });
+
+    const caveat = report.caveats.find((entry) => entry.code === 'replace-held-back');
+    expect(caveat?.count).toBe(1);
+    expect(caveat?.message).toContain('kept rather than replaced');
+    expect(caveat?.detail.join(' ')).toContain('assembles at runtime');
+  });
+
+  it('says nothing about replace when nothing was held back', () => {
+    // Here so the assertion above means something: a caveat that always prints proves
+    // nothing about a run that actually held an image back.
+    const report = reportWith({ declined: TWO });
+    expect(report.caveats.find((entry) => entry.code === 'replace-held-back')).toBeUndefined();
   });
 
   it('withholds the list unless it was asked for, and says so', () => {

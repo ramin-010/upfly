@@ -33,6 +33,16 @@ export interface Survivor {
   /** POSIX-relative path of the file it was found in. */
   readonly file: string;
   readonly line: number;
+  /**
+   * Byte offset of the match within the file.
+   *
+   * 🔴 Needed by `optimize`, and the reason is the one thing that makes this check
+   * usable before a write rather than only after one: at plan time the old path is
+   * still everywhere, including in the references the plan is **about to rewrite**.
+   * Those are not survivors. Telling them apart needs the position, because a line
+   * number cannot say whether a planned edit covers this occurrence.
+   */
+  readonly offset: number;
   /** Which spelling matched, so a reader knows what to look for on that line. */
   readonly spelling: string;
   /** The matching line, trimmed and capped. Evidence, so nobody has to open the file. */
@@ -182,7 +192,7 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
         // working rather than a reference left behind.
         if (!claimed.has(line) && !covered(rewritten, at, end)) {
           claimed.add(line);
-          survivors.push({ file, line, spelling, text: lineTextAt(text, at) });
+          survivors.push({ file, line, offset: at, spelling, text: lineTextAt(text, at) });
         }
         at = text.indexOf(spelling, end);
       }

@@ -33,6 +33,7 @@ import {
   isVectorExtension,
   relativePath,
 } from './paths.js';
+import { MENTION_SURVIVES } from './plan.js';
 import type { AssetProbe, EncodeFormat, ProbeSkipCode } from './probe.js';
 import { isLinked } from './reference.js';
 import type { ServingRoots } from './resolve.js';
@@ -332,6 +333,7 @@ export interface Caveat {
     | 'duplicates-not-checked'
     | 'encode-capped'
     | 'excluded-roots'
+    | 'replace-held-back'
     | 'unscanned-extensions'
     | 'binary-file-types'
     | 'svg-both-ways'
@@ -987,6 +989,26 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
   // Splitting them is what turns a list into three statements a reader can act on
   // differently. The counts still add up to the same total.
   const groups = groupUnscanned(input.graph.unscannedExtensions);
+
+  // 🔴 R77. Stated once per run rather than inside 49 identical decline reasons, and
+  // stated at all because **the bound is the interesting half**: the guard makes `replace`
+  // safe for a path that is WRITTEN DOWN, and a path a program assembles at runtime is not
+  // written down anywhere. Without this line a reader takes the refusals for completeness.
+  const heldBack = (input.declined ?? []).filter((entry) =>
+    entry.reason.includes(MENTION_SURVIVES),
+  );
+  if (heldBack.length > 0) {
+    list.push({
+      code: 'replace-held-back',
+      count: heldBack.length,
+      message: `${plural(heldBack.length, 'image')} kept rather than replaced, because a literal mention of the original's path would have outlived the rewrite`,
+      detail: [
+        'This check reads text, so it finds a path that is written down. A path a program',
+        "assembles at runtime — '/images/' + name + '.png' — matches nothing, so replacing",
+        'is safe here against literal mentions and no wider than that.',
+      ],
+    });
+  }
 
   if (groups.adapterCould.length > 0) {
     const files = groups.adapterCould.reduce((total, entry) => total + entry.fileCount, 0);

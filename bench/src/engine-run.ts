@@ -116,7 +116,13 @@ export async function optimizeTree(
 ): Promise<OptimizeResult> {
   refuseValidationCorpus(root);
 
-  const { graph, audit: findings, servingRoots, probes } = await runEngine(root, declared);
+  const {
+    graph,
+    audit: findings,
+    servingRoots,
+    probes,
+    discovery,
+  } = await runEngine(root, declared);
 
   return optimize({
     graph,
@@ -124,6 +130,10 @@ export async function optimizeTree(
     probes,
     probe: await createSharpProbe(),
     store: createNodeFileStore(root),
+    // R77's haystack, from the WALK rather than the graph: source files AND unscanned
+    // ones. The references this guard exists to find are the ones the graph never saw,
+    // so a graph-derived list would miss the files that matter.
+    files: [...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
     servingRoots,
     format: 'webp',
     publicDir: servingRoots.dirs[0] ?? 'public',

@@ -45,6 +45,17 @@ export type PublicPolicy =
  */
 export type RootLinkPolicy = 'when-no-serving-root' | 'always' | 'never';
 
+/**
+ * The phrase that marks an R77 decline, shared so the two ends cannot drift apart.
+ *
+ * 🔴 `report.ts` raises a run-level caveat when any decline carries this, and it finds
+ * them by matching text. A constant in one place makes that coupling explicit: reword the
+ * sentence and the caveat follows. **The alternative — each module holding its own copy of
+ * the wording — is a mechanism that stops firing silently the first time somebody improves
+ * a sentence**, which is the defect this project keeps paying for.
+ */
+export const MENTION_SURVIVES = 'still names its path in a form Upfly cannot rewrite';
+
 export interface PlanInput {
   readonly graph: Graph;
   /** Measurements. An asset with no entry here was never measured. */
@@ -61,6 +72,23 @@ export interface PlanInput {
    * definition no reference points at it that we can see.
    */
   readonly hedged: ReadonlySet<string>;
+  /**
+   * Assets that must NOT be converted because a literal mention of their path would
+   * survive the rewrite. **R77.**
+   *
+   * 🔴 **The trade, and it is this project's own rule rather than a convention:** a
+   * surviving mention costs a lost saving; a deleted original costs a broken site. So
+   * the expensive direction is chosen deliberately and the asset is declined.
+   *
+   * ⚠️ **Only ever populated when the policy would DELETE the original.** Under
+   * `keep-original` the source stays on disk, an unrewritten mention still resolves, and
+   * refusing a conversion over it would cost a saving to prevent nothing.
+   *
+   * Empty is the normal case and is a real answer. The caller does the searching because
+   * this module is pure and the search reads files; `optimize` plans once, searches
+   * against that plan, and plans again with this set filled in.
+   */
+  readonly blockedByMention?: ReadonlyMap<string, string>;
   /**
    * The serving roots the resolver used, carrying whether the project declared them.
    *
@@ -341,6 +369,20 @@ function convertDecision(
       ? 'nothing links to it and something we could not read mentions it, so converting would change a file whose references we cannot see'
       : 'nothing links to it, so converting it would rewrite no reference and gain only bytes';
     return { convert: false, reason: why };
+  }
+
+  // R77. Checked last, so the reason a reader sees is this one rather than a cheaper
+  // decline that happened to fire first — the point of the message is to name the file
+  // that is holding the conversion back.
+  const surviving = input.blockedByMention?.get(relative);
+  if (surviving !== undefined) {
+    return {
+      convert: false,
+      // 🔴 Names WHERE, because a reason a reader cannot act on is half a rule-9
+      // answer. The first draft said only that a mention survives *somewhere*, which
+      // leaves the user to grep a repository for a path this engine had already found.
+      reason: `converting it would delete the original, and ${surviving} ${MENTION_SURVIVES}`,
+    };
   }
 
   return {

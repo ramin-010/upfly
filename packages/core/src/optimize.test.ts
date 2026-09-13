@@ -71,38 +71,38 @@ function probeOf(relative: string, over: Partial<AssetProbe> = {}): AssetProbe {
 
 /** An in-memory disk, plus a record of every encode the probe was asked for. */
 function harness(initial: Record<string, string>) {
-  const files = new Map(Object.entries(initial));
+  const tree = new Map(Object.entries(initial));
   const encodes: { path: string; destination: string; animated: boolean }[] = [];
 
   const store: FileStore = {
     hashAlgorithm: 'sha256',
     async hash(path) {
-      const text = files.get(path);
+      const text = tree.get(path);
       return text === undefined ? null : sha(text);
     },
     async readText(path) {
-      const text = files.get(path);
+      const text = tree.get(path);
       if (text === undefined) throw new Error(`no such file: ${path}`);
       return text;
     },
     async writeText(path, text) {
-      files.set(path, text);
+      tree.set(path, text);
     },
     // Real exclusive semantics, not a stub that always succeeds. A memory store that
     // happily overwrote here would let every lock test pass against a lock that could
     // never refuse — the fake would be asserting its own politeness.
     async createExclusive(path, text) {
-      if (files.has(path)) return false;
-      files.set(path, text);
+      if (tree.has(path)) return false;
+      tree.set(path, text);
       return true;
     },
     async copy(from, to) {
-      const text = files.get(from);
+      const text = tree.get(from);
       if (text === undefined) throw new Error(`no such file: ${from}`);
-      files.set(to, text);
+      tree.set(to, text);
     },
     async remove(path) {
-      files.delete(path);
+      tree.delete(path);
     },
   };
 
@@ -113,12 +113,12 @@ function harness(initial: Record<string, string>) {
     async encodeToFile({ path, destination, animated }) {
       encodes.push({ path, destination, animated });
       // The destination is absolute; the store speaks in project-relative paths.
-      files.set(destination.slice(`${ROOT}/`.length), `WEBP(${path})`);
+      tree.set(destination.slice(`${ROOT}/`.length), `WEBP(${path})`);
       return 2_000;
     },
   };
 
-  return { files, store, probe, encodes };
+  return { tree, store, probe, encodes };
 }
 
 function inputFor(
@@ -139,6 +139,9 @@ function inputFor(
     graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
     audit,
     probes: [probeOf('src/logo.png')],
+    // R77's haystack. Defaults to the one file these fixtures hold a reference in; a
+    // test that cares passes its own.
+    files: ['src/App.jsx'],
     servingRoots: { dirs: ['public'], declared: true },
     format: 'webp',
     publicDir: 'public',
@@ -169,14 +172,14 @@ describe('newRunId', () => {
 describe('optimize', () => {
   it('makes every decision on a dry run and writes nothing', async () => {
     const store = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
-    const before = new Map(store.files);
+    const before = new Map(store.tree);
 
     const result = await optimize(inputFor({ ...store, apply: false }));
 
     expect(result.plan.conversions).toHaveLength(1);
     expect(result.plan.rewrites).toHaveLength(1);
     expect(result.manifest).toBeNull();
-    expect([...store.files]).toEqual([...before]);
+    expect([...store.tree]).toEqual([...before]);
     expect(store.encodes).toEqual([]);
   });
 
@@ -209,10 +212,10 @@ describe('optimize', () => {
 
     const result = await optimize(inputFor(store));
 
-    expect(store.files.get('src/logo.webp')).toBe(`WEBP(${ROOT}/src/logo.png)`);
-    expect(store.files.get('src/App.jsx')).toBe('import logo from "./logo.webp";\n');
+    expect(store.tree.get('src/logo.webp')).toBe(`WEBP(${ROOT}/src/logo.png)`);
+    expect(store.tree.get('src/App.jsx')).toBe('import logo from "./logo.webp";\n');
     expect(result.manifest?.state).toBe('committed');
-    expect(store.files.has(MANIFEST_PATH)).toBe(true);
+    expect(store.tree.has(MANIFEST_PATH)).toBe(true);
   });
 
   it('keeps the original under the default policy', async () => {
@@ -220,7 +223,7 @@ describe('optimize', () => {
 
     await optimize(inputFor(store));
 
-    expect(store.files.get('src/logo.png')).toBe('PNG');
+    expect(store.tree.get('src/logo.png')).toBe('PNG');
   });
 
   it('takes the animation flag from the measurement, not from the extension', async () => {
@@ -244,7 +247,7 @@ describe('optimize', () => {
 
   it('writes nothing at all when the plan converts nothing', async () => {
     const store = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
-    const before = new Map(store.files);
+    const before = new Map(store.tree);
 
     const result = await optimize(
       inputFor({ ...store, probes: [probeOf('src/logo.png', { encoded: [] })] }),
@@ -252,7 +255,7 @@ describe('optimize', () => {
 
     expect(result.plan.conversions).toEqual([]);
     expect(result.manifest).toBeNull();
-    expect([...store.files]).toEqual([...before]);
+    expect([...store.tree]).toEqual([...before]);
 
     // ⚠️ An asset with no measured saving is declined with a null reason, so it does
     // not reach the report at all. That is B2's unease (f) and it is still open: the
@@ -346,7 +349,7 @@ describe('R68: the lock covers the gap between staging and committing', () => {
         // inside `prepare`. `stage` hashes staged paths too and runs before the lock,
         // so keying on the path alone stopped the run in the wrong place -- caught by
         // the assertion below, which is why it asserts a position and not a feeling.
-        if (armed && project.files.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
+        if (armed && project.tree.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
           armed = false;
           reached();
           await suspended;
@@ -361,7 +364,7 @@ describe('R68: the lock covers the gap between staging and committing', () => {
     // ⚠️ **The position is asserted, not assumed.** The run is past `prepare`'s first
     // staged-path check and has not written a manifest yet, which IS the gap -- and it
     // is precisely where a commit-scoped lock would not be holding anything.
-    expect(project.files.has(MANIFEST_PATH)).toBe(false);
+    expect(project.tree.has(MANIFEST_PATH)).toBe(false);
 
     const other: RunContext = {
       runId: 'run-other',
@@ -377,7 +380,7 @@ describe('R68: the lock covers the gap between staging and committing', () => {
     await running;
 
     // And the run cleans up after itself, or the next one inherits a locked project.
-    expect(project.files.has(LOCK_PATH)).toBe(false);
+    expect(project.tree.has(LOCK_PATH)).toBe(false);
   });
 
   it('lets that same second run through once the lock is gone', async () => {
@@ -393,5 +396,136 @@ describe('R68: the lock covers the gap between staging and committing', () => {
     };
 
     await expect(commit([], project.store, other)).resolves.toMatchObject({ state: 'committed' });
+  });
+});
+
+describe('R77 — replace refuses to delete an original a mention would outlive', () => {
+  /**
+   * A served asset, one reference the engine found, and whatever else is on disk.
+   *
+   * `publicDir: 'public'` with `publicPolicy: 'replace'` is what makes the original a
+   * deletion candidate; outside a served directory nothing is deleted and R77 does not
+   * apply.
+   */
+  function servedProject(tree: Record<string, string>, files: readonly string[]) {
+    const html = tree['index.html'] ?? '';
+    const assets = [asset('public/logo.png')];
+    const references = [resolved('index.html', '/logo.png', 'public/logo.png', html)];
+    const project = harness(tree);
+
+    return {
+      ...project,
+      input: inputFor({
+        ...project,
+        files,
+        graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
+        probes: [probeOf('public/logo.png')],
+        publicPolicy: 'replace' as const,
+        publicDir: 'public',
+        servingRoots: { dirs: ['public'], declared: true },
+        apply: false,
+      }),
+    };
+  }
+
+  it('converts normally when the only mention is one it will rewrite', async () => {
+    // 🔴 **The trap this test exists for.** At plan time EVERY mention still reads as the
+    // old path, including the reference the run is about to repoint. A guard that did not
+    // exclude those would refuse every conversion it ever looked at — and a guard that
+    // always fires gets deleted by the next person, which is worse than not having it.
+    const { input } = servedProject(
+      { 'index.html': '<img src="/logo.png">', 'public/logo.png': 'PNG' },
+      ['index.html'],
+    );
+
+    const result = await optimize(input);
+
+    expect(result.plan.conversions.map((conversion) => conversion.asset)).toEqual([
+      'public/logo.png',
+    ]);
+    expect(result.plan.conversions[0]?.replacesOriginal).toBe(true);
+  });
+
+  it('refuses the conversion when a mention survives in a file nothing parses', async () => {
+    // The measured case, in miniature: `scratch-www` had the same shape in custom JSX
+    // props. The reference in `index.html` is rewritten; the one in `deploy.yml` is not,
+    // and deleting the original would make it a 404.
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'deploy.yml': 'banner: /logo.png\n',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'deploy.yml'],
+    );
+
+    const result = await optimize(input);
+
+    expect(result.plan.conversions).toEqual([]);
+    // 🔴 And it is REPORTED, not merely skipped — rule 9. The reason names the trade.
+    const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    // 🔴 It must name WHERE. A reason that says a mention survives *somewhere* leaves the
+    // user to grep for a path this engine had already located.
+    expect(declined?.reason).toContain('deploy.yml:1');
+    expect(declined?.reason).toContain('cannot rewrite');
+  });
+
+  it('does not refuse under keep-original, where nothing is deleted', async () => {
+    // 🔴 The other half of the trade. With the original left on disk the surviving mention
+    // still resolves, so refusing would cost a saving to prevent nothing. Same tree as the
+    // test above, one policy different, opposite answer.
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'deploy.yml': 'banner: /logo.png\n',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'deploy.yml'],
+    );
+
+    const result = await optimize({ ...input, publicPolicy: 'keep-original' });
+
+    expect(result.plan.conversions.map((conversion) => conversion.asset)).toEqual([
+      'public/logo.png',
+    ]);
+  });
+
+  it('guards a DRY RUN identically, because the preview must be the decisions', async () => {
+    // `OptimizeResult.plan` is documented as identical on a dry run and an applied one.
+    // A guard that fired only on apply would quietly break that, and the preview would
+    // promise a conversion the real run refuses.
+    const tree = {
+      'index.html': '<img src="/logo.png">',
+      'deploy.yml': 'banner: /logo.png\n',
+      'public/logo.png': 'PNG',
+    };
+    const dry = servedProject(tree, ['index.html', 'deploy.yml']);
+    const wet = servedProject(tree, ['index.html', 'deploy.yml']);
+
+    const preview = await optimize({ ...dry.input, apply: false });
+    const applied = await optimize({ ...wet.input, apply: true });
+
+    expect(preview.plan.conversions).toEqual([]);
+    expect(applied.plan.conversions).toEqual([]);
+    // Nothing was written, because there was nothing left to do.
+    expect(wet.encodes).toEqual([]);
+  });
+
+  it('searches files the graph never saw, which is the whole point', async () => {
+    // ⚠️ Premise, asserted: `deploy.yml` holds no reference the engine recognises, so it
+    // appears nowhere in the graph. A haystack derived from the graph would not contain
+    // it, and the guard would pass — which is the defect R77 exists to close.
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'deploy.yml': 'banner: /logo.png\n',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'deploy.yml'],
+    );
+    const referencedFiles = new Set(input.graph.references.map((reference) => reference.file));
+    expect(referencedFiles.has(`${ROOT}/deploy.yml`)).toBe(false);
+
+    expect((await optimize(input)).plan.conversions).toEqual([]);
   });
 });

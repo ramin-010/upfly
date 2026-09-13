@@ -20,6 +20,7 @@ import { applyEdits } from './edits.js';
 import type { Graph } from './graph.js';
 import { acquireLock } from './lock.js';
 import type { Manifest } from './manifest.js';
+import { type Survivor, findSurvivingPaths, spellingsFor } from './old-path-search.js';
 import {
   type OptimizationPlan,
   type PlanRefusal,
@@ -62,6 +63,21 @@ export interface OptimizeInput {
   /** The writing half of the port that produced `probes`. */
   readonly probe: ImageProbe;
   readonly store: FileStore;
+  /**
+   * Every file in the project, POSIX-relative — source *and* unscanned.
+   *
+   * 🔴 **R77's haystack, and it must come from the WALK rather than from the graph.**
+   * The whole class of defect R77 guards against is a reference the graph never saw, and
+   * a file holding only such a reference appears nowhere in `graph.references`. Deriving
+   * this list from the graph would therefore miss exactly the files it exists to search
+   * — measured on `scratch-www`, where `phone-input.jsx` holds
+   * `flagsImagePath="/images/flags.png"` and nothing else the engine recognises.
+   *
+   * ⚠️ **Required, not optional, and `[]` is a real answer** — the same reasoning as
+   * `MoveCheckInput.excludedRoots`. A caller that simply forgot it would get a silent
+   * empty search and a confident delete, which is the failure this input exists to stop.
+   */
+  readonly files: readonly string[];
   readonly servingRoots: ServingRoots;
   readonly format: EncodeFormat;
   readonly publicDir: string;
@@ -91,6 +107,79 @@ export interface OptimizeResult {
   readonly manifest: Manifest | null;
   /** Set when the planner declined to act at all, and nothing was written. */
   readonly refusal: PlanRefusal | null;
+}
+
+/**
+ * Which assets have a literal mention of their path that this plan would NOT rewrite.
+ *
+ * 🔴 **R77.** `optimize --replace` deletes an original once its references have moved,
+ * and *"its references"* means the ones the graph found. On `scratch-www` that left 67
+ * occurrences of 12 deleted images standing — in custom JSX props (`flagsImagePath`,
+ * `headerImgSrc`, `thumbnail`) and a config value (`og_image`) — while the run's own
+ * before-and-after count reported no regression, because the same graph that missed them
+ * did the counting. This looks for them in the text instead, before anything is written.
+ *
+ * ⚠️ **The occurrences the plan is ABOUT TO REWRITE are not survivors**, and at plan time
+ * they all still read as the old path. They are excluded by position: an occurrence
+ * inside a planned edit's range is one this run is going to fix. Without that exclusion
+ * the check would refuse every conversion it looked at, which is the failure mode that
+ * makes an over-cautious guard get deleted by the next person.
+ *
+ * ⚠️ **Only assets whose ORIGINAL WOULD BE DELETED are searched for.** Under
+ * `keep-original` the source stays, an unrewritten mention still resolves, and refusing
+ * would cost a saving to prevent nothing.
+ *
+ * 🔴 **What this bounds, stated because a bound nobody states is read as a guarantee:**
+ * it catches a path **written down literally**. A path a program assembles at runtime —
+ * `'/images/' + name + '.png'` — is not written down anywhere and matches nothing, so
+ * this makes `replace` safe for the literal case and **no wider than that**.
+ */
+async function mentionsThatWouldSurvive(
+  plan: OptimizationPlan,
+  input: OptimizeInput,
+): Promise<{ assets: ReadonlyMap<string, string>; occurrences: readonly Survivor[] }> {
+  const deleting = plan.conversions.filter((conversion) => conversion.replacesOriginal);
+  if (deleting.length === 0) return { assets: new Map(), occurrences: [] };
+
+  // Every range this plan will rewrite, so an occurrence inside one can be discounted.
+  const planned = new Map<string, [number, number][]>();
+  for (const rewrite of plan.rewrites) {
+    planned.set(
+      rewrite.file,
+      rewrite.edits.map((edit) => [edit.start, edit.end] as [number, number]),
+    );
+  }
+
+  const found = await findSurvivingPaths({
+    moves: deleting.map((conversion) => ({ from: conversion.asset, to: conversion.target })),
+    files: input.files,
+    readFile: (relative) => input.store.readText(relative),
+    servingDirs: input.servingRoots.dirs,
+  });
+
+  const occurrences = found.survivors.filter((survivor) => {
+    const ranges = planned.get(survivor.file);
+    if (ranges === undefined) return true;
+    return !ranges.some(([start, end]) => start <= survivor.offset && survivor.offset < end);
+  });
+
+  // An occurrence names a spelling, not an asset, so map back through the spellings that
+  // produced it. A spelling can belong to more than one asset only if two assets share a
+  // path, which cannot happen.
+  const assets = new Map<string, string>();
+  for (const conversion of deleting) {
+    const spellings = new Set(spellingsFor(conversion.asset, input.servingRoots.dirs));
+    const mine = occurrences.filter((survivor) => spellings.has(survivor.spelling));
+    const first = mine[0];
+    if (first === undefined) continue;
+    // One location plus a count, not the whole list: the reason has to stay one readable
+    // sentence, and a user who opens the named file finds the rest by searching for the
+    // same path.
+    const more = mine.length === 1 ? '' : ` (and ${mine.length - 1} more)`;
+    assets.set(conversion.asset, `${first.file}:${first.line}${more}`);
+  }
+
+  return { assets, occurrences };
 }
 
 /**
@@ -152,16 +241,32 @@ export function alwaysMeasureFor(graph: Graph): readonly Asset[] {
 export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   const runDir = `.upfly/runs/${input.runId}`;
 
-  const plan = planOptimization({
-    graph: input.graph,
-    probes: input.probes,
-    format: input.format,
-    publicDir: input.publicDir,
-    publicPolicy: input.publicPolicy,
-    hedged: hedgedAssets(input.audit),
-    servingRoots: input.servingRoots,
-    ...(input.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: input.rootLinkPolicy }),
-  });
+  const planWith = (blockedByMention?: ReadonlyMap<string, string>) =>
+    planOptimization({
+      graph: input.graph,
+      probes: input.probes,
+      format: input.format,
+      publicDir: input.publicDir,
+      publicPolicy: input.publicPolicy,
+      hedged: hedgedAssets(input.audit),
+      servingRoots: input.servingRoots,
+      ...(blockedByMention === undefined ? {} : { blockedByMention }),
+      ...(input.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: input.rootLinkPolicy }),
+    });
+
+  const first = planWith();
+
+  // 🔴 **R77, and it runs on a DRY RUN too — deliberately.** `OptimizeResult.plan` is
+  // documented as *"every decision, identical on a dry run and an applied one"*, and a
+  // guard that only fired on apply would make the preview a different set of decisions
+  // from the run it previews. That is the one invariant this result has.
+  //
+  // Planned twice rather than filtered once: dropping a conversion also has to drop the
+  // rewrites it caused, and those are interleaved per file with every other asset's.
+  // The planner is pure and cheap, so asking it again with the blocked set is both
+  // simpler and safer than unpicking its output.
+  const blocked = await mentionsThatWouldSurvive(first, input);
+  const plan = blocked.assets.size === 0 ? first : planWith(blocked.assets);
 
   if (plan.refusal !== null) {
     return { plan, runId: input.runId, runDir, manifest: null, refusal: plan.refusal };
