@@ -1,0 +1,2747 @@
+{
+  "version": 1,
+  "what": "The answer key for the coverage tree. Every reference in tree/, and the outcome the engine SHOULD produce for it.",
+  "authored": "By hand. Positions are stamped by tools/stamp-positions.mjs; meanings are not.",
+  "neverAScore": "This key produces a COVERAGE MATRIX, one row per shape. It has no total, no percentage and no overall row, and it must stay impossible to turn into one (R75).",
+  "expectSemantics": {
+    "_": "Seven outcomes, matching the engine's Resolution union. `expect` is the outcome a CORRECT engine should produce, NOT what today's engine does — a .vue reference expects to be found, which is what lets the matrix say \"0 of 6, no reader\" out loud. Where today's engine is known to differ, `knownGap` says so.",
+    "resolved": "Points at exactly one asset, and `target` names it.",
+    "resolved-pattern": "One reference standing for N assets; `target` is the full list.",
+    "dynamic": "The path is assembled at runtime. There is no static path to resolve, and nobody typed a wrong one.",
+    "out-of-scope": "An absolute URL, a protocol-relative URL, an npm package specifier, or a real file the engine deliberately does not index (R32).",
+    "unresolved-alias": "Alias-shaped, with no rule that maps it.",
+    "broken": "A well-formed, asserted reference to a file that does not exist. A finding.",
+    "discarded": "🔴 MUST NOT BE TREATED AS A LIVE REFERENCE. The spec used one word for two engine behaviours, and both satisfy this: the engine may emit nothing at all (a url() inside a comment is never collected), or emit a reference whose resolution is `discarded`. The measuring harness accepts either. It must NOT accept a resolved, broken or rewritten outcome.",
+    "UNDECIDED": "Nobody has ruled which outcome is correct. `candidates` lists the possibilities. These do not fail the integrity check; they fail the measuring suite, which runs --strict, and they are questions for the parent chat rather than measurements."
+  },
+  "servingRoots": [
+    {
+      "path": "apps/web/public",
+      "why": "Serving root #1. A conventional app with a public directory."
+    },
+    {
+      "path": "apps/docs/public",
+      "why": "Serving root #2. R13: a repo has many public dirs, not one. brand.png, logo.png, img/hero.jpg and the three theme-*.png files exist in BOTH apps and are DIFFERENT pictures, so a reference resolving against the wrong root is visible rather than coincidentally right."
+    },
+    {
+      "path": "sites/root-served",
+      "why": "R63's shape: the site's own directory is the serving root, so every file beside index.html is web-reachable — templates and partials included. The public-dir caveat applies to everything rather than to one subtree."
+    },
+    {
+      "path": "legacy/public",
+      "why": "A fourth root, in an app whose source is entirely in file types nothing reads."
+    }
+  ],
+  "notServingRoots": [
+    {
+      "path": "docs-examples/public",
+      "why": "🔴 A directory named `public` that serves nothing — it holds illustrations for a guide about a project that has a serving root. B2 and B3 both named this as the biggest untested risk, and no repository in the corpus has one. The resolver climbs ancestors looking for a directory NAMED public, so it will probably resolve against this one. Whether that is correct is recorded as UNDECIDED rather than guessed."
+    }
+  ],
+  "aliases": {
+    "_": "From tree/tsconfig.json. Anything else that is alias-shaped maps nowhere on purpose.",
+    "~/*": "shared/*",
+    "@img/*": "shared/assets/img/*",
+    "@web/*": "apps/web/src/*",
+    "unmapped": [
+      "@missing/*",
+      "#internal/*"
+    ]
+  },
+  "imageSizesNote": "Spec 5 asks for a few images small enough that WebP makes them LARGER. MEASURED AND NOT ACHIEVABLE with a real photograph: across 4 sources x 14 sizes down to 8x8, WebP was smaller than PNG in all 56 combinations, lossless and lossy alike. The property belongs to synthetic placeholders (fixtures/partial-pattern/theme-dark.png is 70 bytes as PNG and 94 as WebP), and a placeholder is what spec 5 forbids. Recorded as an open question rather than faked.",
+  "shapes": [
+    {
+      "id": "html.img.src",
+      "label": "img@src",
+      "spec": "4a",
+      "motivation": "The position everything else is compared against."
+    },
+    {
+      "id": "html.img.src.after-rawtext-prose",
+      "label": "img@src after a raw-text tag named in prose",
+      "spec": "4a",
+      "motivation": "R20. A mid-sentence <style> swallowed the rest of the document and discarded every reference already collected. These four exist to go 0 of 4 the moment that regresses."
+    },
+    {
+      "id": "html.img.srcset.single",
+      "label": "img@srcset, one candidate",
+      "spec": "4a",
+      "motivation": "A srcset with no descriptor list at all, which parses differently from a list of one."
+    },
+    {
+      "id": "html.img.srcset.x",
+      "label": "img@srcset, x descriptors",
+      "spec": "4a",
+      "motivation": "R75 names srcset as a row that must distinguish 8 of 9 from 9 of 9."
+    },
+    {
+      "id": "html.img.srcset.w",
+      "label": "img@srcset, w descriptors",
+      "spec": "4a",
+      "motivation": "The same shape with width descriptors and a sizes attribute beside it."
+    },
+    {
+      "id": "html.source.srcset",
+      "label": "source@srcset",
+      "spec": "4a",
+      "motivation": "picture/source, where the candidate list is the only content."
+    },
+    {
+      "id": "html.source.src",
+      "label": "source@src",
+      "spec": "4a",
+      "motivation": "Inside video and audio, where source carries src rather than srcset."
+    },
+    {
+      "id": "html.video.src",
+      "label": "video@src",
+      "spec": "4a",
+      "motivation": "Points at a real file the engine does not index — the out-of-scope case that is not a URL."
+    },
+    {
+      "id": "html.video.poster",
+      "label": "video@poster",
+      "spec": "4a",
+      "motivation": "An image position on a non-image element, beside video@src so the two cannot be confused."
+    },
+    {
+      "id": "html.audio.src",
+      "label": "audio@src",
+      "spec": "4a",
+      "motivation": "As video@src, in an element that is easy to forget."
+    },
+    {
+      "id": "html.embed.src",
+      "label": "embed@src",
+      "spec": "4a",
+      "motivation": "Carries both a PDF and an image, so the outcome depends on the target rather than the tag."
+    },
+    {
+      "id": "html.input.src",
+      "label": "input@src",
+      "spec": "4a",
+      "motivation": "type=\"image\" is the only input that takes a src, and it is routinely missed."
+    },
+    {
+      "id": "html.track.src",
+      "label": "track@src",
+      "spec": "4a",
+      "motivation": "A caption file: a real file, never an asset."
+    },
+    {
+      "id": "html.link.href.icon",
+      "label": "link@href, icons",
+      "spec": "4a",
+      "motivation": "The favicon family, including one that points at an SVG."
+    },
+    {
+      "id": "html.link.href.other",
+      "label": "link@href, stylesheet and manifest",
+      "spec": "4a",
+      "motivation": "ADDED: 4a names link@href \"for icons\" and stops. A stylesheet link and a manifest link sit in the same attribute and must not be treated alike."
+    },
+    {
+      "id": "html.object.data",
+      "label": "object@data",
+      "spec": "4a",
+      "motivation": "ADDED: not in 4a. An object element is an asset position in real documents and nothing in the spec said what to do with it."
+    },
+    {
+      "id": "html.iframe.src",
+      "label": "iframe@src",
+      "spec": "4a",
+      "motivation": "ADDED: not in 4a. A path-shaped attribute that must never become a finding — precision, not recall."
+    },
+    {
+      "id": "html.svg.image.href",
+      "label": "SVG image@href",
+      "spec": "4a",
+      "motivation": "The modern spelling."
+    },
+    {
+      "id": "html.svg.image.xlink",
+      "label": "SVG image@xlink:href",
+      "spec": "4a",
+      "motivation": "The legacy spelling, which is still most of what is in the wild."
+    },
+    {
+      "id": "html.svg.feimage",
+      "label": "SVG feImage",
+      "spec": "4a",
+      "motivation": "A filter primitive that loads an image, in both spellings."
+    },
+    {
+      "id": "html.style.element",
+      "label": "<style> element carrying CSS",
+      "spec": "4a",
+      "motivation": "CSS reached through HTML, which is a different path into the CSS parser."
+    },
+    {
+      "id": "html.style.attribute",
+      "label": "style=\"\" attribute carrying CSS",
+      "spec": "4a",
+      "motivation": "The same again, one element at a time."
+    },
+    {
+      "id": "html.charref",
+      "label": "a character reference in an attribute",
+      "spec": "4a",
+      "motivation": "Caught in Phase 1 before it could corrupt a file: /gallery/a&amp;b.png is 20 source characters and 16 decoded."
+    },
+    {
+      "id": "html.percent-encoded",
+      "label": "a percent-encoded path",
+      "spec": "4a,4h",
+      "motivation": "Two references that look alike and resolve oppositely: one decodes to a file that exists, the other IS a file that exists."
+    },
+    {
+      "id": "css.url.bare",
+      "label": "url() unquoted",
+      "spec": "4b",
+      "motivation": "Three spellings of one thing; a parser that handles two is a parser that fails on the third."
+    },
+    {
+      "id": "css.url.single",
+      "label": "url() single-quoted",
+      "spec": "4b",
+      "motivation": "As above."
+    },
+    {
+      "id": "css.url.double",
+      "label": "url() double-quoted",
+      "spec": "4b",
+      "motivation": "As above, and the only spelling that can carry a filename with spaces."
+    },
+    {
+      "id": "css.url.nested",
+      "label": "url() inside another function",
+      "spec": "4b",
+      "motivation": "gradient, cross-fade, and image-set: the url is no longer the whole value."
+    },
+    {
+      "id": "css.image-set",
+      "label": "image-set()",
+      "spec": "4b",
+      "motivation": "Standard spelling, with and without url()."
+    },
+    {
+      "id": "css.image-set.webkit",
+      "label": "-webkit-image-set()",
+      "spec": "4b",
+      "motivation": "The prefixed spelling, which is still what ships."
+    },
+    {
+      "id": "css.url.in-comment",
+      "label": "url() inside a comment",
+      "spec": "4b",
+      "motivation": "Must be discarded. Rewriting one edits a file for no reason."
+    },
+    {
+      "id": "css.url.in-selector",
+      "label": "url() inside a selector",
+      "spec": "4b",
+      "motivation": "Must be discarded. An attribute selector whose value contains url(...) is text, not a reference."
+    },
+    {
+      "id": "css.var",
+      "label": "url() behind a custom property",
+      "spec": "4b",
+      "motivation": "The declaration holds the url; the use site holds a var()."
+    },
+    {
+      "id": "css.font-face",
+      "label": "@font-face src",
+      "spec": "4b",
+      "motivation": "ADDED: a real file the engine does not index, reached through CSS rather than HTML."
+    },
+    {
+      "id": "css.fragment",
+      "label": "url(#fragment)",
+      "spec": "4b,4g",
+      "motivation": "A same-document reference. Never a path."
+    },
+    {
+      "id": "scss.url",
+      "label": "url() in .scss",
+      "spec": "4b",
+      "motivation": "The CSS adapter has to mean all three extensions, not the one that was tested."
+    },
+    {
+      "id": "scss.variable",
+      "label": "url($variable)",
+      "spec": "4b,4c",
+      "motivation": "Not knowable until the preprocessor runs. Nobody typed a wrong path."
+    },
+    {
+      "id": "scss.interpolation.trailing",
+      "label": "url() with trailing #{} interpolation",
+      "spec": "4b",
+      "motivation": "The partial-pattern shape: one reference standing for three files that all exist."
+    },
+    {
+      "id": "scss.interpolation.leading",
+      "label": "url() with leading #{} interpolation",
+      "spec": "4b",
+      "motivation": "Harder than a trailing one: the prefix that would anchor a glob is the unknown part."
+    },
+    {
+      "id": "less.url",
+      "label": "url() in .less",
+      "spec": "4b",
+      "motivation": "The third dialect."
+    },
+    {
+      "id": "less.variable",
+      "label": "url(@variable)",
+      "spec": "4b",
+      "motivation": "As scss.variable, in Less syntax."
+    },
+    {
+      "id": "less.interpolation",
+      "label": "url() with @{} interpolation",
+      "spec": "4b",
+      "motivation": "As scss.interpolation, in Less syntax."
+    },
+    {
+      "id": "js.import.static",
+      "label": "static ESM import of an image",
+      "spec": "4c",
+      "motivation": "The reference the bundler resolves, so breaking one breaks the build."
+    },
+    {
+      "id": "js.import.alias.mapped",
+      "label": "import through a tsconfig paths alias",
+      "spec": "4c",
+      "motivation": "Turns the unresolved-alias bucket into real links; Phase 2 owns it."
+    },
+    {
+      "id": "js.import.alias.unmapped",
+      "label": "import through an alias that maps nowhere",
+      "spec": "4c",
+      "motivation": "Its own bucket. Not broken, not dynamic — unmapped."
+    },
+    {
+      "id": "js.import.package",
+      "label": "import from an npm package specifier",
+      "spec": "4c",
+      "motivation": "R32. Out-of-scope rather than unresolved-alias: the file exists, it is just not ours."
+    },
+    {
+      "id": "js.require",
+      "label": "require() of an image",
+      "spec": "4c",
+      "motivation": "A repository built over ten years has both module systems."
+    },
+    {
+      "id": "js.template.pattern",
+      "label": "template literal, one unknown segment",
+      "spec": "4c",
+      "motivation": "partial-pattern. Standing for N files that all exist."
+    },
+    {
+      "id": "js.template.dynamic",
+      "label": "template literal, nothing static left",
+      "spec": "4c",
+      "motivation": "A base and a name, both variables. Not knowable."
+    },
+    {
+      "id": "js.concat.dynamic",
+      "label": "path assembled by concatenation",
+      "spec": "4c",
+      "motivation": "The same thing without a template literal, which is easy to miss."
+    },
+    {
+      "id": "js.string.literal",
+      "label": "a path-shaped string literal",
+      "spec": "4c",
+      "motivation": "A guess, not an assertion: an unresolved one is dropped rather than reported."
+    },
+    {
+      "id": "js.jsx.attribute",
+      "label": "a literal path in a JSX attribute",
+      "spec": "4c",
+      "motivation": "Asserted, unlike a bare string, because the attribute says what it is."
+    },
+    {
+      "id": "js.cssinjs",
+      "label": "CSS-in-JS carrying a url()",
+      "spec": "4c",
+      "motivation": "CSS the CSS adapter never sees, because it is inside a template literal."
+    },
+    {
+      "id": "md.image",
+      "label": "![alt](path)",
+      "spec": "4d",
+      "motivation": "The ordinary markdown image."
+    },
+    {
+      "id": "md.image.reference-style",
+      "label": "![alt][label]",
+      "spec": "4d",
+      "motivation": "The path is not at the use site; it is in a definition further down."
+    },
+    {
+      "id": "md.reference-definition",
+      "label": "[label]: path",
+      "spec": "4d",
+      "motivation": "Where a reference-style link actually keeps its path."
+    },
+    {
+      "id": "md.raw-html",
+      "label": "raw HTML inside markdown",
+      "spec": "4d",
+      "motivation": "Markdown hands it through untouched, so it is still HTML and still a reference."
+    },
+    {
+      "id": "md.style-attribute",
+      "label": "a style attribute inside markdown",
+      "spec": "4d",
+      "motivation": "CSS inside HTML inside markdown — three parsers deep."
+    },
+    {
+      "id": "md.prose-mention",
+      "label": "a path named in prose",
+      "spec": "4d",
+      "motivation": "R24. Reported, never rewritten. Rewriting prose corrupts a sentence."
+    },
+    {
+      "id": "md.code-fence",
+      "label": "a path inside a fenced code block",
+      "spec": "4d",
+      "motivation": "An example, not a reference."
+    },
+    {
+      "id": "md.indented-code",
+      "label": "a path inside an indented code block",
+      "spec": "4d",
+      "motivation": "ADDED: the older fence syntax, which a fence-aware masker can still miss."
+    },
+    {
+      "id": "md.inline-code",
+      "label": "a path inside inline code",
+      "spec": "4d",
+      "motivation": "ADDED: backticks mid-sentence, which is neither prose nor a fence."
+    },
+    {
+      "id": "md.frontmatter.scalar",
+      "label": "an image path in YAML frontmatter",
+      "spec": "4d",
+      "motivation": "R18. No adapter reads frontmatter today, so these record a known gap rather than a success. Measured scope: 4 instances across the real corpus, all in eleventy-docs."
+    },
+    {
+      "id": "md.frontmatter.nested",
+      "label": "an image path nested inside frontmatter",
+      "spec": "4d",
+      "motivation": "R18 again. A different key at a different depth is what makes it a class rather than three files."
+    },
+    {
+      "id": "mdx.import",
+      "label": "an ESM import in MDX",
+      "spec": "4d",
+      "motivation": "MDX is markdown that can import."
+    },
+    {
+      "id": "mdx.jsx",
+      "label": "a JSX attribute in MDX",
+      "spec": "4d",
+      "motivation": "And markdown that can hold JSX."
+    },
+    {
+      "id": "json.webmanifest.icon",
+      "label": "a webmanifest icon entry",
+      "spec": "4e",
+      "motivation": "Asserted by the manifest schema, unlike an arbitrary JSON string."
+    },
+    {
+      "id": "json.webmanifest.other",
+      "label": "a webmanifest screenshot or shortcut icon",
+      "spec": "4e",
+      "motivation": "The same file, two more keys, both routinely missed."
+    },
+    {
+      "id": "json.config.value",
+      "label": "an image path in an ordinary JSON config",
+      "spec": "4e",
+      "motivation": "A guess. Every package.json in the world would otherwise produce findings."
+    },
+    {
+      "id": "json.config.glob",
+      "label": "a glob in a JSON config",
+      "spec": "4e",
+      "motivation": "ADDED: **/*.png is not a path, and must not become one."
+    },
+    {
+      "id": "astro.import.frontmatter",
+      "label": "an ESM import in the frontmatter fence",
+      "spec": "4f",
+      "motivation": "The fence is JavaScript; the body is not."
+    },
+    {
+      "id": "astro.template.literal",
+      "label": "a literal path in the template body",
+      "spec": "4f",
+      "motivation": "The body is HTML, and the adapter has to switch."
+    },
+    {
+      "id": "astro.template.expression",
+      "label": "a path from an expression in the template body",
+      "spec": "4f",
+      "motivation": "Declared in the fence, used in the body."
+    },
+    {
+      "id": "astro.style.element",
+      "label": "a <style> element in an .astro file",
+      "spec": "4f",
+      "motivation": "Scoped CSS, reached through a third parser."
+    },
+    {
+      "id": "unread.vue",
+      "label": "a reference inside .vue",
+      "spec": "4j",
+      "motivation": "R72: a reference in an unread file type broke and every instrument reported success."
+    },
+    {
+      "id": "unread.svelte",
+      "label": "a reference inside .svelte",
+      "spec": "4j",
+      "motivation": "As above."
+    },
+    {
+      "id": "unread.njk",
+      "label": "a reference inside .njk",
+      "spec": "4j",
+      "motivation": "As above. eleventy-docs is full of these."
+    },
+    {
+      "id": "unread.liquid",
+      "label": "a reference inside .liquid",
+      "spec": "4j",
+      "motivation": "As above."
+    },
+    {
+      "id": "unread.erb",
+      "label": "a reference inside .erb",
+      "spec": "4j",
+      "motivation": "As above. railsgirls-com is an ERB site."
+    },
+    {
+      "id": "unread.php",
+      "label": "a reference inside .php",
+      "spec": "4j",
+      "motivation": "As above."
+    },
+    {
+      "id": "decoy.comment",
+      "label": "a filename inside a code comment",
+      "spec": "4k.4",
+      "motivation": "Precision has no meaning without these: a tree of only real references cannot produce a false positive."
+    },
+    {
+      "id": "decoy.log-message",
+      "label": "a path inside a log message",
+      "spec": "4k.4",
+      "motivation": "Indistinguishable from a reference by syntax alone, and it points at nothing."
+    },
+    {
+      "id": "decoy.typo",
+      "label": "a name one character from a real file",
+      "spec": "4k.4",
+      "motivation": "The difference between a broken reference and a string that was never one."
+    },
+    {
+      "id": "decoy.not-a-path",
+      "label": "extension-shaped text that is not a path",
+      "spec": "4k.4",
+      "motivation": "A media type, a class name, a flag, a name with an extra extension."
+    },
+    {
+      "id": "decoy.glob",
+      "label": "a glob rather than a path",
+      "spec": "4k.4",
+      "motivation": "Matches files without naming one."
+    },
+    {
+      "id": "decoy.regex",
+      "label": "an extension inside a regular expression",
+      "spec": "4k.4",
+      "motivation": "Source code about images is not a reference to one."
+    },
+    {
+      "id": "decoy.windows-path",
+      "label": "a backslash-separated path",
+      "spec": "4k.4",
+      "motivation": "Nothing in this tree is addressed this way."
+    },
+    {
+      "id": "decoy.query-or-hash",
+      "label": "a real file with a query string or fragment",
+      "spec": "4k.4,4g",
+      "motivation": "Not a decoy in the end — these resolve. Kept in the row because they look like one and are the case an over-eager stripper gets wrong in the other direction."
+    },
+    {
+      "id": "path.data-uri",
+      "label": "a data: URI",
+      "spec": "4g",
+      "motivation": "Never a path. Rewriting one is a corruption."
+    },
+    {
+      "id": "path.absolute-url",
+      "label": "an absolute URL",
+      "spec": "4g",
+      "motivation": "R32. Out-of-scope: real, reachable, not ours."
+    },
+    {
+      "id": "path.protocol-relative",
+      "label": "a protocol-relative URL",
+      "spec": "4g",
+      "motivation": "Starts with // and is not a path, which is exactly what it looks like."
+    }
+  ],
+  "assets": [
+    {
+      "path": "apps/docs/public/brand.png",
+      "bytes": 82516,
+      "sha256": "5379dba25c824abb",
+      "source": "migrant",
+      "width": 320,
+      "height": 240
+    },
+    {
+      "path": "apps/docs/public/img/avatar.png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
+    },
+    {
+      "path": "apps/docs/public/img/diagram.png",
+      "bytes": 54495,
+      "sha256": "afc726f7e9ad45cf",
+      "source": "earthrise",
+      "width": 600,
+      "height": 400
+    },
+    {
+      "path": "apps/docs/public/img/hero.jpg",
+      "bytes": 106672,
+      "sha256": "3757550deea203ce",
+      "source": "solvay",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "path": "apps/docs/public/img/screenshot.png",
+      "bytes": 754718,
+      "sha256": "a402827b8f7303d6",
+      "source": "bluemarble",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "apps/docs/public/logo.png",
+      "bytes": 7195,
+      "sha256": "f22977f30785aad6",
+      "source": "earthrise",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/docs/public/theme-dark.png",
+      "bytes": 23230,
+      "sha256": "a1c06dfa84ccf199",
+      "source": "migrant",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/docs/public/theme-light.png",
+      "bytes": 45982,
+      "sha256": "3eb38757dac3e2d1",
+      "source": "bluemarble",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/docs/public/theme-sepia.png",
+      "bytes": 7195,
+      "sha256": "f22977f30785aad6",
+      "source": "earthrise",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/web/public/brand.png",
+      "bytes": 26092,
+      "sha256": "4732aa59e0f92423",
+      "source": "earthrise",
+      "width": 320,
+      "height": 240
+    },
+    {
+      "path": "apps/web/public/dead/orphan.jpg",
+      "bytes": 13465,
+      "sha256": "aab19b0c7d863b2e",
+      "source": "solvay",
+      "width": 240,
+      "height": 160
+    },
+    {
+      "path": "apps/web/public/dead/unused-photo.png",
+      "bytes": 34741,
+      "sha256": "e3a2f4fc3f0488de",
+      "source": "migrant",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/favicon.png",
+      "bytes": 2017,
+      "sha256": "018a58f7466e0a8c",
+      "source": "solvay",
+      "width": 32,
+      "height": 32
+    },
+    {
+      "path": "apps/web/public/fonts/placeholder.woff2",
+      "bytes": 64,
+      "sha256": "77f0cff0ba0defa4",
+      "source": "stub",
+      "note": "wOF2 magic only"
+    },
+    {
+      "path": "apps/web/public/gallery/Banner.PNG",
+      "bytes": 94110,
+      "sha256": "30ea78d54cca5965",
+      "source": "bluemarble",
+      "width": 240,
+      "height": 160
+    },
+    {
+      "path": "apps/web/public/gallery/MixedCase.Png",
+      "bytes": 23230,
+      "sha256": "a1c06dfa84ccf199",
+      "source": "migrant",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/web/public/gallery/a&b.png",
+      "bytes": 4322,
+      "sha256": "61482d168814ae19",
+      "source": "earthrise",
+      "width": 120,
+      "height": 90
+    },
+    {
+      "path": "apps/web/public/gallery/enc%20name.png",
+      "bytes": 26333,
+      "sha256": "633589d38ccf2f87",
+      "source": "bluemarble",
+      "width": 120,
+      "height": 90
+    },
+    {
+      "path": "apps/web/public/gallery/hero (1).png",
+      "bytes": 38035,
+      "sha256": "2aa1ba5c24a79c35",
+      "source": "solvay",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/gallery/hero image (2) copy.png",
+      "bytes": 10869,
+      "sha256": "675dd199bec3e2e9",
+      "source": "earthrise",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/gallery/hero image.png",
+      "bytes": 34741,
+      "sha256": "e3a2f4fc3f0488de",
+      "source": "migrant",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/gallery/photo.png",
+      "bytes": 38035,
+      "sha256": "2aa1ba5c24a79c35",
+      "source": "solvay",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/gallery/photo@2x.png",
+      "bytes": 138598,
+      "sha256": "a223ee120f0d7070",
+      "source": "solvay",
+      "width": 400,
+      "height": 300
+    },
+    {
+      "path": "apps/web/public/icons/icon-192.png",
+      "bytes": 20371,
+      "sha256": "351cd8e7b78f01cd",
+      "source": "earthrise",
+      "width": 192,
+      "height": 192
+    },
+    {
+      "path": "apps/web/public/icons/icon-512.png",
+      "bytes": 131162,
+      "sha256": "a6b29351a7d8635b",
+      "source": "earthrise",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "path": "apps/web/public/img/banner.png",
+      "bytes": 306775,
+      "sha256": "5eb3ff4a8a67ee57",
+      "source": "solvay",
+      "width": 900,
+      "height": 300
+    },
+    {
+      "path": "apps/web/public/img/hero.jpg",
+      "bytes": 115954,
+      "sha256": "12bc73b223bbb345",
+      "source": "bluemarble",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "path": "apps/web/public/img/hero@2x.jpg",
+      "bytes": 229964,
+      "sha256": "05755ecaf8eb8ff2",
+      "source": "bluemarble",
+      "width": 1200,
+      "height": 900
+    },
+    {
+      "path": "apps/web/public/img/spacer.png",
+      "bytes": 399,
+      "sha256": "a327c0eb37bef971",
+      "source": "earthrise",
+      "width": 24,
+      "height": 18
+    },
+    {
+      "path": "apps/web/public/img/team.jpg",
+      "bytes": 29589,
+      "sha256": "139c43e2eeb0f995",
+      "source": "migrant",
+      "width": 480,
+      "height": 320
+    },
+    {
+      "path": "apps/web/public/img/texture.png",
+      "bytes": 9554,
+      "sha256": "34bb02004efd4f0f",
+      "source": "earthrise",
+      "width": 128,
+      "height": 128
+    },
+    {
+      "path": "apps/web/public/logo.png",
+      "bytes": 45982,
+      "sha256": "3eb38757dac3e2d1",
+      "source": "bluemarble",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "apps/web/public/media/clip.mp4",
+      "bytes": 24,
+      "sha256": "c8c5af84ac765d91",
+      "source": "stub",
+      "note": "mp4 ftyp box only"
+    },
+    {
+      "path": "apps/web/public/media/poster.jpg",
+      "bytes": 67576,
+      "sha256": "a7b5fabe02676fa3",
+      "source": "bluemarble",
+      "width": 640,
+      "height": 360
+    },
+    {
+      "path": "apps/web/public/media/spec-sheet.pdf",
+      "bytes": 34,
+      "sha256": "a53c0f2ec3ba4b23",
+      "source": "stub",
+      "note": "minimal PDF"
+    },
+    {
+      "path": "apps/web/public/media/theme.mp3",
+      "bytes": 42,
+      "sha256": "e0f2f01338f29d45",
+      "source": "stub",
+      "note": "empty ID3v2 tag"
+    },
+    {
+      "path": "apps/web/public/media/thumb.jpg",
+      "bytes": 5678,
+      "sha256": "8abe4393c817063f",
+      "source": "bluemarble",
+      "width": 160,
+      "height": 90
+    },
+    {
+      "path": "apps/web/public/media/trailer.mp4",
+      "bytes": 24,
+      "sha256": "c8c5af84ac765d91",
+      "source": "stub",
+      "note": "mp4 ftyp box only"
+    },
+    {
+      "path": "apps/web/public/srcset/card-1200.jpg",
+      "bytes": 186314,
+      "sha256": "9d53115c3a1ea296",
+      "source": "migrant",
+      "width": 1200,
+      "height": 900
+    },
+    {
+      "path": "apps/web/public/srcset/card-400.jpg",
+      "bytes": 23409,
+      "sha256": "5605eeb9c7e6bd89",
+      "source": "migrant",
+      "width": 400,
+      "height": 300
+    },
+    {
+      "path": "apps/web/public/srcset/card-800.jpg",
+      "bytes": 85937,
+      "sha256": "b4383ce5c789584d",
+      "source": "migrant",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "path": "apps/web/public/srcset/narrow.jpg",
+      "bytes": 79075,
+      "sha256": "3800c586681ecddf",
+      "source": "bluemarble",
+      "width": 480,
+      "height": 640
+    },
+    {
+      "path": "apps/web/public/srcset/tile.png",
+      "bytes": 4950,
+      "sha256": "d8a1728536629735",
+      "source": "solvay",
+      "width": 64,
+      "height": 48
+    },
+    {
+      "path": "apps/web/public/srcset/tile@2x.png",
+      "bytes": 16808,
+      "sha256": "5853d1132da8158b",
+      "source": "solvay",
+      "width": 128,
+      "height": 96
+    },
+    {
+      "path": "apps/web/public/srcset/tile@3x.png",
+      "bytes": 35211,
+      "sha256": "cc5b11aa5156c091",
+      "source": "solvay",
+      "width": 192,
+      "height": 144
+    },
+    {
+      "path": "apps/web/public/srcset/wide.jpg",
+      "bytes": 101030,
+      "sha256": "ea2202f601f10c66",
+      "source": "bluemarble",
+      "width": 960,
+      "height": 400
+    },
+    {
+      "path": "apps/web/public/theme-dark.png",
+      "bytes": 38035,
+      "sha256": "2aa1ba5c24a79c35",
+      "source": "solvay",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/theme-light.png",
+      "bytes": 10869,
+      "sha256": "675dd199bec3e2e9",
+      "source": "earthrise",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/public/theme-sepia.png",
+      "bytes": 34741,
+      "sha256": "e3a2f4fc3f0488de",
+      "source": "migrant",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/src/assets/chart.png",
+      "bytes": 138598,
+      "sha256": "a223ee120f0d7070",
+      "source": "solvay",
+      "width": 400,
+      "height": 300
+    },
+    {
+      "path": "apps/web/src/assets/inline-logo.jpg",
+      "bytes": 2010,
+      "sha256": "b44e2a2987c2f449",
+      "source": "earthrise",
+      "width": 240,
+      "height": 160
+    },
+    {
+      "path": "apps/web/src/components/deep/gallery/thumbs/strip.png",
+      "bytes": 12359,
+      "sha256": "474feef78846d0b7",
+      "source": "migrant",
+      "width": 160,
+      "height": 60
+    },
+    {
+      "path": "apps/web/src/components/logo.png",
+      "bytes": 9996,
+      "sha256": "4f84116a7fb48d2d",
+      "source": "solvay",
+      "width": 96,
+      "height": 72
+    },
+    {
+      "path": "docs-examples/public/logo.png",
+      "bytes": 25135,
+      "sha256": "ed6e3afee2ffb569",
+      "source": "solvay",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "docs-examples/public/sample.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "legacy/app/assets/emblem.png",
+      "bytes": 16808,
+      "sha256": "5853d1132da8158b",
+      "source": "solvay",
+      "width": 128,
+      "height": 96
+    },
+    {
+      "path": "legacy/public/gallery/plate.jpg",
+      "bytes": 15829,
+      "sha256": "2bce5e02e581a6ad",
+      "source": "migrant",
+      "width": 320,
+      "height": 240
+    },
+    {
+      "path": "shared/assets/img/aliased.png",
+      "bytes": 48298,
+      "sha256": "3d2eed4d468c6194",
+      "source": "migrant",
+      "width": 240,
+      "height": 180
+    },
+    {
+      "path": "shared/assets/img/hero.jpg",
+      "bytes": 12357,
+      "sha256": "ef1906c9193ef521",
+      "source": "earthrise",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "path": "shared/assets/img/logo.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "shared/assets/img/thumb.png",
+      "bytes": 7245,
+      "sha256": "4d64529396b3e484",
+      "source": "solvay",
+      "width": 80,
+      "height": 60
+    },
+    {
+      "path": "sites/root-served/img/hero.jpg",
+      "bytes": 85937,
+      "sha256": "b4383ce5c789584d",
+      "source": "migrant",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "path": "sites/root-served/img/logo.png",
+      "bytes": 23230,
+      "sha256": "a1c06dfa84ccf199",
+      "source": "migrant",
+      "width": 160,
+      "height": 120
+    },
+    {
+      "path": "sites/root-served/img/photo.jpg",
+      "bytes": 5620,
+      "sha256": "a9a7fb540c2d022d",
+      "source": "earthrise",
+      "width": 480,
+      "height": 320
+    },
+    {
+      "path": "apps/web/public/icons/mask.svg",
+      "bytes": 195,
+      "sha256": "4180ad624d283747",
+      "source": "hand-written",
+      "note": "A vector icon, not a photograph. link@href rel=icon points at one of these in real projects."
+    },
+    {
+      "path": "shared/assets/img/icon.svg",
+      "bytes": 195,
+      "sha256": "4180ad624d283747",
+      "source": "hand-written",
+      "note": "The same file under a second name, so an SVG exists on both sides of the alias."
+    }
+  ],
+  "unreferencedOccurrences": [],
+  "files": [
+    {
+      "path": "apps/docs/src/components/Card.svelte",
+      "entries": [
+        {
+          "raw": "../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "resolved",
+          "why": "An import, in a file type nothing opens.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 31,
+          "line": 2,
+          "column": 23
+        },
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "resolved",
+          "why": "A literal in the script block.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 110,
+          "line": 5,
+          "column": 20
+        },
+        {
+          "raw": "/logo.png",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "resolved",
+          "why": "R13: the docs app's own logo, not the web app's.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 175,
+          "line": 9,
+          "column": 13
+        },
+        {
+          "raw": "../../public/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "resolved",
+          "why": "A relative path in the markup.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 355,
+          "line": 12,
+          "column": 13
+        },
+        {
+          "raw": "/img/missing-from-svelte.png",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "broken",
+          "why": "Broken, and today no instrument can see that it is.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "offset": 418,
+          "line": 13,
+          "column": 13
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "unread.svelte",
+          "expect": "resolved",
+          "why": "A url() in a scoped style block.",
+          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 551,
+          "line": 19,
+          "column": 28
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/components/Figure.astro",
+      "entries": [
+        {
+          "raw": "../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "why": "A path-shaped string in the frontmatter fence, which is JavaScript.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 107,
+          "line": 8,
+          "column": 19
+        },
+        {
+          "raw": "/logo.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "resolved",
+          "why": "Hard-coded in the component body.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 228,
+          "line": 13,
+          "column": 13
+        },
+        {
+          "raw": "../../public/img/diagram.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "resolved",
+          "why": "Relative, inside a noscript element.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 316,
+          "line": 15,
+          "column": 15
+        },
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 2,
+          "shape": "astro.style.element",
+          "expect": "resolved",
+          "why": "Scoped CSS in an .astro file. Occurrence 2: the relative path on line 8 contains this string.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 453,
+          "line": 21,
+          "column": 28
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/blog/first-post.mdx",
+      "entries": [
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "A `hero:` key in MDX frontmatter.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 32,
+          "line": 3,
+          "column": 7
+        },
+        {
+          "raw": "../../../public/brand.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "An `ogImage:` key, relative rather than root-relative.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/brand.png",
+          "offset": 61,
+          "line": 4,
+          "column": 10
+        },
+        {
+          "raw": "../../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "mdx.import",
+          "expect": "resolved",
+          "why": "MDX can import; this is an ESM import in a markdown file.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 164,
+          "line": 8,
+          "column": 21
+        },
+        {
+          "raw": "@img/thumb.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "@img/* maps to shared/assets/img/*.",
+          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
+          "target": "shared/assets/img/thumb.png",
+          "offset": 217,
+          "line": 9,
+          "column": 21
+        },
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Ordinary markdown image syntax, inside MDX.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 394,
+          "line": 16,
+          "column": 37
+        },
+        {
+          "raw": "/logo.png",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "resolved",
+          "why": "Raw JSX in MDX.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 423,
+          "line": 18,
+          "column": 11
+        },
+        {
+          "raw": "/img/missing-from-mdx.png",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "broken",
+          "why": "Broken on purpose.",
+          "offset": 495,
+          "line": 20,
+          "column": 11
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "why": "An exported const in an MDX file.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 573,
+          "line": 22,
+          "column": 24
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 2,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "Inside a jsx fence. An example, not a reference.",
+          "offset": 638,
+          "line": 27,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/deep/nested/further/advanced.markdown",
+      "entries": [
+        {
+          "raw": "../../../../../../public/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "Frontmatter, six levels up.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 27,
+          "line": 3,
+          "column": 8
+        },
+        {
+          "raw": "../../../../../../public/img/diagram.png",
+          "occurrence": 2,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "The same climb from the body.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 182,
+          "line": 10,
+          "column": 28
+        },
+        {
+          "raw": "../../../../../../../../shared/assets/img/logo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Eight levels up, to the workspace root and back down.",
+          "target": "shared/assets/img/logo.png",
+          "offset": 256,
+          "line": 12,
+          "column": 32
+        },
+        {
+          "raw": "../../../../../../../web/public/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Across the workspace into the OTHER app's serving root — the same basename as the docs app's own hero.jpg, and a different picture.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 353,
+          "line": 14,
+          "column": 45
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Root-relative, which does not care how deep the file is.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 454,
+          "line": 16,
+          "column": 55
+        },
+        {
+          "raw": "../../../../../public/img/diagram.png",
+          "occurrence": 3,
+          "shape": "md.image",
+          "expect": "broken",
+          "why": "One climb too few. Lands on apps/docs/src/public, which does not exist. Occurrence 3 because the six-dot form contains this string twice before it.",
+          "offset": 497,
+          "line": 18,
+          "column": 22
+        },
+        {
+          "raw": "../../../../../../public/img/diagram.png",
+          "occurrence": 3,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "R24: named in a sentence. Rewriting it would edit prose.",
+          "offset": 559,
+          "line": 20,
+          "column": 23
+        },
+        {
+          "raw": "../../../../../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.reference-definition",
+          "expect": "resolved",
+          "why": "A link definition nothing in the file uses, which is still a reference.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 632,
+          "line": 22,
+          "column": 8
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/getting-started.md",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "An `image:` key.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 76,
+          "line": 4,
+          "column": 8
+        },
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "A `cover:` key — a different key, which is what makes R18 a class.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 97,
+          "line": 5,
+          "column": 8
+        },
+        {
+          "raw": "../../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.scalar",
+          "expect": "resolved",
+          "why": "A `thumbnail:` key holding a RELATIVE path.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 125,
+          "line": 6,
+          "column": 12
+        },
+        {
+          "raw": "/brand.png",
+          "occurrence": 1,
+          "shape": "md.frontmatter.nested",
+          "expect": "resolved",
+          "why": "Nested two levels inside the frontmatter, under socialCard.url.",
+          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "target": "apps/docs/public/brand.png",
+          "offset": 175,
+          "line": 8,
+          "column": 8
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 2,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "The ordinary markdown image.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 275,
+          "line": 17,
+          "column": 13
+        },
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 2,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "With a title attribute after the path.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 306,
+          "line": 19,
+          "column": 16
+        },
+        {
+          "raw": "../../../public/logo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Relative, three levels up.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 394,
+          "line": 21,
+          "column": 34
+        },
+        {
+          "raw": "../../../../../shared/assets/img/logo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Five levels up to a fourth file called logo.png.",
+          "target": "shared/assets/img/logo.png",
+          "offset": 455,
+          "line": 23,
+          "column": 35
+        },
+        {
+          "raw": "/img/missing-from-markdown.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "broken",
+          "why": "Broken on purpose.",
+          "offset": 523,
+          "line": 25,
+          "column": 25
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "Raw HTML is handed through untouched, so it is still HTML.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 828,
+          "line": 38,
+          "column": 13
+        },
+        {
+          "raw": "../../../public/img/avatar.png",
+          "occurrence": 2,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "The same, relative.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 919,
+          "line": 39,
+          "column": 13
+        },
+        {
+          "raw": "/brand.png",
+          "occurrence": 2,
+          "shape": "md.style-attribute",
+          "expect": "resolved",
+          "why": "CSS inside an HTML attribute inside markdown — three parsers deep.",
+          "target": "apps/docs/public/brand.png",
+          "offset": 1075,
+          "line": 43,
+          "column": 34
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 3,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "R24. The identical string to a real reference in this same file, in a sentence.",
+          "offset": 1189,
+          "line": 47,
+          "column": 25
+        },
+        {
+          "raw": "docs/public/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "R24. A path written as prose, not as a link.",
+          "offset": 1255,
+          "line": 48,
+          "column": 1
+        },
+        {
+          "raw": "logo.png",
+          "occurrence": 3,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "A bare basename in a sentence. Occurrence 3: two longer paths above contain it.",
+          "offset": 1362,
+          "line": 49,
+          "column": 23
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 4,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "Inside an html fence.",
+          "offset": 1523,
+          "line": 55,
+          "column": 11
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "Inside the same fence, and pointing at a directory the docs app does not even have.",
+          "offset": 1585,
+          "line": 56,
+          "column": 11
+        },
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "Inside a css fence.",
+          "offset": 1675,
+          "line": 61,
+          "column": 26
+        },
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "md.indented-code",
+          "expect": "discarded",
+          "why": "A four-space indented code block, which is a code block too.",
+          "offset": 1770,
+          "line": 66,
+          "column": 15
+        },
+        {
+          "raw": "/img/texture.png",
+          "occurrence": 1,
+          "shape": "md.inline-code",
+          "expect": "discarded",
+          "why": "Backticks mid-sentence: neither prose nor a fence.",
+          "offset": 1845,
+          "line": 68,
+          "column": 25
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 2,
+          "shape": "md.reference-definition",
+          "expect": "resolved",
+          "why": "Where ![The screenshot][shot] actually keeps its path.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 1902,
+          "line": 70,
+          "column": 9
+        },
+        {
+          "raw": "../../../public/img/avatar.png",
+          "occurrence": 3,
+          "shape": "md.reference-definition",
+          "expect": "resolved",
+          "why": "And where [avatar] keeps its.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 1932,
+          "line": 71,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/pages/index.astro",
+      "entries": [
+        {
+          "raw": "../../public/logo.png",
+          "occurrence": 1,
+          "shape": "astro.import.frontmatter",
+          "expect": "resolved",
+          "why": "An ESM import inside the --- fence.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 22,
+          "line": 2,
+          "column": 19
+        },
+        {
+          "raw": "../../public/img/diagram.png",
+          "occurrence": 1,
+          "shape": "astro.import.frontmatter",
+          "expect": "resolved",
+          "why": "A second one, so the row is not 1 of 1.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 67,
+          "line": 3,
+          "column": 22
+        },
+        {
+          "raw": "@img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "An alias import in the fence.",
+          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
+          "target": "shared/assets/img/hero.jpg",
+          "offset": 122,
+          "line": 4,
+          "column": 25
+        },
+        {
+          "raw": "@missing/astro.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.unmapped",
+          "expect": "unresolved-alias",
+          "why": "Alias-shaped, and tsconfig has no rule for @missing.",
+          "offset": 159,
+          "line": 5,
+          "column": 22
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "why": "A const in the fence, used in the body.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 248,
+          "line": 8,
+          "column": 19
+        },
+        {
+          "raw": "/brand.png",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "why": "R13: resolves against the docs root, and the web app has a different brand.png.",
+          "target": "apps/docs/public/brand.png",
+          "offset": 283,
+          "line": 9,
+          "column": 20
+        },
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "resolved",
+          "why": "A link rel=icon in the template body.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 438,
+          "line": 16,
+          "column": 28
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "resolved",
+          "why": "A literal img src in the body.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 884,
+          "line": 27,
+          "column": 15
+        },
+        {
+          "raw": "../../public/img/avatar.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "resolved",
+          "why": "Relative, in the body rather than the fence.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 959,
+          "line": 28,
+          "column": 15
+        },
+        {
+          "raw": "/img/missing-from-astro.png",
+          "occurrence": 1,
+          "shape": "astro.template.literal",
+          "expect": "broken",
+          "why": "Broken on purpose.",
+          "offset": 1042,
+          "line": 29,
+          "column": 15
+        },
+        {
+          "raw": "/theme-${mode}.png",
+          "occurrence": 1,
+          "shape": "js.template.pattern",
+          "expect": "resolved-pattern",
+          "why": "One reference standing for three files that all exist — and for the DOCS three, not the web app's three.",
+          "target": [
+            "apps/docs/public/theme-light.png",
+            "apps/docs/public/theme-dark.png",
+            "apps/docs/public/theme-sepia.png"
+          ],
+          "offset": 1114,
+          "line": 31,
+          "column": 16
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 2,
+          "shape": "astro.style.element",
+          "expect": "resolved",
+          "why": "A <style> element in an .astro file.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 1301,
+          "line": 37,
+          "column": 32
+        },
+        {
+          "raw": "../../public/brand.png",
+          "occurrence": 1,
+          "shape": "astro.style.element",
+          "expect": "resolved",
+          "why": "Relative, inside that style element.",
+          "target": "apps/docs/public/brand.png",
+          "offset": 1378,
+          "line": 40,
+          "column": 32
+        }
+      ]
+    },
+    {
+      "path": "apps/web/entity.html",
+      "entries": [
+        {
+          "raw": "/gallery/a&amp;b.png",
+          "occurrence": 1,
+          "shape": "html.charref",
+          "expect": "resolved",
+          "why": "20 source characters, 16 decoded. Writing the decoded length back over the source range truncates the document.",
+          "decoded": "/gallery/a&b.png",
+          "target": "apps/web/public/gallery/a&b.png",
+          "offset": 580,
+          "line": 18,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/a&#38;b.png",
+          "occurrence": 1,
+          "shape": "html.charref",
+          "expect": "resolved",
+          "why": "The same file through a decimal numeric reference.",
+          "decoded": "/gallery/a&b.png",
+          "target": "apps/web/public/gallery/a&b.png",
+          "offset": 668,
+          "line": 19,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/a&#x26;b.png",
+          "occurrence": 1,
+          "shape": "html.charref",
+          "expect": "resolved",
+          "why": "And through a hexadecimal one.",
+          "decoded": "/gallery/a&b.png",
+          "target": "apps/web/public/gallery/a&b.png",
+          "offset": 766,
+          "line": 20,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/a&b.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Unescaped, which browsers accept here because no entity name follows the ampersand.",
+          "target": "apps/web/public/gallery/a&b.png",
+          "offset": 950,
+          "line": 23,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/hero%20image.png",
+          "occurrence": 1,
+          "shape": "html.percent-encoded",
+          "expect": "resolved",
+          "why": "Decodes to a filename with a space. An engine that never decodes reports this broken.",
+          "decoded": "/gallery/hero image.png",
+          "target": "apps/web/public/gallery/hero image.png",
+          "offset": 1349,
+          "line": 32,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/enc%20name.png",
+          "occurrence": 1,
+          "shape": "html.percent-encoded",
+          "expect": "resolved",
+          "why": "The percent sign is IN THE FILENAME. An engine that always decodes reports this broken. The pair only passes if both are tried.",
+          "target": "apps/web/public/gallery/enc%20name.png",
+          "offset": 1430,
+          "line": 33,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/hero (1).png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "A space and parentheses, unencoded. R26 measured a 16% false-unused rate on this class.",
+          "target": "apps/web/public/gallery/hero (1).png",
+          "offset": 1512,
+          "line": 34,
+          "column": 15
+        },
+        {
+          "raw": "/brand.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Before the raw-text prose, so it is collected either way.",
+          "target": "apps/web/public/brand.png",
+          "offset": 1719,
+          "line": 40,
+          "column": 15
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src.after-rawtext-prose",
+          "expect": "resolved",
+          "why": "R20: after six raw-text tags named in prose and never closed. Must still be found.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 2369,
+          "line": 55,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "html.img.src.after-rawtext-prose",
+          "expect": "resolved",
+          "why": "As above.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 2453,
+          "line": 56,
+          "column": 15
+        },
+        {
+          "raw": "/srcset/tile@2x.png",
+          "occurrence": 1,
+          "shape": "html.img.src.after-rawtext-prose",
+          "expect": "resolved",
+          "why": "As above.",
+          "target": "apps/web/public/srcset/tile@2x.png",
+          "offset": 2542,
+          "line": 57,
+          "column": 15
+        },
+        {
+          "raw": "../../shared/assets/img/logo.png",
+          "occurrence": 1,
+          "shape": "html.img.src.after-rawtext-prose",
+          "expect": "resolved",
+          "why": "As above, and relative rather than root-relative.",
+          "target": "shared/assets/img/logo.png",
+          "offset": 2633,
+          "line": 58,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/web/index.html",
+      "entries": [
+        {
+          "raw": "/favicon.png",
+          "occurrence": 1,
+          "shape": "html.link.href.icon",
+          "expect": "resolved",
+          "why": "rel=icon.",
+          "target": "apps/web/public/favicon.png",
+          "offset": 140,
+          "line": 7,
+          "column": 28
+        },
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "html.link.href.icon",
+          "expect": "resolved",
+          "why": "rel=apple-touch-icon.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 196,
+          "line": 8,
+          "column": 40
+        },
+        {
+          "raw": "/icons/mask.svg",
+          "occurrence": 1,
+          "shape": "html.link.href.icon",
+          "expect": "resolved",
+          "why": "rel=mask-icon, pointing at a vector rather than a photograph.",
+          "target": "apps/web/public/icons/mask.svg",
+          "offset": 252,
+          "line": 9,
+          "column": 33
+        },
+        {
+          "raw": "/icons/app.webmanifest",
+          "occurrence": 1,
+          "shape": "html.link.href.other",
+          "expect": "out-of-scope",
+          "why": "A real file the engine does not index. Not an icon, and not an asset.",
+          "offset": 319,
+          "line": 10,
+          "column": 32
+        },
+        {
+          "raw": "/css/site.css",
+          "occurrence": 1,
+          "shape": "html.link.href.other",
+          "expect": "out-of-scope",
+          "why": "A stylesheet in the same attribute as the icons. It is scanned as a source file, never indexed as an asset.",
+          "offset": 379,
+          "line": 11,
+          "column": 34
+        },
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "html.style.element",
+          "expect": "resolved",
+          "why": "CSS reached through a <style> element.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 455,
+          "line": 15,
+          "column": 32
+        },
+        {
+          "raw": "/img/texture.png",
+          "occurrence": 1,
+          "shape": "css.url.bare",
+          "expect": "resolved",
+          "why": "Unquoted url() inside that style element.",
+          "target": "apps/web/public/img/texture.png",
+          "offset": 535,
+          "line": 18,
+          "column": 31
+        },
+        {
+          "raw": "/img/commented-out.png",
+          "occurrence": 1,
+          "shape": "css.url.in-comment",
+          "expect": "discarded",
+          "why": "Inside a CSS comment in a <style> element. Never a reference.",
+          "offset": 623,
+          "line": 20,
+          "column": 62
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "html.style.element",
+          "expect": "resolved",
+          "why": "A url() inside a shorthand background.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 714,
+          "line": 22,
+          "column": 49
+        },
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "html.style.attribute",
+          "expect": "resolved",
+          "why": "CSS in a style=\"\" attribute, one element at a time.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 836,
+          "line": 28,
+          "column": 60
+        },
+        {
+          "raw": "/brand.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "R13: the web app's brand.png, which is a different picture from the docs app's.",
+          "target": "apps/web/public/brand.png",
+          "offset": 884,
+          "line": 29,
+          "column": 31
+        },
+        {
+          "raw": "./public/logo.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Relative from the app root into its own public directory.",
+          "target": "apps/web/public/logo.png",
+          "offset": 969,
+          "line": 30,
+          "column": 34
+        },
+        {
+          "raw": "/srcset/tile.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The src beside a single-candidate srcset.",
+          "target": "apps/web/public/srcset/tile.png",
+          "offset": 1127,
+          "line": 35,
+          "column": 17
+        },
+        {
+          "raw": "/srcset/tile@2x.png",
+          "occurrence": 1,
+          "shape": "html.img.srcset.single",
+          "expect": "resolved",
+          "why": "One candidate with a descriptor, which parses differently from a list.",
+          "target": "apps/web/public/srcset/tile@2x.png",
+          "offset": 1153,
+          "line": 35,
+          "column": 43
+        },
+        {
+          "raw": "/srcset/tile.png",
+          "occurrence": 2,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The src beside a three-candidate srcset.",
+          "target": "apps/web/public/srcset/tile.png",
+          "offset": 1268,
+          "line": 39,
+          "column": 14
+        },
+        {
+          "raw": "/srcset/tile.png",
+          "occurrence": 3,
+          "shape": "html.img.srcset.x",
+          "expect": "resolved",
+          "why": "Candidate 1 of 3, 1x.",
+          "target": "apps/web/public/srcset/tile.png",
+          "offset": 1302,
+          "line": 40,
+          "column": 17
+        },
+        {
+          "raw": "/srcset/tile@2x.png",
+          "occurrence": 2,
+          "shape": "html.img.srcset.x",
+          "expect": "resolved",
+          "why": "Candidate 2 of 3, 2x.",
+          "target": "apps/web/public/srcset/tile@2x.png",
+          "offset": 1323,
+          "line": 40,
+          "column": 38
+        },
+        {
+          "raw": "/srcset/tile@3x.png",
+          "occurrence": 1,
+          "shape": "html.img.srcset.x",
+          "expect": "resolved",
+          "why": "Candidate 3 of 3, 3x.",
+          "target": "apps/web/public/srcset/tile@3x.png",
+          "offset": 1347,
+          "line": 40,
+          "column": 62
+        },
+        {
+          "raw": "/srcset/card-800.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The src beside a w-descriptor srcset.",
+          "target": "apps/web/public/srcset/card-800.jpg",
+          "offset": 1535,
+          "line": 46,
+          "column": 14
+        },
+        {
+          "raw": "/srcset/card-400.jpg",
+          "occurrence": 1,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 1 of 3, 400w.",
+          "target": "apps/web/public/srcset/card-400.jpg",
+          "offset": 1573,
+          "line": 47,
+          "column": 17
+        },
+        {
+          "raw": "/srcset/card-800.jpg",
+          "occurrence": 2,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 2 of 3, 800w.",
+          "target": "apps/web/public/srcset/card-800.jpg",
+          "offset": 1600,
+          "line": 47,
+          "column": 44
+        },
+        {
+          "raw": "/srcset/card-1200.jpg",
+          "occurrence": 1,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 3 of 3, 1200w. A sizes attribute sits beside it and names no path.",
+          "target": "apps/web/public/srcset/card-1200.jpg",
+          "offset": 1627,
+          "line": 47,
+          "column": 71
+        },
+        {
+          "raw": "/srcset/wide.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The src beside the five-candidate srcset.",
+          "target": "apps/web/public/srcset/wide.jpg",
+          "offset": 1839,
+          "line": 54,
+          "column": 14
+        },
+        {
+          "raw": "/srcset/narrow.jpg",
+          "occurrence": 1,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 1 of 5, across several lines with ragged whitespace.",
+          "target": "apps/web/public/srcset/narrow.jpg",
+          "offset": 1884,
+          "line": 56,
+          "column": 11
+        },
+        {
+          "raw": "/srcset/card-400.jpg",
+          "occurrence": 2,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 2 of 5.",
+          "target": "apps/web/public/srcset/card-400.jpg",
+          "offset": 1921,
+          "line": 57,
+          "column": 11
+        },
+        {
+          "raw": "/srcset/card-800.jpg",
+          "occurrence": 3,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 3 of 5.",
+          "target": "apps/web/public/srcset/card-800.jpg",
+          "offset": 1958,
+          "line": 58,
+          "column": 11
+        },
+        {
+          "raw": "/srcset/missing-candidate.jpg",
+          "occurrence": 1,
+          "shape": "html.img.srcset.w",
+          "expect": "broken",
+          "why": "🔴 Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5 — the case R75 names.",
+          "offset": 1995,
+          "line": 59,
+          "column": 11
+        },
+        {
+          "raw": "/srcset/wide.jpg",
+          "occurrence": 2,
+          "shape": "html.img.srcset.w",
+          "expect": "resolved",
+          "why": "Candidate 5 of 5.",
+          "target": "apps/web/public/srcset/wide.jpg",
+          "offset": 2042,
+          "line": 60,
+          "column": 11
+        },
+        {
+          "raw": "/srcset/card-1200.jpg",
+          "occurrence": 2,
+          "shape": "html.source.srcset",
+          "expect": "resolved",
+          "why": "In a picture/source, where srcset is the whole content.",
+          "target": "apps/web/public/srcset/card-1200.jpg",
+          "offset": 2192,
+          "line": 66,
+          "column": 25
+        },
+        {
+          "raw": "/srcset/card-800.jpg",
+          "occurrence": 4,
+          "shape": "html.source.srcset",
+          "expect": "resolved",
+          "why": "Second candidate of that source.",
+          "target": "apps/web/public/srcset/card-800.jpg",
+          "offset": 2221,
+          "line": 66,
+          "column": 54
+        },
+        {
+          "raw": "/srcset/card-400.jpg",
+          "occurrence": 3,
+          "shape": "html.source.srcset",
+          "expect": "resolved",
+          "why": "A source with one candidate and no descriptor at all.",
+          "target": "apps/web/public/srcset/card-400.jpg",
+          "offset": 2302,
+          "line": 67,
+          "column": 25
+        },
+        {
+          "raw": "/srcset/card-400.jpg",
+          "occurrence": 4,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The img fallback inside picture.",
+          "target": "apps/web/public/srcset/card-400.jpg",
+          "offset": 2372,
+          "line": 68,
+          "column": 19
+        },
+        {
+          "raw": "/gallery/photo@2x.png",
+          "occurrence": 1,
+          "shape": "html.source.srcset",
+          "expect": "resolved",
+          "why": "A second picture, densities rather than widths.",
+          "target": "apps/web/public/gallery/photo@2x.png",
+          "offset": 2478,
+          "line": 72,
+          "column": 25
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 2,
+          "shape": "html.source.srcset",
+          "expect": "resolved",
+          "why": "Its 1x sibling.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 2504,
+          "line": 72,
+          "column": 51
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 3,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "And the fallback img.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 2565,
+          "line": 73,
+          "column": 19
+        },
+        {
+          "raw": "src/assets/inline-logo.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "A bare relative path — no leading dot, no leading slash.",
+          "target": "apps/web/src/assets/inline-logo.jpg",
+          "offset": 2676,
+          "line": 77,
+          "column": 19
+        },
+        {
+          "raw": "./public/img/texture.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Explicitly relative.",
+          "target": "apps/web/public/img/texture.png",
+          "offset": 2778,
+          "line": 78,
+          "column": 19
+        },
+        {
+          "raw": "../../shared/assets/img/thumb.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Two levels up, out of the app and into the shared package.",
+          "target": "shared/assets/img/thumb.png",
+          "offset": 2862,
+          "line": 79,
+          "column": 19
+        },
+        {
+          "raw": "https://cdn.example.com/remote/hero.png",
+          "occurrence": 1,
+          "shape": "path.absolute-url",
+          "expect": "out-of-scope",
+          "why": "R32. Real and reachable, and not ours to rewrite.",
+          "offset": 3008,
+          "line": 83,
+          "column": 19
+        },
+        {
+          "raw": "//cdn.example.com/protocol-relative.png",
+          "occurrence": 1,
+          "shape": "path.protocol-relative",
+          "expect": "out-of-scope",
+          "why": "Starts with // and is not a path, which is exactly what it looks like.",
+          "offset": 3089,
+          "line": 84,
+          "column": 19
+        },
+        {
+          "raw": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+          "occurrence": 1,
+          "shape": "path.data-uri",
+          "expect": "discarded",
+          "why": "The image is the attribute. There is no file, and rewriting it is a corruption.",
+          "offset": 3189,
+          "line": 86,
+          "column": 16
+        },
+        {
+          "raw": "/img/missing-on-purpose.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "broken",
+          "why": "The existing fixture convention for a deliberately broken reference.",
+          "offset": 3366,
+          "line": 89,
+          "column": 19
+        },
+        {
+          "raw": "/gallery/hero (1).png",
+          "occurrence": 1,
+          "shape": "decoy.comment",
+          "expect": "discarded",
+          "why": "Named in an HTML comment. Not a reference.",
+          "offset": 3479,
+          "line": 92,
+          "column": 38
+        }
+      ]
+    },
+    {
+      "path": "apps/web/media.html",
+      "entries": [
+        {
+          "raw": "/media/poster.jpg",
+          "occurrence": 1,
+          "shape": "html.video.poster",
+          "expect": "resolved",
+          "why": "An image position on a non-image element.",
+          "target": "apps/web/public/media/poster.jpg",
+          "offset": 397,
+          "line": 14,
+          "column": 29
+        },
+        {
+          "raw": "/media/clip.mp4",
+          "occurrence": 1,
+          "shape": "html.video.src",
+          "expect": "out-of-scope",
+          "why": "A real file the engine deliberately does not index. Folding this into resolved would let Phase 2 rewrite it and break a video that works.",
+          "offset": 421,
+          "line": 14,
+          "column": 53
+        },
+        {
+          "raw": "/media/trailer.mp4",
+          "occurrence": 1,
+          "shape": "html.source.src",
+          "expect": "out-of-scope",
+          "why": "source@src inside video, which is a different position from source@srcset.",
+          "offset": 483,
+          "line": 15,
+          "column": 20
+        },
+        {
+          "raw": "/media/clip.mp4",
+          "occurrence": 2,
+          "shape": "html.source.src",
+          "expect": "out-of-scope",
+          "why": "A second source in the same element.",
+          "offset": 542,
+          "line": 16,
+          "column": 20
+        },
+        {
+          "raw": "/media/captions.vtt",
+          "occurrence": 1,
+          "shape": "html.track.src",
+          "expect": "out-of-scope",
+          "why": "A caption file: real, never an asset.",
+          "offset": 597,
+          "line": 17,
+          "column": 19
+        },
+        {
+          "raw": "/media/captions-de.vtt",
+          "occurrence": 1,
+          "shape": "html.track.src",
+          "expect": "broken",
+          "why": "A second track pointing at nothing.",
+          "offset": 692,
+          "line": 18,
+          "column": 19
+        },
+        {
+          "raw": "/media/thumb.jpg",
+          "occurrence": 1,
+          "shape": "html.video.poster",
+          "expect": "resolved",
+          "why": "A second poster, so the row is not 1 of 1.",
+          "target": "apps/web/public/media/thumb.jpg",
+          "offset": 797,
+          "line": 21,
+          "column": 20
+        },
+        {
+          "raw": "/media/clip.mp4",
+          "occurrence": 3,
+          "shape": "html.source.src",
+          "expect": "out-of-scope",
+          "why": "The same file again from a second video element.",
+          "offset": 859,
+          "line": 22,
+          "column": 20
+        },
+        {
+          "raw": "../../shared/assets/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.video.poster",
+          "expect": "resolved",
+          "why": "A poster reached by a relative path rather than the serving root.",
+          "target": "shared/assets/img/hero.jpg",
+          "offset": 929,
+          "line": 25,
+          "column": 20
+        },
+        {
+          "raw": "/media/theme.mp3",
+          "occurrence": 1,
+          "shape": "html.audio.src",
+          "expect": "out-of-scope",
+          "why": "audio@src, which is easy to forget.",
+          "offset": 1023,
+          "line": 27,
+          "column": 26
+        },
+        {
+          "raw": "/media/theme.mp3",
+          "occurrence": 2,
+          "shape": "html.source.src",
+          "expect": "out-of-scope",
+          "why": "And the same file as a source inside it.",
+          "offset": 1061,
+          "line": 28,
+          "column": 20
+        },
+        {
+          "raw": "/media/theme.ogg",
+          "occurrence": 1,
+          "shape": "html.source.src",
+          "expect": "broken",
+          "why": "The ogg sibling was never produced.",
+          "offset": 1119,
+          "line": 29,
+          "column": 20
+        },
+        {
+          "raw": "/media/spec-sheet.pdf",
+          "occurrence": 1,
+          "shape": "html.embed.src",
+          "expect": "out-of-scope",
+          "why": "embed@src holding a document.",
+          "offset": 1187,
+          "line": 32,
+          "column": 17
+        },
+        {
+          "raw": "/gallery/MixedCase.Png",
+          "occurrence": 1,
+          "shape": "html.embed.src",
+          "expect": "resolved",
+          "why": "embed@src holding an IMAGE, so the outcome depends on the target rather than the tag. Mixed-case extension.",
+          "target": "apps/web/public/gallery/MixedCase.Png",
+          "offset": 1277,
+          "line": 33,
+          "column": 17
+        },
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "html.input.src",
+          "expect": "resolved",
+          "why": "type=\"image\" is the only input that takes a src.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 1376,
+          "line": 35,
+          "column": 30
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "html.input.src",
+          "expect": "resolved",
+          "why": "A second one.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 1442,
+          "line": 36,
+          "column": 30
+        },
+        {
+          "raw": "/icons/icon-nope.png",
+          "occurrence": 1,
+          "shape": "html.input.src",
+          "expect": "broken",
+          "why": "A third, pointing at nothing.",
+          "offset": 1514,
+          "line": 37,
+          "column": 30
+        },
+        {
+          "raw": "/media/spec-sheet.pdf",
+          "occurrence": 2,
+          "shape": "html.object.data",
+          "expect": "UNDECIDED",
+          "why": "🔴 §4a does not list object@data and no ruling covers it. If the adapter claims the position, out-of-scope is right; if it does not, discarded is right. A wrong answer here makes a correct engine look broken.",
+          "candidates": [
+            "out-of-scope",
+            "discarded"
+          ],
+          "offset": 1590,
+          "line": 39,
+          "column": 19
+        }
+      ]
+    },
+    {
+      "path": "apps/web/public/media/preview.html",
+      "entries": [
+        {
+          "raw": "/media/poster.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "A file INSIDE the serving root using a root-relative path.",
+          "target": "apps/web/public/media/poster.jpg",
+          "offset": 131,
+          "line": 8,
+          "column": 15
+        },
+        {
+          "raw": "thumb.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Bare, beside this file.",
+          "target": "apps/web/public/media/thumb.jpg",
+          "offset": 205,
+          "line": 9,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/web/public/icons/app.webmanifest",
+      "entries": [
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "json.webmanifest.icon",
+          "expect": "resolved",
+          "why": "The manifest schema says this key is an icon URL.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 194,
+          "line": 10,
+          "column": 15
+        },
+        {
+          "raw": "/icons/icon-512.png",
+          "occurrence": 1,
+          "shape": "json.webmanifest.icon",
+          "expect": "resolved",
+          "why": "With purpose=\"any maskable\".",
+          "target": "apps/web/public/icons/icon-512.png",
+          "offset": 295,
+          "line": 15,
+          "column": 15
+        },
+        {
+          "raw": "icon-192.png",
+          "occurrence": 2,
+          "shape": "json.webmanifest.icon",
+          "expect": "resolved",
+          "why": "Bare, relative to the manifest itself. Occurrence 2: the root-relative form above contains this string.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 429,
+          "line": 21,
+          "column": 15
+        },
+        {
+          "raw": "/icons/icon-1024.png",
+          "occurrence": 1,
+          "shape": "json.webmanifest.icon",
+          "expect": "UNDECIDED",
+          "why": "🔴 A manifest icon pointing at nothing. `broken` if a webmanifest icon counts as ASSERTED by its schema; `discarded` if json.ts is right that every JSON string is a guess. This is a product question, not a bug.",
+          "candidates": [
+            "broken",
+            "discarded"
+          ],
+          "offset": 523,
+          "line": 26,
+          "column": 15
+        },
+        {
+          "raw": "/media/poster.jpg",
+          "occurrence": 1,
+          "shape": "json.webmanifest.other",
+          "expect": "resolved",
+          "why": "A screenshots entry, which is not the icons key.",
+          "target": "apps/web/public/media/poster.jpg",
+          "offset": 650,
+          "line": 33,
+          "column": 15
+        },
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "json.webmanifest.other",
+          "expect": "resolved",
+          "why": "A shortcut icon, nested two levels deeper again.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 833,
+          "line": 42,
+          "column": 27
+        }
+      ]
+    }
+  ]
+}
