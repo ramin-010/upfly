@@ -321,6 +321,14 @@ export interface Caveat {
     | 'framework-conventions'
     | 'nothing-to-measure'
     | 'not-probed'
+    /**
+     * Duplicates were not looked for, which is not the same as none being found.
+     *
+     * ⚠️ Without this line an absent check renders as `identical copies (0 sets)` —
+     * or as nothing at all — and a reader concludes the repository is clean. Rule 9
+     * calls that a silent skip, and it is the sixth this phase would have had.
+     */
+    | 'duplicates-not-checked'
     | 'encode-capped'
     | 'excluded-roots'
     | 'unscanned-extensions'
@@ -604,6 +612,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
     'possibly-dead': 0,
     oversized: 0,
     'format-opportunity': 0,
+    duplicate: 0,
   };
   for (const finding of findings) counts[finding.kind] += 1;
 
@@ -990,6 +999,16 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
       count: determined.total,
       message: `${plural(determined.total, 'image')} needed no measurement`,
       detail: determined.detail,
+    });
+  }
+
+  if (!input.audit.duplicatesChecked) {
+    list.push({
+      code: 'duplicates-not-checked',
+      count: 0,
+      message:
+        'assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none',
+      detail: [],
     });
   }
 

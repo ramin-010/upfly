@@ -13,6 +13,7 @@
  * two decisions the two callers legitimately make differently.
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import {
@@ -36,6 +37,7 @@ import {
   defaultAdapters,
   detectConventionRoots,
   discover,
+  hashCandidates,
   loadAliases,
   probeAssets,
   resolveReferences,
@@ -199,10 +201,25 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     ...discovery.sourceFiles.map((file) => file.relative),
     ...discovery.unscannedFiles.map((file) => file.relative),
   ]);
+  // §1.1's `duplicate`. Only assets whose size another asset shares are opened: two
+  // byte-identical files must be the same size, so a unique size rules a file out
+  // without reading it. On `railsgirls-com` that is the difference between hashing
+  // 5,370 images and hashing a few hundred.
+  const contentHashes = new Map<string, string>();
+  for (const candidate of hashCandidates(discovery.assets)) {
+    contentHashes.set(
+      candidate.relative,
+      createHash('sha256')
+        .update(await readFile(candidate.path))
+        .digest('hex'),
+    );
+  }
+
   // Spread rather than `probes: probes`: under `exactOptionalPropertyTypes` an
   // explicit `undefined` is not an absent key, and `audit` reads the key's presence as
   // "was probed".
   const auditResult = await audit({
+    contentHashes,
     graph,
     conventionRoots,
     sweep,

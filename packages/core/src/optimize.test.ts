@@ -132,6 +132,7 @@ function inputFor(
     conventionLinked: [],
     unreadableSources: [],
     probed: true,
+    duplicatesChecked: false,
   };
 
   return {

@@ -24,6 +24,7 @@
 import { citeReferences } from './citation.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
 import { conventionLinkFor } from './conventions.js';
+import { findDuplicates } from './duplicates.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
@@ -139,7 +140,30 @@ export type Finding =
   | BrokenFinding
   | ServingRootUnknownFinding
   | OversizedFinding
-  | FormatOpportunityFinding;
+  | FormatOpportunityFinding
+  | DuplicateFinding;
+
+/**
+ * Two or more assets shipping the same pixels (§1.1, approved 2026-09-11).
+ *
+ * 🔴 **Set-scoped, not asset-scoped, and that is not a shortcut.** Every other finding
+ * names one asset because the fault is that asset's. A duplicate is a fault of the
+ * *relationship* — no single copy is wrong, and saying `hero.png` is a duplicate
+ * without naming what it duplicates is not something a reader can act on.
+ *
+ * ⚠️ It names no winner. Which copy should survive is a question about intent — one
+ * may be a deliberate fallback, or referenced by something the graph cannot see — and
+ * §8 decision 7 settles that we never pick and never delete.
+ */
+export interface DuplicateFinding {
+  readonly kind: 'duplicate';
+  /** Every asset with these bytes, in path order. At least two. */
+  readonly assets: readonly string[];
+  /** The size of one copy. */
+  readonly bytes: number;
+  /** What keeping one copy would recover: `bytes × (copies − 1)`. */
+  readonly wastedBytes: number;
+}
 
 export interface AuditThresholds {
   /** Bytes above which an asset is oversized. Defaults to 500 000. */
@@ -203,6 +227,19 @@ export interface AuditOptions {
    */
   readonly conventionRoots?: readonly ConventionRoot[];
   readonly thresholds?: AuditThresholds;
+  /**
+   * Content hashes by POSIX-relative path, for the `duplicate` finding.
+   *
+   * ⚠️ **Absent means the check did not run**, and the report says so rather than
+   * showing zero — the same distinction `probes` already carries, and the reason rule 9
+   * calls a silent skip a P0. "No duplicates" and "nobody looked" are different
+   * answers and a reader cannot tell them apart from a count.
+   *
+   * Only the assets `hashCandidates` selects need be present: an asset whose size no
+   * other asset shares cannot be a duplicate, so one missing from this map is one
+   * nothing could have matched rather than one we failed to check.
+   */
+  readonly contentHashes?: ReadonlyMap<string, string>;
 }
 
 export interface AuditResult {
@@ -231,6 +268,14 @@ export interface AuditResult {
   readonly unreadableSources: readonly { readonly relative: string; readonly reason: string }[];
   /** Whether a probe ran at all. `false` means oversized and opportunities are absent. */
   readonly probed: boolean;
+  /**
+   * Whether duplicates were looked for at all.
+   *
+   * ⚠️ Separate from the count, because **"none found" and "nobody looked" are
+   * different answers** and a zero cannot tell them apart. Rule 9 calls the second one
+   * a silent skip, and the report prints a caveat rather than an implied zero.
+   */
+  readonly duplicatesChecked: boolean;
 }
 
 /**
@@ -272,13 +317,29 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   const probeFindings =
     options.probes === undefined ? [] : sizeFindings(options.probes, thresholds, bytesByAsset);
 
+  // §1.1's fifth finding. Set-scoped, so it joins the list rather than being derived
+  // per asset like the other four.
+  const duplicates: Finding[] =
+    options.contentHashes === undefined
+      ? []
+      : findDuplicates(
+          options.graph.assets.map((node) => node.asset),
+          options.contentHashes,
+        ).map((set) => ({
+          kind: 'duplicate' as const,
+          assets: set.assets,
+          bytes: set.bytes,
+          wastedBytes: set.wastedBytes,
+        }));
+
   return {
-    findings: [...dead, ...reported, ...probeFindings].sort(byReportOrder),
+    findings: [...dead, ...reported, ...probeFindings, ...duplicates].sort(byReportOrder),
     publicDirDeadCount: dead.filter((finding) => finding.kind === 'dead' && finding.inPublicDir)
       .length,
     conventionLinked,
     unreadableSources,
     probed: options.probes !== undefined,
+    duplicatesChecked: options.contentHashes !== undefined,
   };
 }
 
@@ -519,20 +580,38 @@ const KIND_ORDER: Record<Finding['kind'], number> = {
   'possibly-dead': 2,
   oversized: 3,
   'format-opportunity': 4,
+  // Last, and deliberately: it is the only finding with no single asset at fault, so
+  // it reads as a footnote to the list rather than an accusation inside it.
+  duplicate: 5,
 };
 
 function byReportOrder(a: Finding, b: Finding): number {
-  return (
-    KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
-    compareStrings(subjectOf(a), subjectOf(b)) ||
-    compareStrings(detailOf(a), detailOf(b))
-  );
+  const byKind = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+  if (byKind !== 0) return byKind;
+
+  // 🔴 Duplicates order by what is worth recovering, not by path. Every other kind
+  // sorts by path because every other kind is about one asset and a reader scans for a
+  // name; a duplicate set is about an amount, and the largest is the one worth acting
+  // on first.
+  //
+  // ⚠️ **This lives here because sorting it in `findDuplicates` did not survive.** It
+  // was sorted correctly there and then re-sorted by this function, so the report
+  // rendered 562 B, then 2.5 KB, then 136.4 KB — caught by reading the rendered report
+  // on `scratch-www`, not by a test, which is the fourth time this phase.
+  if (a.kind === 'duplicate' && b.kind === 'duplicate') {
+    return b.wastedBytes - a.wastedBytes || compareStrings(subjectOf(a), subjectOf(b));
+  }
+
+  return compareStrings(subjectOf(a), subjectOf(b)) || compareStrings(detailOf(a), detailOf(b));
 }
 
 function subjectOf(finding: Finding): string {
   if (finding.kind === 'broken') return finding.file;
   // At most one per run and sorted first, so it needs no subject to be ordered by.
   if (finding.kind === 'serving-root-unknown') return '';
+  // A set has no single subject. Its first path is already the alphabetically first of
+  // the set, so ordering by it is stable and reads the way a reader would expect.
+  if (finding.kind === 'duplicate') return finding.assets[0] ?? '';
   return finding.asset;
 }
 

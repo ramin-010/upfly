@@ -54,6 +54,8 @@ export type {
   MoveOperation,
   Operation,
 } from './manifest.js';
+export { findDuplicates, hashCandidates } from './duplicates.js';
+export type { DuplicateSet } from './duplicates.js';
 export { isUnderPublicDir, patternTargets, planOptimization } from './plan.js';
 export { moveOperationsFor, planRelocation } from './relocate.js';
 export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } from './relocate.js';

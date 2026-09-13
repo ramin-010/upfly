@@ -10,6 +10,12 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "message": "1 unreferenced image under the public directory may be linked from outside this repository",
     },
     {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+    },
+    {
       "code": "not-probed",
       "count": 0,
       "detail": [],
@@ -80,6 +86,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "findings": {
       "broken": 0,
       "dead": 1,
+      "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 0,
@@ -121,6 +128,7 @@ Findings — 1 item
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -133,6 +141,12 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       "count": 1,
       "detail": [],
       "message": "1 unreferenced image under the public directory may be linked from outside this repository",
+    },
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -288,6 +302,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "findings": {
       "broken": 1,
       "dead": 1,
+      "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 4,
@@ -354,6 +369,7 @@ Findings — 6 items
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   1 file type had no adapter, so 2 files went unread:
     .njk — 2 files
@@ -368,6 +384,12 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
       "count": 1,
       "detail": [],
       "message": "1 unreferenced image under the public directory may be linked from outside this repository",
+    },
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -440,6 +462,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "findings": {
       "broken": 0,
       "dead": 1,
+      "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 0,
@@ -481,6 +504,7 @@ Findings — 1 item
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -493,6 +517,12 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
       "count": 2,
       "detail": [],
       "message": "this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove",
+    },
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -573,6 +603,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "findings": {
       "broken": 1,
       "dead": 2,
+      "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 0,
@@ -618,6 +649,7 @@ Findings — 3 items
 Worth knowing
 
   this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -630,6 +662,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "count": 1,
       "detail": [],
       "message": "1 unreferenced SVG totalling 307 B, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.",
+    },
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -713,6 +751,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "findings": {
       "broken": 0,
       "dead": 1,
+      "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
       "possibly-dead": 0,
@@ -755,6 +794,7 @@ Findings — 1 item
 Worth knowing
 
   1 unreferenced SVG totalling 307 B, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
 "

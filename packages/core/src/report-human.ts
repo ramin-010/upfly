@@ -630,6 +630,11 @@ function headingFor(kind: Finding['kind'], report: Report): string {
       return `oversized images (${total})`;
     case 'format-opportunity':
       return `smaller as another format (${total}) — measured, not estimated`;
+    // ⚠️ "sets", not "images": the count is of GROUPS and the heading has to say which,
+    // or 171 reads as 171 files when it is 176. That confusion is R21 #4's shape, and
+    // this renderer has produced the noun-agreement half of it eight times.
+    case 'duplicate':
+      return `identical copies (${total} ${total === 1 ? 'set' : 'sets'}) — the same bytes shipped more than once`;
     default: {
       const unhandled: never = kind;
       return unhandled;
@@ -663,6 +668,14 @@ function describe(finding: Finding): string[] {
     case 'format-opportunity':
       return [
         `    ${finding.asset}  ${bytes(finding.bytes)} → ${bytes(finding.wouldBe)} as ${finding.to}  (saves ${bytes(finding.savedBytes)}, ${finding.savedPercent}%)`,
+      ];
+    // Every path on its own line, because the set IS the finding — naming one copy and
+    // counting the rest would put the reader back where they started. No winner is
+    // marked: which copy should survive is a question about intent (§8 decision 7).
+    case 'duplicate':
+      return [
+        `    ${bytes(finding.bytes)} each, ${bytes(finding.wastedBytes)} recoverable by keeping one:`,
+        ...finding.assets.map((asset) => `      ${asset}`),
       ];
     default: {
       const unhandled: never = finding;

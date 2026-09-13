@@ -696,6 +696,7 @@ describe('audit', () => {
       conventionLinked: [],
       unreadableSources: [],
       probed: false,
+      duplicatesChecked: false,
     });
   });
 });

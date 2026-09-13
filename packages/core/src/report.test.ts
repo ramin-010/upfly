@@ -199,6 +199,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -304,6 +305,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -379,6 +381,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -421,6 +424,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -559,6 +563,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: over.probed ?? true,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -643,6 +648,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -744,6 +750,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -855,6 +862,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -919,6 +927,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -996,6 +1005,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -1143,6 +1153,7 @@ describe('buildReport', () => {
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
+          duplicatesChecked: false,
         },
         discovery: {
           root: ROOT,
@@ -1169,7 +1180,10 @@ describe('buildReport', () => {
 
       const named = report.findings.map((finding) => {
         if (finding.kind === 'broken') return finding.rawPath;
-        return finding.kind === 'serving-root-unknown' ? finding.kind : finding.asset;
+        if (finding.kind === 'serving-root-unknown') return finding.kind;
+        // A duplicate names a set rather than one asset, so it has no `asset` to read.
+        if (finding.kind === 'duplicate') return finding.assets.join(' + ');
+        return finding.asset;
       });
       expect(named).toEqual(['public/photo.png']);
       expect(report.unusedVectors.count).toBe(2);
@@ -1234,7 +1248,9 @@ describe('buildReport', () => {
       expect(report.unusedVectors.count).toBe(0);
       const kept = report.findings.map((finding) => {
         if (finding.kind === 'broken') return finding.rawPath;
-        return finding.kind === 'serving-root-unknown' ? finding.kind : finding.asset;
+        if (finding.kind === 'serving-root-unknown') return finding.kind;
+        if (finding.kind === 'duplicate') return finding.assets.join(' + ');
+        return finding.asset;
       });
       expect(kept).toContain('images/hero.svg');
       expect(report.staleConversions).toEqual([
@@ -1372,6 +1388,7 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
+        duplicatesChecked: false,
       },
       discovery: {
         root: ROOT,
@@ -1473,6 +1490,7 @@ describe('the headline reads correctly at a count of one (R21 / the agreement bu
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
+        duplicatesChecked: false,
       },
       discovery: {
         root: ROOT,
@@ -1521,6 +1539,7 @@ describe('the serving roots the report discloses', () => {
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
+        duplicatesChecked: false,
       },
       discovery: {
         root: ROOT,
@@ -1616,6 +1635,7 @@ describe('the assets a plan examined and offered nothing for', () => {
         conventionLinked: [],
         unreadableSources: [],
         probed: true,
+        duplicatesChecked: false,
       },
       discovery: {
         root: ROOT,
@@ -1708,6 +1728,7 @@ describe('the public-dir caveat counts what the report lists', () => {
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
+        duplicatesChecked: false,
       },
       discovery: {
         root: ROOT,
