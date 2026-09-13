@@ -66,12 +66,29 @@ export interface EngineRun {
  * `declared` is for a project that states its serving root, which is what a real user
  * does once Upfly tells them to. Absent means detection, which is what a first run gets.
  */
-export async function runEngine(root: string, declared?: ServingRoots): Promise<EngineRun> {
+export async function runEngine(
+  root: string,
+  declared?: ServingRoots,
+  /**
+   * Whether to measure every asset by encoding it.
+   *
+   * ⚠️ **Default `true`, because the path that WRITES must not lose its measurements** —
+   * see the note above about a cap making a pattern permanently undecidable.
+   *
+   * 🔴 **But a caller that never reads `probes` should pass `false`, and two of them were
+   * paying for it.** `relocate` plans path changes; it does not convert anything, and
+   * neither it nor `move-run` touches the field. On `railsgirls-com` that is **5,370 webp
+   * encodes per call and two calls per run** — over ten thousand encodes discarded
+   * unread, which is why one `move-run` there takes half an hour. Nothing about the graph,
+   * the serving roots or the broken counts changes without them.
+   */
+  probe = true,
+): Promise<EngineRun> {
   const output = await runPipeline({
     root,
     servingRoots: (discovery) => declared ?? detectServingRoots(discovery.directories),
     publicDirs: (servingRoots) => servingRoots.dirs,
-    probeOptions: { formats: ['webp'] },
+    probeOptions: probe ? { formats: ['webp'] } : null,
   });
 
   return {
@@ -139,7 +156,9 @@ export async function relocateTree(
 ): Promise<{ plan: RelocationPlan; manifest: Manifest | null }> {
   refuseValidationCorpus(root);
 
-  const { graph, servingRoots, aliases } = await runEngine(root);
+  // `false`: a move rewrites paths and converts nothing, so the encodes would be read by
+  // nobody. Measured at over ten thousand of them per `move-run` on `railsgirls-com`.
+  const { graph, servingRoots, aliases } = await runEngine(root, undefined, false);
   const store = createNodeFileStore(root);
 
   const plan = planRelocation({

@@ -39,10 +39,22 @@ function unreadFiles(spec: readonly { ext: string; count: number }[]): Unscanned
   return files;
 }
 
+/** Files of a type we DO read that the scan could not parse. */
+function parseFailures(spec: readonly { relative: string; detail: string }[]): UnscannedFile[] {
+  return spec.map((entry) => ({
+    path: `${ROOT}/${entry.relative}`,
+    relative: entry.relative,
+    extension: entry.relative.slice(entry.relative.lastIndexOf('.')),
+    reason: 'parse-failed' as const,
+    detail: entry.detail,
+  }));
+}
+
 /** A graph with `broken` broken references and whatever went unread. */
 function graphWith(input: {
   broken: number;
   unread?: readonly { ext: string; count: number }[];
+  failed?: readonly { relative: string; detail: string }[];
 }) {
   const assets: Asset[] = [
     { path: `${ROOT}/public/hero.png`, relative: 'public/hero.png', extension: '.png', bytes: 10 },
@@ -73,7 +85,7 @@ function graphWith(input: {
     root: ROOT,
     assets,
     references,
-    unscannedFiles: unreadFiles(input.unread ?? []),
+    unscannedFiles: [...unreadFiles(input.unread ?? []), ...parseFailures(input.failed ?? [])],
   });
 }
 
@@ -122,7 +134,7 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(check.limit.typesThatCouldHide).toEqual([]);
     expect(check.limit.unreadFileCount).toBe(0);
     expect(rendered(check)).toContain('could have broken without');
-    expect(rendered(check)).toContain('No unread file type in this tree could hold a path');
+    expect(rendered(check)).toContain('No unread file in this tree could hold a path');
     // Runtime-assembled paths are not a property of the tree, so this one has no
     // escape hatch in any tree.
     expect(rendered(check)).toContain('assembles at runtime');
@@ -149,6 +161,49 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(rendered(check)).toContain('could have broken without');
     expect(rendered(check)).toContain('.yml — 1 file');
     expect(rendered(check)).toContain('assembles at runtime');
+  });
+
+  it('names parse failures separately, because they are fixable and the types are not', () => {
+    // 🔴 **Measured on `railsgirls-com`, and the most consequential line this disclosure
+    // has.** Three `.html` files failed on invalid CSS inside an inline `<style>`, so the
+    // scan collected nothing from them — including their `<link rel="apple-touch-icon">`
+    // pointing at the asset being moved. The move broke all three, and `broken before vs
+    // after` stayed at 111, because the same scan failure hid both the reference and the
+    // breakage. R72 part 2 found them by searching the text.
+    //
+    // ⚠️ Before this split, the disclosure grouped them by extension and printed
+    // `.html — 22 files`, which reads as "Upfly cannot read HTML". It reads HTML fine.
+    const check = checkMoveRegression({
+      before: graphWith({ broken: 0 }),
+      after: graphWith({
+        broken: 0,
+        failed: [
+          { relative: 'bratislava.html', detail: 'invalid css syntax at line 16, column 5' },
+        ],
+      }),
+      excludedRoots: [],
+    });
+
+    expect(check.limit.parseFailed.map((entry) => entry.relative)).toEqual(['bratislava.html']);
+    const text = rendered(check);
+    expect(text).toContain('of a type Upfly DOES read could not be parsed');
+    // Named individually with the parser's complaint: unlike an unread type, this is one
+    // file a person can open.
+    expect(text).toContain('bratislava.html — invalid css syntax at line 16, column 5');
+    expect(text).toContain('usually fixable');
+  });
+
+  it('says nothing about parse failures when there were none', () => {
+    // Here so the assertion above means something: a bullet that always prints proves
+    // nothing about a tree that has them.
+    const check = checkMoveRegression({
+      before: graphWith({ broken: 0 }),
+      after: graphWith({ broken: 0, unread: [{ ext: '.yml', count: 1 }] }),
+      excludedRoots: [],
+    });
+
+    expect(check.limit.parseFailed).toEqual([]);
+    expect(rendered(check)).not.toContain('could not be parsed');
   });
 
   it('names an unread type that could hold a path, and not one that could not', () => {

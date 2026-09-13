@@ -13,7 +13,8 @@
  * invisible — both copies would still look obviously correct.
  */
 
-import type { UnscannedExtension } from './types.js';
+import { compareStrings } from './paths.js';
+import type { UnscannedExtension, UnscannedFile } from './types.js';
 
 /**
  * Extensions whose contents are not text.
@@ -105,4 +106,21 @@ export function couldHideAReference(
   return [...groups.adapterCould, ...(svg === undefined ? [] : [svg])].sort(
     (a, b) => b.fileCount - a.fileCount || (a.ext < b.ext ? -1 : a.ext > b.ext ? 1 : 0),
   );
+}
+
+/**
+ * Unread files counted by extension, sorted by extension.
+ *
+ * Shared rather than copied, on the same reasoning as everything else in this file: it
+ * lived in `graph.ts` until R72's disclosure needed to count a **subset** of the unread
+ * files. `graph.unscannedExtensions` counts them all, parse failures included, and a
+ * disclosure that lists those twice tells a reader the blind spot is bigger than it is.
+ */
+export function countExtensions(files: readonly UnscannedFile[]): UnscannedExtension[] {
+  const counts = new Map<string, number>();
+  for (const file of files) counts.set(file.extension, (counts.get(file.extension) ?? 0) + 1);
+
+  return [...counts]
+    .map(([ext, fileCount]) => ({ ext, fileCount }))
+    .sort((a, b) => compareStrings(a.ext, b.ext));
 }

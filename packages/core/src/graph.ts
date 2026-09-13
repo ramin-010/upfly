@@ -27,6 +27,7 @@ import { UpflyError } from './errors.js';
 import { compareStrings, relativePath } from './paths.js';
 import { linkedPaths } from './reference.js';
 import type { Asset, Reference, Resolution, UnscannedExtension, UnscannedFile } from './types.js';
+import { countExtensions } from './unscanned.js';
 
 /** One asset and every reference that points at it. */
 export interface AssetNode {
@@ -180,13 +181,4 @@ function sortForReport(references: readonly Reference[], root: string): Referenc
         a.reference.end - b.reference.end,
     )
     .map((entry) => entry.reference);
-}
-
-function countExtensions(files: readonly UnscannedFile[]): UnscannedExtension[] {
-  const counts = new Map<string, number>();
-  for (const file of files) counts.set(file.extension, (counts.get(file.extension) ?? 0) + 1);
-
-  return [...counts]
-    .map(([ext, fileCount]) => ({ ext, fileCount }))
-    .sort((a, b) => compareStrings(a.ext, b.ext));
 }

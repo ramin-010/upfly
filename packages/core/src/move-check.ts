@@ -35,8 +35,8 @@
 import { plural } from './format.js';
 import type { Graph } from './graph.js';
 import { compareStrings } from './paths.js';
-import type { ExcludedRoot, UnscannedExtension } from './types.js';
-import { couldHideAReference } from './unscanned.js';
+import type { ExcludedRoot, UnscannedExtension, UnscannedFile } from './types.js';
+import { couldHideAReference, countExtensions } from './unscanned.js';
 
 /** How many entries of a list are named before it is summarised. */
 const NAMED_LIMIT = 5;
@@ -68,6 +68,19 @@ export interface MoveCoverageLimit {
    * exists rather than being left out as a detail.
    */
   readonly neverRead: readonly ExcludedRoot[];
+  /**
+   * Files of a type we DO read that could not be parsed.
+   *
+   * 🔴 **Separated from the unread *types* because they are a different problem with a
+   * different answer, and because grouping them by extension actively misleads.** On
+   * `railsgirls-com` this disclosure listed `.html — 22 files`, which reads as *"Upfly
+   * cannot read HTML"*. It reads HTML fine; those 22 files each failed on invalid CSS
+   * inside an inline `<style>`. **An unread type wants an adapter and may never get one.
+   * A parse failure is a specific file with a specific fault, it is usually fixable, and
+   * it is the likeliest place a break is hiding** — R72 part 2 found real broken
+   * references in exactly these files, on a move the before/after count called clean.
+   */
+  readonly parseFailed: readonly UnscannedFile[];
   /**
    * True when the two sides of the comparison did not read the same number of files.
    *
@@ -122,12 +135,23 @@ export function checkMoveRegression(input: MoveCheckInput): MoveRegressionReport
   const brokenBefore = input.before.byResolution.broken.length;
   const brokenAfter = input.after.byResolution.broken.length;
 
-  const typesThatCouldHide = couldHideAReference(input.after.unscannedExtensions);
+  const parseFailed = input.after.unscannedFiles.filter((file) => file.reason === 'parse-failed');
+
+  // 🔴 **Counted over the files that are NOT parse failures, so the two bullets
+  // partition instead of overlapping.** `graph.unscannedExtensions` counts every unread
+  // file, parse failures included, so using it directly printed `.html — 22 files` in the
+  // type list AND `23 files could not be parsed` below it — the same files twice, in a
+  // disclosure whose whole job is to tell a reader how big the blind spot is. Found by
+  // reading the rendered output on `railsgirls-com`.
+  const typesThatCouldHide = couldHideAReference(
+    countExtensions(input.after.unscannedFiles.filter((file) => file.reason !== 'parse-failed')),
+  );
   const unreadBefore = input.before.unscannedFiles.length;
   const unreadAfter = input.after.unscannedFiles.length;
 
   const limit: MoveCoverageLimit = {
     typesThatCouldHide,
+    parseFailed,
     unreadFileCount: typesThatCouldHide.reduce((total, entry) => total + entry.fileCount, 0),
     neverRead: [...input.excludedRoots].sort((a, b) => compareStrings(a.relative, b.relative)),
     readDifferently: unreadBefore !== unreadAfter,
@@ -169,6 +193,7 @@ function render(
   ];
 
   lines.push(...unreadTypeLines(limit));
+  lines.push(...parseFailedLines(limit));
   lines.push(...neverReadLines(limit));
 
   // Applies in every tree, read or not, which is why it carries no count.
@@ -216,8 +241,8 @@ function unreadTypeLines(limit: MoveCoverageLimit): string[] {
     // Deliberately still a bullet. Dropping it here would turn a clean tree into an
     // implied guarantee, and the class is only absent from *this* tree.
     return [
-      '    - a reference in a file type Upfly does not read could have broken without',
-      '      appearing here. No unread file type in this tree could hold a path.',
+      '    - a reference in a file Upfly did not read could have broken without appearing',
+      '      here. No unread file in this tree could hold a path.',
     ];
   }
 
@@ -226,8 +251,8 @@ function unreadTypeLines(limit: MoveCoverageLimit): string[] {
   // shipped `1 file were not read` once and `report.ts` records three more near
   // misses, every one of them a sentence whose subject was a count.
   const lines = [
-    '    - a reference in a file type Upfly does not read could have broken without',
-    `      appearing here. That is ${plural(limit.unreadFileCount, 'file')}, in ${plural(limit.typesThatCouldHide.length, 'unread type')} that could hold a path:`,
+    '    - a reference in a file Upfly did not read could have broken without appearing',
+    `      here. That is ${plural(limit.unreadFileCount, 'file')}, in ${plural(limit.typesThatCouldHide.length, 'type')} that could hold a path:`,
   ];
 
   for (const entry of limit.typesThatCouldHide.slice(0, NAMED_LIMIT)) {
@@ -237,6 +262,37 @@ function unreadTypeLines(limit: MoveCoverageLimit): string[] {
   }
   if (limit.typesThatCouldHide.length > NAMED_LIMIT) {
     lines.push(`        ... and ${limit.typesThatCouldHide.length - NAMED_LIMIT} more`);
+  }
+
+  return lines;
+}
+
+/**
+ * Files we tried to read and could not parse — named, with the parser's complaint.
+ *
+ * 🔴 **The most actionable line this disclosure can print, and it is measured.** On
+ * `railsgirls-com`, three of these held a `<link rel="apple-touch-icon">` pointing at the
+ * asset being moved. The move could not rewrite what the scan never collected, so it
+ * broke all three — and `broken before vs after` stayed at 111, because the same scan
+ * failure that hid the reference hid the breakage. **R72 part 2 found them by searching
+ * the text.** Named individually rather than counted, because unlike an unread type, a
+ * parse failure is one file a person can go and look at.
+ */
+function parseFailedLines(limit: MoveCoverageLimit): string[] {
+  if (limit.parseFailed.length === 0) return [];
+
+  const lines = [
+    `    - ${plural(limit.parseFailed.length, 'file')} of a type Upfly DOES read could not be parsed, so no`,
+    '      reference in them was seen and none could be rewritten. This is the likeliest',
+    '      place a break is hiding, and unlike the types above it is usually fixable:',
+  ];
+
+  for (const entry of limit.parseFailed.slice(0, NAMED_LIMIT)) {
+    const why = complaintOf(entry.detail);
+    lines.push(`        ${entry.relative}${why === '' ? '' : ` — ${why}`}`);
+  }
+  if (limit.parseFailed.length > NAMED_LIMIT) {
+    lines.push(`        ... and ${limit.parseFailed.length - NAMED_LIMIT} more`);
   }
 
   return lines;
@@ -264,4 +320,22 @@ function neverReadLines(limit: MoveCoverageLimit): string[] {
   }
 
   return lines;
+}
+
+/**
+ * The parser's complaint, without the machinery in front of it.
+ *
+ * `ADAPTER_PARSE_FAILED: Could not parse: invalid css syntax at line 16, column 5` says
+ * the same thing three times before it says anything. The prefixes are ours and mean
+ * nothing to a reader who is being asked to go and look at line 16 — this is the same
+ * cleanup B5 did on PostCSS's own wording, one layer out. Trimmed by a fixed list of
+ * known prefixes rather than by a regex over anything colon-shaped, because a CSS
+ * message can legitimately contain a colon and cutting at the first one would eat it.
+ */
+function complaintOf(detail: string): string {
+  let text = detail;
+  for (const prefix of ['ADAPTER_PARSE_FAILED:', 'Could not parse:']) {
+    if (text.startsWith(prefix)) text = text.slice(prefix.length).trimStart();
+  }
+  return text;
 }

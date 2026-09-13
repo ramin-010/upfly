@@ -115,7 +115,8 @@ async function run(name: string, keep: boolean): Promise<boolean> {
   try {
     // Measured before anything is written, so "no new broken references" is a
     // comparison rather than a claim about a number nobody recorded.
-    const before = await runEngine(root);
+    // No probes: this run reads the graph and the serving roots, never a measurement.
+    const before = await runEngine(root, undefined, false);
     const linked = new Set(
       before.graph.references
         .filter((reference) => reference.resolution === 'resolved')
@@ -164,7 +165,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     // the graph doing the counting is the graph that missed whatever it missed.
     // `checkMoveRegression` carries the limit with the number, so this cannot print
     // the one without the other.
-    const after = await runEngine(root);
+    const after = await runEngine(root, undefined, false);
     const check = checkMoveRegression({
       before: before.graph,
       after: after.graph,
