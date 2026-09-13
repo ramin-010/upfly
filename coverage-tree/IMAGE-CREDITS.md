@@ -69,19 +69,24 @@ each `"source": "stub"`.
 `mask.svg` and `icon.svg` are hand-written vectors. An `svg` is what a `rel="icon"` points at
 in real projects, and it is not a photograph in anybody's telling.
 
-## 🔴 No image here has the property that WebP makes it LARGER, and that is a measurement
+## The "WebP makes it larger" requirement was withdrawn — R79
 
-Spec §5 asks for *"a few small enough that WebP makes them larger"*. **It is not achievable
-with a real photograph.** Measured across all four sources at fourteen sizes from 128×96 down
-to 8×8 — 56 combinations — **WebP was smaller than PNG in every one**, lossless and lossy
-alike. At 8×8, Earthrise is 179 bytes as PNG, 130 as lossless WebP and 76 at quality 80.
+Spec §5 originally asked for *"a few small enough that WebP makes them larger"*. **It is not
+achievable with a real photograph**, and R79 withdrew it on 2026-09-13 on the strength of the
+measurement below.
+
+Measured across all four sources at fourteen sizes from 128×96 down to 8×8 — **56
+combinations — WebP was smaller than PNG in every one**, lossless and lossy alike. At 8×8,
+Earthrise is 179 bytes as PNG, 130 as lossless WebP and 76 at quality 80.
 
 The property belongs to **synthetic placeholders**: `fixtures/partial-pattern/theme-dark.png`
 is 70 bytes as PNG and 94 as WebP, which is exactly why R67 says not to replace it with a
-photograph. A placeholder is what spec §5's *first* sentence forbids, so the two halves of §5
-cannot both be satisfied by one file.
+photograph. A placeholder is what §5's *first* sentence forbids, so the two halves of §5 could
+not both be satisfied by one file.
 
-**Nothing was faked to close the gap.** What the tree records instead is every asset's real
-byte size, which is what §5 says the sizes are for — *"recorded sizes let probe and encode
-coverage be added later"*. If a later encode matrix needs an asset that does not convert, it
-needs a synthetic one, and that is a decision for whoever owns R67.
+**The division R79 settled on:** `fixtures/partial-pattern` is a **conversion** fixture and
+already carries that property; **this tree measures reference detection.** Every asset here
+still records its real byte size and hash, which is what §5 says the sizes are for — *"recorded
+sizes let probe and encode coverage be added later"*.
+
+**Nothing was faked to close the gap while it was open.**

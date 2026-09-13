@@ -173,16 +173,28 @@ const cases = [
     },
     expect: 'dynamic import that is not node',
   },
+  // ⚠️ These two INTRODUCE the UNDECIDED entry rather than relying on one being in the
+  // key. R78 ruled all fourteen open questions at once, and the moment the last one was
+  // answered both cases stopped firing — a proof that quietly depended on the state of
+  // the thing it was proving. They must hold whether the key has open questions or none.
   {
     name: 'an UNDECIDED entry, under --strict',
-    damage: () => {},
+    damage: (root) => editKey(root, (key) => {
+      const entry = findEntry(key, (e) => e.expect === 'resolved');
+      entry.expect = 'UNDECIDED';
+      entry.candidates = ['resolved', 'broken'];
+      delete entry.target;
+    }),
     args: ['--strict'],
     expect: 'OPEN QUESTIONS',
   },
   {
     name: 'an UNDECIDED entry with fewer than two candidate outcomes',
     damage: (root) => editKey(root, (key) => {
-      findEntry(key, (e) => e.expect === 'UNDECIDED').candidates = ['resolved'];
+      const entry = findEntry(key, (e) => e.expect === 'resolved');
+      entry.expect = 'UNDECIDED';
+      entry.candidates = ['resolved'];
+      delete entry.target;
     }),
     expect: 'at least two candidate outcomes',
   },
@@ -227,7 +239,16 @@ if (baseline.status !== 0) {
       for (const dir of ['tree', 'key', 'tools']) {
         cpSync(join(here, dir), join(root, dir), { recursive: true });
       }
-      testCase.damage(root);
+      // A mutation that throws is a BROKEN PROOF CASE, not a passing one. Reported as a
+      // miss rather than left to crash the run and take the other cases with it.
+      try {
+        testCase.damage(root);
+      } catch (error) {
+        failures += 1;
+        process.stdout.write(`  MISS  ${testCase.name}\n`);
+        process.stdout.write(`        the mutation itself failed: ${error.message}\n`);
+        continue;
+      }
       const result = run(root, testCase.args ?? []);
       const output = `${result.stdout}${result.stderr}`;
 

@@ -8,7 +8,7 @@ Built to [`notes/10-coverage-tree-spec.md`](../../notes/10-coverage-tree-spec.md
 
 ```
 node tools/check-key.mjs              # does the key still describe the tree?
-node tools/check-key.mjs --strict     # ...and are there no unanswered questions?
+node tools/check-key.mjs --strict     # ...and are there no unanswered questions? (passes)
 node tools/prove-can-fail.mjs         # is that check capable of failing at all?
 node tools/scan-occurrences.mjs       # authoring aid: every asset-shaped token, with positions
 node tools/stamp-positions.mjs        # refill derived offsets — READ THE DIFF, see below
@@ -87,10 +87,12 @@ two engine behaviours — a `url()` inside a comment is probably never collected
 than collected and marked `discarded` — and the measuring harness accepts either. It must not
 accept resolved, broken, or rewritten. This is written down in the key's `expectSemantics`.
 
-**14 entries are `UNDECIDED`**, each with at least two candidate outcomes and a note. They do
-not fail the integrity check; they fail `--strict`, which is what the measuring suite runs.
-A wrong `expect` is worse than a missing one: it makes a correct engine look broken, or a
-broken one look correct.
+**`UNDECIDED` is a first-class value and there are currently none.** Fourteen entries carried
+it until R78 ruled all five open questions on 2026-09-13; each now records the ruled outcome
+and, where today's engine will not produce it, a `knownGap` naming why. The value stays in the
+vocabulary because the next shape added from a real repository will need it: a wrong `expect`
+is worse than a missing one, since it makes a correct engine look broken or a broken one look
+correct. `--strict` fails on any that appear.
 
 ## 🔴 The tree is read-only ground truth
 

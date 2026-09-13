@@ -48,7 +48,7 @@
       "#internal/*"
     ]
   },
-  "imageSizesNote": "Spec 5 asks for a few images small enough that WebP makes them LARGER. MEASURED AND NOT ACHIEVABLE with a real photograph: across 4 sources x 14 sizes down to 8x8, WebP was smaller than PNG in all 56 combinations, lossless and lossy alike. The property belongs to synthetic placeholders (fixtures/partial-pattern/theme-dark.png is 70 bytes as PNG and 94 as WebP), and a placeholder is what spec 5 forbids. Recorded as an open question rather than faked.",
+  "imageSizesNote": "R79 (2026-09-13): spec §5's \"a few images small enough that WebP makes them LARGER\" is WITHDRAWN. It was measured and is not achievable with a real photograph — 4 sources x 14 sizes down to 8x8, 56 combinations, WebP smaller in every one, lossless and lossy alike. The property belongs to synthetic placeholders, which the same section forbids, and it is already covered by fixtures/partial-pattern — a CONVERSION fixture. This tree measures REFERENCE DETECTION. Every asset still records its real byte size and hash, which is what §5 says the sizes are for.",
   "shapes": [
     {
       "id": "html.img.src",
@@ -2842,12 +2842,8 @@
           "raw": "/media/spec-sheet.pdf",
           "occurrence": 2,
           "shape": "html.object.data",
-          "expect": "UNDECIDED",
-          "why": "🔴 §4a does not list object@data and no ruling covers it. If the adapter claims the position, out-of-scope is right; if it does not, discarded is right. A wrong answer here makes a correct engine look broken.",
-          "candidates": [
-            "out-of-scope",
-            "discarded"
-          ],
+          "expect": "out-of-scope",
+          "why": "R78 Q1: object@data is a claimed position. A non-image extension filters out exactly as it does for embed@src — a real file the engine does not index.",
           "offset": 1590,
           "line": 39,
           "column": 19
@@ -2856,26 +2852,19 @@
           "raw": "/gallery/photo.png",
           "occurrence": 2,
           "shape": "html.object.data",
-          "expect": "UNDECIDED",
-          "why": "🔴 The same position holding an IMAGE rather than a document, which is the case where the answer actually costs something: if object@data is claimed this is `resolved` and rewritable, and if it is not, this image is invisible.",
-          "candidates": [
-            "resolved",
-            "discarded"
-          ],
+          "expect": "resolved",
+          "why": "R78 Q1: an image target in object@data resolves. This is the entry the ruling actually costs something on — the image is rewritable rather than invisible.",
           "offset": 1689,
           "line": 40,
-          "column": 19
+          "column": 19,
+          "target": "apps/web/public/gallery/photo.png"
         },
         {
           "raw": "/media/absent.pdf",
           "occurrence": 1,
           "shape": "html.object.data",
-          "expect": "UNDECIDED",
-          "why": "🔴 And one pointing at nothing, which is `broken` or `discarded` depending on the same unmade ruling.",
-          "candidates": [
-            "broken",
-            "discarded"
-          ],
+          "expect": "broken",
+          "why": "R78 Q1: a claimed position pointing at nothing. Mirrors embed@src's /media/absent-sheet.pdf, which was never in question — the extension filter decides indexing, not whether an asserted reference is broken.",
           "offset": 1779,
           "line": 41,
           "column": 19
@@ -3128,12 +3117,8 @@
           "raw": "/icons/icon-1024.png",
           "occurrence": 1,
           "shape": "json.webmanifest.icon",
-          "expect": "UNDECIDED",
-          "why": "🔴 A manifest icon pointing at nothing. `broken` if a webmanifest icon counts as ASSERTED by its schema; `discarded` if json.ts is right that every JSON string is a guess. This is a product question, not a bug.",
-          "candidates": [
-            "broken",
-            "discarded"
-          ],
+          "expect": "discarded",
+          "why": "R78 Q2: PWA icon sets are routinely GENERATED at build time, so a missing target is normal rather than wrong. Calling it broken would manufacture the R26 false-finding class in a format where absence is the common case. The position is still claimed when it resolves; only the assertion of brokenness is withheld.",
           "offset": 523,
           "line": 26,
           "column": 15
@@ -3758,12 +3743,8 @@
           "raw": "#{$image-root}/photo.png",
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
-          "expect": "UNDECIDED",
-          "why": "🔴 The interpolation is at the FRONT, so the part that would anchor a glob is the unknown part. resolved-pattern if a leading wildcard is globbed (it would match /gallery/photo.png alone); dynamic if the engine declines to glob without a static prefix. Nothing has ruled which.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 1252,
           "line": 42,
           "column": 26
@@ -3864,12 +3845,8 @@
           "raw": "#{$image-root}/photo@2x.png",
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
-          "expect": "UNDECIDED",
-          "why": "🔴 A second leading interpolation. Same unmade ruling as the first.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 2110,
           "line": 79,
           "column": 26
@@ -3878,12 +3855,8 @@
           "raw": "#{$image-root}/MixedCase.Png",
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
-          "expect": "UNDECIDED",
-          "why": "🔴 A third, with a mixed-case extension so that a case-sensitive glob and a case-insensitive one disagree.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 2186,
           "line": 83,
           "column": 26
@@ -3993,12 +3966,8 @@
           "raw": "@{image-root}/photo@2x.png",
           "occurrence": 1,
           "shape": "less.interpolation",
-          "expect": "UNDECIDED",
-          "why": "🔴 Leading interpolation again, in Less syntax. Same open question as scss.interpolation.leading, and it must get the same answer.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 726,
           "line": 34,
           "column": 26
@@ -4111,12 +4080,8 @@
           "raw": "@{image-root}/MixedCase.Png",
           "occurrence": 1,
           "shape": "less.interpolation",
-          "expect": "UNDECIDED",
-          "why": "🔴 A second Less interpolation. Same unmade ruling.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 1470,
           "line": 67,
           "column": 26
@@ -4125,12 +4090,8 @@
           "raw": "@{image-root}/Banner.PNG",
           "occurrence": 1,
           "shape": "less.interpolation",
-          "expect": "UNDECIDED",
-          "why": "🔴 A third, uppercase extension.",
-          "candidates": [
-            "resolved-pattern",
-            "dynamic"
-          ],
+          "expect": "dynamic",
+          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 1558,
           "line": 71,
           "column": 26
@@ -5579,31 +5540,23 @@
           "raw": "/sample.png",
           "occurrence": 1,
           "shape": "html.img.src",
-          "expect": "UNDECIDED",
-          "why": "🔴 THE SHAPE B2 AND B3 BOTH NAMED AS THE BIGGEST UNTESTED RISK. This file sits inside a directory called `public` that is NOT a declared serving root. The resolver climbs ancestors looking for a directory NAMED public, so it will probably resolve this to docs-examples/public/sample.png. Is that right, or is a root-relative path in a non-serving directory broken? No ruling exists.",
-          "candidates": [
-            "resolved",
-            "broken",
-            "discarded"
-          ],
+          "expect": "broken",
+          "why": "🔴 R78 Q4: a root-relative path resolves against the nearest GENUINE serving root, and none of the four reaches docs-examples/ — so it is broken. The directory is called `public` because the guide it illustrates is about a project that has one.",
           "offset": 495,
           "line": 14,
-          "column": 15
+          "column": 15,
+          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible."
         },
         {
           "raw": "/logo.png",
           "occurrence": 1,
           "shape": "html.img.src",
-          "expect": "UNDECIDED",
-          "why": "🔴 The same question, with a basename that exists in five other directories — so a wrong answer here also picks the wrong file.",
-          "candidates": [
-            "resolved",
-            "broken",
-            "discarded"
-          ],
+          "expect": "broken",
+          "why": "🔴 R78 Q4: the same, with a basename that exists in six other directories — so resolving it against the wrong root also picks the wrong picture, not merely the wrong bucket.",
           "offset": 583,
           "line": 15,
-          "column": 15
+          "column": 15,
+          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible."
         },
         {
           "raw": "./sample.png",
@@ -5898,29 +5851,25 @@
           "raw": "emblem.png",
           "occurrence": 3,
           "shape": "unread.erb",
-          "expect": "UNDECIDED",
-          "why": "An image_tag helper argument, which Rails resolves through the asset pipeline rather than as a path. Occurrence 3: the two paths above both contain this string. Whether a framework helper argument is a reference at all has never been ruled.",
-          "candidates": [
-            "resolved",
-            "discarded"
-          ],
+          "expect": "resolved",
+          "why": "R78 Q5: an image_tag helper argument is a reference. The asset pipeline resolves it from app/assets.",
           "offset": 274,
           "line": 8,
-          "column": 18
+          "column": 18,
+          "target": "legacy/app/assets/emblem.png",
+          "knownGap": "TWO reasons, both recorded: (1) R72 / §4j — no adapter reads .erb; (2) R51 — Rails' asset-pipeline resolution is framework-specific and was declined. Consistent with the .vue precedent: the entry expects to be found, and the matrix prints why the row is zero."
         },
         {
           "raw": "gallery/plate.jpg",
           "occurrence": 2,
           "shape": "unread.erb",
-          "expect": "UNDECIDED",
-          "why": "An asset_path helper argument. Same question. Occurrence 2: the relative path above contains this string.",
-          "candidates": [
-            "resolved",
-            "discarded"
-          ],
+          "expect": "resolved",
+          "why": "R78 Q5: an asset_path helper argument, same rule. The only plate.jpg in the repository is the one under legacy/public.",
           "offset": 317,
           "line": 9,
-          "column": 29
+          "column": 29,
+          "target": "legacy/public/gallery/plate.jpg",
+          "knownGap": "TWO reasons, both recorded: (1) R72 / §4j — no adapter reads .erb; (2) R51 — Rails' asset-pipeline resolution is framework-specific and was declined. Consistent with the .vue precedent: the entry expects to be found, and the matrix prints why the row is zero."
         },
         {
           "raw": "/gallery/plate.jpg",
