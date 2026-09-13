@@ -39,24 +39,50 @@ import {
   sweepForMentions,
 } from 'upfly-core';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
-import { type InvocationSample, sampleAcrossInvocations } from './invocations.js';
+import {
+  type InvocationSample,
+  MEASURED_BETWEEN_RUN_DRIFT,
+  sampleAcrossInvocations,
+} from './invocations.js';
 
 /**
- * The per-platform gate.
+ * §3.4's design target: what the graph build is supposed to cost.
  *
- * ⚠️ **These two numbers are stale and are kept only so the output has something to
- * compare against.** They were set from the pre-recalibration tree, whose source
- * files averaged 179 bytes against a measured 4 704–6 666 in real repositories — so
- * they are a budget for reading 1.3 MB, not the 46.7 MB a 10 000-file tree actually
- * holds. On the recalibrated tree the graph takes ~17.4 s on this machine.
+ * 🔴 **This is NOT the gate, and keeping the two apart is the point of having both.**
+ * §5.1(g) failed against this and the target was deliberately not moved. A regression
+ * ceiling loose enough not to flake is necessarily far above it, and a reader who sees
+ * one number called "budget" will take a passing build for a met target. Both are
+ * printed, always, with the relationship spelled out.
+ */
+const DESIGN_TARGET_MS = 3_000;
+
+/**
+ * The per-platform **regression ceiling**: don't get slower than this.
  *
- * The replacement must come from **CI**, not from here: a laptop running an editor,
- * a phase chat and a browser is not a controlled environment. `UPFLY_BENCH_BUDGET_MS`
- * overrides them so the workflow can set the number once CI has produced one, and
- * `--measure-only` reports without failing until it has.
+ * ✅ **Set from CI on 2026-09-13, from three runs per platform** — the numbers the
+ * workflow had been printing under `--measure-only` since the tree was recalibrated:
+ *
+ * | | run 1 | run 2 | run 3 | max | drift across runs |
+ * |---|---|---|---|---|---|
+ * | ubuntu | 3 299 | 4 022 | 4 165 | 4 165 | **21.5%** |
+ * | windows | 4 758 | 5 233 | 5 641 | 5 641 | **16.9%** |
+ *
+ * 🔴 **The headroom is sized by the drift, not by taste.** On unchanged code the headline
+ * moves up to 21.5% between runs, so a ceiling near the observed max is a coin flip —
+ * and it demonstrably was one: at the old 3 500/5 000 the same commit reported `OVER`,
+ * `within budget`, `OVER` on ubuntu and `within budget`, `OVER`, `OVER` on windows.
+ * **The verdict flipped between runs of identical code, which is what a gate must not
+ * do.** Max observed + ~30% puts the line clear of the noise.
+ *
+ * ⚠️ **What this can and cannot catch, stated so nobody over-reads a green build:** it
+ * catches a regression larger than ~30%. It cannot catch a 10% one, because a 10% change
+ * is smaller than the drift a single run carries. Catching those needs an A/B
+ * back-to-back in one session — `bench/src/noise.ts`, floor 1-4% — not this gate.
+ *
+ * `UPFLY_BENCH_BUDGET_MS` still overrides, which is how the workflow pins it per platform.
  */
 const BUDGET_MS = Number(
-  process.env.UPFLY_BENCH_BUDGET_MS ?? (process.platform === 'win32' ? 5_000 : 3_500),
+  process.env.UPFLY_BENCH_BUDGET_MS ?? (process.platform === 'win32' ? 7_500 : 5_500),
 );
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
@@ -80,12 +106,13 @@ interface Sample {
   readonly medianMs: number;
   readonly minMs: number;
   readonly maxMs: number;
-  /** `(max - min) / median`, as a percentage. Above ~20% the run is unusable. */
+  /** `(max - min) / median`, as a percentage. Above ~20% something is wrong. */
   readonly spreadPercent: number;
   readonly runs: number;
   /** Every sample, so a reader can see the shape rather than trust the summary. */
   readonly allMs: readonly number[];
-  readonly usable: boolean;
+  /** These samples agreed with each other. NOT a claim of reproducibility. */
+  readonly samplesAgree: boolean;
 }
 
 /** Above this, the samples disagree too much to quote a number from them. */
@@ -137,7 +164,7 @@ async function sample<T>(
       // Marked unusable rather than averaged away: a number nobody can reproduce
       // should not be quoted, and hiding the disagreement inside a mean is how it
       // gets quoted anyway.
-      usable: spreadPercent <= MAX_SPREAD_PERCENT,
+      samplesAgree: spreadPercent <= MAX_SPREAD_PERCENT,
     },
   ];
 }
@@ -209,11 +236,11 @@ function renderInvocations(
   invocations: number,
   runsEach: number,
 ): string {
-  const verdict = !sample.usable
-    ? 'UNUSABLE (invocations disagree)'
+  const verdict = !sample.samplesAgree
+    ? 'UNUSABLE (these invocations disagree — machine health, not drift)'
     : sample.medianMs <= BUDGET_MS
-      ? 'within budget'
-      : 'OVER';
+      ? 'within the regression ceiling'
+      : 'OVER the regression ceiling';
 
   return [
     '',
@@ -223,13 +250,25 @@ function renderInvocations(
     `  UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}`,
     '',
     `  headline: ${sample.medianMs} ms of ${BUDGET_MS} ms  ${verdict}`,
+    `  §3.4 design target: ${DESIGN_TARGET_MS} ms — ${
+      sample.medianMs <= DESIGN_TARGET_MS
+        ? 'met'
+        : 'NOT met, and the ceiling above is not that target'
+    }`,
     `  per invocation: ${sample.medians.join(', ')} ms`,
     `  spread between invocations: ${sample.spreadPercent}% (min ${sample.minMs}, max ${sample.maxMs})`,
     `  spread inside each: ${sample.internalSpreadPercent.map((value) => `${value}%`).join(', ')}`,
     '',
-    sample.usable
+    // 🔴 Printed on EVERY run, pass or fail. A tight spread above says these invocations
+    // agreed with each other; it says nothing about whether the same commit measures the
+    // same tomorrow, and that is the variation that actually bites.
+    `  ⚠️ Agreement above is WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
+    '     on unchanged code, and that is invisible from inside a single run. The ceiling',
+    '     carries headroom for it; the spread figure above does not protect against it.',
+    '',
+    sample.samplesAgree
       ? ''
-      : '  ⚠️ The invocations disagree by more than 20%, so no number here may be quoted.\n     A gate that flips on which invocation you ran is not a gate — set it from CI.\n',
+      : '  ⚠️ These invocations disagree by more than 20%, which has never happened in CI.\n     Treat it as a machine-health problem with this run, not as drift.\n',
   ].join('\n');
 }
 
@@ -260,7 +299,7 @@ async function main(): Promise<void> {
       stdout.write('  (measure-only: not gating, so this cannot fail the build)\n\n');
       exit(0);
     }
-    exit(across.usable && across.medianMs <= BUDGET_MS ? 0 : 1);
+    exit(across.samplesAgree && across.medianMs <= BUDGET_MS ? 0 : 1);
   }
 
   const json = argv.includes('--json');
@@ -379,7 +418,7 @@ async function main(): Promise<void> {
       totalMs: graphBudget.medianMs,
       stepTotalMs,
       budgetMs: BUDGET_MS,
-      withinBudget: graphBudget.usable && graphBudget.medianMs < BUDGET_MS,
+      withinBudget: graphBudget.samplesAgree && graphBudget.medianMs < BUDGET_MS,
       sample: graphBudget,
       steps: [discoverMs, scanMs, resolveMs, graphMs],
     },
@@ -480,7 +519,7 @@ function render(result: BenchResult, generation: Timing): string {
     `Graph budget — ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${verdict(result.graphBudget)}`,
     '',
     `  median of ${result.graphBudget.sample.runs} runs (one warm-up discarded): ${result.graphBudget.sample.allMs.join(', ')} ms`,
-    `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.usable ? '' : '  ← TOO NOISY TO QUOTE'}`,
+    `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.samplesAgree ? '' : '  ← SAMPLES DISAGREE'}`,
     '',
     '  where the time goes (single pass):',
   ];
@@ -521,7 +560,7 @@ function render(result: BenchResult, generation: Timing): string {
 
 /** `OK`, `OVER`, or a refusal to say — the third is not a failure, it is honesty. */
 function verdict(budget: BenchResult['graphBudget']): string {
-  if (!budget.sample.usable) return 'UNUSABLE (samples disagree)';
+  if (!budget.sample.samplesAgree) return 'UNUSABLE (samples disagree)';
   return budget.withinBudget ? 'OK' : 'OVER';
 }
 

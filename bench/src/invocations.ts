@@ -34,17 +34,45 @@ export interface InvocationSample {
   readonly spreadPercent: number;
   /** Each invocation's internal spread, so the two kinds stay distinguishable. */
   readonly internalSpreadPercent: readonly number[];
-  readonly usable: boolean;
+  /**
+   * Whether these invocations agreed with each other.
+   *
+   * ⚠️ **Named for what it checks, which is NOT that the number is reproducible.** It was
+   * called `usable`, and that name claimed the second thing while measuring the first —
+   * measured at 2-9% within a run against 17-22% between runs. A reader who saw
+   * `usable: true` had every reason to quote the figure, and quoting it was the mistake.
+   */
+  readonly samplesAgree: boolean;
 }
 
 /**
- * The same threshold the in-process sampler uses.
+ * Above this, these invocations disagreed enough that something was wrong with the
+ * machine while they ran.
  *
- * Not because 20% is principled, but because reporting one kind of disagreement as
- * unusable while quoting the other would be exactly the inconsistency this file
- * exists to remove.
+ * 🔴 **MEASURED, and the finding is that the THRESHOLD is right and the AXIS is wrong.**
+ * Six CI runs (three per platform) report between-invocation spreads of **2, 3, 3, 3, 4
+ * and 9 per cent**. This check has therefore **never fired and essentially cannot**.
+ * Meanwhile the headline itself, on unchanged code, moved **3299 → 4022 → 4165 ms on
+ * ubuntu (21.5%)** and **4758 → 5233 → 5641 ms on windows (16.9%)** — the same
+ * `(max − min) / median` arithmetic, applied *across* runs instead of *within* one,
+ * **crosses this very threshold.** 20% was a sensible line drawn against the wrong
+ * quantity.
+ *
+ * ⚠️ **So this is kept as a machine-health check and NOT as a statement that the number
+ * is reproducible**, because it cannot be one: between-run drift is invisible from
+ * inside a single run, by construction. `samplesAgree` is named for what it actually
+ * checks. What protects the gate from drift is **headroom in the budget**, not this.
  */
 const MAX_SPREAD_PERCENT = 20;
+
+/**
+ * How far the headline moves between CI runs of unchanged code, measured.
+ *
+ * Printed beside every result so nobody reads a tight within-run spread as a promise of
+ * reproducibility. Two independent confirmations: these CI runs, and B6's laptop, where
+ * the identical configuration returned 4,761 ms and then 6,012 ms hours apart (26%).
+ */
+export const MEASURED_BETWEEN_RUN_DRIFT = '17–22% in CI, 26% on a developer machine';
 
 export async function sampleAcrossInvocations(
   count: number,
@@ -87,6 +115,6 @@ export async function sampleAcrossInvocations(
     maxMs: Math.round(maxMs),
     spreadPercent,
     internalSpreadPercent: internal,
-    usable: spreadPercent <= MAX_SPREAD_PERCENT,
+    samplesAgree: spreadPercent <= MAX_SPREAD_PERCENT,
   };
 }

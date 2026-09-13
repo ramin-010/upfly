@@ -16,10 +16,12 @@
  * number stopped reproducing days later.
  */
 
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import sharp from 'sharp';
+import { findSurvivingPaths } from 'upfly-core';
 import { optimizeTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 
@@ -154,6 +156,38 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
     const brokenAfter = after.graph.byResolution.broken.length;
     stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
     stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
+
+    // 🔴 R72 applied to `optimize`, which is the question `move` raised and nobody asked
+    // here. That count above is produced by the same graph that decided which references
+    // exist, so it shows we did not break what Upfly can READ — and on `railsgirls-com`
+    // 23 ordinary `.html` files fail to parse, so their references are invisible to both
+    // the rewrite and the count.
+    //
+    // ⚠️ **Only conversions that DELETED their original are searched for.** With
+    // `keep-original` the source is still on disk, so an unrewritten reference still
+    // resolves and finding one proves nothing. `replacesOriginal` is the discriminator,
+    // and existence on disk is checked rather than trusted.
+    const deleted: { from: string; to: string }[] = [];
+    for (const conversion of conversions) {
+      if (!conversion.replacesOriginal) continue;
+      if (existsSync(join(root, conversion.asset))) continue;
+      deleted.push({ from: conversion.asset, to: conversion.target });
+    }
+
+    if (deleted.length === 0) {
+      stdout.write('  old paths  no original was deleted, so there is nothing to search for\n');
+    } else {
+      stdout.write(`\n  searching every file for ${deleted.length} deleted original(s)\n`);
+      const survived = await findSurvivingPaths({
+        moves: deleted,
+        files: [...after.discovery.sourceFiles, ...after.discovery.unscannedFiles].map(
+          (file) => file.relative,
+        ),
+        readFile: (relative) => readFile(join(root, relative), 'utf8'),
+        servingDirs: after.servingRoots.dirs,
+      });
+      for (const line of survived.lines) stdout.write(line === '' ? '\n' : `  ${line}\n`);
+    }
 
     return brokenAfter <= brokenBefore;
   } catch (cause) {

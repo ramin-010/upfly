@@ -68,23 +68,32 @@ jobs:
   bench:
     # Rule 16: a performance claim is only ever a number `bench/` produced in CI.
     #
-    # ⚠️ **This measures; it does not yet gate.** The budget it would gate against
-    # was set on a bench tree whose source files averaged 179 bytes, against a
-    # measured 4 704–6 666 in the three §5.1(c) repositories — so it is a budget for
-    # reading 1.3 MB where a 10 000-file tree actually holds 46.7 MB. The tree is
-    # recalibrated; the number has to be re-set, and it has to be re-set from here
-    # rather than from a laptop running an editor and a browser.
+    # ✅ **This now GATES**, set on 2026-09-13 from three runs per platform that this
+    # job had been printing under `--measure-only`:
     #
-    # **To turn this into a gate:** read the headline from three green runs on each
-    # cell, take the highest, add headroom, and set `UPFLY_BENCH_BUDGET_MS` per
-    # platform below — then drop `--measure-only`. Both cells enforce, not just the
-    # fast one: publishing the slower number is the point.
-    name: bench (measure) / ${{ matrix.os }}
+    #   ubuntu   3299, 4022, 4165 ms   max 4165   drift across runs 21.5%
+    #   windows  4758, 5233, 5641 ms   max 5641   drift across runs 16.9%
+    #
+    # 🔴 **The ceiling is a REGRESSION line, not §3.4's 3 000 ms design target, and the
+    # two must not be confused.** §5.1(g) failed against that target and it was
+    # deliberately not moved; a green build here does not mean it is met. The bench
+    # output prints both on every run so the distinction survives being read quickly.
+    #
+    # ⚠️ **The headroom is sized by the measured drift.** At the old 3 500/5 000 the same
+    # commit reported OVER, within, OVER on ubuntu and within, OVER, OVER on windows —
+    # the verdict flipped between runs of identical code. Max observed + ~30% clears it.
+    # The cost is honest: this catches a regression above ~30% and cannot catch a 10%
+    # one. For that, A/B back to back in one session with `bench/src/noise.ts`.
+    name: bench (gate) / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            budget: 5500
+          - os: windows-latest
+            budget: 7500
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -98,7 +107,14 @@ jobs:
         # warm-up. Sampling inside one process controls the filesystem cache and
         # nothing else — three consecutive invocations once reported medians 17%
         # apart while each was internally tight to 4–6%.
-        run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3 --measure-only
+        #
+        # ⚠️ Three invocations is enough to catch a machine having a bad day and is NOT
+        # enough to characterise the spread — the range of three draws understates it.
+        # It is not what the ceiling is set from: that came from the run-to-run figures
+        # above, which is the variation this job structurally cannot see.
+        env:
+          UPFLY_BENCH_BUDGET_MS: ${{ matrix.budget }}
+        run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3
 
   build:
     name: build packages
