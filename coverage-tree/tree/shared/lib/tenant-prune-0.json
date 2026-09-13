@@ -1,0 +1,52 @@
+{
+  "shipment": {
+    "enabled": false,
+    "limit": 44,
+    "mode": "pending"
+  },
+  "payment": {
+    "enabled": false,
+    "limit": 106,
+    "mode": "settled"
+  },
+  "workspace": {
+    "enabled": true,
+    "limit": 275,
+    "mode": "settled"
+  },
+  "audit": {
+    "enabled": true,
+    "limit": 1,
+    "mode": "locked"
+  },
+  "order": {
+    "enabled": false,
+    "limit": 89,
+    "mode": "partial"
+  },
+  "session": {
+    "enabled": false,
+    "limit": 30,
+    "mode": "locked"
+  },
+  "tenant": {
+    "enabled": false,
+    "limit": 34,
+    "mode": "partial"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 298,
+    "mode": "partial"
+  },
+  "reservation": {
+    "enabled": false,
+    "limit": 428,
+    "mode": "pending"
+  },
+  "retention": {
+    "enabled": true,
+    "limit": 469,
+    "mode": "pending"
+  }
+}

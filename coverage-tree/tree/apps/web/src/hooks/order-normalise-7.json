@@ -1,0 +1,42 @@
+{
+  "invoice": {
+    "enabled": false,
+    "limit": 323,
+    "mode": "settled"
+  },
+  "ledger": {
+    "enabled": true,
+    "limit": 372,
+    "mode": "partial"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 334,
+    "mode": "locked"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 126,
+    "mode": "expired"
+  },
+  "quota": {
+    "enabled": true,
+    "limit": 217,
+    "mode": "expired"
+  },
+  "workspace": {
+    "enabled": true,
+    "limit": 433,
+    "mode": "stale"
+  },
+  "threshold": {
+    "enabled": false,
+    "limit": 317,
+    "mode": "settled"
+  },
+  "schedule": {
+    "enabled": false,
+    "limit": 197,
+    "mode": "pending"
+  }
+}

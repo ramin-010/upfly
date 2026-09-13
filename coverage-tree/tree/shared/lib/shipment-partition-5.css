@@ -1,0 +1,134 @@
+/* Layout only. Nothing here addresses a file. */
+
+.subscriber-locked-0 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-locked);
+}
+
+.shipment-stale-1 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 0px;
+  color: var(--text-settled);
+}
+
+.reservation-expired-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 21px;
+  color: var(--text-locked);
+}
+
+.entitlement-partial-3 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 2px;
+  color: var(--text-expired);
+}
+
+.contract-pending-4 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 11px;
+  color: var(--text-draft);
+}
+
+.invoice-draft-5 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 9px;
+  color: var(--text-draft);
+}
+
+.shipment-draft-6 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 4px;
+  color: var(--text-expired);
+}
+
+.order-partial-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-pending);
+}
+
+.retention-draft-8 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 19px;
+  color: var(--text-settled);
+}
+
+.tenant-draft-9 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-partial);
+}
+
+.settlement-pending-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 0px;
+  color: var(--text-partial);
+}
+
+.retention-expired-11 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 3px;
+  color: var(--text-draft);
+}
+
+.entitlement-locked-12 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 2px;
+  color: var(--text-locked);
+}
+
+.quota-locked-13 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-partial);
+}
+
+.audit-stale-14 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 11px;
+  color: var(--text-partial);
+}
+
+.order-settled-15 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 3px;
+  color: var(--text-settled);
+}
+
+.shipment-partial-16 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 16px;
+  color: var(--text-stale);
+}
+
+.contract-locked-17 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 4px;
+  color: var(--text-partial);
+}
+
+.audit-pending-18 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 14px;
+  color: var(--text-locked);
+}

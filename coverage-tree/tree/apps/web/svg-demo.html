@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SVG positions — coverage tree</title>
+  </head>
+  <body>
+    <svg width="400" height="300" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- The modern spelling. -->
+      <image href="/gallery/photo.png" x="0" y="0" width="200" height="150" />
+      <image href="../../shared/assets/img/aliased.png" x="200" y="0" width="240" height="180" />
+
+      <!-- The legacy spelling, which is still overwhelmingly what is in the wild. -->
+      <image xlink:href="/img/texture.png" x="0" y="150" width="128" height="128" />
+      <image xlink:href="/gallery/MixedCase.Png" x="128" y="150" width="160" height="120" />
+      <image xlink:href="/img/absent-from-svg.png" x="288" y="150" width="64" height="48" />
+
+      <!-- Both spellings on one element. The href wins; the xlink:href is a fallback. -->
+      <image
+        href="/srcset/tile@2x.png"
+        xlink:href="/srcset/tile.png"
+        x="0"
+        y="280"
+        width="128"
+        height="96"
+      />
+
+      <defs>
+        <filter id="grain">
+          <feImage href="/img/texture.png" result="grainLayer" />
+          <feBlend in="SourceGraphic" in2="grainLayer" mode="multiply" />
+        </filter>
+        <filter id="grain-legacy">
+          <feImage xlink:href="/gallery/a&amp;b.png" result="legacyLayer" />
+        </filter>
+        <pattern id="tile" patternUnits="userSpaceOnUse" width="64" height="48">
+          <image href="/srcset/tile.png" width="64" height="48" />
+        </pattern>
+      </defs>
+
+      <use href="#tile" />
+      <rect width="400" height="60" fill="url(#tile)" />
+    </svg>
+  </body>
+</html>

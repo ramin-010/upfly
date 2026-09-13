@@ -1,0 +1,106 @@
+/* Layout only. Nothing here addresses a file. */
+
+.settlement-pending-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 22px;
+  color: var(--text-pending);
+}
+
+.invoice-stale-1 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 0px;
+  color: var(--text-draft);
+}
+
+.session-settled-2 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 19px;
+  color: var(--text-partial);
+}
+
+.allocation-draft-3 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 1px;
+  color: var(--text-partial);
+}
+
+.payment-settled-4 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 6px;
+  color: var(--text-pending);
+}
+
+.subscriber-partial-5 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 7px;
+  color: var(--text-draft);
+}
+
+.dispatch-settled-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 6px;
+  color: var(--text-stale);
+}
+
+.audit-draft-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 17px;
+  color: var(--text-stale);
+}
+
+.invoice-draft-8 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-locked);
+}
+
+.settlement-expired-9 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 10px;
+  color: var(--text-partial);
+}
+
+.audit-pending-10 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 17px;
+  color: var(--text-expired);
+}
+
+.allocation-stale-11 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 6px;
+  color: var(--text-draft);
+}
+
+.allocation-stale-12 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 17px;
+  color: var(--text-expired);
+}
+
+.allocation-expired-13 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 4px;
+  color: var(--text-locked);
+}
+
+.threshold-draft-14 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-partial);
+}

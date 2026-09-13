@@ -1,0 +1,37 @@
+{
+  "order": {
+    "enabled": true,
+    "limit": 416,
+    "mode": "pending"
+  },
+  "subscriber": {
+    "enabled": false,
+    "limit": 327,
+    "mode": "pending"
+  },
+  "session": {
+    "enabled": true,
+    "limit": 276,
+    "mode": "stale"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 256,
+    "mode": "pending"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 289,
+    "mode": "draft"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 460,
+    "mode": "settled"
+  },
+  "payment": {
+    "enabled": false,
+    "limit": 223,
+    "mode": "locked"
+  }
+}

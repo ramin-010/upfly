@@ -1,0 +1,17 @@
+.full {
+  background-image: url('./logo.png');
+  padding: 1rem;
+}
+
+.compact {
+  background-image: url('../assets/inline-logo.jpg');
+  padding: 0.25rem;
+}
+
+.deep {
+  background-image: url('../../../../shared/assets/img/thumb.png');
+}
+
+.rooted {
+  background-image: url('/gallery/MixedCase.Png');
+}

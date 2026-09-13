@@ -1,0 +1,57 @@
+{
+  "retention": {
+    "enabled": false,
+    "limit": 73,
+    "mode": "settled"
+  },
+  "shipment": {
+    "enabled": true,
+    "limit": 229,
+    "mode": "locked"
+  },
+  "schedule": {
+    "enabled": true,
+    "limit": 300,
+    "mode": "locked"
+  },
+  "threshold": {
+    "enabled": true,
+    "limit": 316,
+    "mode": "draft"
+  },
+  "contract": {
+    "enabled": true,
+    "limit": 355,
+    "mode": "settled"
+  },
+  "workspace": {
+    "enabled": false,
+    "limit": 316,
+    "mode": "partial"
+  },
+  "entitlement": {
+    "enabled": false,
+    "limit": 410,
+    "mode": "pending"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 143,
+    "mode": "settled"
+  },
+  "dispatch": {
+    "enabled": false,
+    "limit": 125,
+    "mode": "pending"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 209,
+    "mode": "partial"
+  },
+  "quota": {
+    "enabled": false,
+    "limit": 320,
+    "mode": "pending"
+  }
+}

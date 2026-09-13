@@ -1,0 +1,113 @@
+/* Layout only. Nothing here addresses a file. */
+
+.schedule-partial-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-expired);
+}
+
+.allocation-draft-1 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 22px;
+  color: var(--text-stale);
+}
+
+.ledger-settled-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 16px;
+  color: var(--text-draft);
+}
+
+.audit-locked-3 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 1px;
+  color: var(--text-pending);
+}
+
+.invoice-pending-4 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 20px;
+  color: var(--text-pending);
+}
+
+.retention-draft-5 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 15px;
+  color: var(--text-pending);
+}
+
+.ledger-stale-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 10px;
+  color: var(--text-draft);
+}
+
+.shipment-draft-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 8px;
+  color: var(--text-draft);
+}
+
+.settlement-locked-8 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 17px;
+  color: var(--text-locked);
+}
+
+.ledger-locked-9 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 19px;
+  color: var(--text-pending);
+}
+
+.ledger-stale-10 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 16px;
+  color: var(--text-partial);
+}
+
+.order-settled-11 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 23px;
+  color: var(--text-pending);
+}
+
+.settlement-partial-12 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 0px;
+  color: var(--text-locked);
+}
+
+.entitlement-draft-13 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 0px;
+  color: var(--text-pending);
+}
+
+.settlement-partial-14 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-locked);
+}
+
+.order-draft-15 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 17px;
+  color: var(--text-partial);
+}

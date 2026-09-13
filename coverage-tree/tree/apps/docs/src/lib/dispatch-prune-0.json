@@ -1,0 +1,52 @@
+{
+  "dispatch": {
+    "enabled": true,
+    "limit": 301,
+    "mode": "draft"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 307,
+    "mode": "settled"
+  },
+  "contract": {
+    "enabled": true,
+    "limit": 47,
+    "mode": "settled"
+  },
+  "retention": {
+    "enabled": false,
+    "limit": 266,
+    "mode": "pending"
+  },
+  "shipment": {
+    "enabled": true,
+    "limit": 139,
+    "mode": "pending"
+  },
+  "entitlement": {
+    "enabled": true,
+    "limit": 119,
+    "mode": "partial"
+  },
+  "session": {
+    "enabled": false,
+    "limit": 49,
+    "mode": "pending"
+  },
+  "invoice": {
+    "enabled": false,
+    "limit": 306,
+    "mode": "locked"
+  },
+  "audit": {
+    "enabled": true,
+    "limit": 461,
+    "mode": "settled"
+  },
+  "threshold": {
+    "enabled": true,
+    "limit": 442,
+    "mode": "stale"
+  }
+}

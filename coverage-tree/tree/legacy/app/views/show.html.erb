@@ -1,0 +1,12 @@
+<% content_for :head do %>
+  <link rel="icon" href="/assets/emblem.png" />
+<% end %>
+
+<section class="plate">
+  <img src="../../public/gallery/plate.jpg" alt="Relative, in ERB" />
+  <img src="../assets/emblem.png" alt="Relative, into the asset pipeline" />
+  <%= image_tag "emblem.png" %>
+  <%= image_tag asset_path("gallery/plate.jpg") %>
+  <img src="/gallery/plate.jpg" alt="Root-relative, against a root this app does not declare" />
+  <img src="/gallery/missing-from-erb.png" alt="Broken on purpose" />
+</section>

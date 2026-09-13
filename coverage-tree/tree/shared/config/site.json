@@ -1,0 +1,25 @@
+{
+  "name": "Coverage Tree",
+  "logo": "../assets/img/logo.png",
+  "hero": "../assets/img/hero.jpg",
+  "icon": "../assets/img/icon.svg",
+  "missing": "../assets/img/not-here.png",
+  "remote": "https://cdn.example.com/remote/site.png",
+  "theme": {
+    "light": "../../apps/web/public/theme-light.png",
+    "dark": "../../apps/web/public/theme-dark.png"
+  },
+  "docs": {
+    "brand": "../../apps/docs/public/brand.png",
+    "screenshot": "../../apps/docs/public/img/screenshot.png"
+  },
+  "notes": [
+    "The path ../assets/img/logo.png above is the only logo.png this file means.",
+    "There are six files named logo.png in this repository.",
+    "image/png is a media type, not a path."
+  ],
+  "build": {
+    "outDir": "dist",
+    "assetsInclude": ["**/*.png", "**/*.jpg"]
+  }
+}

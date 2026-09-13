@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Web — coverage tree</title>
+
+    <link rel="icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="mask-icon" href="/icons/mask.svg" color="#1f2933" />
+    <link rel="manifest" href="/icons/app.webmanifest" />
+    <link rel="stylesheet" href="/css/site.css" />
+
+    <style>
+      .hero {
+        background-image: url("/img/banner.png");
+      }
+      .hero--compact {
+        background-image: url(/img/texture.png);
+      }
+      /* A url() inside a comment in a <style> element: url("/img/commented-out.png") */
+      .crest {
+        background: no-repeat center/cover url('/gallery/photo.png');
+      }
+    </style>
+  </head>
+
+  <body>
+    <header class="masthead" style="background-image: url('/img/team.jpg')">
+      <img class="brand" src="/brand.png" alt="Brand" width="320" height="240" />
+      <img class="wordmark" src="./public/logo.png" alt="Wordmark" />
+    </header>
+
+    <main>
+      <!-- A single-candidate srcset: one alternative, no descriptor list. -->
+      <img src="/srcset/tile.png" srcset="/srcset/tile@2x.png 2x" alt="Tile" />
+
+      <!-- Three candidates with x descriptors. -->
+      <img
+        src="/srcset/tile.png"
+        srcset="/srcset/tile.png 1x, /srcset/tile@2x.png 2x, /srcset/tile@3x.png 3x"
+        alt="Tile, three densities"
+      />
+
+      <!-- Three candidates with w descriptors, and a sizes attribute that names no path. -->
+      <img
+        src="/srcset/card-800.jpg"
+        srcset="/srcset/card-400.jpg 400w, /srcset/card-800.jpg 800w, /srcset/card-1200.jpg 1200w"
+        sizes="(max-width: 600px) 400px, 800px"
+        alt="Card"
+      />
+
+      <!-- Five candidates, mixed formatting, one of which points at nothing. -->
+      <img
+        src="/srcset/wide.jpg"
+        srcset="
+          /srcset/narrow.jpg   480w,
+          /srcset/card-400.jpg 400w,
+          /srcset/card-800.jpg 800w,
+          /srcset/missing-candidate.jpg 1000w,
+          /srcset/wide.jpg     960w
+        "
+        alt="Responsive, with one candidate missing on purpose"
+      />
+
+      <picture>
+        <source srcset="/srcset/card-1200.jpg 1200w, /srcset/card-800.jpg 800w" media="(min-width: 900px)" />
+        <source srcset="/srcset/card-400.jpg" media="(min-width: 400px)" />
+        <img src="/srcset/card-400.jpg" alt="Picture fallback" />
+      </picture>
+
+      <picture>
+        <source srcset="/gallery/photo@2x.png 2x, /gallery/photo.png 1x" type="image/png" />
+        <img src="/gallery/photo.png" alt="Gallery photo" />
+      </picture>
+
+      <section class="sourced">
+        <img src="src/assets/inline-logo.jpg" alt="Bundled logo, referenced without a leading dot" />
+        <img src="./public/img/texture.png" alt="Texture, relative to this file" />
+        <img src="../../shared/assets/img/thumb.png" alt="Shared thumbnail, two levels up" />
+      </section>
+
+      <section class="elsewhere">
+        <img src="https://cdn.example.com/remote/hero.png" alt="Absolute URL" />
+        <img src="//cdn.example.com/protocol-relative.png" alt="Protocol-relative URL" />
+        <img
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+          alt="Inline data URI"
+        />
+        <img src="/img/missing-on-purpose.png" alt="Deliberately broken" />
+      </section>
+
+      <!-- Decoy: this comment names /gallery/hero (1).png and is not a reference. -->
+    </main>
+  </body>
+</html>

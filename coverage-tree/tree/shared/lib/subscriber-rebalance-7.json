@@ -1,0 +1,52 @@
+{
+  "tenant": {
+    "enabled": false,
+    "limit": 230,
+    "mode": "expired"
+  },
+  "audit": {
+    "enabled": true,
+    "limit": 277,
+    "mode": "stale"
+  },
+  "settlement": {
+    "enabled": false,
+    "limit": 189,
+    "mode": "expired"
+  },
+  "payment": {
+    "enabled": true,
+    "limit": 126,
+    "mode": "draft"
+  },
+  "contract": {
+    "enabled": true,
+    "limit": 0,
+    "mode": "stale"
+  },
+  "quota": {
+    "enabled": false,
+    "limit": 176,
+    "mode": "locked"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 245,
+    "mode": "locked"
+  },
+  "schedule": {
+    "enabled": true,
+    "limit": 470,
+    "mode": "expired"
+  },
+  "invoice": {
+    "enabled": true,
+    "limit": 264,
+    "mode": "pending"
+  },
+  "ledger": {
+    "enabled": false,
+    "limit": 41,
+    "mode": "partial"
+  }
+}

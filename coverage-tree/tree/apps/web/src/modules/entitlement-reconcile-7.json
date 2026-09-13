@@ -1,0 +1,47 @@
+{
+  "workspace": {
+    "enabled": false,
+    "limit": 115,
+    "mode": "draft"
+  },
+  "threshold": {
+    "enabled": true,
+    "limit": 345,
+    "mode": "locked"
+  },
+  "entitlement": {
+    "enabled": false,
+    "limit": 383,
+    "mode": "stale"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 117,
+    "mode": "partial"
+  },
+  "dispatch": {
+    "enabled": true,
+    "limit": 160,
+    "mode": "stale"
+  },
+  "order": {
+    "enabled": true,
+    "limit": 303,
+    "mode": "locked"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 214,
+    "mode": "locked"
+  },
+  "contract": {
+    "enabled": false,
+    "limit": 239,
+    "mode": "stale"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 202,
+    "mode": "draft"
+  }
+}

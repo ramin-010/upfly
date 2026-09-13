@@ -1,0 +1,37 @@
+{
+  "workspace": {
+    "enabled": true,
+    "limit": 243,
+    "mode": "settled"
+  },
+  "retention": {
+    "enabled": true,
+    "limit": 133,
+    "mode": "partial"
+  },
+  "ledger": {
+    "enabled": true,
+    "limit": 179,
+    "mode": "partial"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 123,
+    "mode": "partial"
+  },
+  "order": {
+    "enabled": false,
+    "limit": 452,
+    "mode": "pending"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 201,
+    "mode": "expired"
+  },
+  "allocation": {
+    "enabled": false,
+    "limit": 303,
+    "mode": "stale"
+  }
+}

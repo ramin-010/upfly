@@ -1,0 +1,85 @@
+/* Layout only. Nothing here addresses a file. */
+
+.subscriber-stale-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 12px;
+  color: var(--text-stale);
+}
+
+.subscriber-draft-1 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 21px;
+  color: var(--text-locked);
+}
+
+.threshold-settled-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 5px;
+  color: var(--text-stale);
+}
+
+.tenant-locked-3 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 19px;
+  color: var(--text-pending);
+}
+
+.invoice-settled-4 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 16px;
+  color: var(--text-draft);
+}
+
+.threshold-locked-5 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 12px;
+  color: var(--text-settled);
+}
+
+.retention-partial-6 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 19px;
+  color: var(--text-expired);
+}
+
+.schedule-partial-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 23px;
+  color: var(--text-partial);
+}
+
+.contract-partial-8 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 16px;
+  color: var(--text-pending);
+}
+
+.allocation-expired-9 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 9px;
+  color: var(--text-draft);
+}
+
+.retention-stale-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 8px;
+  color: var(--text-draft);
+}
+
+.payment-pending-11 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 2px;
+  color: var(--text-locked);
+}

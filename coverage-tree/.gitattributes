@@ -1,0 +1,9 @@
+# The answer key records a byte OFFSET for every reference. A line-ending conversion on
+# checkout would shift every offset in every text file, and the self-check would report a
+# tree/key mismatch — blaming the tree for something git did on the way out of the object
+# store.
+#
+# `-text` turns every conversion off: what was committed is what lands in the working
+# tree, on every platform. The repository root sets `* text=auto eol=lf`, which would
+# otherwise apply here.
+* -text

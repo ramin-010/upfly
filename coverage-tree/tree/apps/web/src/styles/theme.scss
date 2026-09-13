@@ -1,0 +1,56 @@
+// Sass. Some of these are not knowable without running the preprocessor, and they must
+// not be confused with a literal path that points at nothing.
+
+$hero: '/img/hero.jpg';
+$image-root: '/gallery';
+
+.theme {
+  // A literal path, resolved against the serving root.
+  background-image: url('/img/banner.png');
+
+  // Relative to this file: src/styles -> src -> assets
+  .logo {
+    background-image: url('../assets/inline-logo.jpg');
+  }
+
+  .chart {
+    background-image: url("../assets/chart.png");
+  }
+
+  // Four levels up, into the shared workspace package.
+  .shared-thumb {
+    background-image: url('../../../../shared/assets/img/thumb.png');
+  }
+}
+
+// A variable stands in for the whole path. Nothing static to resolve.
+.hero-from-variable {
+  background-image: url($hero);
+}
+
+// One reference standing for three files, the shape fixtures/partial-pattern is built
+// around: theme-light, theme-dark and theme-sepia all exist.
+@each $mode in (light, dark, sepia) {
+  .theme--#{$mode} {
+    background-image: url('/theme-#{$mode}.png');
+  }
+}
+
+// Interpolation at the START of the path, which is a harder case than a trailing one:
+// the prefix that would anchor a glob is the part that is unknown.
+.interpolated-prefix {
+  background-image: url('#{$image-root}/photo.png');
+}
+
+// Literal again, so the file either exists or the reference is broken.
+.definitely-there {
+  background-image: url('/gallery/MixedCase.Png');
+}
+
+.definitely-not-there {
+  background-image: url('/gallery/absent-from-scss.png');
+}
+
+// A comment, in both spellings Sass accepts.
+// background-image: url('/img/scss-line-comment.png');
+/* background-image: url('/img/scss-block-comment.png'); */

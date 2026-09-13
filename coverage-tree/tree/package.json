@@ -1,0 +1,11 @@
+{
+  "name": "coverage-tree",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A repository whose asset references are all known in advance.",
+  "workspaces": ["apps/*", "shared"],
+  "scripts": {
+    "build": "echo 'this tree is never built; it is read'",
+    "lint": "echo 'nor linted'"
+  }
+}

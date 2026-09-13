@@ -1,0 +1,57 @@
+{
+  "contract": {
+    "enabled": true,
+    "limit": 103,
+    "mode": "settled"
+  },
+  "session": {
+    "enabled": false,
+    "limit": 98,
+    "mode": "stale"
+  },
+  "subscriber": {
+    "enabled": false,
+    "limit": 256,
+    "mode": "locked"
+  },
+  "retention": {
+    "enabled": false,
+    "limit": 233,
+    "mode": "partial"
+  },
+  "quota": {
+    "enabled": true,
+    "limit": 46,
+    "mode": "locked"
+  },
+  "reservation": {
+    "enabled": true,
+    "limit": 85,
+    "mode": "draft"
+  },
+  "threshold": {
+    "enabled": true,
+    "limit": 321,
+    "mode": "expired"
+  },
+  "allocation": {
+    "enabled": false,
+    "limit": 273,
+    "mode": "pending"
+  },
+  "tenant": {
+    "enabled": false,
+    "limit": 372,
+    "mode": "partial"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 89,
+    "mode": "pending"
+  },
+  "invoice": {
+    "enabled": false,
+    "limit": 196,
+    "mode": "partial"
+  }
+}

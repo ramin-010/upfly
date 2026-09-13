@@ -1,0 +1,148 @@
+/* Layout only. Nothing here addresses a file. */
+
+.dispatch-stale-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 23px;
+  color: var(--text-stale);
+}
+
+.settlement-draft-1 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 20px;
+  color: var(--text-stale);
+}
+
+.retention-stale-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 12px;
+  color: var(--text-stale);
+}
+
+.audit-partial-3 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 2px;
+  color: var(--text-draft);
+}
+
+.schedule-draft-4 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 2px;
+  color: var(--text-pending);
+}
+
+.tenant-expired-5 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 0px;
+  color: var(--text-stale);
+}
+
+.ledger-draft-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 0px;
+  color: var(--text-expired);
+}
+
+.invoice-settled-7 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 15px;
+  color: var(--text-stale);
+}
+
+.schedule-settled-8 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 23px;
+  color: var(--text-pending);
+}
+
+.allocation-pending-9 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 1px;
+  color: var(--text-stale);
+}
+
+.tenant-settled-10 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 11px;
+  color: var(--text-pending);
+}
+
+.contract-settled-11 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 16px;
+  color: var(--text-settled);
+}
+
+.quota-settled-12 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 8px;
+  color: var(--text-expired);
+}
+
+.order-draft-13 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 13px;
+  color: var(--text-settled);
+}
+
+.order-pending-14 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 22px;
+  color: var(--text-partial);
+}
+
+.dispatch-locked-15 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 11px;
+  color: var(--text-settled);
+}
+
+.entitlement-draft-16 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 20px;
+  color: var(--text-draft);
+}
+
+.session-stale-17 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 9px;
+  color: var(--text-pending);
+}
+
+.session-settled-18 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 11px;
+  color: var(--text-partial);
+}
+
+.dispatch-partial-19 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 15px;
+  color: var(--text-settled);
+}
+
+.order-locked-20 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 18px;
+  color: var(--text-stale);
+}

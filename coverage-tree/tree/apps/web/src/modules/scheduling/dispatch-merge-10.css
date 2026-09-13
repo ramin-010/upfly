@@ -1,0 +1,134 @@
+/* Layout only. Nothing here addresses a file. */
+
+.threshold-settled-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 13px;
+  color: var(--text-settled);
+}
+
+.shipment-stale-1 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 1px;
+  color: var(--text-stale);
+}
+
+.contract-pending-2 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 0px;
+  color: var(--text-expired);
+}
+
+.workspace-stale-3 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 17px;
+  color: var(--text-locked);
+}
+
+.schedule-locked-4 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 21px;
+  color: var(--text-expired);
+}
+
+.contract-stale-5 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 2px;
+  color: var(--text-draft);
+}
+
+.allocation-draft-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 20px;
+  color: var(--text-expired);
+}
+
+.session-partial-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 8px;
+  color: var(--text-expired);
+}
+
+.subscriber-expired-8 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 10px;
+  color: var(--text-locked);
+}
+
+.shipment-settled-9 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 15px;
+  color: var(--text-draft);
+}
+
+.dispatch-stale-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 20px;
+  color: var(--text-partial);
+}
+
+.order-settled-11 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 17px;
+  color: var(--text-expired);
+}
+
+.payment-locked-12 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 13px;
+  color: var(--text-draft);
+}
+
+.shipment-expired-13 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 5px;
+  color: var(--text-settled);
+}
+
+.retention-locked-14 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 15px;
+  color: var(--text-partial);
+}
+
+.reservation-pending-15 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 5px;
+  color: var(--text-stale);
+}
+
+.threshold-pending-16 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 1px;
+  color: var(--text-stale);
+}
+
+.shipment-locked-17 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 13px;
+  color: var(--text-pending);
+}
+
+.order-locked-18 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 4px;
+  color: var(--text-stale);
+}

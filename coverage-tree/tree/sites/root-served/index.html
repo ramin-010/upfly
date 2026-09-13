@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Served from its own root</title>
+    <link rel="icon" href="/img/logo.png" />
+    <style>
+      body {
+        background-image: url('/img/photo.jpg');
+      }
+      .hero {
+        background-image: url('img/hero.jpg');
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      This site has no public/ directory. Its own root IS the serving root, so every file
+      beside this one is reachable over the web — templates, partials and all. That is
+      R63's shape, and the caveat applies to everything rather than to one subtree.
+    -->
+
+    <img src="/img/logo.png" alt="Root-relative, against this site's own root" />
+    <img src="img/photo.jpg" alt="Bare relative" />
+    <img src="./img/hero.jpg" alt="Explicitly relative" />
+    <img src="/img/missing-from-root-served.png" alt="Broken on purpose" />
+
+    <!-- Across the workspace, into an app that has a public/ directory. -->
+    <img src="../../apps/web/public/brand.png" alt="Another app's asset, by relative path" />
+
+    <!-- The same basename as five other files in this repository. -->
+    <img src="/img/logo.png" alt="The same file again, named twice" />
+
+    <p>
+      The logo at /img/logo.png is not the same picture as the one in apps/web/public,
+      and neither is the one in apps/docs/public.
+    </p>
+  </body>
+</html>

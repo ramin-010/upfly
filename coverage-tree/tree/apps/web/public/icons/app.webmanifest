@@ -1,0 +1,45 @@
+{
+  "name": "Coverage Tree",
+  "short_name": "Tree",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1f2933",
+  "theme_color": "#1f2933",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/media/poster.jpg",
+      "sizes": "640x360",
+      "type": "image/jpeg"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Gallery",
+      "url": "/gallery",
+      "icons": [{ "src": "/gallery/photo.png", "sizes": "200x150" }]
+    }
+  ]
+}

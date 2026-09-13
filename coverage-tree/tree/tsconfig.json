@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./shared/*"],
+      "@img/*": ["./shared/assets/img/*"],
+      "@web/*": ["./apps/web/src/*"]
+    }
+  },
+  "include": ["apps", "shared", "sites"]
+}

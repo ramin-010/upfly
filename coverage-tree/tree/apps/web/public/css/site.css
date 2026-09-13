@@ -1,0 +1,139 @@
+/* Site stylesheet. Lives inside the serving root, so a root-relative url() here and a
+   root-relative src in index.html must land on the same file. */
+
+:root {
+  --masthead: url(/img/banner.png);
+}
+
+.masthead {
+  background-image: var(--masthead);
+}
+
+/* url() bare, single-quoted and double-quoted — three spellings of one thing. */
+.hero-bare {
+  background-image: url(/img/hero.jpg);
+}
+
+.hero-single {
+  background-image: url('/img/hero.jpg');
+}
+
+.hero-double {
+  background-image: url("/img/hero.jpg");
+}
+
+.hero-spaced {
+  background-image: url(  "/img/team.jpg"  );
+}
+
+/* Relative to this file: css/ -> .. -> img/ */
+.texture-relative {
+  background-image: url(../img/texture.png);
+}
+
+.gallery-relative {
+  background-image: url('../gallery/photo.png');
+}
+
+/* Two levels up and back down into the bundled source. */
+.bundled {
+  background-image: url("../../src/assets/chart.png");
+}
+
+/* A filename with spaces and parentheses. Unquoted url() cannot carry these, so the
+   quoting is load-bearing rather than stylistic — R26's class. */
+.spaced-name {
+  background-image: url("/gallery/hero image.png");
+}
+
+.parenthesised-name {
+  background-image: url('/gallery/hero (1).png');
+}
+
+.both {
+  background-image: url("/gallery/hero image (2) copy.png");
+}
+
+.uppercase-extension {
+  background-image: url(/gallery/Banner.PNG);
+}
+
+/* image-set(), standard and prefixed. */
+.card {
+  background-image: image-set(url("/srcset/card-400.jpg") 1x, url("/srcset/card-800.jpg") 2x);
+}
+
+.card-wide {
+  background-image: image-set(
+    "/srcset/card-800.jpg" 1x,
+    "/srcset/card-1200.jpg" 2x
+  );
+}
+
+.tile {
+  background-image: -webkit-image-set(url(/srcset/tile.png) 1x, url(/srcset/tile@2x.png) 2x);
+}
+
+.tile-three {
+  background-image: -webkit-image-set(
+    url('/srcset/tile.png') 1x,
+    url('/srcset/tile@2x.png') 2x,
+    url('/srcset/tile@3x.png') 3x
+  );
+}
+
+/* url() nested inside another function. */
+.overlay {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url("/img/banner.png");
+}
+
+.crossfade {
+  background-image: cross-fade(url("/gallery/photo.png") 40%, url("/gallery/photo@2x.png"));
+}
+
+.masked {
+  mask-image: image-set(url(/icons/mask.svg) 1x);
+}
+
+/* A url() inside a comment. Never a reference.
+   .decoy { background-image: url("/img/in-a-comment.png"); }
+   background: url(/gallery/also-in-a-comment.png);
+*/
+
+/* A url() in a selector rather than a declaration. Also never a reference. */
+li[data-bg="url(/img/in-a-selector.png)"] {
+  outline: 1px solid red;
+}
+
+a[href$="/img/suffix-match.png"] {
+  font-weight: 600;
+}
+
+/* A well-formed url() pointing at nothing. */
+.missing {
+  background-image: url("/img/missing-from-css.png");
+}
+
+/* Not a path at all: a fragment, and a data URI. */
+.fragment {
+  filter: url(#grain);
+  clip-path: url(#clip);
+}
+
+.inline-data {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3C/svg%3E");
+}
+
+/* An absolute URL and a protocol-relative one. */
+.remote {
+  background-image: url("https://cdn.example.com/remote/backdrop.png");
+}
+
+.remote-protocol-relative {
+  background-image: url(//cdn.example.com/backdrop.png);
+}
+
+@font-face {
+  font-family: 'Placeholder';
+  src: url('/fonts/placeholder.woff2') format('woff2');
+}

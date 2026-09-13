@@ -1,0 +1,62 @@
+{
+  "session": {
+    "enabled": false,
+    "limit": 175,
+    "mode": "expired"
+  },
+  "contract": {
+    "enabled": false,
+    "limit": 378,
+    "mode": "pending"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 129,
+    "mode": "settled"
+  },
+  "workspace": {
+    "enabled": true,
+    "limit": 473,
+    "mode": "draft"
+  },
+  "tenant": {
+    "enabled": false,
+    "limit": 185,
+    "mode": "expired"
+  },
+  "entitlement": {
+    "enabled": false,
+    "limit": 77,
+    "mode": "stale"
+  },
+  "quota": {
+    "enabled": true,
+    "limit": 170,
+    "mode": "stale"
+  },
+  "reservation": {
+    "enabled": true,
+    "limit": 314,
+    "mode": "locked"
+  },
+  "allocation": {
+    "enabled": false,
+    "limit": 263,
+    "mode": "locked"
+  },
+  "settlement": {
+    "enabled": false,
+    "limit": 135,
+    "mode": "settled"
+  },
+  "audit": {
+    "enabled": true,
+    "limit": 222,
+    "mode": "draft"
+  },
+  "ledger": {
+    "enabled": false,
+    "limit": 184,
+    "mode": "settled"
+  }
+}

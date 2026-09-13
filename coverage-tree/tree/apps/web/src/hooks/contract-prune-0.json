@@ -1,0 +1,52 @@
+{
+  "threshold": {
+    "enabled": true,
+    "limit": 495,
+    "mode": "pending"
+  },
+  "subscriber": {
+    "enabled": false,
+    "limit": 431,
+    "mode": "locked"
+  },
+  "audit": {
+    "enabled": false,
+    "limit": 446,
+    "mode": "expired"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 388,
+    "mode": "partial"
+  },
+  "invoice": {
+    "enabled": true,
+    "limit": 55,
+    "mode": "draft"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 227,
+    "mode": "draft"
+  },
+  "dispatch": {
+    "enabled": true,
+    "limit": 80,
+    "mode": "draft"
+  },
+  "session": {
+    "enabled": false,
+    "limit": 4,
+    "mode": "pending"
+  },
+  "retention": {
+    "enabled": false,
+    "limit": 335,
+    "mode": "pending"
+  },
+  "workspace": {
+    "enabled": false,
+    "limit": 56,
+    "mode": "partial"
+  }
+}

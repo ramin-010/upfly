@@ -1,0 +1,47 @@
+{
+  "entitlement": {
+    "enabled": false,
+    "limit": 30,
+    "mode": "partial"
+  },
+  "workspace": {
+    "enabled": false,
+    "limit": 113,
+    "mode": "draft"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 157,
+    "mode": "locked"
+  },
+  "payment": {
+    "enabled": false,
+    "limit": 267,
+    "mode": "stale"
+  },
+  "retention": {
+    "enabled": true,
+    "limit": 50,
+    "mode": "partial"
+  },
+  "subscriber": {
+    "enabled": false,
+    "limit": 328,
+    "mode": "pending"
+  },
+  "reservation": {
+    "enabled": true,
+    "limit": 435,
+    "mode": "pending"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 353,
+    "mode": "draft"
+  },
+  "contract": {
+    "enabled": false,
+    "limit": 111,
+    "mode": "stale"
+  }
+}

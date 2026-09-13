@@ -1,0 +1,42 @@
+{
+  "subscriber": {
+    "enabled": true,
+    "limit": 397,
+    "mode": "locked"
+  },
+  "retention": {
+    "enabled": true,
+    "limit": 269,
+    "mode": "pending"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 48,
+    "mode": "settled"
+  },
+  "dispatch": {
+    "enabled": false,
+    "limit": 100,
+    "mode": "expired"
+  },
+  "entitlement": {
+    "enabled": true,
+    "limit": 188,
+    "mode": "draft"
+  },
+  "order": {
+    "enabled": true,
+    "limit": 396,
+    "mode": "partial"
+  },
+  "threshold": {
+    "enabled": true,
+    "limit": 21,
+    "mode": "locked"
+  },
+  "workspace": {
+    "enabled": false,
+    "limit": 243,
+    "mode": "draft"
+  }
+}

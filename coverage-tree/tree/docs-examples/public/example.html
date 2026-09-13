@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Example page</title>
+  </head>
+  <body>
+    <!--
+      A standalone example file that sits inside a directory named `public` which is NOT
+      a serving root. A resolver that climbs ancestors looking for a directory *named*
+      public will treat this as root-relative against docs-examples/public and resolve
+      it. Whether that is right is the open question this file exists to pose.
+    -->
+    <img src="/sample.png" alt="Root-relative, inside a public/ that serves nothing" />
+    <img src="/logo.png" alt="A basename that exists in five other directories" />
+
+    <!-- Relative, which is unambiguous either way. -->
+    <img src="./sample.png" alt="Relative, beside this file" />
+    <img src="logo.png" alt="Bare, beside this file" />
+  </body>
+</html>

@@ -1,0 +1,51 @@
+// Less. The same shapes again in a third dialect, because "the CSS adapter handles it"
+// has to mean all three extensions rather than the one that was tested.
+
+@image-root: "/gallery";
+@banner: "/img/banner.png";
+
+.legacy-hero {
+  background-image: url("/img/hero.jpg");
+}
+
+.legacy-bare {
+  background-image: url(/img/team.jpg);
+}
+
+.legacy-single {
+  background-image: url('/gallery/photo.png');
+}
+
+.legacy-relative {
+  background-image: url("../assets/chart.png");
+}
+
+.legacy-deep {
+  background-image: url('../../../../shared/assets/img/aliased.png');
+}
+
+// A variable for the whole value.
+.legacy-from-variable {
+  background-image: url(@banner);
+}
+
+// Less interpolation.
+.legacy-interpolated {
+  background-image: url("@{image-root}/photo@2x.png");
+}
+
+.legacy-missing {
+  background-image: url("/img/missing-from-less.png");
+}
+
+.legacy-remote {
+  background-image: url("https://cdn.example.com/remote/legacy.png");
+}
+
+// Commented out, twice.
+// background-image: url("/img/less-line-comment.png");
+/* background-image: url("/img/less-block-comment.png"); */
+
+.legacy-image-set {
+  background-image: -webkit-image-set(url("/srcset/tile.png") 1x, url("/srcset/tile@2x.png") 2x);
+}

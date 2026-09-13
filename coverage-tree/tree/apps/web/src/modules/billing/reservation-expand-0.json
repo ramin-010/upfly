@@ -1,0 +1,57 @@
+{
+  "schedule": {
+    "enabled": false,
+    "limit": 35,
+    "mode": "expired"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 379,
+    "mode": "locked"
+  },
+  "quota": {
+    "enabled": false,
+    "limit": 213,
+    "mode": "pending"
+  },
+  "audit": {
+    "enabled": true,
+    "limit": 87,
+    "mode": "locked"
+  },
+  "ledger": {
+    "enabled": true,
+    "limit": 466,
+    "mode": "locked"
+  },
+  "threshold": {
+    "enabled": false,
+    "limit": 424,
+    "mode": "expired"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 79,
+    "mode": "partial"
+  },
+  "payment": {
+    "enabled": false,
+    "limit": 231,
+    "mode": "pending"
+  },
+  "workspace": {
+    "enabled": true,
+    "limit": 114,
+    "mode": "stale"
+  },
+  "session": {
+    "enabled": true,
+    "limit": 214,
+    "mode": "stale"
+  },
+  "entitlement": {
+    "enabled": true,
+    "limit": 132,
+    "mode": "partial"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "contract": {
+    "enabled": false,
+    "limit": 300,
+    "mode": "partial"
+  },
+  "threshold": {
+    "enabled": false,
+    "limit": 463,
+    "mode": "stale"
+  },
+  "shipment": {
+    "enabled": true,
+    "limit": 311,
+    "mode": "pending"
+  },
+  "workspace": {
+    "enabled": false,
+    "limit": 64,
+    "mode": "locked"
+  },
+  "schedule": {
+    "enabled": true,
+    "limit": 38,
+    "mode": "draft"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 290,
+    "mode": "expired"
+  },
+  "audit": {
+    "enabled": false,
+    "limit": 185,
+    "mode": "settled"
+  },
+  "reservation": {
+    "enabled": false,
+    "limit": 124,
+    "mode": "pending"
+  }
+}

@@ -1,0 +1,15 @@
+{% extends "base.njk" %}
+
+{% block content %}
+  <img src="/img/logo.png" alt="Root-relative, in Nunjucks" />
+  <img src="../img/photo.jpg" alt="Relative, in Nunjucks" />
+  <img src="{{ hero }}" alt="Interpolated by the template engine" />
+  <img src="/img/{{ name }}.jpg" alt="Half literal, half interpolated" />
+  <img src="/img/missing-from-njk.png" alt="Broken on purpose" />
+
+  <style>
+    .njk-hero {
+      background-image: url('/img/hero.jpg');
+    }
+  </style>
+{% endblock %}

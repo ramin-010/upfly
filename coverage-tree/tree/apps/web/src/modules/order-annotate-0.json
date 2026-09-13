@@ -1,0 +1,52 @@
+{
+  "shipment": {
+    "enabled": true,
+    "limit": 224,
+    "mode": "settled"
+  },
+  "tenant": {
+    "enabled": false,
+    "limit": 57,
+    "mode": "settled"
+  },
+  "quota": {
+    "enabled": true,
+    "limit": 295,
+    "mode": "locked"
+  },
+  "settlement": {
+    "enabled": true,
+    "limit": 267,
+    "mode": "settled"
+  },
+  "entitlement": {
+    "enabled": false,
+    "limit": 171,
+    "mode": "partial"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 478,
+    "mode": "pending"
+  },
+  "reservation": {
+    "enabled": true,
+    "limit": 126,
+    "mode": "stale"
+  },
+  "ledger": {
+    "enabled": true,
+    "limit": 363,
+    "mode": "draft"
+  },
+  "dispatch": {
+    "enabled": true,
+    "limit": 170,
+    "mode": "pending"
+  },
+  "audit": {
+    "enabled": false,
+    "limit": 83,
+    "mode": "locked"
+  }
+}

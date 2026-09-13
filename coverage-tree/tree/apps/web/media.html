@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media positions — coverage tree</title>
+  </head>
+  <body>
+    <!--
+      Every position here is one the HTML adapter claims. The targets are deliberately
+      mixed: some are images, some are real files the engine does not index. Those two
+      must not come out the same.
+    -->
+
+    <video controls poster="/media/poster.jpg" src="/media/clip.mp4" width="640" height="360">
+      <source src="/media/trailer.mp4" type="video/mp4" />
+      <source src="/media/clip.mp4" type="video/mp4" />
+      <track src="/media/captions.vtt" kind="captions" srclang="en" label="English" default />
+      <track src="/media/captions-de.vtt" kind="captions" srclang="de" label="Deutsch" />
+    </video>
+
+    <video poster="/media/thumb.jpg" width="160" height="90">
+      <source src="/media/clip.mp4" type="video/mp4" />
+    </video>
+
+    <video poster="../../shared/assets/img/hero.jpg" width="640" height="480"></video>
+
+    <audio controls src="/media/theme.mp3">
+      <source src="/media/theme.mp3" type="audio/mpeg" />
+      <source src="/media/theme.ogg" type="audio/ogg" />
+    </audio>
+
+    <embed src="/media/spec-sheet.pdf" type="application/pdf" width="600" height="400" />
+    <embed src="/gallery/MixedCase.Png" type="image/png" width="160" height="120" />
+
+    <input type="image" src="/icons/icon-192.png" alt="Submit" />
+    <input type="image" src="/gallery/photo.png" alt="Pick this one" />
+    <input type="image" src="/icons/icon-nope.png" alt="Submit, broken on purpose" />
+
+    <object data="/media/spec-sheet.pdf" type="application/pdf" width="600" height="400"></object>
+
+    <iframe src="/media/preview.html" title="Preview" width="400" height="300"></iframe>
+  </body>
+</html>

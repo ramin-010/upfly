@@ -1,0 +1,47 @@
+{
+  "ledger": {
+    "enabled": true,
+    "limit": 425,
+    "mode": "stale"
+  },
+  "shipment": {
+    "enabled": false,
+    "limit": 481,
+    "mode": "stale"
+  },
+  "entitlement": {
+    "enabled": false,
+    "limit": 398,
+    "mode": "partial"
+  },
+  "payment": {
+    "enabled": true,
+    "limit": 26,
+    "mode": "stale"
+  },
+  "session": {
+    "enabled": true,
+    "limit": 479,
+    "mode": "locked"
+  },
+  "schedule": {
+    "enabled": false,
+    "limit": 314,
+    "mode": "locked"
+  },
+  "threshold": {
+    "enabled": false,
+    "limit": 114,
+    "mode": "draft"
+  },
+  "subscriber": {
+    "enabled": false,
+    "limit": 497,
+    "mode": "draft"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 68,
+    "mode": "draft"
+  }
+}

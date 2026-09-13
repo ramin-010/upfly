@@ -1,0 +1,57 @@
+{
+  "invoice": {
+    "enabled": false,
+    "limit": 25,
+    "mode": "settled"
+  },
+  "contract": {
+    "enabled": true,
+    "limit": 64,
+    "mode": "pending"
+  },
+  "workspace": {
+    "enabled": true,
+    "limit": 220,
+    "mode": "stale"
+  },
+  "quota": {
+    "enabled": true,
+    "limit": 437,
+    "mode": "locked"
+  },
+  "allocation": {
+    "enabled": true,
+    "limit": 29,
+    "mode": "expired"
+  },
+  "audit": {
+    "enabled": false,
+    "limit": 263,
+    "mode": "draft"
+  },
+  "tenant": {
+    "enabled": true,
+    "limit": 441,
+    "mode": "expired"
+  },
+  "reservation": {
+    "enabled": true,
+    "limit": 306,
+    "mode": "draft"
+  },
+  "threshold": {
+    "enabled": false,
+    "limit": 365,
+    "mode": "settled"
+  },
+  "shipment": {
+    "enabled": true,
+    "limit": 47,
+    "mode": "draft"
+  },
+  "ledger": {
+    "enabled": false,
+    "limit": 343,
+    "mode": "stale"
+  }
+}

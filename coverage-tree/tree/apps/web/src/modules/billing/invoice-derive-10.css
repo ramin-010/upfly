@@ -1,0 +1,120 @@
+/* Layout only. Nothing here addresses a file. */
+
+.reservation-draft-0 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 5px;
+  color: var(--text-partial);
+}
+
+.audit-expired-1 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-draft);
+}
+
+.schedule-pending-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-settled);
+}
+
+.retention-locked-3 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 5px;
+  color: var(--text-draft);
+}
+
+.payment-partial-4 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 21px;
+  color: var(--text-partial);
+}
+
+.contract-pending-5 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 13px;
+  color: var(--text-settled);
+}
+
+.audit-draft-6 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 10px;
+  color: var(--text-expired);
+}
+
+.settlement-partial-7 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 15px;
+  color: var(--text-stale);
+}
+
+.quota-pending-8 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 11px;
+  color: var(--text-stale);
+}
+
+.ledger-locked-9 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 17px;
+  color: var(--text-partial);
+}
+
+.order-partial-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-locked);
+}
+
+.dispatch-locked-11 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-expired);
+}
+
+.subscriber-draft-12 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 8px;
+  color: var(--text-pending);
+}
+
+.order-draft-13 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 11px;
+  color: var(--text-stale);
+}
+
+.dispatch-stale-14 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-draft);
+}
+
+.entitlement-partial-15 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 12px;
+  color: var(--text-draft);
+}
+
+.dispatch-draft-16 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 1px;
+  color: var(--text-pending);
+}

@@ -1,0 +1,44 @@
+---
+import logo from '../../public/logo.png';
+import diagram from '../../public/img/diagram.png';
+import sharedHero from '@img/hero.jpg';
+import missing from '@missing/astro.png';
+import Figure from '../components/Figure.astro';
+
+const heroPath = '/img/hero.jpg';
+const brandPath = '/brand.png';
+const mode = Astro.url.searchParams.get('mode') ?? 'light';
+---
+
+<html lang="en">
+  <head>
+    <title>Docs</title>
+    <link rel="icon" href="/img/avatar.png" />
+  </head>
+  <body>
+    <img src={logo.src} alt="Imported in the frontmatter fence" />
+    <img src={diagram.src} alt="Also imported in the fence" />
+    <img src={sharedHero.src} alt="Imported through an alias" />
+    <img src={missing.src} alt="An alias that maps nowhere" />
+
+    <img src={heroPath} alt="A literal declared in the fence" />
+    <img src={brandPath} alt="The docs brand, not the web app's" />
+
+    <img src="/img/screenshot.png" alt="A literal in the template body" />
+    <img src="../../public/img/avatar.png" alt="Relative, in the template body" />
+    <img src="/img/missing-from-astro.png" alt="Broken on purpose" />
+
+    <img src={`/theme-${mode}.png`} alt="A pattern in the template body" />
+
+    <Figure src={diagram.src} alt="Passed to a component" />
+
+    <style>
+      .astro-hero {
+        background-image: url('/img/hero.jpg');
+      }
+      .astro-brand {
+        background-image: url("../../public/brand.png");
+      }
+    </style>
+  </body>
+</html>

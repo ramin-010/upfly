@@ -1,0 +1,12 @@
+---
+layout: default
+image: /img/hero.jpg
+---
+
+<article>
+  <img src="/img/photo.jpg" alt="Root-relative, in Liquid" />
+  <img src="../img/logo.png" alt="Relative, in Liquid" />
+  <img src="{{ page.image }}" alt="From the front matter, via the template engine" />
+  <img src="{{ '/img/hero.jpg' | relative_url }}" alt="A literal passed through a filter" />
+  <img src="/img/missing-from-liquid.png" alt="Broken on purpose" />
+</article>

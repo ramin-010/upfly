@@ -1,0 +1,113 @@
+/* Layout only. Nothing here addresses a file. */
+
+.allocation-stale-0 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 2px;
+  color: var(--text-draft);
+}
+
+.invoice-locked-1 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 1px;
+  color: var(--text-expired);
+}
+
+.tenant-expired-2 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 5px;
+  color: var(--text-partial);
+}
+
+.order-pending-3 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 0px;
+  color: var(--text-pending);
+}
+
+.quota-draft-4 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 8px;
+  color: var(--text-draft);
+}
+
+.session-settled-5 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 4px;
+  color: var(--text-settled);
+}
+
+.entitlement-draft-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 17px;
+  color: var(--text-partial);
+}
+
+.invoice-locked-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 4px;
+  color: var(--text-draft);
+}
+
+.order-pending-8 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 19px;
+  color: var(--text-settled);
+}
+
+.ledger-pending-9 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 18px;
+  color: var(--text-locked);
+}
+
+.quota-stale-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 17px;
+  color: var(--text-pending);
+}
+
+.reservation-expired-11 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-partial);
+}
+
+.contract-partial-12 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 14px;
+  color: var(--text-settled);
+}
+
+.schedule-draft-13 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 20px;
+  color: var(--text-locked);
+}
+
+.schedule-draft-14 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 13px;
+  color: var(--text-locked);
+}
+
+.settlement-locked-15 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 13px;
+  color: var(--text-locked);
+}

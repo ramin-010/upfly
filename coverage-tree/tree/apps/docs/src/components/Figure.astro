@@ -1,0 +1,23 @@
+---
+interface Props {
+  src: string;
+  alt: string;
+}
+
+const { src, alt } = Astro.props;
+const fallback = '../../public/img/avatar.png';
+---
+
+<figure>
+  <img src={src} alt={alt} onerror={`this.src='${fallback}'`} />
+  <img src="/logo.png" alt="The docs logo, hard-coded in a component" />
+  <noscript>
+    <img src="../../public/img/diagram.png" alt="Relative, from a component" />
+  </noscript>
+</figure>
+
+<style>
+  figure {
+    background-image: url('/img/avatar.png');
+  }
+</style>

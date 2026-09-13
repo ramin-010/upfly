@@ -1,0 +1,28 @@
+---
+title: The first post
+hero: /img/screenshot.png
+ogImage: ../../../public/brand.png
+---
+
+import Figure from '../../components/Figure.astro';
+import avatar from '../../../public/img/avatar.png';
+import shared from '@img/thumb.png';
+
+# The first post
+
+<Figure src={avatar} alt="Imported into MDX" />
+<Figure src={shared} alt="Imported through an alias" />
+
+![Markdown syntax still works here](/img/diagram.png)
+
+<img src="/logo.png" alt="Raw HTML in MDX" width="160" height="120" />
+
+<img src="/img/missing-from-mdx.png" alt="Broken on purpose" />
+
+export const banner = '/img/hero.jpg';
+
+Anything in a fence is inert:
+
+```jsx
+<img src="/img/screenshot.png" alt="An example" />
+```

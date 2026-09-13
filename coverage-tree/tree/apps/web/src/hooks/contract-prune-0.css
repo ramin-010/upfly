@@ -1,0 +1,162 @@
+/* Layout only. Nothing here addresses a file. */
+
+.dispatch-settled-0 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 11px;
+  color: var(--text-partial);
+}
+
+.shipment-draft-1 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 11px;
+  color: var(--text-expired);
+}
+
+.contract-expired-2 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 12px;
+  color: var(--text-expired);
+}
+
+.schedule-pending-3 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 12px;
+  color: var(--text-locked);
+}
+
+.audit-settled-4 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-expired);
+}
+
+.workspace-expired-5 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 9px;
+  color: var(--text-expired);
+}
+
+.order-expired-6 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 10px;
+  color: var(--text-pending);
+}
+
+.session-draft-7 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 16px;
+  color: var(--text-locked);
+}
+
+.ledger-draft-8 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 2px;
+  color: var(--text-draft);
+}
+
+.tenant-stale-9 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 17px;
+  color: var(--text-draft);
+}
+
+.ledger-expired-10 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 0px;
+  color: var(--text-pending);
+}
+
+.tenant-partial-11 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 14px;
+  color: var(--text-locked);
+}
+
+.schedule-pending-12 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 11px;
+  color: var(--text-settled);
+}
+
+.invoice-locked-13 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 17px;
+  color: var(--text-expired);
+}
+
+.payment-pending-14 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 23px;
+  color: var(--text-settled);
+}
+
+.payment-pending-15 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 6px;
+  color: var(--text-locked);
+}
+
+.entitlement-expired-16 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 21px;
+  color: var(--text-pending);
+}
+
+.reservation-pending-17 {
+  display: flex;
+  gap: 1rem;
+  padding-block: 1px;
+  color: var(--text-stale);
+}
+
+.quota-stale-18 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 18px;
+  color: var(--text-expired);
+}
+
+.settlement-settled-19 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 0px;
+  color: var(--text-settled);
+}
+
+.allocation-stale-20 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 15px;
+  color: var(--text-draft);
+}
+
+.schedule-stale-21 {
+  display: flex;
+  gap: 2rem;
+  padding-block: 10px;
+  color: var(--text-settled);
+}
+
+.ledger-expired-22 {
+  display: flex;
+  gap: 3rem;
+  padding-block: 0px;
+  color: var(--text-partial);
+}

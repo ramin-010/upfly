@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Character references and raw-text prose — coverage tree</title>
+  </head>
+  <body>
+    <h1>Two things that have corrupted a document before</h1>
+
+    <h2>1. A character reference in an attribute</h2>
+
+    <!--
+      The file on disk carries one ampersand in its name.
+      The first attribute below is 20 source characters and 16 decoded. Rewriting the
+      decoded length back over the source range truncates the document; Phase 1 caught
+      that before it could ship.
+    -->
+    <img src="/gallery/a&amp;b.png" alt="Ampersand, escaped" width="120" height="90" />
+    <img src="/gallery/a&#38;b.png" alt="Ampersand, numeric reference" width="120" height="90" />
+    <img src="/gallery/a&#x26;b.png" alt="Ampersand, hex reference" width="120" height="90" />
+
+    <!-- Unescaped, which browsers also accept here because no entity name follows. -->
+    <img src="/gallery/a&b.png" alt="Ampersand, raw" width="120" height="90" />
+
+    <h2>2. Percent-encoding, which cuts both ways</h2>
+
+    <!--
+      These two look alike and resolve oppositely. One decodes to a file that exists;
+      the other IS a file that exists, percent sign and all. An engine that only decodes
+      breaks the second, and one that never decodes breaks the first.
+    -->
+    <img src="/gallery/hero%20image.png" alt="Decodes to a name with a space" />
+    <img src="/gallery/enc%20name.png" alt="A literal percent in the filename" />
+    <img src="/gallery/hero (1).png" alt="A space and parentheses, unencoded" />
+
+    <h2>3. A raw-text element named in ordinary prose (R20)</h2>
+
+    <p>Everything from here down must still be found.</p>
+
+    <img src="/brand.png" alt="Before the prose" width="320" height="240" />
+
+    <p>
+      When you write a <style> element into a page, the parser treats everything after it
+      as CSS until a closing tag arrives. This paragraph names that tag in prose and never
+      closes it, which once swallowed the rest of the document and discarded every
+      reference collected before it.
+    </p>
+
+    <p>
+      The same is true of <script>, of <textarea>, of <title> and of the ancient
+      <plaintext> and <xmp>. Those five swallowed the document silently — no error,
+      nothing in the report, and every reference below simply gone.
+    </p>
+
+    <img src="/img/hero.jpg" alt="After the prose, one" width="800" height="600" />
+    <img src="/gallery/photo.png" alt="After the prose, two" width="200" height="150" />
+    <img src="/srcset/tile@2x.png" alt="After the prose, three" width="128" height="96" />
+    <img src="../../shared/assets/img/logo.png" alt="After the prose, four, up two levels" />
+  </body>
+</html>
