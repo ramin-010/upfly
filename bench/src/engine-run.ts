@@ -12,6 +12,7 @@ import {
   type AliasMap,
   type AssetProbe,
   type AuditResult,
+  type DiscoveryResult,
   type Graph,
   type Manifest,
   type Move,
@@ -41,6 +42,14 @@ export interface EngineRun {
   readonly probes: readonly AssetProbe[];
   /** The alias map the resolver used, which `relocate` needs in order to invert it. */
   readonly aliases: AliasMap;
+  /**
+   * What the walk found, for the directories it refused to enter.
+   *
+   * R72: a move's regression count cannot see a reference inside a directory nothing
+   * opened, and those files are absent from the unread *count* too. Stating that needs
+   * `excludedRoots`, which only discovery has.
+   */
+  readonly discovery: DiscoveryResult;
 }
 
 /**
@@ -71,6 +80,7 @@ export async function runEngine(root: string, declared?: ServingRoots): Promise<
     servingRoots: output.servingRoots,
     probes: output.probes ?? [],
     aliases: output.aliases,
+    discovery: output.discovery,
   };
 }
 

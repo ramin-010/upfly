@@ -23,7 +23,7 @@
  */
 
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
-import { formatBytes } from './format.js';
+import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import {
@@ -44,6 +44,7 @@ import type {
   ResolvedVia,
   UnscannedExtension,
 } from './types.js';
+import { groupUnscanned } from './unscanned.js';
 
 /**
  * Schema version of the JSON report.
@@ -857,66 +858,6 @@ function countDeterminations(input: ReportInput): { total: number; detail: strin
   };
 }
 
-/**
- * Unscanned extensions, split by what a reader can do about each.
- *
- * The distinction is not cosmetic: an adapter closes the first group, nothing closes
- * the second, and the third is a deliberate design decision rather than a gap.
- */
-function groupUnscanned(extensions: readonly UnscannedExtension[]): {
-  adapterCould: UnscannedExtension[];
-  binary: UnscannedExtension[];
-  svg: number;
-} {
-  const adapterCould: UnscannedExtension[] = [];
-  const binary: UnscannedExtension[] = [];
-  let svg = 0;
-
-  for (const entry of extensions) {
-    if (entry.ext === '.svg') svg += entry.fileCount;
-    else if (BINARY_EXTENSIONS.has(entry.ext)) binary.push(entry);
-    else adapterCould.push(entry);
-  }
-
-  return { adapterCould, binary, svg };
-}
-
-/**
- * Extensions whose contents are not text.
- *
- * Deliberately a list rather than a heuristic: guessing wrong in the *other*
- * direction would tell a user that a format no adapter reads is unreadable in
- * principle, which is exactly the kind of confident-and-wrong sentence R21 was
- * raised about. Anything not named here is assumed to be text an adapter could one
- * day read.
- */
-const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.mp4',
-  '.webm',
-  '.mov',
-  '.avi',
-  '.mp3',
-  '.wav',
-  '.ogg',
-  '.otf',
-  '.ttf',
-  '.woff',
-  '.woff2',
-  '.eot',
-  '.ico',
-  '.pdf',
-  '.zip',
-  '.gz',
-  '.tar',
-  '.wasm',
-  '.node',
-  '.bin',
-  '.psd',
-  '.sketch',
-  '.db',
-  '.sqlite',
-]);
-
 /** The limitations that apply to the whole run rather than to one finding. */
 function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEntry[] }): Caveat[] {
   const list: Caveat[] = [];
@@ -1092,9 +1033,4 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
 /** Verb agreement, so a report never says "1 file were not read". */
 function were(value: number): string {
   return value === 1 ? 'was' : 'were';
-}
-
-/** `1 file` / `2 files`. English only, and deliberately not locale-aware. */
-function plural(value: number, noun: string, plural_?: string): string {
-  return `${value} ${value === 1 ? noun : (plural_ ?? `${noun}s`)}`;
 }

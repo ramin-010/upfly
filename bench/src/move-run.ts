@@ -24,7 +24,7 @@ import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import sharp from 'sharp';
-import type { Move } from 'upfly-core';
+import { type Move, checkMoveRegression } from 'upfly-core';
 import { relocateTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 
@@ -116,7 +116,6 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     // Measured before anything is written, so "no new broken references" is a
     // comparison rather than a claim about a number nobody recorded.
     const before = await runEngine(root);
-    const brokenBefore = before.graph.byResolution.broken.length;
     const linked = new Set(
       before.graph.references
         .filter((reference) => reference.resolution === 'resolved')
@@ -137,7 +136,11 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     const { plan, manifest } = await relocateTree(root, moves);
 
     stdout.write(
-      `  plan      ${plan.moves.length} moved, ${plan.rewrites.length} files rewritten, ${plan.refused.length} refused, ${plan.declined.length} declined\n`,
+      // `files` dropped rather than agreed: it read `1 files rewritten` on every
+      // single-file move, which is every run this instrument makes, and the other three
+      // counters on this line never carried a noun in the first place. A word that is
+      // not there cannot disagree. Found by reading the output, not by a test.
+      `  plan      ${plan.moves.length} moved, ${plan.rewrites.length} rewritten, ${plan.refused.length} refused, ${plan.declined.length} declined\n`,
     );
     stdout.write(`  manifest  ${manifest?.state ?? 'none written'}\n`);
     for (const refusal of plan.refused) {
@@ -156,13 +159,22 @@ async function run(name: string, keep: boolean): Promise<boolean> {
       stdout.write(`    ... and ${plan.declined.length - 5} more declined\n`);
     }
 
-    // 🔴 The check that matters. The same engine over the tree it just wrote: any
-    // reference broken now is one this run broke.
-    const brokenAfter = (await runEngine(root)).graph.byResolution.broken.length;
-    stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
-    stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
+    // 🔴 The check that matters, and R72 is what it cannot do. The same engine over
+    // the tree it just wrote, so any reference broken now is one this run broke — but
+    // the graph doing the counting is the graph that missed whatever it missed.
+    // `checkMoveRegression` carries the limit with the number, so this cannot print
+    // the one without the other.
+    const after = await runEngine(root);
+    const check = checkMoveRegression({
+      before: before.graph,
+      after: after.graph,
+      excludedRoots: after.discovery.excludedRoots,
+    });
+    // A blank line stays blank: indenting it leaves trailing whitespace, which the
+    // byte-identical-output rule (rule 11) has no patience for.
+    for (const line of check.lines) stdout.write(line === '' ? '\n' : `  ${line}\n`);
 
-    return brokenAfter <= brokenBefore;
+    return !check.regressed;
   } catch (cause) {
     stdout.write(`  FAILED    ${(cause as Error).message}\n`);
     return false;

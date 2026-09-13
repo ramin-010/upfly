@@ -59,6 +59,11 @@ export type { DuplicateSet } from './duplicates.js';
 export { isUnderPublicDir, patternTargets, planOptimization } from './plan.js';
 export { moveOperationsFor, planRelocation } from './relocate.js';
 export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } from './relocate.js';
+
+// R72 part 1. A move's regression count and the limit of that count, as one value:
+// `relocate` may not reach a user without the second half.
+export { checkMoveRegression } from './move-check.js';
+export type { MoveCheckInput, MoveCoverageLimit, MoveRegressionReport } from './move-check.js';
 export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
 export type { OptimizeInput, OptimizeResult } from './optimize.js';
 export type {

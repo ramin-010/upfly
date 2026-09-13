@@ -25,3 +25,20 @@ function tenths(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
 }
+
+/**
+ * `1 file`, `2 files` — a count and its noun, agreeing.
+ *
+ * Moved here from `report.ts` when R72's disclosure became the second consumer, which
+ * is the same reason `formatBytes` is here.
+ *
+ * ⚠️ **It does not fix the bug it looks like it fixes.** This agrees the *noun* with
+ * the count; it cannot agree the *verb*, and the verb is what has gone wrong — the
+ * report has shipped `1 file were not read`, and `report.ts` records that happening a
+ * further three times in one file. The construction that cannot carry the bug is an
+ * invariant subject (`… so 1 file went unread`), not a helper. Reach for the sentence
+ * shape first and this second.
+ */
+export function plural(value: number, noun: string, plural_?: string): string {
+  return `${value} ${value === 1 ? noun : (plural_ ?? `${noun}s`)}`;
+}
