@@ -74,6 +74,20 @@ $crest: '/gallery/photo.png';
   background-image: url('/srcset/card-#{$width}.jpg');
 }
 
+// A pattern that matches only SOME of what it names: the loop claims three sizes and
+// the largest has no file. R89's shape — one sibling missing withdraws the whole
+// pattern, so it cannot share a row with the complete matches above.
+//
+// ⚠️ The missing filename is deliberately NOT spelled out here. Written in full, this
+// comment was itself an unaccounted occurrence and the completeness scan failed on it —
+// which is the scan working: prose naming an asset is indistinguishable from a
+// reference to it, and `decoy.comment` is a row in this very tree.
+@each $size in (192, 512, 1024) {
+  .icon--#{$size} {
+    background-image: url('/icons/icon-#{$size}.png');
+  }
+}
+
 // And two more leading ones, which carry the same open question.
 .leading-two {
   background-image: url('#{$image-root}/photo@2x.png');

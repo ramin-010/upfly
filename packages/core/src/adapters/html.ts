@@ -367,7 +367,11 @@ function addEntityEscapedReference(range: { start: number; end: number }, contex
     end: range.end,
     rawPath: context.text.slice(range.start, range.end),
     kind: 'attr',
-    shape: 'html.charref',
+    // 🔴 A DISPOSITION, NOT A HOST SHAPE (R88(a)): what takes this reference out is the
+    // spelling of the path, so it beats whatever attribute the path sits in — the same
+    // way an absolute URL does. The precedence is structural rather than a ladder
+    // choice: this fires in `collectFromAttributes` BEFORE any host shape is chosen.
+    shape: 'path.charref',
     ceiling: 'unsafe',
     asserted: true,
     note: 'contains HTML character references, so the path text cannot be located exactly',

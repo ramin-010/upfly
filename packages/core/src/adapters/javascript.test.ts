@@ -582,11 +582,24 @@ describe('javascriptAdapter', () => {
 
     it('still keeps a template whose static prefix is a real path', () => {
       // The control, and the thing that must not break: a hole at the *start* is not
-      // a scheme, so this is a local path the resolver globs.
+      // a scheme, so this is KEPT as a local path rather than dropped as a URL. That
+      // is the whole of R21's guard, and it is the assertion below.
       const references = find('const src = `${base}/img/hero.png`;');
 
       expect(references).toHaveLength(1);
-      expect(references[0]?.ceiling).toBe('medium');
+    });
+
+    it('but does not GLOB it, because the directory is the unknown part (R78 Q3)', () => {
+      // ⚠️ This asserted `medium` until R89, and `medium` was an accident rather than a
+      // behaviour: the resolver globbed `[^/]*/img/hero.png`, matched nothing, and fell
+      // through to `dynamic`. MEASURED before changing it — across the coverage tree and
+      // all five validation repositories, 40 references fail this condition and NOT ONE
+      // of them resolves. So the outcome is identical and the refusal is now explicit,
+      // with a reason, which is what rule 9 asks of every decline.
+      const [reference] = find('const src = `${base}/img/hero.png`;');
+
+      expect(reference?.ceiling).toBe('unsafe');
+      expect(reference?.note).toContain('R80(b)');
     });
 
     it('keeps a relative templated path whose hole is the whole filename stem', () => {

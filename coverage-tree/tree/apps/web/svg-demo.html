@@ -33,6 +33,12 @@
         <filter id="grain-legacy">
           <feImage xlink:href="/gallery/a&amp;b.png" result="legacyLayer" />
         </filter>
+        <!-- The legacy spelling WITHOUT a character reference. R88(c): the entry above
+             is keyed path.charref, so without this one feImage's legacy spelling is not
+             measured at all. -->
+        <filter id="grain-plain-legacy">
+          <feImage xlink:href="/img/banner.png" result="plainLegacyLayer" />
+        </filter>
         <filter id="grain-missing">
           <feImage href="/img/absent-from-feimage.png" result="missingLayer" />
         </filter>

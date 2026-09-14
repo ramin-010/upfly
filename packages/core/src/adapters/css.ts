@@ -292,12 +292,25 @@ function shapeOf(input: {
   const { rawPath, run, declaration, position, quote } = input;
   const scss = run.extension === '.scss';
 
-  // 1. Preprocessor mechanisms. R78 Q3: a LEADING interpolation varies the directory
-  //    and a trailing one varies the name, which is why they are separate rows.
+  // 1. Interpolation mechanisms — the path is assembled, whoever is holding the file.
+  //    R78 Q3: a LEADING interpolation varies the directory and a trailing one varies
+  //    the name, which is why they are separate rows.
   if (rawPath.includes('#{')) {
     return rawPath.startsWith('#{') ? 'scss.interpolation.leading' : 'scss.interpolation.trailing';
   }
   if (rawPath.includes('@{')) return 'less.interpolation';
+  // ⚠️ THERE IS DELIBERATELY NO `${}` RUNG HERE, and the reason is worth the lines
+  //    because the obvious fix is wrong. B7 measured `js.template.pattern -> js.cssinjs`
+  //    as a misassignment and it is not one: this function NEVER SEES a `${}`.
+  //    `collectFromTaggedTemplate` flattens the template first, substituting each
+  //    interpolation with a same-length comment placeholder so the offsets still point
+  //    into the real file — so what arrives here is `/theme-/*---*/.png`. A rung testing
+  //    for `${` is unreachable code, and adding one changed nothing at all (R89).
+  //    🔴 And the shape the engine gives it is RIGHT: the reference comes out `unsafe`,
+  //    so the resolver's pattern machinery never runs and `js.cssinjs` is the only thing
+  //    that can independently fail here. What is actually wrong is the KEY, which
+  //    expects `resolved-pattern` for an outcome the engine reports as `dynamic` —
+  //    raised with its measured scope rather than patched from a six-entry probe.
   if (rawPath.startsWith('$')) return 'scss.variable';
   if (rawPath.startsWith('@')) return 'less.variable';
 

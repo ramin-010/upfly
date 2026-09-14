@@ -44,6 +44,18 @@ export function iconImage(size: number, base: string): string {
   return `${base}/icon-${size}.png`;
 }
 
+/**
+ * A third partial pattern, at a different ratio: four widths claimed, three on disk.
+ * The widest was never generated.
+ *
+ * ⚠️ It sits AFTER srcsetImage on purpose. Placed above it, the literal `/srcset/` in
+ * this template became the FIRST occurrence of that string in the file and quietly
+ * stole it from the concat entry's `occurrence: 1`. The self-check caught the overlap.
+ */
+export function cardImage(width: 400 | 800 | 1200 | 1600): string {
+  return `/srcset/card-${width}.jpg`;
+}
+
 export function themedIcon(theme: string, size: string): string {
   return `/icons/${theme}-${size}.png`;
 }

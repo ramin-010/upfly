@@ -31,7 +31,12 @@ import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
-import { isExternalUrl, parseSrcset, splitPathSuffix } from './reference-path.js';
+import {
+  assembledPathIsGlobbable,
+  isExternalUrl,
+  parseSrcset,
+  splitPathSuffix,
+} from './reference-path.js';
 
 /**
  * Which babel plugins each extension needs.
@@ -273,7 +278,13 @@ function collectFromNode(node: BabelNode, context: Context): void {
       return;
     case 'CallExpression':
       if (isRequireCall(node)) {
-        collectFromModuleSource(node.arguments[0], context, 'certain', 'js.require', 'require()');
+        collectFromModuleSource(
+          node.arguments[0],
+          context,
+          'certain',
+          moduleSourceShape(node.arguments[0], 'js.require'),
+          'require()',
+        );
       }
       return;
     case 'NewExpression':
@@ -430,6 +441,18 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
     end: start + path.length,
     rawPath: path,
     kind: 'string',
+    // 🔴 NOT `path.bare-specifier`, AND THIS WAS MEASURED THE HARD WAY. R88(b) reads the
+    // tree's three bare-specifier entries — an import, a require() and a plain `const` —
+    // as one row on the argument that all three fail together. Two of them do. The plain
+    // string does not: inside `import`/`require` a bare string IS module-resolution
+    // syntax, while in an ordinary string `src/assets/hero.png` is just a relative path
+    // nobody prefixed with `./`. The two are syntactically identical.
+    // Asserting the disposition here labelled 351 references across the corpus as
+    // packages — `loading...`, `bs.button`, `v2.0.0`, `berryhouse.ca` on railsgirls-com
+    // and eleventy-docs. Telling `some-ui-kit/dist/x.png` from `src/assets/x.png` needs
+    // to know whether the first segment is installed, which is node_modules and therefore
+    // the resolver's (R87). The key keeps all three entries and `path.bare-specifier`
+    // declares `adapterEmitsAs` for this one.
     shape: 'js.string.literal',
     ceiling: 'high',
     asserted: false,
@@ -495,13 +518,19 @@ function collectFromImportDeclaration(node: ImportDeclaration, context: Context)
     node.source,
     context,
     'certain',
-    importShape(node.source),
+    moduleSourceShape(node.source, 'js.import.static'),
     'static import',
   );
 }
 
 function collectFromImportExpression(node: ImportExpression, context: Context): void {
-  collectFromModuleSource(node.source, context, 'certain', 'js.import.dynamic', 'dynamic import()');
+  collectFromModuleSource(
+    node.source,
+    context,
+    'certain',
+    moduleSourceShape(node.source, 'js.import.dynamic'),
+    'dynamic import()',
+  );
 }
 
 function isRequireCall(node: BabelNode): boolean {
@@ -766,38 +795,75 @@ function placeholderOfLength(length: number): string {
 }
 
 /**
- * Which import row a module specifier belongs to.
+ * Which row a module specifier belongs to: the bare-specifier disposition, or the
+ * construct it was written as.
  *
  * ⚠️ **It cannot tell a MAPPED alias from an UNMAPPED one, and must not pretend to.**
  * Whether `~/img/hero.png` resolves depends on the `tsconfig` paths table, which is
  * the resolver's knowledge and arrives long after this adapter has run. An adapter
  * that guessed would be asserting something it cannot see — the shape of every bug
- * this project has paid for. Both alias rows therefore stay the key's alone (R84).
+ * this project has paid for. Both alias rows therefore stay the key's alone, declared
+ * as `adapterEmitsAs` on each of them (R87).
+ *
+ * 🔴 The ruling reference here read **R84** until R87 was written, and R84 is the
+ * byte-versus-code-unit finding — nothing to do with aliases. A comment is an assertion
+ * about code and so is the ruling number attached to it (R85).
  */
-function importShape(source: BabelNode | null | undefined): ShapeId {
+function moduleSourceShape(source: BabelNode | null | undefined, construct: ShapeId): ShapeId {
   const value =
     source !== null && source !== undefined && source.type === 'StringLiteral' ? source.value : '';
-
-  // Relative or root-relative: an ordinary static import of a file in this project.
-  if (value.startsWith('.') || value.startsWith('/')) return 'js.import.static';
-  // Alias-shaped. Which alias row it is depends on a table we cannot see.
-  if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) {
-    return 'js.import.static';
-  }
-  // A bare specifier is a package.
-  return value === '' ? 'js.import.static' : 'js.import.package';
+  return isBareSpecifier(value) ? 'path.bare-specifier' : construct;
 }
 
 /**
- * Whether a template literal still names a directory, or nothing static at all.
+ * Whether a module specifier names a PACKAGE rather than a file in this project.
  *
- * R78 Q3: a pattern must fix the DIRECTORY, because location is what makes an asset
- * unique. `/theme-${mode}.png` fixes it and varies the name; `${base}/hero.png` does
- * the reverse and is not globbable.
+ * 🔴 **A disposition, so it beats the construct (R88(b)).** `some-ui-kit/dist/logo.png`
+ * is out of scope — R32: the file exists inside a dependency and is not ours to rewrite
+ * — and that is a fact about the string, not about whether somebody wrote `import`,
+ * `require()` or a plain `const`. All three fail together if this predicate breaks and
+ * nothing else fails with them, which is what makes them one matrix row.
+ *
+ * ⚠️ **`@` stays alias-shaped, and that is not an oversight.** `@scope/pkg/x.png` and a
+ * `@img/*` tsconfig alias are the same syntax; the table that would separate them is the
+ * resolver's. Treating `@` as a package here would assert something this layer cannot
+ * see, so it is left to the construct and the key keeps both alias rows (R87).
+ *
+ * ⚠️ **And it must NOT be applied to `new URL(x, import.meta.url)`.** There a bare
+ * `'img.png'` is a path relative to the module, not a package — the same spelling, the
+ * opposite meaning, decided entirely by the construct.
+ */
+function isBareSpecifier(value: string): boolean {
+  if (value === '') return false;
+  // Relative or root-relative: an ordinary reference to a file in this project.
+  if (value.startsWith('.') || value.startsWith('/')) return false;
+  // Alias-shaped. Which alias row it is depends on a table we cannot see.
+  if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) return false;
+  return true;
+}
+
+/**
+ * Whether a template literal is still globbable, or nothing static is left.
+ *
+ * **Two conditions, and this function had only the first until R89.** R78 Q3: a pattern
+ * must fix the DIRECTORY, because location is what makes an asset unique.
+ * `/theme-${mode}.png` fixes it and varies the name; `${base}/hero.png` does the reverse
+ * and is not globbable.
+ *
+ * 🔴 **R80(b) added the second and it was never implemented: a pattern needs a fixed
+ * directory AND enough of a fixed name that the glob cannot sweep in strangers. One
+ * unknown segment in the name is a pattern; two is a guess.** `/icons/${theme}-${size}.png`
+ * passes the directory test and was therefore called a pattern, while the key — ruled —
+ * says `dynamic`, because globbing it would claim `icon-192.png` and `icon-512.png` on a
+ * pattern that constrains almost nothing. The ruling existed for a day before the code
+ * agreed with it.
+ *
+ * ⚠️ **Counted per NAME, not per template**, which is why a `/` in a later chunk resets
+ * the count: in `/img/${dir}/hero.png` the two unknowns are not both in the name.
  */
 function templateShape(template: TemplateLiteral): ShapeId {
-  const first = template.quasis[0]?.value.raw ?? '';
-  return first.includes('/') ? 'js.template.pattern' : 'js.template.dynamic';
+  const chunks = template.quasis.map((quasi) => quasi.value.raw);
+  return assembledPathIsGlobbable(chunks) ? 'js.template.pattern' : 'js.template.dynamic';
 }
 
 function addLiteralReference(
@@ -875,6 +941,18 @@ function addTemplateReference(
 
   const hasExpressions = template.expressions.length > 0;
   const raw = context.text.slice(flattened.start, flattened.start + flattened.text.length);
+  // 🔴 THE CEILING IS WHAT THE RESOLVER ACTUALLY READS, NOT THE SHAPE (R89). `resolveOne`
+  // globs on `medium` and refuses on `unsafe`; it never looks at `shape`. So R80(b) —
+  // *a pattern needs a fixed directory AND enough of a fixed name that the glob cannot
+  // sweep in strangers* — has to be applied HERE or it is applied nowhere.
+  //
+  // ⚠️ Correcting `templateShape` alone relabelled the row and changed no behaviour:
+  // `/icons/${theme}-${size}.png` went on claiming `icon-192.png` and `icon-512.png`
+  // while its matrix row read `dynamic`. Measured, not reasoned — the shape agreed with
+  // the key and the outcome did not, which is the more dangerous half of the pair
+  // because the label is what a reader checks.
+  const globbable =
+    hasExpressions && assembledPathIsGlobbable(template.quasis.map((q) => q.value.raw));
 
   addReference({
     context,
@@ -883,10 +961,12 @@ function addTemplateReference(
     rawPath: raw,
     kind,
     shape,
-    ceiling: hasExpressions ? 'medium' : 'high',
-    note: hasExpressions
+    ceiling: globbable ? 'medium' : hasExpressions ? 'unsafe' : 'high',
+    note: globbable
       ? `${description}: a template literal with a static prefix; the resolver decides whether it names exactly one asset`
-      : description,
+      : hasExpressions
+        ? `${description}: too little of the name is fixed to glob — two unknown segments would sweep in assets nobody referenced (R80(b))`
+        : description,
     skipPathChecks: hasExpressions,
     asserted,
   });

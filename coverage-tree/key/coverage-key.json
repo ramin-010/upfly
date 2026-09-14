@@ -190,10 +190,10 @@
       "motivation": "The same again, one element at a time."
     },
     {
-      "id": "html.charref",
-      "label": "a character reference in an attribute",
-      "spec": "4a",
-      "motivation": "Caught in Phase 1 before it could corrupt a file: /gallery/a&amp;b.png is 20 source characters and 16 decoded."
+      "id": "path.charref",
+      "label": "a path spelled with HTML character references",
+      "spec": "4a,4g",
+      "motivation": "Caught in Phase 1 before it could corrupt a file: /gallery/a&amp;b.png is 20 source characters and 16 decoded. R88(a) moved it out of the html.* namespace: a character reference is how the path is SPELLED, so it beats the construct the path sits in, exactly as an absolute URL does. It was named like a host shape and behaved like a disposition, and that hid a rule already written."
     },
     {
       "id": "html.percent-encoded",
@@ -223,7 +223,7 @@
       "id": "css.url.nested",
       "label": "url() inside another function",
       "spec": "4b",
-      "motivation": "gradient, cross-fade, and image-set: the url is no longer the whole value."
+      "motivation": "cross-fade and var()'s fallback: the walker has to RECURSE to reach the url. ⚠️ This read \"gradient, cross-fade, and image-set: the url is no longer the whole value\" and that definition is what produced two stray entries (R89) — \"not the whole value\" is not what this shape names, and image-set has its own row."
     },
     {
       "id": "css.image-set",
@@ -328,10 +328,10 @@
       "motivation": "Its own bucket. Not broken, not dynamic — unmapped."
     },
     {
-      "id": "js.import.package",
-      "label": "import from an npm package specifier",
-      "spec": "4c",
-      "motivation": "R32. Out-of-scope rather than unresolved-alias: the file exists, it is just not ours."
+      "id": "path.bare-specifier",
+      "label": "a bare package specifier",
+      "spec": "4c,4g",
+      "motivation": "R32. Out-of-scope rather than unresolved-alias: the file exists, it is just not ours. R88(b) renamed it from js.import.package because the three entries are an import, a require() and a plain string constant — all three fail together if bare-specifier detection breaks, and a row covering all three cannot be called `import`."
     },
     {
       "id": "js.require",
@@ -344,6 +344,12 @@
       "label": "template literal, one unknown segment",
       "spec": "4c",
       "motivation": "partial-pattern. Standing for N files that all exist."
+    },
+    {
+      "id": "pattern.partial",
+      "label": "a pattern matching only some of the files it names",
+      "spec": "4c,4b",
+      "motivation": "R80(a), applied by R89. A pattern row that only ever saw three-of-three would not notice a two-of-three. 🔴 NO ADAPTER CAN NAME THIS ROW — the distinction is which of the files the pattern names actually exist, which only the resolver can see (R87), so the adapters emit js.template.pattern or scss.interpolation.trailing and the key draws the line."
     },
     {
       "id": "js.template.dynamic",
@@ -2020,7 +2026,7 @@
         {
           "raw": "/gallery/a&amp;b.png",
           "occurrence": 1,
-          "shape": "html.charref",
+          "shape": "path.charref",
           "expect": "resolved",
           "why": "20 source characters, 16 decoded. Writing the decoded length back over the source range truncates the document.",
           "decoded": "/gallery/a&b.png",
@@ -2032,7 +2038,7 @@
         {
           "raw": "/gallery/a&#38;b.png",
           "occurrence": 1,
-          "shape": "html.charref",
+          "shape": "path.charref",
           "expect": "resolved",
           "why": "The same file through a decimal numeric reference.",
           "decoded": "/gallery/a&b.png",
@@ -2044,7 +2050,7 @@
         {
           "raw": "/gallery/a&#x26;b.png",
           "occurrence": 1,
-          "shape": "html.charref",
+          "shape": "path.charref",
           "expect": "resolved",
           "why": "And through a hexadecimal one.",
           "decoded": "/gallery/a&b.png",
@@ -3404,12 +3410,12 @@
         {
           "raw": "/img/banner.png",
           "occurrence": 2,
-          "shape": "css.url.nested",
+          "shape": "css.url.double",
           "expect": "resolved",
-          "why": "After a linear-gradient in a comma-separated list: the url() is no longer the whole value.",
+          "why": "A url() at the TOP LEVEL of a comma-separated list, after a linear-gradient. 🔴 NOT nested, and this entry was keyed css.url.nested until R89 measured it: `nested` is set only when the value walker RECURSES into a function, and nothing recurses to reach this url. It fails with every other plain double-quoted url() and not with the cross-fade pair.",
           "target": "apps/web/public/img/banner.png",
-          "offset": 2002,
-          "line": 87,
+          "offset": 2213,
+          "line": 89,
           "column": 83
         },
         {
@@ -3419,8 +3425,8 @@
           "expect": "resolved",
           "why": "Inside cross-fade(), with a percentage after it.",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 2073,
-          "line": 91,
+          "offset": 2372,
+          "line": 94,
           "column": 37
         },
         {
@@ -3430,19 +3436,19 @@
           "expect": "resolved",
           "why": "cross-fade()'s second argument.",
           "target": "apps/web/public/gallery/photo@2x.png",
-          "offset": 2104,
-          "line": 91,
+          "offset": 2403,
+          "line": 94,
           "column": 68
         },
         {
           "raw": "/icons/mask.svg",
           "occurrence": 1,
-          "shape": "css.url.nested",
+          "shape": "css.image-set",
           "expect": "resolved",
-          "why": "A url() inside image-set() inside mask-image.",
+          "why": "A url() inside image-set() inside mask-image. ⚠️ Keyed css.url.nested until R89, which contradicted this key's OWN entries 30 lines above: `image-set(url(\"...\") 1x)` is keyed css.image-set there. image-set is what breaks it, and the walker does not even set `nested` for an image-set recursion.",
           "target": "apps/web/public/icons/mask.svg",
-          "offset": 2171,
-          "line": 95,
+          "offset": 2705,
+          "line": 104,
           "column": 29
         },
         {
@@ -3451,8 +3457,8 @@
           "shape": "css.url.in-comment",
           "expect": "discarded",
           "why": "A whole commented-out declaration. Never a reference.",
-          "offset": 2279,
-          "line": 99,
+          "offset": 2813,
+          "line": 108,
           "column": 36
         },
         {
@@ -3461,8 +3467,8 @@
           "shape": "css.url.in-comment",
           "expect": "discarded",
           "why": "A second line of the same comment.",
-          "offset": 2325,
-          "line": 100,
+          "offset": 2859,
+          "line": 109,
           "column": 20
         },
         {
@@ -3471,8 +3477,8 @@
           "shape": "css.url.in-selector",
           "expect": "discarded",
           "why": "Inside an attribute selector value. It is text that happens to spell url().",
-          "offset": 2457,
-          "line": 104,
+          "offset": 2991,
+          "line": 113,
           "column": 17
         },
         {
@@ -3481,8 +3487,8 @@
           "shape": "css.url.in-selector",
           "expect": "discarded",
           "why": "An [href$=] suffix match. A path-shaped string in a selector, not a declaration.",
-          "offset": 2523,
-          "line": 108,
+          "offset": 3057,
+          "line": 117,
           "column": 10
         },
         {
@@ -3491,8 +3497,8 @@
           "shape": "css.url.double",
           "expect": "broken",
           "why": "A well-formed url() pointing at nothing.",
-          "offset": 2655,
-          "line": 114,
+          "offset": 3189,
+          "line": 123,
           "column": 26
         },
         {
@@ -3501,8 +3507,8 @@
           "shape": "css.fragment",
           "expect": "discarded",
           "why": "A same-document filter reference. Never a path.",
-          "offset": 2766,
-          "line": 119,
+          "offset": 3300,
+          "line": 128,
           "column": 15
         },
         {
@@ -3511,8 +3517,8 @@
           "shape": "css.fragment",
           "expect": "discarded",
           "why": "And a clip-path reference.",
-          "offset": 2792,
-          "line": 120,
+          "offset": 3326,
+          "line": 129,
           "column": 18
         },
         {
@@ -3521,8 +3527,8 @@
           "shape": "path.data-uri",
           "expect": "discarded",
           "why": "An inline SVG as a data URI.",
-          "offset": 2843,
-          "line": 124,
+          "offset": 3377,
+          "line": 133,
           "column": 26
         },
         {
@@ -3531,8 +3537,8 @@
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
           "why": "R32.",
-          "offset": 3009,
-          "line": 129,
+          "offset": 3543,
+          "line": 138,
           "column": 26
         },
         {
@@ -3541,8 +3547,8 @@
           "shape": "path.protocol-relative",
           "expect": "out-of-scope",
           "why": "Protocol-relative, in CSS rather than HTML.",
-          "offset": 3111,
-          "line": 133,
+          "offset": 3645,
+          "line": 142,
           "column": 25
         },
         {
@@ -3551,8 +3557,8 @@
           "shape": "css.font-face",
           "expect": "out-of-scope",
           "why": "A real font file the engine does not index. Not broken, not an asset.",
-          "offset": 3202,
-          "line": 138,
+          "offset": 3736,
+          "line": 147,
           "column": 13
         },
         {
@@ -3561,8 +3567,8 @@
           "shape": "css.font-face",
           "expect": "broken",
           "why": "A second @font-face whose file was never produced — so the row carries both outcomes rather than one.",
-          "offset": 3311,
-          "line": 143,
+          "offset": 3845,
+          "line": 152,
           "column": 13
         },
         {
@@ -3572,8 +3578,8 @@
           "expect": "resolved",
           "why": "A second custom property holding a url().",
           "target": "apps/web/public/gallery/photo.png",
-          "offset": 3874,
-          "line": 164,
+          "offset": 4408,
+          "line": 173,
           "column": 17
         },
         {
@@ -3583,8 +3589,8 @@
           "expect": "resolved",
           "why": "A third, unquoted.",
           "target": "apps/web/public/img/texture.png",
-          "offset": 3911,
-          "line": 165,
+          "offset": 4445,
+          "line": 174,
           "column": 16
         },
         {
@@ -3593,8 +3599,8 @@
           "shape": "css.font-face",
           "expect": "out-of-scope",
           "why": "A third @font-face, reusing the first one's file at a different weight. Occurrence 2: the first @font-face above names the same path.",
-          "offset": 3446,
-          "line": 149,
+          "offset": 3980,
+          "line": 158,
           "column": 12
         },
         {
@@ -3603,8 +3609,8 @@
           "shape": "path.protocol-relative",
           "expect": "out-of-scope",
           "why": "A third protocol-relative URL, unquoted.",
-          "offset": 3610,
-          "line": 155,
+          "offset": 4144,
+          "line": 164,
           "column": 25
         },
         {
@@ -3613,9 +3619,20 @@
           "shape": "path.data-uri",
           "expect": "discarded",
           "why": "A third data URI, this one a real 1x1 GIF rather than an SVG.",
-          "offset": 3689,
-          "line": 159,
+          "offset": 4223,
+          "line": 168,
           "column": 26
+        },
+        {
+          "raw": "/srcset/narrow.jpg",
+          "occurrence": 1,
+          "shape": "css.url.nested",
+          "expect": "resolved",
+          "why": "Nested inside a custom property's FALLBACK argument — a third recursion mechanism, and deliberately not a second cross-fade. R89 moved two strays out of this row, and padding it with a near-duplicate would have made the row read well rather than measure more.",
+          "target": "apps/web/public/srcset/narrow.jpg",
+          "offset": 2641,
+          "line": 100,
+          "column": 42
         }
       ]
     },
@@ -3857,8 +3874,8 @@
           "shape": "scss.interpolation.leading",
           "expect": "dynamic",
           "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
-          "offset": 2110,
-          "line": 79,
+          "offset": 2799,
+          "line": 93,
           "column": 26
         },
         {
@@ -3867,8 +3884,8 @@
           "shape": "scss.interpolation.leading",
           "expect": "dynamic",
           "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
-          "offset": 2186,
-          "line": 83,
+          "offset": 2875,
+          "line": 97,
           "column": 26
         },
         {
@@ -3877,8 +3894,8 @@
           "shape": "css.url.in-comment",
           "expect": "discarded",
           "why": "Sass's // line comment, which never reaches the CSS output.",
-          "offset": 2293,
-          "line": 87,
+          "offset": 2982,
+          "line": 101,
           "column": 27
         },
         {
@@ -3887,9 +3904,24 @@
           "shape": "css.url.in-comment",
           "expect": "discarded",
           "why": "And its /* */ block comment.",
-          "offset": 2349,
-          "line": 88,
+          "offset": 3038,
+          "line": 102,
           "column": 27
+        },
+        {
+          "raw": "/icons/icon-#{$size}.png",
+          "occurrence": 1,
+          "shape": "pattern.partial",
+          "expect": "resolved-pattern",
+          "why": "The SCSS spelling of a partial pattern: the @each names 192, 512 and 1024, and icon-1024.png does not exist. ⚠️ Its sibling at scss.interpolation.trailing is a two-of-TWO — complete, with few candidates — which is a different thing and reads the same in a table. That conflation is what left R80(a) unapplied for a day.",
+          "target": [
+            "apps/web/public/icons/icon-192.png",
+            "apps/web/public/icons/icon-512.png"
+          ],
+          "offset": 2658,
+          "line": 87,
+          "column": 28,
+          "knownGap": "MEASURED 2026-09-14 (R89): the engine reports this dynamic, not resolved-pattern. A SCSS interpolation is marked unsafe by the CSS adapter and resolveOne refuses an unsafe reference outright, so no glob ever runs — resolved-pattern is reachable today only through a JS template literal. resolved-pattern is the IDEAL here (R78 Q3 rules a trailing interpolation a pattern), and the three sibling scss.interpolation.trailing entries carry the same unrecorded divergence. Scope raised rather than patched: the full list is the measuring harness's first job, not a probe's."
         }
       ]
     },
@@ -4334,7 +4366,7 @@
         {
           "raw": "some-ui-kit/dist/logo.png",
           "occurrence": 1,
-          "shape": "js.import.package",
+          "shape": "path.bare-specifier",
           "expect": "out-of-scope",
           "why": "R32. A package specifier: the file exists inside a dependency, and it is not ours to rewrite. This is why out-of-scope and unresolved-alias are different buckets.",
           "offset": 335,
@@ -4510,9 +4542,9 @@
         {
           "raw": "/srcset/tile@${density}x.png",
           "occurrence": 1,
-          "shape": "js.template.pattern",
+          "shape": "pattern.partial",
           "expect": "resolved-pattern",
-          "why": "⚠️ The function accepts 1|2|3 but tile@1x.png does not exist — the pattern matches TWO of the three the type claims. A pattern that matches some of what it promises is not the same as one that matches all of it.",
+          "why": "🔴 THE PARTIAL-MATCH ROW (R80(a), applied by R89). tileImage accepts 1|2|3 and tile@1x.png does not exist, so one reference stands for TWO files while its own type promises three. Its own shape rather than a weak js.template.pattern: a partial match is R65 territory, where one sibling failing withdraws the whole pattern and every conversion with it.",
           "target": [
             "apps/web/public/srcset/tile@2x.png",
             "apps/web/public/srcset/tile@3x.png"
@@ -4567,8 +4599,8 @@
           "shape": "js.template.dynamic",
           "expect": "dynamic",
           "why": "A third, with TWO unknown segments after a static prefix.",
-          "offset": 1540,
-          "line": 48,
+          "offset": 2044,
+          "line": 60,
           "column": 11
         },
         {
@@ -4598,8 +4630,8 @@
           "expect": "resolved",
           "why": "An exported literal.",
           "target": "apps/web/public/img/hero.jpg",
-          "offset": 1675,
-          "line": 52,
+          "offset": 2179,
+          "line": 64,
           "column": 22
         },
         {
@@ -4609,8 +4641,8 @@
           "expect": "resolved",
           "why": "A second.",
           "target": "apps/web/public/img/banner.png",
-          "offset": 1714,
-          "line": 53,
+          "offset": 2218,
+          "line": 65,
           "column": 24
         },
         {
@@ -4620,8 +4652,8 @@
           "expect": "resolved",
           "why": "A third, so the row is not 1 of 1.",
           "target": "apps/web/public/img/team.jpg",
-          "offset": 1753,
-          "line": 54,
+          "offset": 2257,
+          "line": 66,
           "column": 22
         },
         {
@@ -4630,8 +4662,8 @@
           "shape": "js.string.literal",
           "expect": "discarded",
           "why": "⚠️ A path-shaped STRING that resolves to nothing. It is a guess rather than an assertion, so it is counted and dropped — NOT reported broken. Otherwise every package.json in the world produces findings.",
-          "offset": 1835,
-          "line": 57,
+          "offset": 2339,
+          "line": 69,
           "column": 25
         },
         {
@@ -4641,8 +4673,8 @@
           "expect": "resolved",
           "why": "A cache-buster on a real file. It still resolves; the query is not part of the name.",
           "target": "apps/web/public/img/hero.jpg",
-          "offset": 1987,
-          "line": 60,
+          "offset": 2491,
+          "line": 72,
           "column": 32
         },
         {
@@ -4652,8 +4684,8 @@
           "expect": "resolved",
           "why": "And a fragment. Same rule.",
           "target": "apps/web/public/img/team.jpg",
-          "offset": 2037,
-          "line": 61,
+          "offset": 2541,
+          "line": 73,
           "column": 31
         },
         {
@@ -4663,8 +4695,8 @@
           "expect": "resolved",
           "why": "Both at once, in the order a browser accepts them.",
           "target": "apps/web/public/img/banner.png",
-          "offset": 2086,
-          "line": 62,
+          "offset": 2590,
+          "line": 74,
           "column": 29
         },
         {
@@ -4673,8 +4705,8 @@
           "shape": "js.concat.dynamic",
           "expect": "dynamic",
           "why": "A third concatenation, with the extension folded into the caller's argument so no extension literal appears at all. ⚠️ Invisible to the token scan, which needs an extension — keyed by hand.",
-          "offset": 2272,
-          "line": 66,
+          "offset": 2776,
+          "line": 78,
           "column": 11
         },
         {
@@ -4683,18 +4715,18 @@
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
           "why": "R32.",
-          "offset": 2420,
-          "line": 70,
+          "offset": 2924,
+          "line": 82,
           "column": 24
         },
         {
           "raw": "some-ui-kit/dist/emblem.png",
           "occurrence": 1,
-          "shape": "js.import.package",
+          "shape": "path.bare-specifier",
           "expect": "out-of-scope",
           "why": "A package specifier as a plain string rather than an import.",
-          "offset": 2488,
-          "line": 71,
+          "offset": 2992,
+          "line": 83,
           "column": 26
         },
         {
@@ -4705,8 +4737,8 @@
           "why": "An alias in a string rather than an import.",
           "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/hero.jpg",
-          "offset": 2593,
-          "line": 74,
+          "offset": 3097,
+          "line": 86,
           "column": 25
         },
         {
@@ -4715,9 +4747,24 @@
           "shape": "js.import.alias.unmapped",
           "expect": "unresolved-alias",
           "why": "And one that maps nowhere.",
-          "offset": 2642,
-          "line": 75,
+          "offset": 3146,
+          "line": 87,
           "column": 26
+        },
+        {
+          "raw": "/srcset/card-${width}.jpg",
+          "occurrence": 1,
+          "shape": "pattern.partial",
+          "expect": "resolved-pattern",
+          "why": "A third partial, at a different ratio: the union claims four widths and card-1600.jpg was never generated, so this is three of four rather than two of three. A row that only ever saw one ratio would not notice the arithmetic going wrong.",
+          "target": [
+            "apps/web/public/srcset/card-400.jpg",
+            "apps/web/public/srcset/card-800.jpg",
+            "apps/web/public/srcset/card-1200.jpg"
+          ],
+          "offset": 1937,
+          "line": 56,
+          "column": 11
         }
       ]
     },
@@ -4862,7 +4909,7 @@
         {
           "raw": "some-ui-kit/dist/icon.png",
           "occurrence": 1,
-          "shape": "js.import.package",
+          "shape": "path.bare-specifier",
           "expect": "out-of-scope",
           "why": "A package specifier inside require().",
           "offset": 403,
@@ -5149,9 +5196,9 @@
         {
           "raw": "/gallery/a&amp;b.png",
           "occurrence": 1,
-          "shape": "html.svg.feimage",
+          "shape": "path.charref",
           "expect": "resolved",
-          "why": "feImage through xlink:href, carrying a character reference as well.",
+          "why": "feImage through xlink:href, carrying a character reference. 🔴 KEYED BY THE CHARREF, NOT THE CONSTRUCT (R88(a)): what would take this out is the entity decoding, which breaks identically in an <img src>. The three feImage entries are the construct row; this is the spelling row.",
           "decoded": "/gallery/a&b.png",
           "target": "apps/web/public/gallery/a&b.png",
           "offset": 1328,
@@ -5164,8 +5211,8 @@
           "shape": "html.svg.feimage",
           "expect": "broken",
           "why": "A third feImage, pointing at nothing.",
-          "offset": 1453,
-          "line": 37,
+          "offset": 1800,
+          "line": 43,
           "column": 26
         },
         {
@@ -5175,9 +5222,20 @@
           "expect": "resolved",
           "why": "Inside a <pattern>, which is a third context again.",
           "target": "apps/web/public/srcset/tile.png",
-          "offset": 1630,
-          "line": 40,
+          "offset": 1977,
+          "line": 46,
           "column": 24
+        },
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "html.svg.feimage",
+          "expect": "resolved",
+          "why": "feImage through xlink:href with NO character reference. R88(c): moving the a&amp;b.png entry to path.charref left feImage at two instances and its legacy spelling untested — grown rather than padded, because this is coverage the tree could honestly have had.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 1675,
+          "line": 40,
+          "column": 32
         }
       ]
     },

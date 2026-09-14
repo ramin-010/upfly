@@ -112,6 +112,48 @@ function reconcile(input: {
   return problems;
 }
 
+/**
+ * Check R87's layer field. Pure, so the proofs below can damage its input.
+ *
+ * 🔴 **The field replaces a hand-written exemption list in the measuring harness, and
+ * THIS is the only reason that is an improvement.** An exemption list rots silently: an
+ * entry that is no longer needed goes on suppressing, and nothing ever says so. A
+ * declared id that stops existing is a red test instead.
+ */
+function auditEmitsAs(
+  declarations: readonly ShapeDeclaration[],
+  known: ReadonlySet<string>,
+): string[] {
+  const problems: string[] = [];
+
+  for (const shape of declarations) {
+    const emitsAs = shape.adapterEmitsAs;
+    if (emitsAs === undefined) {
+      // The reverse direction: `needsToSee` alone is a claim with nothing behind it.
+      if (shape.needsToSee !== undefined) {
+        problems.push(`${shape.id}: has needsToSee but no adapterEmitsAs`);
+      }
+      continue;
+    }
+
+    if (emitsAs.length === 0) problems.push(`${shape.id}: adapterEmitsAs is empty`);
+    for (const id of emitsAs) {
+      if (!known.has(id)) {
+        problems.push(`${shape.id}: adapterEmitsAs names ${id}, which is not a shape`);
+      }
+      if (id === shape.id) problems.push(`${shape.id}: adapterEmitsAs names itself`);
+    }
+    // The field asserts the adapter CANNOT see the distinction. Unless it says what the
+    // adapter is missing, a reader has nothing to check against the code — and an
+    // unfalsifiable exemption is worse than no exemption.
+    if ((shape.needsToSee ?? '').length === 0) {
+      problems.push(`${shape.id}: adapterEmitsAs without needsToSee naming the resolver fact`);
+    }
+  }
+
+  return problems;
+}
+
 describe('the shape vocabulary reconciles with the coverage tree', () => {
   it('agrees with the tree in both directions', () => {
     const key = loadKey();
@@ -169,6 +211,10 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
         ).toBe(true);
       }
     }
+  });
+
+  it('declares every `adapterEmitsAs` id as a real shape, with the fact it cannot see', () => {
+    expect(auditEmitsAs(SHAPES, SHAPE_IDS)).toEqual([]);
   });
 
   it('has no duplicate ids, and exposes every id through shapeById', () => {
@@ -250,6 +296,76 @@ describe('the reconciliation is proved able to fail', () => {
     });
 
     expect(problems).toEqual([{ direction: 'growth-list-now-tested', id: 'js.new-url' }]);
+  });
+
+  describe("R87's layer field, proved able to fail", () => {
+    const KNOWN = new Set(['a.real.shape', 'another.real.shape']);
+    const declare = (over: Partial<ShapeDeclaration>): ShapeDeclaration => ({
+      id: 'a.real.shape',
+      label: 'a shape',
+      spec: '4a',
+      emission: 'engine',
+      ...over,
+    });
+
+    it('goes red when adapterEmitsAs names a shape that does not exist', () => {
+      // The rot an exemption list cannot report: a shape was renamed and the exemption
+      // kept pointing at the old id, still suppressing.
+      const problems = auditEmitsAs(
+        [declare({ adapterEmitsAs: ['gone.away'], needsToSee: 'the disk' })],
+        KNOWN,
+      );
+
+      expect(problems).toEqual([
+        'a.real.shape: adapterEmitsAs names gone.away, which is not a shape',
+      ]);
+    });
+
+    it('goes red when adapterEmitsAs names ITSELF', () => {
+      // Self-reference would make the shape permanently excused from its own row.
+      const problems = auditEmitsAs(
+        [declare({ adapterEmitsAs: ['a.real.shape'], needsToSee: 'the disk' })],
+        KNOWN,
+      );
+
+      expect(problems).toEqual(['a.real.shape: adapterEmitsAs names itself']);
+    });
+
+    it('goes red when the exemption does not say what the adapter cannot see', () => {
+      const problems = auditEmitsAs([declare({ adapterEmitsAs: ['another.real.shape'] })], KNOWN);
+
+      expect(problems).toEqual([
+        'a.real.shape: adapterEmitsAs without needsToSee naming the resolver fact',
+      ]);
+    });
+
+    it('goes red on an empty list, which would read as an exemption and grant none', () => {
+      const problems = auditEmitsAs(
+        [declare({ adapterEmitsAs: [], needsToSee: 'the disk' })],
+        KNOWN,
+      );
+
+      expect(problems).toEqual(['a.real.shape: adapterEmitsAs is empty']);
+    });
+
+    it('goes red on a needsToSee with no adapterEmitsAs behind it', () => {
+      const problems = auditEmitsAs([declare({ needsToSee: 'the disk' })], KNOWN);
+
+      expect(problems).toEqual(['a.real.shape: has needsToSee but no adapterEmitsAs']);
+    });
+
+    it('stays green for a shape that declares neither, which is most of them', () => {
+      expect(auditEmitsAs([declare({})], KNOWN)).toEqual([]);
+    });
+
+    it('stays green for a correctly declared exemption', () => {
+      const problems = auditEmitsAs(
+        [declare({ adapterEmitsAs: ['another.real.shape'], needsToSee: 'the paths table' })],
+        KNOWN,
+      );
+
+      expect(problems).toEqual([]);
+    });
   });
 
   it('reports BOTH directions at once rather than stopping at the first', () => {

@@ -82,13 +82,22 @@
   );
 }
 
-/* url() nested inside another function. */
+/* A url() at the top level of a comma-separated list. NOT nested: the value walker
+   never recurses to reach it, so it breaks with every other plain url() and not with
+   the ones below. R89 corrected this entry, which had been keyed css.url.nested. */
 .overlay {
   background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url("/img/banner.png");
 }
 
+/* url() nested inside another function — the walker has to recurse to find these. */
 .crossfade {
   background-image: cross-fade(url("/gallery/photo.png") 40%, url("/gallery/photo@2x.png"));
+}
+
+/* A third nesting mechanism, and deliberately not a second cross-fade: a custom
+   property's FALLBACK argument. Same recursion, different function. */
+.fallback-bg {
+  background-image: var(--promo-bg, url("/srcset/narrow.jpg"));
 }
 
 .masked {

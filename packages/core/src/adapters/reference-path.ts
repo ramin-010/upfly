@@ -113,6 +113,43 @@ const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[]
 ];
 
 /**
+ * Whether an assembled path still constrains a glob enough to be checked against the
+ * files that exist, given the STATIC chunks between its unknown segments.
+ *
+ * 🔴 **This is R78 Q3 and R80(b) as one rule, in one place, because it is now asked in
+ * two dialects.** A pattern needs:
+ *   1. a fixed DIRECTORY — location is what makes an asset unique, so `${base}/hero.png`
+ *      is not globbable however specific the rest is; and
+ *   2. **enough of a fixed NAME that the glob cannot sweep in strangers.** One unknown
+ *      segment in the name is a pattern; two is a guess. `/icons/${theme}-${size}.png`
+ *      would claim `icon-192.png` and `icon-512.png` on a pattern constraining almost
+ *      nothing.
+ *
+ * ⚠️ **Chunks, not a marker to search for**, so one function serves a template literal's
+ * `quasis` and a `${}`-bearing string from CSS-in-JS without either caller re-deriving
+ * the rule. Condition 2 was implemented nowhere for a day after it was ruled, and the
+ * reason it went unnoticed is that each caller had its own half of the rule (R89).
+ *
+ * @param chunks the literal text between the unknown segments, in order. A path with one
+ * interpolation has two chunks; either may be empty.
+ */
+export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
+  const first = chunks[0] ?? '';
+  if (!first.includes('/')) return false;
+
+  let unknownsInName = 0;
+  for (const [index, chunk] of chunks.entries()) {
+    // Every chunk but the first is preceded by an unknown segment.
+    if (index > 0) unknownsInName += 1;
+    // A `/` here starts the filename again, so what was counted so far sat in a
+    // directory segment rather than in the name.
+    if (chunk.includes('/')) unknownsInName = 0;
+  }
+
+  return unknownsInName <= 1;
+}
+
+/**
  * Why this path is built at render time rather than written literally, or `null` if
  * it is a plain path.
  *
