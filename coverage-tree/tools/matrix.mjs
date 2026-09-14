@@ -108,7 +108,9 @@ export function buildMatrix(key, observed, { declarationOf = () => undefined } =
       row.expected += 1;
       const verdict = classify(entry, observation);
       row[verdict.bucket] += 1;
-      if (verdict.kind !== null) findings.push(finding(group, entry, verdict.kind, verdict.detail));
+      if (verdict.kind !== null) {
+        findings.push(finding(group, entry, verdict.kind, verdict.detail, verdict.note));
+      }
     }
   }
 
@@ -120,9 +122,38 @@ export function buildMatrix(key, observed, { declarationOf = () => undefined } =
   };
 }
 
-function finding(group, entry, kind, detail) {
-  return { file: group.path, line: entry.line, raw: entry.raw, shape: entry.shape, kind, detail };
+/**
+ * One divergence, carrying BOTH sides' reasoning.
+ *
+ * 🔴 **A DIVERGENCE IS A QUESTION UNTIL SOMEBODY HAS OPENED BOTH SIDES (R90), so the
+ * output opens them.** The key's `why` is the tree author's claim about what a correct
+ * engine does; the engine's `note` is what it says about its own decision. Printing
+ * `expected resolved, engine said absent` and stopping makes every one of these a
+ * separate investigation with a separate probe — and there are dozens.
+ *
+ * ⚠️ **The reason this is worth the width: a row reading `0 of 4` MAY MEAN THE KEY IS
+ * WRONG.** Six key occurrence defects were corrected in one session, and then the seventh
+ * `0 of 4` row was read as an engine P0 and labelled "not a judgement call" — it was a
+ * key defect too (R90). As the tree gets measured, the tree gets corrected. Whichever side
+ * is wrong, the two claims side by side are what settle it.
+ */
+function finding(group, entry, kind, detail, engineNote) {
+  return {
+    file: group.path,
+    line: entry.line,
+    raw: entry.raw,
+    shape: entry.shape,
+    kind,
+    detail,
+    // Both sides' own words, so a reader can adjudicate without opening two files.
+    keyWhy: entry.why ?? '',
+    keyGap: entry.knownGap ?? '',
+    engineNote: engineNote ?? '',
+  };
 }
+
+/** Kinds that are NOT defects: reported for visibility, never counted against the run. */
+export const NON_DEFECT_KINDS = ['threw-expected-silence'];
 
 /**
  * What one keyed entry turned out to be. Split out of `buildMatrix` rather than
@@ -153,11 +184,24 @@ function classify(entry, observation) {
   // reference first means the throw explains only the entries actually missing, which is
   // also the only way this harness can show whether R20's preservation works.
   if (found === undefined && observation.threw !== null) {
-    return { bucket: 'threw', kind: 'threw', detail: observation.threw };
+    // 🔴 R86 AND R90 MEET HERE, and collapsing either way would be wrong. R86: a throw is
+    // never merged into a refusal, because silence from a crash and silence from a correct
+    // decline are indistinguishable and mean opposite things. R90: where the key's expect
+    // ACCEPTS silence, the throw is the mechanism by which the right thing happened — so
+    // it is reported, named, and NOT a defect. `entity.html`'s four swallowed entries are
+    // exactly this: the file cannot be parsed, and a browser renders nothing there either.
+    const silenceIsRight = (ACCEPTS[entry.expect] ?? []).includes('absent');
+    return {
+      bucket: 'threw',
+      kind: silenceIsRight ? 'threw-expected-silence' : 'threw',
+      detail: observation.threw,
+      note: '',
+    };
   }
 
   const actual = found === undefined ? 'absent' : found.resolution;
   const agrees = (ACCEPTS[entry.expect] ?? []).includes(actual);
+  const note = found?.note ?? '';
 
   if (entry.knownGap !== undefined) {
     // A knownGap that has been closed must be REMOVED, not left standing. Same hazard as
@@ -168,16 +212,18 @@ function classify(entry, observation) {
           bucket: 'staleGap',
           kind: 'stale-known-gap',
           detail: `engine now produces ${actual}; the gap is closed`,
+          note,
         }
-      : { bucket: 'knownGap', kind: null, detail: '' };
+      : { bucket: 'knownGap', kind: null, detail: '', note };
   }
 
   return agrees
-    ? { bucket: 'met', kind: null, detail: '' }
+    ? { bucket: 'met', kind: null, detail: '', note }
     : {
         bucket: 'missed',
         kind: 'wrong-outcome',
         detail: `expected ${entry.expect}, engine said ${actual}`,
+        note,
       };
 }
 
@@ -310,11 +356,21 @@ export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
   }
 
   lines.push('');
-  lines.push(`findings: ${result.findings.length}`);
-  for (const item of result.findings) {
+  const defects = result.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind));
+  const noted = result.findings.filter((item) => NON_DEFECT_KINDS.includes(item.kind));
+  lines.push(`findings: ${defects.length} to answer, ${noted.length} noted`);
+  lines.push(
+    "  🔴 EACH ONE IS A QUESTION, NOT A VERDICT (R90). Both sides state their case: the key's " +
+      "`why` is what the tree author says a correct engine does; the engine's note is what it " +
+      'says about its own decision. A row reading 0 of N may mean the KEY is wrong.',
+  );
+  for (const item of [...defects, ...noted]) {
     lines.push(
       `  [${item.kind}] ${item.file}:${item.line} ${JSON.stringify(item.raw)} — ${item.detail}`,
     );
+    if (item.keyWhy !== '') lines.push(`        key says:    ${item.keyWhy}`);
+    if (item.keyGap !== '') lines.push(`        knownGap:    ${item.keyGap}`);
+    if (item.engineNote !== '') lines.push(`        engine says: ${item.engineNote}`);
   }
 
   lines.push('');

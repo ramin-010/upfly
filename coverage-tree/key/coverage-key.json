@@ -57,10 +57,10 @@
       "motivation": "The position everything else is compared against."
     },
     {
-      "id": "html.img.src.after-rawtext-prose",
-      "label": "img@src after a raw-text tag named in prose",
+      "id": "html.rawtext.swallowed",
+      "label": "markup swallowed by an unclosed raw-text element",
       "spec": "4a",
-      "motivation": "R20. A mid-sentence <style> swallowed the rest of the document and discarded every reference already collected. These four exist to go 0 of 4 the moment that regresses."
+      "motivation": "R20 found this in MARKDOWN, where masking is correct because CommonMark requires a raw-text block to begin a line. 🔴 R90 reversed it for HTML: in a .html file there is no prose, an unclosed <style> opens a raw-text element, and a BROWSER RENDERS NOTHING AFTER IT EITHER. These four exist to read ZERO — a non-zero count means the engine disagrees with the browser about what the page shows. The old id asserted the opposite and the four entries carried expect: resolved."
     },
     {
       "id": "html.img.srcset.single",
@@ -2142,10 +2142,9 @@
         {
           "raw": "/img/hero.jpg",
           "occurrence": 1,
-          "shape": "html.img.src.after-rawtext-prose",
-          "expect": "resolved",
-          "why": "R20: after six raw-text tags named in prose and never closed. Must still be found.",
-          "target": "apps/web/public/img/hero.jpg",
+          "shape": "html.rawtext.swallowed",
+          "expect": "discarded",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
           "offset": 2574,
           "line": 57,
           "column": 15
@@ -2153,10 +2152,9 @@
         {
           "raw": "/gallery/photo.png",
           "occurrence": 1,
-          "shape": "html.img.src.after-rawtext-prose",
-          "expect": "resolved",
-          "why": "As above.",
-          "target": "apps/web/public/gallery/photo.png",
+          "shape": "html.rawtext.swallowed",
+          "expect": "discarded",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
           "offset": 2658,
           "line": 58,
           "column": 15
@@ -2164,10 +2162,9 @@
         {
           "raw": "/srcset/tile@2x.png",
           "occurrence": 1,
-          "shape": "html.img.src.after-rawtext-prose",
-          "expect": "resolved",
-          "why": "As above.",
-          "target": "apps/web/public/srcset/tile@2x.png",
+          "shape": "html.rawtext.swallowed",
+          "expect": "discarded",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
           "offset": 2747,
           "line": 59,
           "column": 15
@@ -2175,10 +2172,9 @@
         {
           "raw": "../../shared/assets/img/logo.png",
           "occurrence": 1,
-          "shape": "html.img.src.after-rawtext-prose",
-          "expect": "resolved",
-          "why": "As above, and relative rather than root-relative.",
-          "target": "shared/assets/img/logo.png",
+          "shape": "html.rawtext.swallowed",
+          "expect": "discarded",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
           "offset": 2838,
           "line": 60,
           "column": 15

@@ -158,10 +158,23 @@ export const SHAPES = [
   // ---- HTML -------------------------------------------------------------------
   { id: 'html.img.src', label: 'img@src', spec: '4a', emission: 'engine' },
   {
-    id: 'html.img.src.after-rawtext-prose',
-    label: 'img@src after a raw-text tag named in prose',
+    id: 'html.rawtext.swallowed',
+    label: 'markup swallowed by an unclosed raw-text element',
     spec: '4a',
-    emission: 'engine',
+    emission: 'declined',
+    why:
+      '🔴 RENAMED AND REVERSED BY R90, and the old name was the whole defect: ' +
+      '`html.img.src.after-rawtext-prose` ASSERTED these must be found, and the fixture below it ' +
+      'reads "everything from here down must still be found". In an HTML file there is no prose — ' +
+      'every character is markup, an unclosed <style> opens a raw-text element, and everything to ' +
+      'the end of the document is its content. A BROWSER RENDERS NOTHING AFTER IT EITHER, so the ' +
+      'engine agreeing is correct and a non-zero count here is the failure. ' +
+      '⚠️ `maskInactiveRegions` lives in `markdown.ts` CORRECTLY: CommonMark says a raw-text block ' +
+      'must BEGIN A LINE, so mid-sentence it is inline HTML and masking is right there and wrong ' +
+      'here. The fixture ported a markdown lesson into HTML. ' +
+      '✅ What was genuinely owed was the DIAGNOSIS — `invalid css syntax at line 1, column 2` is a ' +
+      'symptom dressed as one — and `styleElementFailure` now names the tag, its line, and the ' +
+      "reader's own browser. R51 one layer down.",
   },
   {
     id: 'html.img.srcset.single',

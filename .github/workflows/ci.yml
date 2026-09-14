@@ -45,6 +45,51 @@ jobs:
       - name: Test
         run: pnpm test
 
+  coverage-tree:
+    # 🔴 R91. The answer key and the tree are ONE instrument, and nothing was checking
+    # that they still agree — the coverage tree landed on 2026-09-13 and its own
+    # self-check had never run in CI. A drifted key still reads green, which is exactly
+    # what R75 says a key does, and the measuring harness refuses to produce a matrix
+    # until this passes. So this is the gate in front of the gate.
+    #
+    # ⚠️ `prove` is the one that matters, and it runs SECOND on purpose. `check` says the
+    # key and the tree agree; `prove` damages the tree eighteen ways and says the check
+    # can still fail. A check nobody has seen fail is this project's dominant defect
+    # class — four have shipped — and `check` passing tells you nothing about whether it
+    # could ever have told you anything.
+    #
+    # ⚠️ Two cells rather than the six-way matrix: the key records BYTE offsets, which
+    # are platform-independent only because `.gitattributes` pins `eol=lf`. Windows is
+    # here to keep that promise honest — a CRLF checkout shifts every offset and this is
+    # where it would show — and rule 5 makes Windows first-class regardless. The other
+    # four cells would re-measure the same bytes.
+    #
+    # ⚠️ `coverage-tree:measure` is DELIBERATELY NOT HERE. It exits non-zero on 46
+    # open questions about the engine and the key, so wiring it today would make CI red
+    # on purpose. It goes in once those are ruled and either fixed or carrying a
+    # `knownGap` — and it needs `pnpm build`, unlike these two, which import nothing.
+    name: coverage tree self-check / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Key and tree agree
+        run: pnpm coverage-tree:check
+
+      - name: And the check can still fail
+        run: pnpm coverage-tree:prove
+
   coverage:
     name: coverage gate (core >= 90%)
     runs-on: ubuntu-latest

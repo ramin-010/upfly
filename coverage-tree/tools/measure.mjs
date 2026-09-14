@@ -30,7 +30,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { blindSpots, buildMatrix, renderMatrix, toCodeUnits } from './matrix.mjs';
+import { NON_DEFECT_KINDS, blindSpots, buildMatrix, renderMatrix, toCodeUnits } from './matrix.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TREE_ROOT = join(HERE, '..');
@@ -152,6 +152,9 @@ for (const reference of references) {
     shape: reference.shape,
     resolution: reference.resolution,
     rawPath: reference.rawPath,
+    // The engine's own words about its decision. R90: a divergence is a question until
+    // both sides have stated their case, and this is the engine's half.
+    note: reference.note ?? '',
   });
 }
 
@@ -176,7 +179,9 @@ process.stdout.write(`${renderMatrix(result, { emissionOf: (id) => shapeById(id)
 // Exit non-zero on anything the tree says is a defect, so this can gate as well as
 // report. A knownGap is not a defect; a STALE one is, because the debt was settled and
 // the record still claims it.
-const defects = result.findings.length + result.unkeyed.length;
+const defects =
+  result.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length +
+  result.unkeyed.length;
 if (defects > 0) {
   process.stdout.write(`\n🔴 ${defects} finding(s) above. Read them; they are not a score.\n`);
   process.exit(1);

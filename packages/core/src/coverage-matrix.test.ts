@@ -18,9 +18,21 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error — a plain .mjs instrument with no types, deliberately outside the
-// package's source tree: it measures the engine and must not ship inside it.
-import { ACCEPTS, buildMatrix, renderMatrix } from '../../../coverage-tree/tools/matrix.mjs';
+// A plain .mjs instrument, deliberately outside the package's source tree — it measures
+// the engine and must not ship inside it. `matrix.d.mts` beside it is the seam, and it
+// exists because a `@ts-expect-error` here did not survive the formatter reflowing the
+// import: the directive stopped applying to the line that errors, then failed as unused
+// while the real error came back.
+import {
+  ACCEPTS,
+  type MatrixFinding,
+  type MatrixResult,
+  type MatrixRow,
+  NON_DEFECT_KINDS,
+  type ShapeDisagreement,
+  buildMatrix,
+  renderMatrix,
+} from '../../../coverage-tree/tools/matrix.mjs';
 
 interface Entry {
   raw: string;
@@ -75,15 +87,34 @@ function observed(
   ]);
 }
 
-const rowOf = (result: { rows: { shape: string }[] }, shape: string) =>
-  result.rows.find((row) => row.shape === shape) as unknown as {
-    expected: number;
-    met: number;
-    missed: number;
-    threw: number;
-    knownGap: number;
-    staleGap: number;
-  };
+/**
+ * The row for one shape, or a loud failure.
+ *
+ * ⚠️ It threw a hand-written structural type and a double cast until `matrix.d.mts`
+ * existed, and the cast is what made that survivable — `as unknown as {…}` would have let
+ * a missing row through as `undefined` and `toMatchObject` say nothing useful about it.
+ * Rule 17's shape: typechecking the tests caught the fixture, not the code.
+ */
+function rowOf(result: MatrixResult, shape: string): MatrixRow {
+  const row = result.rows.find((candidate) => candidate.shape === shape);
+  if (row === undefined) throw new Error(`the matrix has no row for ${shape}`);
+  return row;
+}
+
+/** The first finding, or a loud failure — an empty list must not read as a pass. */
+function firstFinding(result: MatrixResult): MatrixFinding {
+  const [first] = result.findings;
+  if (first === undefined) throw new Error('expected at least one finding, and there were none');
+  return first;
+}
+
+/** The only shape disagreement, or a loud failure. Same reason as `firstFinding`. */
+function onlyDisagreement(result: MatrixResult): ShapeDisagreement {
+  const [first, ...rest] = result.shapeDisagreements;
+  if (first === undefined) throw new Error('expected one shape disagreement, and there were none');
+  if (rest.length > 0) throw new Error(`expected one shape disagreement, got ${rest.length + 1}`);
+  return first;
+}
 
 describe('the matrix counts an outcome the way the key defines it', () => {
   it('counts a matching outcome as met', () => {
@@ -97,8 +128,8 @@ describe('the matrix counts an outcome the way the key defines it', () => {
     const result = buildMatrix(keyWith({}), observed([{ start: 10, resolution: 'broken' }]));
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ met: 0, missed: 1 });
-    expect(result.findings[0]).toMatchObject({ kind: 'wrong-outcome' });
-    expect(result.findings[0].detail).toContain('expected resolved, engine said broken');
+    expect(firstFinding(result)).toMatchObject({ kind: 'wrong-outcome' });
+    expect(firstFinding(result).detail).toContain('expected resolved, engine said broken');
   });
 
   it('🔴 counts silence as a miss where the expect does not allow silence', () => {
@@ -107,7 +138,7 @@ describe('the matrix counts an outcome the way the key defines it', () => {
     const result = buildMatrix(keyWith({}), observed([]));
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ met: 0, missed: 1 });
-    expect(result.findings[0].detail).toContain('engine said absent');
+    expect(firstFinding(result).detail).toContain('engine said absent');
   });
 
   it('joins on POSITION, so a right answer at the wrong offset is still a miss', () => {
@@ -185,8 +216,31 @@ describe('R86 — a throw is a THIRD outcome, never merged into a refusal', () =
     );
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ met: 0, threw: 1 });
-    expect(result.findings[0]).toMatchObject({ kind: 'threw' });
-    expect(result.findings[0].detail).toContain('invalid css syntax');
+    expect(firstFinding(result).detail).toContain('invalid css syntax');
+  });
+
+  it('names a throw where silence was right as NOTED, not as a defect (R90)', () => {
+    // 🔴 R86 AND R90 MEET HERE. R86: never merge a throw into a refusal, because the two
+    // silences mean opposite things. R90: where the key's expect ACCEPTS silence, the
+    // throw is the mechanism by which the right thing happened. `entity.html`'s four
+    // swallowed entries are exactly this — the file cannot be parsed and a browser
+    // renders nothing there either. So it stays visible in the `threw` column and is
+    // reported under its own kind, and the run does not fail on it.
+    const result = buildMatrix(
+      keyWith({ expect: 'discarded' }),
+      observed([], 'parse-failed: unclosed <style>'),
+    );
+
+    expect(firstFinding(result).kind).toBe('threw-expected-silence');
+    expect(NON_DEFECT_KINDS).toContain('threw-expected-silence');
+  });
+
+  it('🔴 but a throw where a REFERENCE was expected stays a defect', () => {
+    // The control, and without it the case above would pass with every throw excused.
+    const result = buildMatrix(keyWith({ expect: 'resolved' }), observed([], 'parse-failed: x'));
+
+    expect(firstFinding(result).kind).toBe('threw');
+    expect(NON_DEFECT_KINDS).not.toContain('threw');
   });
 
   it('names the throw rather than counting it as an ordinary miss', () => {
@@ -213,7 +267,7 @@ describe('R86 — a throw is a THIRD outcome, never merged into a refusal', () =
     const result = buildMatrix(keyWith({}), new Map());
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ expected: 1, met: 0, missed: 1 });
-    expect(result.findings[0]).toMatchObject({ kind: 'not-observed' });
+    expect(firstFinding(result)).toMatchObject({ kind: 'not-observed' });
   });
 });
 
@@ -238,7 +292,7 @@ describe('a knownGap is a sanctioned divergence, and a settled one is a defect',
     );
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, knownGap: 0 });
-    expect(result.findings[0]).toMatchObject({ kind: 'stale-known-gap' });
+    expect(firstFinding(result)).toMatchObject({ kind: 'stale-known-gap' });
   });
 });
 
@@ -286,7 +340,7 @@ describe('R87 — a shape disagreement is a defect only where no layer is declar
     });
 
     expect(result.shapeDisagreements).toHaveLength(1);
-    expect(result.shapeDisagreements[0].explained).toBe(true);
+    expect(onlyDisagreement(result).explained).toBe(true);
   });
 
   it('🔴 does NOT explain it when the declaration names a different shape', () => {
@@ -296,13 +350,13 @@ describe('R87 — a shape disagreement is a defect only where no layer is declar
       declarationOf: () => ({ adapterEmitsAs: ['md.raw-html'] }),
     });
 
-    expect(result.shapeDisagreements[0].explained).toBe(false);
+    expect(onlyDisagreement(result).explained).toBe(false);
   });
 
   it('does not explain it when nothing is declared at all', () => {
     const result = buildMatrix(key, seen, { declarationOf: () => undefined });
 
-    expect(result.shapeDisagreements[0].explained).toBe(false);
+    expect(onlyDisagreement(result).explained).toBe(false);
   });
 });
 

@@ -295,15 +295,85 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
       continue;
     }
 
-    context.references.push(
-      ...findCssReferences({
-        file: context.file,
-        text: css,
-        baseOffset: location.startOffset,
-        hostShape: 'html.style.element',
-      }),
-    );
+    try {
+      context.references.push(
+        ...findCssReferences({
+          file: context.file,
+          text: css,
+          baseOffset: location.startOffset,
+          hostShape: 'html.style.element',
+        }),
+      );
+    } catch (error) {
+      throw styleElementFailure(element, context, error);
+    }
   }
+}
+
+/**
+ * Turn a CSS parse failure inside `<style>` into something about the USER'S document.
+ *
+ * 🔴 **`invalid css syntax at line 1, column 2` is a symptom reported as a diagnosis, and
+ * it is useless to the person who has to fix it (R90).** Column 2 of what? The `<style>`
+ * body — which, when the tag was never closed, is the whole rest of their file. The
+ * sentence a user can act on names the tag, the line, and the thing they can verify for
+ * themselves: **their browser does the same.**
+ *
+ * ⚠️ **The unclosed case is NOT an engine defect, and saying so is the point of the
+ * message.** In an HTML file there is no prose: every character is markup, `<style>` opens
+ * a raw-text element, and everything to the end of the document is its content. The engine
+ * agrees with the browser. Masking it — which `markdown.ts` correctly does, because
+ * CommonMark says a raw-text block must *begin a line*, so mid-sentence it is inline HTML
+ * — would make us disagree with the browser about what the page renders.
+ *
+ * ✅ **And it carries the partials (R20).** `UpflyError.partial` exists for exactly this
+ * case and its own documentation describes it — *"the HTML adapter, which hands a `<style>`
+ * block to the CSS adapter"* — but **only `markdown.ts` ever populated it.** For a plain
+ * `.html` file every reference found before the failing `<style>` was discarded: measured
+ * at **ten** in the coverage tree's `entity.html`, all of them ordinary `<img src>` tags
+ * above the unclosed tag that a browser renders perfectly. The throw still happens and
+ * `scan` still records the file as `parse-failed`, so rule 9 is untouched; what changes is
+ * that correct references survive, and losing them is what makes an asset look dead.
+ */
+/**
+ * The sentence itself, extracted so the message is one template rather than a chain of
+ * concatenations (the `useTemplate` rule, answered the way R81 answered it rather than
+ * suppressed — and it reads better as prose sitting on its own).
+ */
+const UNCLOSED_RAWTEXT =
+  'is never closed, so everything after it is inside the stylesheet rather than being markup. A ' +
+  'browser reads this document the same way and renders nothing below that point. Close the tag, ' +
+  'or write &lt;style&gt; if the word was meant as text.';
+
+function styleElementFailure(element: ParsedElement, context: Context, error: unknown): UpflyError {
+  const partial = [...context.references];
+  if (!(error instanceof UpflyError)) {
+    throw error;
+  }
+
+  const location = element.sourceCodeLocation;
+  // parse5 leaves `endTag` absent when the tag was never closed, which is the whole tell.
+  //
+  // ⚠️ BOTH `null` AND `undefined`, and testing only for `null` cost a round trip: the
+  // probe that established this printed `JSON.stringify(loc.endTag ?? null)`, which
+  // coerces `undefined` to `null` and so could not tell the two apart. The instrument
+  // that reads a value must not normalise the thing it is being used to decide.
+  const unclosed =
+    location !== undefined &&
+    location !== null &&
+    (location.endTag === null || location.endTag === undefined);
+  if (!unclosed) {
+    return new UpflyError(error.code, error.message, partial, error.diagnostic);
+  }
+
+  const line = location?.startTag?.startLine;
+  const where = line === undefined ? 'A <style>' : `The <style> on line ${line}`;
+  return new UpflyError(
+    'ADAPTER_PARSE_FAILED',
+    `${where} ${UNCLOSED_RAWTEXT}`,
+    partial,
+    error.diagnostic,
+  );
 }
 
 function collectFromStyleAttribute(css: string, baseOffset: number, context: Context): void {
