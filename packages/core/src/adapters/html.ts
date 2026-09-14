@@ -14,6 +14,7 @@
 
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { UpflyError } from '../errors.js';
+import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -27,16 +28,26 @@ import {
 type ParsedNode = DefaultTreeAdapterMap['node'];
 type ParsedElement = DefaultTreeAdapterMap['element'];
 
-/** Attributes holding exactly one URL, by tag name. */
-const SINGLE_URL_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
-  ['img', ['src']],
-  ['source', ['src']],
-  ['video', ['src', 'poster']],
-  ['audio', ['src']],
-  ['embed', ['src']],
-  ['input', ['src']],
-  ['object', ['data']],
-  ['track', ['src']],
+/**
+ * Attributes holding exactly one URL, by tag name, each with the SHAPE it produces.
+ *
+ * ⚠️ The shape lives here rather than in a second table keyed the same way. A parallel
+ * list is 6a-decies in miniature: two structures encoding one fact, drifting the first
+ * time somebody adds a tag to only one of them.
+ */
+function attrs(...pairs: readonly (readonly [string, ShapeId])[]): ReadonlyMap<string, ShapeId> {
+  return new Map(pairs);
+}
+
+const SINGLE_URL_ATTRIBUTES: ReadonlyMap<string, ReadonlyMap<string, ShapeId>> = new Map([
+  ['img', attrs(['src', 'html.img.src'])],
+  ['source', attrs(['src', 'html.source.src'])],
+  ['video', attrs(['src', 'html.video.src'], ['poster', 'html.video.poster'])],
+  ['audio', attrs(['src', 'html.audio.src'])],
+  ['embed', attrs(['src', 'html.embed.src'])],
+  ['input', attrs(['src', 'html.input.src'])],
+  ['object', attrs(['data', 'html.object.data'])],
+  ['track', attrs(['src', 'html.track.src'])],
 
   // ⚠️ **Inline SVG (R26), and this was missed because of where it was written down.**
   // ARCHITECTURE.md recorded `<image href>` as a known gap *"for `.svg` files"* — true,
@@ -50,8 +61,15 @@ const SINGLE_URL_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
   //
   // Both attribute spellings: `href` is the SVG 2 form, `xlink:href` the SVG 1.1 form
   // that is still overwhelmingly what shipped markup contains.
-  ['image', ['href', 'xlink:href']],
-  ['feimage', ['href', 'xlink:href']],
+  ['image', attrs(['href', 'html.svg.image.href'], ['xlink:href', 'html.svg.image.xlink'])],
+
+  // ⚠️ Both spellings land on ONE `feImage` row while `<image>` has two. That is not an
+  // oversight: the tree distinguishes `image@href` from `image@xlink:href` because the
+  // SVG 1.1 and SVG 2 forms are what shipped markup actually splits over, and it has
+  // instances of each. `feImage` has three instances total, so splitting it would make
+  // two rows of one or two — §4k wants three to five, and a row that cannot say
+  // "4 of 5" is not worth the split. Revisit if reality supplies more.
+  ['feimage', attrs(['href', 'html.svg.feimage'], ['xlink:href', 'html.svg.feimage'])],
 ]);
 
 // ⚠️ `<use>` is deliberately absent from the map above, and this is the reason rather
@@ -67,6 +85,32 @@ const SRCSET_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
   ['img', ['srcset']],
   ['source', ['srcset']],
 ]);
+
+/**
+ * Which srcset row a candidate belongs to.
+ *
+ * `<source srcset>` is one row whatever its descriptors: the whole attribute is the
+ * content there, and it fails as a unit. `<img srcset>` splits three ways because the
+ * three fail separately — a `w` list is meaningless without the `sizes` attribute
+ * beside it, an `x` list ignores `sizes` entirely, and a lone candidate with a
+ * descriptor is the case that parses differently from both.
+ */
+function srcsetShape(tagName: string, descriptor: string, candidateCount: number): ShapeId {
+  if (tagName === 'source') return 'html.source.srcset';
+  if (candidateCount === 1 && descriptor !== '') return 'html.img.srcset.single';
+  return descriptor.endsWith('w') ? 'html.img.srcset.w' : 'html.img.srcset.x';
+}
+
+/**
+ * Whether the path carries percent-encoding, which is its own row.
+ *
+ * ⚠️ Disposition beats construct here, the same way `path.absolute-url` does: what
+ * would take these out is the decoder, not the attribute they sit in, and R26's spaced
+ * filenames are exactly what arrives percent-encoded.
+ */
+function isPercentEncoded(raw: string): boolean {
+  return /%[0-9A-Fa-f]{2}/.test(raw);
+}
 
 export const htmlAdapter: Adapter = defineAdapter({
   id: 'html',
@@ -161,36 +205,55 @@ function collectFromAttribute(input: {
   }
 
   if ((SRCSET_ATTRIBUTES.get(tagName) ?? []).includes(name)) {
-    for (const candidate of parseSrcset(raw)) {
-      addAttributeReference(candidate.url, start + candidate.offset, context);
+    const candidates = parseSrcset(raw);
+    for (const candidate of candidates) {
+      addAttributeReference(
+        candidate.url,
+        start + candidate.offset,
+        context,
+        srcsetShape(tagName, candidate.descriptor, candidates.length),
+      );
     }
     return;
   }
 
-  if ((SINGLE_URL_ATTRIBUTES.get(tagName) ?? []).includes(name)) {
-    addAttributeReference(raw, start, context);
+  const single = SINGLE_URL_ATTRIBUTES.get(tagName)?.get(name);
+  if (single !== undefined) {
+    addAttributeReference(raw, start, context, single);
     return;
   }
 
-  if (tagName === 'link' && name === 'href' && linkPointsAtAnImage(element)) {
-    addAttributeReference(raw, start, context);
+  if (tagName === 'link' && name === 'href') {
+    // R83: two independent branches, so two shapes. What the predicate refuses is a
+    // third — `html.link.href.other` — and nothing is emitted for it, which is what
+    // makes that row read as a zero-is-correct one.
+    const claim = linkImageClaim(element);
+    if (claim !== null) addAttributeReference(raw, start, context, claim);
   }
 }
 
 /**
- * Whether a `<link>` points at an image.
+ * How a `<link>` claims to point at an image, or `null` if it does not.
  *
  * Covers every icon spelling — `icon`, `shortcut icon`, `apple-touch-icon`,
  * `mask-icon` — and `rel="preload" as="image"`, which is how modern pages
  * preload a hero image and is just as much a reference as an `<img>`.
+ *
+ * ⚠️ **It returns WHICH claim rather than a boolean (R83).** These are two independent
+ * branches: delete the icon one and preload still works, delete the preload one and
+ * icon still works. So they fail separately and belong in separate rows — a boolean
+ * would have collapsed them into one and hidden a break in either behind the other.
  */
-function linkPointsAtAnImage(element: ParsedElement): boolean {
+function linkImageClaim(element: ParsedElement): ShapeId | null {
   const relation = attributeValue(element, 'rel');
-  if (relation === undefined) return false;
+  if (relation === undefined) return null;
 
   const tokens = relation.toLowerCase().split(/\s+/);
-  if (tokens.some((token) => token.includes('icon'))) return true;
-  return tokens.includes('preload') && attributeValue(element, 'as')?.toLowerCase() === 'image';
+  if (tokens.some((token) => token.includes('icon'))) return 'html.link.href.icon';
+  if (tokens.includes('preload') && attributeValue(element, 'as')?.toLowerCase() === 'image') {
+    return 'html.link.href.preload';
+  }
+  return null;
 }
 
 function attributeValue(element: ParsedElement, name: string): string | undefined {
@@ -224,6 +287,7 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
         end: location.endOffset,
         rawPath: css,
         kind: 'css-url',
+        shape: 'html.style.element',
         ceiling: 'unsafe',
         asserted: false,
         note: `a <style> block built by a template, so its CSS is not final: ${templated}`,
@@ -236,6 +300,7 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
         file: context.file,
         text: css,
         baseOffset: location.startOffset,
+        hostShape: 'html.style.element',
       }),
     );
   }
@@ -243,7 +308,14 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
 
 function collectFromStyleAttribute(css: string, baseOffset: number, context: Context): void {
   try {
-    context.references.push(...findCssReferences({ file: context.file, text: css, baseOffset }));
+    context.references.push(
+      ...findCssReferences({
+        file: context.file,
+        text: css,
+        baseOffset,
+        hostShape: 'html.style.attribute',
+      }),
+    );
   } catch (error) {
     // A malformed inline style should not take down a whole document, but it must
     // not vanish either: report it as unsafe so the run has a record of it.
@@ -253,6 +325,7 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
       end: baseOffset + css.length,
       rawPath: css,
       kind: 'css-url',
+      shape: 'html.style.attribute',
       ceiling: 'unsafe',
       asserted: false,
       note: `could not parse the style attribute: ${
@@ -294,13 +367,14 @@ function addEntityEscapedReference(range: { start: number; end: number }, contex
     end: range.end,
     rawPath: context.text.slice(range.start, range.end),
     kind: 'attr',
+    shape: 'html.charref',
     ceiling: 'unsafe',
     asserted: true,
     note: 'contains HTML character references, so the path text cannot be located exactly',
   });
 }
 
-function addAttributeReference(raw: string, start: number, context: Context): void {
+function addAttributeReference(raw: string, start: number, context: Context, shape: ShapeId): void {
   if (raw === '') return;
   if (isExternalUrl(raw, 'attr')) return;
 
@@ -312,6 +386,7 @@ function addAttributeReference(raw: string, start: number, context: Context): vo
       end: start + raw.length,
       rawPath: raw,
       kind: 'attr',
+      shape,
       ceiling: 'unsafe',
       asserted: true,
       note: reason,
@@ -329,6 +404,9 @@ function addAttributeReference(raw: string, start: number, context: Context): vo
     end: start + path.length,
     rawPath: path,
     kind: 'attr',
+    // Disposition beats the attribute it sits in: what would take a percent-encoded
+    // path out is the decoder, not `<img src>`.
+    shape: isPercentEncoded(path) ? 'html.percent-encoded' : shape,
     ceiling: 'high',
     asserted: true,
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),

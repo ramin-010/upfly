@@ -46,6 +46,7 @@ function lineAdapter(id: string, extensions: readonly string[]): Adapter {
             end: start + line.length - 'ref:'.length,
             rawPath: line.slice('ref:'.length),
             kind: 'attr',
+            shape: 'html.img.src',
             ceiling: 'high',
             asserted: true,
           });

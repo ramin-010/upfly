@@ -146,7 +146,12 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
   });
 
   it('gives every declared shape an emission class, and a reason where it is not obvious', () => {
-    for (const shape of SHAPES) {
+    // Widened deliberately: `SHAPES` is `as const` so `ShapeId` can be derived from it,
+    // which also narrows every entry to its own literal type — and then `why` "does not
+    // exist" on the entries that happen to lack one. The declaration type is what this
+    // test reasons about.
+    const declarations: readonly ShapeDeclaration[] = SHAPES;
+    for (const shape of declarations) {
       expect(['engine', 'gap', 'declined'], `${shape.id}`).toContain(shape.emission);
 
       // A `declined` row reads BACKWARDS — a zero is correct and a non-zero is the

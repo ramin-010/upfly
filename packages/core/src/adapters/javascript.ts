@@ -26,6 +26,7 @@ import type {
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
+import type { ShapeId } from '../shapes.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -272,12 +273,18 @@ function collectFromNode(node: BabelNode, context: Context): void {
       return;
     case 'CallExpression':
       if (isRequireCall(node)) {
-        collectFromModuleSource(node.arguments[0], context, 'certain', 'require()');
+        collectFromModuleSource(node.arguments[0], context, 'certain', 'js.require', 'require()');
       }
       return;
     case 'NewExpression':
       if (isBundlerUrlConstruction(node)) {
-        collectFromModuleSource(node.arguments[0], context, 'high', 'new URL(…, import.meta.url)');
+        collectFromModuleSource(
+          node.arguments[0],
+          context,
+          'high',
+          'js.new-url',
+          'new URL(…, import.meta.url)',
+        );
       }
       return;
     case 'JSXOpeningElement':
@@ -423,6 +430,7 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
     end: start + path.length,
     rawPath: path,
     kind: 'string',
+    shape: 'js.string.literal',
     ceiling: 'high',
     asserted: false,
     note: 'a path-shaped string literal, guessed rather than asserted',
@@ -470,17 +478,30 @@ function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): vo
   // what a path looks like — they disagreed about nothing else.
   if (!plausiblePathShape(literal)) return;
 
-  addTemplateReference(node, context, 'string', 'a path-shaped template literal', false);
+  addTemplateReference(
+    node,
+    context,
+    'string',
+    templateShape(node),
+    'a path-shaped template literal',
+    false,
+  );
 }
 
 function collectFromImportDeclaration(node: ImportDeclaration, context: Context): void {
   // `import type { X } from './x'` is erased at compile time and never loads a file.
   if (node.importKind === 'type') return;
-  collectFromModuleSource(node.source, context, 'certain', 'static import');
+  collectFromModuleSource(
+    node.source,
+    context,
+    'certain',
+    importShape(node.source),
+    'static import',
+  );
 }
 
 function collectFromImportExpression(node: ImportExpression, context: Context): void {
-  collectFromModuleSource(node.source, context, 'certain', 'dynamic import()');
+  collectFromModuleSource(node.source, context, 'certain', 'js.import.dynamic', 'dynamic import()');
 }
 
 function isRequireCall(node: BabelNode): boolean {
@@ -537,7 +558,13 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
   // but the first gains no reference and looks dead.
   const isSrcSet = name.toLowerCase() === 'srcset';
 
-  addJsxAttributeValue(value, context, `JSX ${name}`, isSrcSet);
+  addJsxAttributeValue(
+    value,
+    context,
+    isSrcSet ? 'js.jsx.srcset' : 'js.jsx.attribute',
+    `JSX ${name}`,
+    isSrcSet,
+  );
 }
 
 /**
@@ -550,24 +577,25 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
 function addJsxAttributeValue(
   value: JSXAttribute['value'],
   context: Context,
+  shape: ShapeId,
   label: string,
   isSrcSet: boolean,
 ): void {
   if (value === null || value === undefined) return;
 
   if (value.type === 'StringLiteral') {
-    addLiteralReference(value, context, 'high', 'attr', label, isSrcSet);
+    addLiteralReference(value, context, 'high', 'attr', shape, label, isSrcSet);
     return;
   }
 
   if (value.type === 'JSXExpressionContainer') {
     const expression = value.expression;
     if (expression.type === 'StringLiteral') {
-      addLiteralReference(expression, context, 'high', 'attr', label, isSrcSet);
+      addLiteralReference(expression, context, 'high', 'attr', shape, label, isSrcSet);
       return;
     }
     if (expression.type === 'TemplateLiteral') {
-      addTemplateReference(expression, context, 'attr', label);
+      addTemplateReference(expression, context, 'attr', templateShape(expression), label);
     }
     // Anything else — an identifier, a call, a conditional — is a value, not a
     // path. The import that produced it was already captured on its own.
@@ -598,7 +626,7 @@ function collectFromJsxSvgImage(node: JSXOpeningElement, context: Context): void
   for (const attribute of node.attributes) {
     if (attribute.type !== 'JSXAttribute') continue;
     if (!attributes.includes(jsxAttributeName(attribute).toLowerCase())) continue;
-    addJsxAttributeValue(attribute.value, context, `JSX <${tag}> href`, false);
+    addJsxAttributeValue(attribute.value, context, 'js.jsx.svg', `JSX <${tag}> href`, false);
   }
 }
 
@@ -607,15 +635,16 @@ function collectFromModuleSource(
   source: BabelNode | null | undefined,
   context: Context,
   ceiling: Confidence,
+  shape: ShapeId,
   description: string,
 ): void {
   if (source === null || source === undefined) return;
   if (source.type === 'StringLiteral') {
-    addLiteralReference(source, context, ceiling, 'import', description);
+    addLiteralReference(source, context, ceiling, 'import', shape, description);
     return;
   }
   if (source.type === 'TemplateLiteral') {
-    addTemplateReference(source, context, 'import', description);
+    addTemplateReference(source, context, 'import', shape, description);
   }
 }
 
@@ -636,6 +665,10 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
         // SCSS rather than plain CSS: styled-components nest like SCSS, and the
         // `#{…}` placeholders standing in for interpolations are native SCSS.
         extension: '.scss',
+        // Host wins over the dialect it is parsed AS: what would take these out is
+        // the template flattening, not SCSS parsing. A real .scss file's rows are
+        // measured by .scss files.
+        hostShape: 'js.cssinjs',
       }),
     );
   } catch {
@@ -647,6 +680,7 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
       end: flattened.start + flattened.text.length,
       rawPath: flattened.text,
       kind: 'css-url',
+      shape: 'js.cssinjs',
       ceiling: 'unsafe',
       asserted: false,
       note: 'CSS-in-JS template could not be parsed as CSS, so it was left alone',
@@ -731,11 +765,47 @@ function placeholderOfLength(length: number): string {
   return `/*${'-'.repeat(length - 4)}*/`;
 }
 
+/**
+ * Which import row a module specifier belongs to.
+ *
+ * ⚠️ **It cannot tell a MAPPED alias from an UNMAPPED one, and must not pretend to.**
+ * Whether `~/img/hero.png` resolves depends on the `tsconfig` paths table, which is
+ * the resolver's knowledge and arrives long after this adapter has run. An adapter
+ * that guessed would be asserting something it cannot see — the shape of every bug
+ * this project has paid for. Both alias rows therefore stay the key's alone (R84).
+ */
+function importShape(source: BabelNode | null | undefined): ShapeId {
+  const value =
+    source !== null && source !== undefined && source.type === 'StringLiteral' ? source.value : '';
+
+  // Relative or root-relative: an ordinary static import of a file in this project.
+  if (value.startsWith('.') || value.startsWith('/')) return 'js.import.static';
+  // Alias-shaped. Which alias row it is depends on a table we cannot see.
+  if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) {
+    return 'js.import.static';
+  }
+  // A bare specifier is a package.
+  return value === '' ? 'js.import.static' : 'js.import.package';
+}
+
+/**
+ * Whether a template literal still names a directory, or nothing static at all.
+ *
+ * R78 Q3: a pattern must fix the DIRECTORY, because location is what makes an asset
+ * unique. `/theme-${mode}.png` fixes it and varies the name; `${base}/hero.png` does
+ * the reverse and is not globbable.
+ */
+function templateShape(template: TemplateLiteral): ShapeId {
+  const first = template.quasis[0]?.value.raw ?? '';
+  return first.includes('/') ? 'js.template.pattern' : 'js.template.dynamic';
+}
+
 function addLiteralReference(
   literal: StringLiteral,
   context: Context,
   ceiling: Confidence,
   kind: ReferenceKind,
+  shape: ShapeId,
   description: string,
   /** Treat the value as a `srcset` candidate list rather than a single path. */
   isSrcSet = false,
@@ -757,6 +827,7 @@ function addLiteralReference(
       end,
       rawPath: raw,
       kind,
+      shape,
       ceiling: 'unsafe',
       note: `${description}: the string contains escape sequences, so its path text cannot be located exactly`,
       skipPathChecks: true,
@@ -772,6 +843,7 @@ function addLiteralReference(
         end: start + candidate.offset + candidate.url.length,
         rawPath: candidate.url,
         kind,
+        shape,
         ceiling,
         note: description,
       });
@@ -779,7 +851,7 @@ function addLiteralReference(
     return;
   }
 
-  addReference({ context, start, end, rawPath: raw, kind, ceiling, note: description });
+  addReference({ context, start, end, rawPath: raw, kind, shape, ceiling, note: description });
 }
 
 /**
@@ -794,6 +866,7 @@ function addTemplateReference(
   template: TemplateLiteral,
   context: Context,
   kind: ReferenceKind,
+  shape: ShapeId,
   description: string,
   asserted = true,
 ): void {
@@ -809,6 +882,7 @@ function addTemplateReference(
     end: flattened.start + raw.length,
     rawPath: raw,
     kind,
+    shape,
     ceiling: hasExpressions ? 'medium' : 'high',
     note: hasExpressions
       ? `${description}: a template literal with a static prefix; the resolver decides whether it names exactly one asset`
@@ -824,6 +898,7 @@ function addReference(input: {
   end: number;
   rawPath: string;
   kind: ReferenceKind;
+  shape: ShapeId;
   ceiling: Confidence;
   note: string;
   /** Set when the text is not a plain path, so suffix splitting would be wrong. */
@@ -836,6 +911,7 @@ function addReference(input: {
     start,
     rawPath,
     kind,
+    shape,
     ceiling,
     note,
     skipPathChecks = false,
@@ -864,6 +940,7 @@ function addReference(input: {
       end: input.end,
       rawPath,
       kind,
+      shape,
       ceiling,
       asserted,
       note,
@@ -882,6 +959,7 @@ function addReference(input: {
     end: start + path.length,
     rawPath: path,
     kind,
+    shape,
     ceiling,
     asserted,
     note: suffix === '' ? note : `${note}; query or fragment preserved: ${suffix}`,

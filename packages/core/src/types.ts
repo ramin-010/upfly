@@ -11,6 +11,8 @@
  * would land in the wrong place.
  */
 
+import type { ShapeId } from './shapes.js';
+
 /** How certain we are that rewriting a reference is safe. */
 export type Confidence =
   /** Static import/require that resolved to a file on disk. */
@@ -54,6 +56,21 @@ export interface RawReference {
   /** The path exactly as written in the source. */
   readonly rawPath: string;
   readonly kind: ReferenceKind;
+  /**
+   * WHICH construct this was written in — `html.img.srcset.w`, `css.image-set`.
+   *
+   * `kind` is the coarse bucket the resolver reasons with (seven values); this is the
+   * fine one the coverage matrix rows on (ninety-odd). They are not redundant: `kind`
+   * answers *how do I resolve this*, `shape` answers *what kind of thing is it*, and
+   * only the second can be crossed with a real repository to say what fraction of its
+   * references we have ever tested (R76).
+   *
+   * 🔴 **Required, and deliberately not defaulted.** The adapter knows the shape at the
+   * moment it finds the reference and used to throw it away; a default would let a new
+   * emission site silently join the wrong row, which is the one failure this field
+   * cannot survive. The vocabulary is `ShapeId`, so an invented name will not compile.
+   */
+  readonly shape: ShapeId;
   /**
    * The best confidence this syntax could ever justify. The resolver assigns the
    * ceiling if the path resolves, and demotes to `unsafe` if it does not.

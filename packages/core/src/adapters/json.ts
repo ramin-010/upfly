@@ -17,6 +17,7 @@
  */
 
 import { extensionOf } from '../paths.js';
+import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
@@ -67,6 +68,27 @@ function isObjectKey(text: string, afterString: number): boolean {
   return false;
 }
 
+/**
+ * Which row a JSON candidate belongs to.
+ *
+ * ⚠️ **The tree distinguishes a webmanifest `icons[]` entry from a `screenshots[]` one,
+ * and this scanner cannot.** It walks string literals with a regex and has no idea which
+ * array it is inside — deliberately, because structure-aware JSON parsing would be a
+ * second implementation of a format the resolver already handles generously. So every
+ * path in a manifest gets the `icon` row, and the distinction stays the key's alone.
+ * Measured and raised rather than papered over; see R84.
+ */
+function shapeOf(path: string, file: string): ShapeId {
+  // A glob names a SET, not a file — R78 Q3's objection in a config file.
+  if (path.includes('*')) return 'json.config.glob';
+
+  const name = file.toLowerCase();
+  if (name.endsWith('.webmanifest') || name.endsWith('manifest.json')) {
+    return 'json.webmanifest.icon';
+  }
+  return 'json.config.value';
+}
+
 function addCandidate(raw: string, start: number, file: string, references: RawReference[]): void {
   if (raw === '') return;
   if (isExternalUrl(raw, 'json')) return;
@@ -86,6 +108,7 @@ function addCandidate(raw: string, start: number, file: string, references: RawR
     end: start + path.length,
     rawPath: path,
     kind: 'json',
+    shape: shapeOf(path, file),
     ceiling: 'high',
     // The whole point: the syntax does not assert this is an asset reference.
     asserted: false,

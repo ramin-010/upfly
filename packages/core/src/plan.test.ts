@@ -27,6 +27,7 @@ function probe(relative: string, bytes = 4_000): AssetProbe {
 
 const RAW: Omit<RawReference, 'file' | 'rawPath' | 'start' | 'end'> = {
   kind: 'attr',
+  shape: 'html.img.src',
   ceiling: 'high',
   asserted: true,
 };

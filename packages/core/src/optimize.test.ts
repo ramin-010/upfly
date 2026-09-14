@@ -37,6 +37,7 @@ const SOURCE = 'import logo from "./logo.png";\n';
 
 const RAW: Omit<RawReference, 'file' | 'rawPath' | 'start' | 'end'> = {
   kind: 'attr',
+  shape: 'html.img.src',
   ceiling: 'high',
   asserted: true,
 };

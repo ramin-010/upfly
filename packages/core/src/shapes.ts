@@ -97,8 +97,13 @@ export interface ShapeDeclaration {
 /**
  * The vocabulary. Order follows the coverage tree's own, so a diff between the two
  * reads cleanly.
+ *
+ * ⚠️ `as const satisfies` rather than a type annotation: it keeps the literal id types,
+ * which is what lets `ShapeId` below be derived instead of written out a second time.
+ * An adapter can then only name a shape that exists here, checked at compile time —
+ * and there is no third copy of the list to drift.
  */
-export const SHAPES: readonly ShapeDeclaration[] = [
+export const SHAPES = [
   // ---- HTML -------------------------------------------------------------------
   { id: 'html.img.src', label: 'img@src', spec: '4a', emission: 'engine' },
   {
@@ -370,7 +375,14 @@ export const SHAPES: readonly ShapeDeclaration[] = [
     label: 'a path inside an indented code block',
     spec: '4d',
     emission: 'declined',
-    why: 'Masked with the fenced form. Same reason, different spelling of a code block.',
+    why:
+      '🔴 DECLINED IS THE IDEAL, AND TODAY THE ENGINE OVER-CLAIMS HERE — measured, 2 of 3 are ' +
+      'emitted as raw HTML. `maskInactiveRegions` deliberately does NOT mask four-space blocks: ' +
+      'telling one from a continuation line inside a list needs a real block parser, and guessing ' +
+      'wrong would blank a REAL reference, which is the worse failure. So the row reads zero only ' +
+      'for a correct engine, and the key carries a knownGap saying so. ⚠️ I first documented this ' +
+      'as "masked with the fenced form", which was simply false; the shape audit caught the claim, ' +
+      'no test did.',
   },
   {
     id: 'md.inline-code',
@@ -565,7 +577,17 @@ export const SHAPES: readonly ShapeDeclaration[] = [
     emission: 'engine',
     why: '🔴 NO TREE INSTANCE. collectFromJsxSvgImage; the HTML twin is tested, this one is not.',
   },
-];
+] as const satisfies readonly ShapeDeclaration[];
+
+/**
+ * Every shape id, as a type.
+ *
+ * Derived from `SHAPES` rather than written out, so an adapter naming a shape that does
+ * not exist is a compile error and the list has no second spelling to fall out of step
+ * with. The coverage tree is the only other copy, and `shapes.reconcile.test.ts` holds
+ * that one.
+ */
+export type ShapeId = (typeof SHAPES)[number]['id'];
 
 /** Every shape id, for a membership test. */
 export const SHAPE_IDS: ReadonlySet<string> = new Set(SHAPES.map((shape) => shape.id));

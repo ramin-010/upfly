@@ -16,6 +16,8 @@
  */
 
 import { UpflyError } from '../errors.js';
+import { extensionOf } from '../paths.js';
+import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
@@ -59,9 +61,11 @@ export const markdownAdapter: Adapter = defineAdapter({
     const masked = maskInactiveRegions(text);
     const references: RawReference[] = [];
 
-    for (const pattern of [LINK, DEFINITION]) {
-      collectMatches(pattern, masked, file, references);
-    }
+    // A use site and a definition are different rows: `![alt](x.png)` carries the path
+    // where it is used, `[label]: x.png` carries it somewhere else entirely, and the
+    // second is what makes `md.image.reference-style` a row nothing can fill.
+    collectMatches(LINK, masked, file, references, 'md.image');
+    collectMatches(DEFINITION, masked, file, references, 'md.reference-definition');
 
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
@@ -71,7 +75,11 @@ export const markdownAdapter: Adapter = defineAdapter({
     // failure still propagates, so `scan` still reports the file as unparseable and
     // rule 9 holds; what rides along is the references that were already found.
     try {
-      references.push(...htmlAdapter.findReferences({ file, text: masked }));
+      references.push(
+        ...htmlAdapter
+          .findReferences({ file, text: masked })
+          .map((reference) => asMarkdownShape(reference, extensionOf(file) === '.mdx')),
+      );
     } catch (error) {
       if (error instanceof UpflyError) {
         throw new UpflyError(error.code, error.message, [
@@ -86,11 +94,35 @@ export const markdownAdapter: Adapter = defineAdapter({
   },
 });
 
+/**
+ * Re-stamp a reference the HTML adapter found inside Markdown.
+ *
+ * 🔴 **Host wins here, and the ladder says why.** What would take these out is not
+ * `<img src>` parsing — that is the HTML adapter's, tested by its own rows — it is
+ * Markdown's decision to hand raw HTML over at all, plus the masking that decides
+ * which regions are live. Those fail together and separately from HTML, so they are
+ * Markdown's rows.
+ *
+ * ⚠️ The distinction the tree draws is between *markup* and a *style attribute*, so a
+ * `<style>` element inside Markdown maps to the attribute row rather than inventing a
+ * third. Markdown holds no `<style>` elements in the tree and none has been seen in a
+ * real repository; if one turns up it is a §8.5 growth item, not a silent mismatch.
+ */
+function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference {
+  if (reference.shape === 'html.style.attribute' || reference.shape === 'html.style.element') {
+    return { ...reference, shape: 'md.style-attribute' };
+  }
+  // MDX's components are JSX, not raw HTML, even though the same scanner finds them:
+  // what would take them out is MDX's own handling, and `.md` has no JSX to lose.
+  return { ...reference, shape: isMdx ? 'mdx.jsx' : 'md.raw-html' };
+}
+
 function collectMatches(
   pattern: RegExp,
   masked: string,
   file: string,
   references: RawReference[],
+  shape: ShapeId,
 ): void {
   pattern.lastIndex = 0;
 
@@ -101,11 +133,17 @@ function collectMatches(
     if (range === undefined) continue;
 
     const [start, end] = range;
-    addReference(masked.slice(start, end), start, file, references);
+    addReference(masked.slice(start, end), start, file, references, shape);
   }
 }
 
-function addReference(raw: string, start: number, file: string, references: RawReference[]): void {
+function addReference(
+  raw: string,
+  start: number,
+  file: string,
+  references: RawReference[],
+  shape: ShapeId,
+): void {
   if (raw === '') return;
   if (isExternalUrl(raw, 'md')) return;
 
@@ -118,6 +156,7 @@ function addReference(raw: string, start: number, file: string, references: RawR
       end: start + raw.length,
       rawPath: raw,
       kind: 'md',
+      shape,
       ceiling: 'unsafe',
       asserted: true,
       note: reason,
@@ -134,6 +173,7 @@ function addReference(raw: string, start: number, file: string, references: RawR
     end: start + path.length,
     rawPath: path,
     kind: 'md',
+    shape,
     ceiling: 'high',
     asserted: true,
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),

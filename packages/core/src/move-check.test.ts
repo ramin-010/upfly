@@ -61,6 +61,7 @@ function graphWith(input: {
   ];
   const base: Omit<RawReference, 'file' | 'rawPath' | 'start' | 'end'> = {
     kind: 'attr',
+    shape: 'html.img.src',
     ceiling: 'high',
     asserted: true,
   };

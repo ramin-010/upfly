@@ -18,6 +18,7 @@ import scssParser from 'postcss-scss';
 import valueParser, { type Node as ValueNode } from 'postcss-value-parser';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
+import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
@@ -63,8 +64,21 @@ export function findCssReferences(input: {
   readonly baseOffset?: number;
   /** Dialect to parse as. Defaults to plain CSS. */
   readonly extension?: string;
+  /**
+   * The shape to stamp on a plain `url()` when this CSS is EMBEDDED in something else
+   * — an HTML `<style>` element, a `style=""` attribute, an `.astro` style block, a
+   * CSS-in-JS template. Omitted for a real stylesheet, where the dialect decides.
+   *
+   * 🔴 **It is a default, not an override.** A `url()` inside `<style>` is
+   * `html.style.element` because what would take it out is HTML's *extraction*; but an
+   * `image-set()` or an `@font-face` in the same block keeps its own `css.*` shape,
+   * because those break identically in every host. That is the ladder in `shapes.ts`,
+   * and getting it backwards would hide a break in image-set parsing behind whichever
+   * host it happened to be embedded in.
+   */
+  readonly hostShape?: ShapeId;
 }): RawReference[] {
-  const { file, text, baseOffset = 0, extension = '.css' } = input;
+  const { file, text, baseOffset = 0, extension = '.css', hostShape } = input;
 
   const parse = PARSERS.get(extension);
   if (parse === undefined) {
@@ -99,7 +113,7 @@ export function findCssReferences(input: {
 
   const references: RawReference[] = [];
   root.walkDecls((declaration) => {
-    collectFromDeclaration(declaration, file, baseOffset, references);
+    collectFromDeclaration(declaration, { file, baseOffset, extension, hostShape, references });
   });
 
   // Document order already, but sorting makes determinism a property of the code
@@ -129,12 +143,32 @@ function rawTextOf(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-function collectFromDeclaration(
-  declaration: Declaration,
-  file: string,
-  baseOffset: number,
-  references: RawReference[],
-): void {
+/**
+ * What every emission in one stylesheet shares.
+ *
+ * Collected into an object rather than threaded as five positional arguments: the
+ * shape needs the dialect, the host and the declaration all at once, and a chain of
+ * `(file, baseOffset, extension, hostShape, references)` is where an argument gets
+ * passed in the wrong slot.
+ */
+interface CssRun {
+  readonly file: string;
+  readonly baseOffset: number;
+  readonly extension: string;
+  readonly hostShape: ShapeId | undefined;
+  readonly references: RawReference[];
+}
+
+/** What one declaration adds: the two things that decide a shape on their own. */
+interface DeclarationContext {
+  /** `--brand-image` means the url is reached through a custom property. */
+  readonly property: string;
+  /** `@font-face` bodies hold fonts, which are real files the engine never indexes. */
+  readonly inFontFace: boolean;
+}
+
+function collectFromDeclaration(declaration: Declaration, run: CssRun): void {
+  const { file } = run;
   const declarationStart = declaration.source?.start?.offset;
   if (declarationStart === undefined) {
     throw new UpflyError(
@@ -149,9 +183,29 @@ function collectFromDeclaration(
   const property = rawTextOf(declaration.raws.prop, declaration.prop);
   const between = declaration.raws.between ?? ':';
   const value = rawTextOf(declaration.raws.value, declaration.value);
-  const valueStart = baseOffset + declarationStart + property.length + between.length;
+  const valueStart = run.baseOffset + declarationStart + property.length + between.length;
 
-  collectFromValueNodes(valueParser(value).nodes, false, valueStart, file, references);
+  const parent = declaration.parent;
+  const declarationContext: DeclarationContext = {
+    property,
+    inFontFace:
+      parent !== undefined &&
+      parent.type === 'atrule' &&
+      (parent as { name?: string }).name?.toLowerCase() === 'font-face',
+  };
+
+  collectFromValueNodes(valueParser(value).nodes, valueStart, run, declarationContext, {
+    imageSet: 'none',
+    nested: false,
+  });
+}
+
+/** Where in a value the url() sits, which the shape needs and the resolver does not. */
+interface ValuePosition {
+  /** Inside `image-set()`, and whether it was the vendor-prefixed spelling. */
+  readonly imageSet: 'none' | 'standard' | 'webkit';
+  /** Inside some other function — `linear-gradient(url(...))`. */
+  readonly nested: boolean;
 }
 
 /**
@@ -162,32 +216,37 @@ function collectFromDeclaration(
  */
 function collectFromValueNodes(
   nodes: readonly ValueNode[],
-  insideImageSet: boolean,
   base: number,
-  file: string,
-  references: RawReference[],
+  run: CssRun,
+  declaration: DeclarationContext,
+  position: ValuePosition,
 ): void {
   for (const node of nodes) {
     if (node.type === 'function') {
       const name = node.value.toLowerCase();
       if (name === 'url') {
-        collectFromUrlFunction(node.nodes, base, file, references);
+        collectFromUrlFunction(node.nodes, base, run, declaration, position);
         continue;
       }
       // Recurse into every other function so that a `url()` nested in, say, a
-      // `linear-gradient()` is still found.
-      collectFromValueNodes(node.nodes, isImageSet(name), base, file, references);
+      // `linear-gradient()` is still found. Anything that is not image-set counts as
+      // nesting, which is its own row: what breaks there is the recursion itself.
+      collectFromValueNodes(node.nodes, base, run, declaration, {
+        imageSet: isImageSet(name) ? (name.startsWith('-') ? 'webkit' : 'standard') : 'none',
+        nested: position.nested || !isImageSet(name),
+      });
       continue;
     }
 
-    if (node.type === 'string' && insideImageSet) {
+    if (node.type === 'string' && position.imageSet !== 'none') {
       // `sourceIndex` sits on the opening quote; the path starts one after it.
       addReference({
         text: node.value,
         start: base + node.sourceIndex + 1,
-        file,
-        references,
-        quoted: true,
+        run,
+        declaration,
+        position,
+        quote: node.quote ?? '"',
       });
     }
   }
@@ -196,8 +255,9 @@ function collectFromValueNodes(
 function collectFromUrlFunction(
   nodes: readonly ValueNode[],
   base: number,
-  file: string,
-  references: RawReference[],
+  run: CssRun,
+  declaration: DeclarationContext,
+  position: ValuePosition,
 ): void {
   const argument = nodes.find((node) => node.type === 'string' || node.type === 'word');
   if (argument === undefined) return; // `url()` with nothing in it.
@@ -205,10 +265,58 @@ function collectFromUrlFunction(
   addReference({
     text: argument.value,
     start: base + argument.sourceIndex + (argument.type === 'string' ? 1 : 0),
-    file,
-    references,
-    quoted: argument.type === 'string',
+    run,
+    declaration,
+    position,
+    // The quote character, not just whether there was one: `url('x')` and `url("x")`
+    // are different rows because they are different tokens to the parser.
+    quote: argument.type === 'string' ? (argument.quote ?? '"') : '',
   });
+}
+
+/**
+ * Which row this url() belongs to.
+ *
+ * 🔴 **The order IS the ladder from `shapes.ts`** — narrowest independently-failing
+ * thing first. A mechanism CSS owns (interpolation, image-set, a custom property, a
+ * nested function) beats the host it is embedded in, because those break identically
+ * in a `.css` file and inside a `<style>` element. The host only decides what is left.
+ */
+function shapeOf(input: {
+  readonly rawPath: string;
+  readonly run: CssRun;
+  readonly declaration: DeclarationContext;
+  readonly position: ValuePosition;
+  readonly quote: string;
+}): ShapeId {
+  const { rawPath, run, declaration, position, quote } = input;
+  const scss = run.extension === '.scss';
+
+  // 1. Preprocessor mechanisms. R78 Q3: a LEADING interpolation varies the directory
+  //    and a trailing one varies the name, which is why they are separate rows.
+  if (rawPath.includes('#{')) {
+    return rawPath.startsWith('#{') ? 'scss.interpolation.leading' : 'scss.interpolation.trailing';
+  }
+  if (rawPath.includes('@{')) return 'less.interpolation';
+  if (rawPath.startsWith('$')) return 'scss.variable';
+  if (rawPath.startsWith('@')) return 'less.variable';
+
+  // 2. Constructs CSS itself owns, in every host and every dialect.
+  if (position.imageSet === 'webkit') return 'css.image-set.webkit';
+  if (position.imageSet === 'standard') return 'css.image-set';
+  if (declaration.inFontFace) return 'css.font-face';
+  if (declaration.property.startsWith('--')) return 'css.var';
+  if (position.nested) return 'css.url.nested';
+
+  // 3. Embedded in something else — the host decides what is left over.
+  if (run.hostShape !== undefined) return run.hostShape;
+
+  // 4. A real stylesheet: the dialect, then the quoting.
+  if (scss) return 'scss.url';
+  if (run.extension === '.less') return 'less.url';
+  if (quote === "'") return 'css.url.single';
+  if (quote === '"') return 'css.url.double';
+  return 'css.url.bare';
 }
 
 /**
@@ -246,16 +354,22 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
 function addReference(input: {
   text: string;
   start: number;
-  file: string;
-  references: RawReference[];
-  /** Whether the author wrote this inside quotes, where `(` is an ordinary character. */
-  quoted: boolean;
+  run: CssRun;
+  declaration: DeclarationContext;
+  position: ValuePosition;
+  /** The quote character the author used, or `''` for an unquoted url token. */
+  quote: string;
 }): void {
-  const { text, start, file, references, quoted } = input;
+  const { text, start, run, declaration, position, quote } = input;
+  const { file, references } = run;
   if (text === '') return;
   if (isExternalUrl(text, 'css-url')) return;
 
-  const reason = dynamicReason(text, quoted);
+  const shape = shapeOf({ rawPath: text, run, declaration, position, quote });
+
+  // Inside quotes a `(` is an ordinary character, which is what R26's
+  // `url("/images/quote (blue).svg")` turns on.
+  const reason = dynamicReason(text, quote !== '');
   if (reason !== null) {
     // Reported, never rewritten. These are the cases where guessing would corrupt
     // a file, so the honest answer is to say what we saw and why we left it alone.
@@ -265,6 +379,7 @@ function addReference(input: {
       end: start + text.length,
       rawPath: text,
       kind: 'css-url',
+      shape,
       ceiling: 'unsafe',
       asserted: true,
       note: reason,
@@ -282,6 +397,7 @@ function addReference(input: {
     end: start + path.length,
     rawPath: path,
     kind: 'css-url',
+    shape,
     ceiling: 'high',
     asserted: true,
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),

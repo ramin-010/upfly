@@ -88,9 +88,42 @@ export const astroAdapter = defineAdapter({
     // `.ts` rather than `.tsx`: an Astro fence is TypeScript and cannot contain JSX,
     // and the `.tsx` grammar reads `<Foo>` as a JSX element where `.ts` reads it as a
     // type assertion — which is what a fence actually means by it.
-    const fromScript = findJavaScriptReferences({ file, text: scriptOnly, extension: '.ts' });
-    const fromBody = htmlAdapter.findReferences({ file, text: bodyOnly });
+    const fromScript = findJavaScriptReferences({ file, text: scriptOnly, extension: '.ts' }).map(
+      asFenceShape,
+    );
+    const fromBody = htmlAdapter.findReferences({ file, text: bodyOnly }).map(asBodyShape);
 
     return [...fromScript, ...fromBody].sort((a, b) => a.start - b.start);
   },
 });
+
+/**
+ * Re-stamp what the JavaScript adapter found in the frontmatter fence.
+ *
+ * ⚠️ **Selective, and the selection is the ladder.** An `import` in a fence is
+ * `astro.import.frontmatter` because what would take it out is Astro's fence
+ * extraction — get the fence boundaries wrong and every import in it goes, in a way
+ * that no `.ts` file would ever show. A path-shaped STRING in the same fence stays
+ * `js.string.literal`: it is the speculative-string rule that finds it, and that rule
+ * fails identically wherever it runs.
+ */
+function asFenceShape(reference: RawReference): RawReference {
+  return reference.shape.startsWith('js.import.')
+    ? { ...reference, shape: 'astro.import.frontmatter' }
+    : reference;
+}
+
+/**
+ * Re-stamp what the HTML adapter found in the template body.
+ *
+ * Host wins for the same reason it does in Markdown: a literal path in an Astro body
+ * is found by HTML machinery but reached through Astro's own body/fence split, and
+ * that split is what fails on its own. A `<style>` element keeps a separate row
+ * because style extraction is a separate mechanism, exactly as it is in HTML.
+ */
+function asBodyShape(reference: RawReference): RawReference {
+  if (reference.shape === 'html.style.element' || reference.shape === 'html.style.attribute') {
+    return { ...reference, shape: 'astro.style.element' };
+  }
+  return { ...reference, shape: 'astro.template.literal' };
+}

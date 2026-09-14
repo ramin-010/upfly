@@ -142,8 +142,8 @@ export function templateExpressionReason(rawPath: string): string | null {
  * Splitting on commas alone is wrong twice over: a descriptor (`1x`, `800w`) follows
  * each URL, and a URL may itself end in a comma when its descriptor is omitted.
  */
-export function parseSrcset(value: string): { url: string; offset: number }[] {
-  const candidates: { url: string; offset: number }[] = [];
+export function parseSrcset(value: string): SrcsetCandidate[] {
+  const candidates: SrcsetCandidate[] = [];
   let index = 0;
 
   while (index < value.length) {
@@ -161,13 +161,37 @@ export function parseSrcset(value: string): { url: string; offset: number }[] {
       hadTrailingComma = true;
     }
 
-    if (end > start) candidates.push({ url: value.slice(start, end), offset: start });
+    const url = value.slice(start, end);
 
     // With no trailing comma a descriptor follows, and it runs to the next comma.
+    const descriptorStart = index;
     if (!hadTrailingComma) {
       while (index < value.length && value.charAt(index) !== ',') index += 1;
+    }
+
+    if (end > start) {
+      candidates.push({
+        url,
+        offset: start,
+        descriptor: hadTrailingComma ? '' : value.slice(descriptorStart, index).trim(),
+      });
     }
   }
 
   return candidates;
+}
+
+/**
+ * One `srcset` candidate.
+ *
+ * `descriptor` is the `2x` or `800w` that follows the URL, empty when there is none.
+ * It is returned rather than skipped because it decides the reference's SHAPE — a
+ * density list and a width list are different rows in the coverage matrix, and they
+ * fail separately: `w` descriptors come with a `sizes` attribute and `x` ones do not.
+ * Nothing else uses it, and the resolver never sees it.
+ */
+export interface SrcsetCandidate {
+  readonly url: string;
+  readonly offset: number;
+  readonly descriptor: string;
 }

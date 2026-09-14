@@ -50,6 +50,7 @@ function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReferen
     start: 0,
     end: overrides.rawPath.length,
     kind: 'import',
+    shape: 'html.img.src',
     ceiling: 'certain',
     asserted: true,
     ...overrides,
@@ -321,6 +322,7 @@ describe('resolveReferences', () => {
       const reference = resolveOne({
         rawPath: 'assets/logo.png',
         kind: 'css-url',
+        shape: 'html.img.src',
         file: join(ROOT, 'src', 'app.css'),
       });
       expect(reference?.resolution).toBe('resolved');
@@ -616,6 +618,7 @@ describe('resolveReferences', () => {
       const reference = resolveOne({
         rawPath: './icons/nope.png',
         kind: 'json',
+        shape: 'html.img.src',
         asserted: false,
         file: join(ROOT, 'package.json'),
       });
@@ -627,6 +630,7 @@ describe('resolveReferences', () => {
       const reference = resolveOne({
         rawPath: './assets/logo.png',
         kind: 'json',
+        shape: 'html.img.src',
         asserted: false,
       });
       expect(reference?.resolution).toBe('resolved');

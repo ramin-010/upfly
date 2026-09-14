@@ -30,6 +30,7 @@ function raw(file: string, rawPath: string, start = 0): RawReference {
     end: start + rawPath.length,
     rawPath,
     kind: 'attr',
+    shape: 'html.img.src',
     ceiling: 'high',
     asserted: true,
   };
