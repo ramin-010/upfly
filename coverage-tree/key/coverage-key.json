@@ -2260,9 +2260,9 @@
         {
           "raw": "/img/texture.png",
           "occurrence": 1,
-          "shape": "css.url.bare",
+          "shape": "html.style.element",
           "expect": "resolved",
-          "why": "Unquoted url() inside that style element.",
+          "why": "Unquoted url() inside that style element. R82: keyed by HOST, as the quoted ones beside it are — what would take all three out is HTML failing to extract the CSS. Unquoted-url PARSING is covered by css.url.bare in .css, where nothing else is in the way.",
           "target": "apps/web/public/img/texture.png",
           "offset": 660,
           "line": 20,
@@ -5199,9 +5199,9 @@
         {
           "raw": "img/hero.jpg",
           "occurrence": 1,
-          "shape": "css.url.single",
+          "shape": "html.style.element",
           "expect": "resolved",
-          "why": "Bare relative inside CSS, which resolves the same way here only because the file sits at the root.",
+          "why": "A bare relative inside the style element, which resolves against this site's own root (R63). R82: keyed by HOST like the entry above it — the path FORM is not what a shape names, and quoting is already covered by css.url.single in .css.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 287,
           "line": 12,
