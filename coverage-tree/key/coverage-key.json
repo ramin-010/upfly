@@ -3743,13 +3743,13 @@
         },
         {
           "raw": "$hero",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "The variable stands in for the whole path. Nothing static to resolve, and nobody typed a wrong one.",
-          "offset": 152,
-          "line": 4,
-          "column": 1
+          "why": "The variable stands in for the whole path. Nothing static to resolve, and nobody typed a wrong one. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$hero: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 773,
+          "line": 28,
+          "column": 25
         },
         {
           "raw": "/theme-#{$mode}.png",
@@ -3821,23 +3821,23 @@
         },
         {
           "raw": "$banner",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "A second whole-value variable.",
-          "offset": 1566,
-          "line": 55,
-          "column": 1
+          "why": "A second whole-value variable. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$banner: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 1673,
+          "line": 59,
+          "column": 25
         },
         {
           "raw": "$crest",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "A third.",
-          "offset": 1594,
-          "line": 56,
-          "column": 1
+          "why": "A third. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$crest: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 1733,
+          "line": 63,
+          "column": 25
         },
         {
           "raw": "/srcset/tile@#{$density}x.png",
@@ -3996,13 +3996,13 @@
         },
         {
           "raw": "@banner",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "Less's variable syntax for the whole value.",
-          "offset": 187,
-          "line": 5,
-          "column": 1
+          "why": "Less's variable syntax for the whole value. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@banner: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 642,
+          "line": 29,
+          "column": 25
         },
         {
           "raw": "@{image-root}/photo@2x.png",
@@ -4100,23 +4100,23 @@
         },
         {
           "raw": "@crest",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "A second whole-value Less variable.",
-          "offset": 1223,
-          "line": 54,
-          "column": 1
+          "why": "A second whole-value Less variable. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@crest: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 1322,
+          "line": 58,
+          "column": 25
         },
         {
           "raw": "@grain",
-          "occurrence": 1,
+          "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "A third.",
-          "offset": 1253,
-          "line": 55,
-          "column": 1
+          "why": "A third. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@grain: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "offset": 1374,
+          "line": 62,
+          "column": 25
         },
         {
           "raw": "@{image-root}/MixedCase.Png",

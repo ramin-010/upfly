@@ -19,6 +19,9 @@
     "bench": "pnpm --filter upfly-bench run bench",
     "bench:gate": "pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3",
     "validate": "pnpm --filter upfly-bench run validate",
+    "coverage-tree:check": "node coverage-tree/tools/check-key.mjs --strict",
+    "coverage-tree:prove": "node coverage-tree/tools/prove-can-fail.mjs",
+    "coverage-tree:measure": "pnpm build && node coverage-tree/tools/measure.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"
