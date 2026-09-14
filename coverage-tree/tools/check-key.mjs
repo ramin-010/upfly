@@ -301,13 +301,11 @@ for (const shape of key.shapes ?? []) {
     fail('shapes', `${shape.id} has no references and no \`absent\` reason`);
   }
   if (count > 0 && count < 3 && !shape.singleReason) {
-    fail(
-      'shapes',
-      `${shape.id} has ${count} instance(s). Spec §4k.1 asks for three to five, deliberately ` +
-        'varied: one example proves a shape parses once, and it takes several before a row can ' +
-        'say 4 of 5 and point at which one failed. Add instances, or say in `singleReason` why ' +
-        'varying it is genuinely impossible',
-    );
+    const advice =
+      'Spec §4k.1 asks for three to five, deliberately varied: one example proves a shape ' +
+      'parses once, and it takes several before a row can say 4 of 5 and point at which one ' +
+      'failed. Add instances, or say in `singleReason` why varying it is genuinely impossible';
+    fail('shapes', `${shape.id} has ${count} instance(s). ${advice}`);
   }
 }
 
@@ -326,7 +324,9 @@ if (!quiet) {
 }
 
 if (undecided.length > 0) {
-  process.stdout.write(`\nOPEN QUESTIONS — ${undecided.length} entr${undecided.length === 1 ? 'y' : 'ies'} marked UNDECIDED\n`);
+  process.stdout.write(
+    `\nOPEN QUESTIONS — ${undecided.length} entr${undecided.length === 1 ? 'y' : 'ies'} marked UNDECIDED\n`,
+  );
   for (const line of undecided) process.stdout.write(`  ? ${line}\n`);
   process.stdout.write(
     strict

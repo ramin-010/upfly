@@ -105,6 +105,18 @@ to a copy in the system temp directory, and the real tree is never written to.
 and a line-ending conversion on checkout would shift every one of them — the self-check would
 then blame the tree for something git did on the way out of the object store.
 
+🔴 **A FORMATTER IS THE SAME HAZARD WEARING A DIFFERENT NAME. Never run
+`biome check --write` (or any formatter) over `tree/`.** It would normalise the quoting,
+re-indent the markup and tidy the deliberately malformed references — and those are not
+untidiness, they are the fixture's entire value. `url(/img/texture.png)` unquoted and
+`url('/img/photo.jpg')` quoted are two different shapes on purpose; a formatter makes them
+one and the row silently stops measuring anything. Byte offsets would shift with them.
+
+`biome.json` therefore ignores `tree/` and `key/` — fixture content and a generated file, the
+same category as `fixtures/`. ✅ **`tools/` stays linted**, because those four scripts are code
+this project runs. That split is **R81**, ruled 2026-09-14 after the tree's first push turned
+all six CI check cells red on 214 lint errors.
+
 ## The weakest seam, named rather than hidden
 
 **`stamp-positions.mjs` can turn a red check green without anybody re-reading what changed.**

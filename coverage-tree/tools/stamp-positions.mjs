@@ -53,16 +53,8 @@ function arg(name, fallback) {
   return i === -1 ? fallback : process.argv[i + 1];
 }
 
-function main() {
-  const here = resolve(process.argv[1], '..', '..');
-  const root = resolve(arg('--root', join(here, 'tree')));
-  const keyPath = resolve(arg('--key', join(here, 'key', 'coverage-key.json')));
-  const dryRun = process.argv.includes('--check');
-
-  const key = JSON.parse(readFileSync(keyPath, 'utf8'));
-  const changes = [];
-  const errors = [];
-
+/** Fill in each asset's byte size and hash, recording every change and every miss. */
+function stampAssets(key, root, changes, errors) {
   for (const asset of key.assets ?? []) {
     const full = join(root, asset.path);
     let bytes;
@@ -84,7 +76,10 @@ function main() {
       asset.sha256 = sha;
     }
   }
+}
 
+/** Fill in each reference's byte offset, line and column. Never invents an entry. */
+function stampReferences(key, root, changes, errors) {
   for (const group of key.files ?? []) {
     let buf;
     try {
@@ -104,7 +99,11 @@ function main() {
         continue;
       }
       const { line, column } = positionOf(buf, offset);
-      for (const [field, value] of [['offset', offset], ['line', line], ['column', column]]) {
+      for (const [field, value] of [
+        ['offset', offset],
+        ['line', line],
+        ['column', column],
+      ]) {
         if (entry[field] !== value) {
           changes.push(
             `${group.path} ${JSON.stringify(entry.raw)}#${n}: ${field} ${entry[field] ?? '-'} -> ${value}`,
@@ -114,6 +113,20 @@ function main() {
       }
     }
   }
+}
+
+function main() {
+  const here = resolve(process.argv[1], '..', '..');
+  const root = resolve(arg('--root', join(here, 'tree')));
+  const keyPath = resolve(arg('--key', join(here, 'key', 'coverage-key.json')));
+  const dryRun = process.argv.includes('--check');
+
+  const key = JSON.parse(readFileSync(keyPath, 'utf8'));
+  const changes = [];
+  const errors = [];
+
+  stampAssets(key, root, changes, errors);
+  stampReferences(key, root, changes, errors);
 
   for (const line of changes) process.stdout.write(`  ~ ${line}\n`);
   for (const line of errors) process.stdout.write(`  ! ${line}\n`);
@@ -140,7 +153,9 @@ function main() {
   writeFileSync(tmp, Buffer.from(out, 'utf8'));
   renameSync(tmp, keyPath);
   process.stdout.write(`\n${changes.length} change(s) written to ${keyPath}\n`);
-  process.stdout.write('🔴 Read the diff. A raw that moved by more than whitespace needed a person.\n');
+  process.stdout.write(
+    '🔴 Read the diff. A raw that moved by more than whitespace needed a person.\n',
+  );
 }
 
 main();

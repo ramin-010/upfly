@@ -11,13 +11,31 @@
  * Usage:  node tools/scan-occurrences.mjs [--root DIR] [--file SUBSTRING] [--json]
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const ASSET_EXTENSIONS = [
-  'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico', 'bmp', 'tif', 'tiff',
-  'mp4', 'webm', 'mp3', 'ogg', 'vtt', 'pdf', 'woff', 'woff2', 'webmanifest',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'svg',
+  'webp',
+  'avif',
+  'ico',
+  'bmp',
+  'tif',
+  'tiff',
+  'mp4',
+  'webm',
+  'mp3',
+  'ogg',
+  'vtt',
+  'pdf',
+  'woff',
+  'woff2',
+  'webmanifest',
 ];
 
 /**

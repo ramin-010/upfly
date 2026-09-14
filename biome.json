@@ -9,7 +9,10 @@
       "*.vsix",
       "fixtures",
       "packages/core/fixtures",
-      "fixtures/**/.next"
+      "fixtures/**/.next",
+
+      "coverage-tree/tree",
+      "coverage-tree/key"
     ]
   },
   "formatter": {

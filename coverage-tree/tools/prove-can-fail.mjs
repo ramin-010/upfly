@@ -13,10 +13,10 @@
  * Usage:  node tools/prove-can-fail.mjs [--keep]
  */
 
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { appendFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 
 const here = resolve(process.argv[1], '..', '..');
 const keep = process.argv.includes('--keep');
@@ -29,16 +29,18 @@ const keep = process.argv.includes('--keep');
 const cases = [
   {
     name: 'a raw in the key no longer matches the file',
-    damage: (root) => editKey(root, (key) => {
-      key.files[0].entries[0].raw = `${key.files[0].entries[0].raw}X`;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.files[0].entries[0].raw = `${key.files[0].entries[0].raw}X`;
+      }),
     expect: 'not the recorded raw',
   },
   {
     name: 'a reference is deleted from the key',
-    damage: (root) => editKey(root, (key) => {
-      key.files[0].entries.splice(0, 1);
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.files[0].entries.splice(0, 1);
+      }),
     expect: 'which the key does not list',
   },
   {
@@ -60,16 +62,18 @@ const cases = [
   },
   {
     name: "an asset's recorded byte size is wrong",
-    damage: (root) => editKey(root, (key) => {
-      key.assets[0].bytes += 1;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.assets[0].bytes += 1;
+      }),
     expect: 'bytes, disk has',
   },
   {
     name: "an asset's recorded hash is wrong",
-    damage: (root) => editKey(root, (key) => {
-      key.assets[0].sha256 = '0000000000000000';
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.assets[0].sha256 = '0000000000000000';
+      }),
     expect: 'disk has',
   },
   {
@@ -91,71 +95,86 @@ const cases = [
   },
   {
     name: 'a target names a file that does not exist',
-    damage: (root) => editKey(root, (key) => {
-      const entry = findEntry(key, (e) => e.expect === 'resolved');
-      entry.target = 'apps/web/public/no-such-file.png';
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        const entry = findEntry(key, (e) => e.expect === 'resolved');
+        entry.target = 'apps/web/public/no-such-file.png';
+      }),
     expect: 'neither a listed asset nor a file in the tree',
   },
   {
     name: 'a resolved entry loses its target',
-    damage: (root) => editKey(root, (key) => {
-      delete findEntry(key, (e) => e.expect === 'resolved').target;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        removeField(
+          findEntry(key, (e) => e.expect === 'resolved'),
+          'target',
+        );
+      }),
     expect: 'requires a target',
   },
   {
     name: 'an expect value is not one of the seven outcomes',
-    damage: (root) => editKey(root, (key) => {
-      findEntry(key, (e) => e.expect === 'resolved').expect = 'probably-fine';
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        findEntry(key, (e) => e.expect === 'resolved').expect = 'probably-fine';
+      }),
     expect: 'unknown expect',
   },
   {
     name: 'a relative reference points somewhere its target is not',
-    damage: (root) => editKey(root, (key) => {
-      const entry = findEntry(
-        key,
-        (e) => e.expect === 'resolved' && /^\.{1,2}\//.test(e.raw) && !/[?#]/.test(e.raw),
-      );
-      entry.target = 'shared/assets/img/thumb.png';
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        const entry = findEntry(
+          key,
+          (e) => e.expect === 'resolved' && /^\.{1,2}\//.test(e.raw) && !/[?#]/.test(e.raw),
+        );
+        entry.target = 'shared/assets/img/thumb.png';
+      }),
     expect: 'relative path resolves to',
   },
   {
     name: 'an occurrence index is one too low, hiding a reference inside another',
-    damage: (root) => editKey(root, (key) => {
-      // apps/web/src/lib/paths.ts holds `/srcset/` twice, the first inside a template
-      // literal that is itself a keyed reference. Dropping the index to 1 stamps this
-      // entry inside that one.
-      const group = key.files.find((f) => f.path === 'apps/web/src/lib/paths.ts');
-      const entry = group.entries.find((e) => e.raw === '/srcset/');
-      entry.occurrence = 1;
-      entry.offset -= 633;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        // apps/web/src/lib/paths.ts holds `/srcset/` twice, the first inside a template
+        // literal that is itself a keyed reference. Dropping the index to 1 stamps this
+        // entry inside that one.
+        const group = key.files.find((f) => f.path === 'apps/web/src/lib/paths.ts');
+        const entry = group.entries.find((e) => e.raw === '/srcset/');
+        entry.occurrence = 1;
+        entry.offset -= 633;
+      }),
     expect: 'overlap',
   },
   {
     name: 'a declared shape has no references and no reason',
-    damage: (root) => editKey(root, (key) => {
-      key.shapes.push({ id: 'html.invented.position', label: 'invented', spec: '-', motivation: '-' });
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.shapes.push({
+          id: 'html.invented.position',
+          label: 'invented',
+          spec: '-',
+          motivation: '-',
+        });
+      }),
     expect: 'no `absent` reason',
   },
   {
     name: 'a shape drops below three instances and does not say why',
-    damage: (root) => editKey(root, (key) => {
-      const group = key.files.find((f) => f.path === 'apps/web/media.html');
-      let seen = 0;
-      group.entries = group.entries.filter((e) => {
-        if (e.shape !== 'html.input.src') return true;
-        seen += 1;
-        return seen === 1;
-      });
-      // Removing entries leaves their occurrences unlisted, which is a different
-      // failure; allowlist them so the shape rule is what actually fires.
-      key.unreferencedOccurrences = key.unreferencedOccurrences ?? [];
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        const group = key.files.find((f) => f.path === 'apps/web/media.html');
+        let seen = 0;
+        group.entries = group.entries.filter((e) => {
+          if (e.shape !== 'html.input.src') return true;
+          seen += 1;
+          return seen === 1;
+        });
+        // Removing entries leaves their occurrences unlisted, which is a different
+        // failure; allowlist them so the shape rule is what actually fires.
+        key.unreferencedOccurrences = key.unreferencedOccurrences ?? [];
+      }),
     expect: 'asks for three to five',
   },
   {
@@ -179,26 +198,47 @@ const cases = [
   // the thing it was proving. They must hold whether the key has open questions or none.
   {
     name: 'an UNDECIDED entry, under --strict',
-    damage: (root) => editKey(root, (key) => {
-      const entry = findEntry(key, (e) => e.expect === 'resolved');
-      entry.expect = 'UNDECIDED';
-      entry.candidates = ['resolved', 'broken'];
-      delete entry.target;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        const entry = findEntry(key, (e) => e.expect === 'resolved');
+        entry.expect = 'UNDECIDED';
+        entry.candidates = ['resolved', 'broken'];
+        removeField(entry, 'target');
+      }),
     args: ['--strict'],
     expect: 'OPEN QUESTIONS',
   },
   {
     name: 'an UNDECIDED entry with fewer than two candidate outcomes',
-    damage: (root) => editKey(root, (key) => {
-      const entry = findEntry(key, (e) => e.expect === 'resolved');
-      entry.expect = 'UNDECIDED';
-      entry.candidates = ['resolved'];
-      delete entry.target;
-    }),
+    damage: (root) =>
+      editKey(root, (key) => {
+        const entry = findEntry(key, (e) => e.expect === 'resolved');
+        entry.expect = 'UNDECIDED';
+        entry.candidates = ['resolved'];
+        removeField(entry, 'target');
+      }),
     expect: 'at least two candidate outcomes',
   },
 ];
+
+/**
+ * Remove a field from a key entry, as a mutation that damages the key.
+ *
+ * ⚠️ **It has to be `delete`, and `field = undefined` is not the same thing** even
+ * though `editKey` writes through `JSON.stringify`, which happens to drop
+ * undefined-valued keys. That equivalence lives in a different function and would
+ * stop holding the moment the key is written by anything else. These mutations mean
+ * *the field is gone*, so they say so.
+ *
+ * Biome's `noDelete` is a performance rule about deoptimising hot objects, and it flagged
+ * all three call sites when they each said `delete`. This is a one-shot edit to a parsed
+ * copy in a temp directory, so the cost it guards against does not apply. Routing them
+ * through here answers the rule honestly rather than by suppression — it does not fire on
+ * computed access — and puts the reason in one place instead of three.
+ */
+function removeField(object, field) {
+  delete object[field];
+}
 
 function editKey(root, mutate) {
   const path = join(root, 'key/coverage-key.json');
@@ -260,11 +300,10 @@ if (baseline.status !== 0) {
       } else {
         failures += 1;
         process.stdout.write(`  MISS  ${testCase.name}\n`);
-        process.stdout.write(
-          `        exit ${result.status}` +
-            (testCase.expectExitOnly ? '' : `, expected to say ${JSON.stringify(testCase.expect)}`) +
-            '\n',
-        );
+        const expectation = testCase.expectExitOnly
+          ? ''
+          : `, expected to say ${JSON.stringify(testCase.expect)}`;
+        process.stdout.write(`        exit ${result.status}${expectation}\n`);
         if (!wentRed) process.stdout.write('        🔴 THE CHECKER STAYED GREEN ON DAMAGE.\n');
       }
     } finally {
