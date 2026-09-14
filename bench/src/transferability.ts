@@ -1,5 +1,20 @@
 /**
- * R76b: how much of a REAL repository falls into shapes the coverage tree tests?
+ * The tree's GROWTH LIST, from reality: which shapes a real repository contains that the
+ * coverage tree has no instance of.
+ *
+ * 🔴 **WITHDRAWN AS A COVERAGE MEASUREMENT BY R95, AND NARROWED TO THAT ONE PURPOSE.** It
+ * was specified as R76b — *what fraction of a real repository falls into shapes the tree
+ * tests* — and running it showed the question cannot be answered this way. **Both sides of
+ * that fraction come from the same list**, so the instrument could only ever return a high
+ * number. R95's test, which this file failed and which now applies to every instrument
+ * here: **before specifying any measurement, ask what result would falsify it and whether
+ * the instrument can produce that result.**
+ *
+ * ✅ **R74's sweep is the transferability evidence**, because it is a plain text search that
+ * never asks the engine what shape anything is.
+ *
+ * **What follows is the original reasoning, kept because it is why the instrument was
+ * narrowed rather than deleted.**
  *
  * **The honest limit first, because it is the reason this exists.** A built tree answers
  * *“of the shapes we KNOW about, how many do we handle?”* It cannot answer *“of the shapes
