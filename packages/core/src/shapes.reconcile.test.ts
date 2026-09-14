@@ -194,7 +194,7 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
     // test reasons about.
     const declarations: readonly ShapeDeclaration[] = SHAPES;
     for (const shape of declarations) {
-      expect(['engine', 'gap', 'declined'], `${shape.id}`).toContain(shape.emission);
+      expect(['engine', 'gap', 'declined', 'unclaimed'], `${shape.id}`).toContain(shape.emission);
 
       // A `declined` row reads BACKWARDS — a zero is correct and a non-zero is the
       // failure — so it may not be silent, UNLESS the family already says it. `decoy.*`
@@ -203,11 +203,11 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
       //
       // ⚠️ The first version of this test exempted every `md.*` shape, which was not a
       // principle but a shortcut around four reasons I had not written. It hid them.
-      if (shape.emission === 'declined' && !familyExplains(shape)) {
+      if (BACKWARD_READING.includes(shape.emission) && !familyExplains(shape)) {
         const rule = 'A row that reads backwards has to say why.';
         expect(
           (shape.why ?? '').length > 0,
-          `${shape.id} is 'declined' and its family does not explain that. ${rule}`,
+          `${shape.id} reads backwards (${shape.emission}) and its family does not explain that. ${rule}`,
         ).toBe(true);
       }
     }
@@ -238,6 +238,17 @@ function familyExplains(shape: ShapeDeclaration): boolean {
     (shape.id.startsWith('path.') && shape.emission === 'declined')
   );
 }
+
+/**
+ * Rows that read BACKWARDS — a zero is correct and a non-zero is the failure.
+ *
+ * 🔴 Two values, not one, and the pair is the point (R92). `declined` means the text is
+ * not a live path; `unclaimed` means there IS a real file and we choose not to index it.
+ * Both read backwards, so both are excluded from the claimed population — but only the
+ * second is a SCOPE DECISION, and eight tree entries read as eight misses for want of
+ * saying so.
+ */
+const BACKWARD_READING: readonly string[] = ['declined', 'unclaimed'];
 
 /**
  * 🔴 The guard, proved able to fail — in both directions and on the asymmetry it allows.

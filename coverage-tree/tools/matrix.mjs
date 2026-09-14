@@ -119,7 +119,46 @@ export function buildMatrix(key, observed, { declarationOf = () => undefined } =
     findings,
     unkeyed: unkeyedEmissions(key, observed),
     shapeDisagreements: shapeDisagreements(key, observed, declarationOf),
+    arithmetic: reconcile([...rows.values()], key, findings),
   };
+}
+
+/**
+ * Does the matrix's own arithmetic close?
+ *
+ * 🔴 **A TABLE THAT DOES NOT ADD UP STILL PRINTS, and it prints confidently.** Every
+ * entry lands in exactly one bucket, so per row `met + missed + threw + knownGap +
+ * staleGap` must equal `expected`, and the row totals must equal the number of entries
+ * the key holds. Nothing else in this file would notice if a verdict started
+ * double-counting or went to a bucket name that does not exist — `row[verdict.bucket] +=
+ * 1` would happily create one.
+ *
+ * ⚠️ **This exists because I tried to check it from OUTSIDE, by parsing the rendered
+ * table, and my regex silently matched only the 62 rows that had no direction label —
+ * then reported a one-entry discrepancy that was entirely my parser's.** An instrument
+ * that can only be verified by scraping its own output is an instrument nobody will
+ * verify twice.
+ */
+export function reconcile(rows, key, findings) {
+  const problems = [];
+  let expected = 0;
+  for (const row of rows) {
+    const parts = row.met + row.missed + row.threw + row.knownGap + row.staleGap;
+    if (parts !== row.expected) {
+      problems.push(`${row.shape}: buckets sum to ${parts}, expected ${row.expected}`);
+    }
+    expected += row.expected;
+  }
+  const entries = key.files.reduce((total, group) => total + group.entries.length, 0);
+  if (expected !== entries) {
+    problems.push(`rows account for ${expected} entries, the key holds ${entries}`);
+  }
+  // Every finding belongs to exactly one non-met bucket, so the two counts must agree.
+  const accounted = rows.reduce((total, row) => total + row.missed + row.threw + row.staleGap, 0);
+  if (accounted !== findings.length) {
+    problems.push(`${accounted} non-met entries against ${findings.length} findings`);
+  }
+  return { closes: problems.length === 0, problems, entries };
 }
 
 /**
@@ -330,72 +369,163 @@ export function blindSpots() {
  * heading says so rather than leaving a reader to infer the direction per row.
  */
 export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
-  const lines = [];
-  const pad = (text, width) => String(text).padEnd(width);
-  const num = (value) => String(value).padStart(4);
-
   const width = Math.max(28, ...result.rows.map((row) => row.shape.length));
-  lines.push('coverage matrix — one row per shape, and DELIBERATELY NO TOTAL (R75)');
-  lines.push('');
-  lines.push(
-    `${pad('shape', width)}  ${num('met')}/${num('exp')}  ${num('miss')} ${num('threw')} ${num('gap')}  direction`,
-  );
-  lines.push('-'.repeat(width + 40));
+  return [
+    ...heading(),
+    ...arithmeticLine(result),
+    ...populations(result, emissionOf),
+    ...rowTable(result, emissionOf, width),
+    ...findingList(result),
+    ...unkeyedList(result),
+    ...disagreementList(result),
+    ...blindSpotList(),
+  ].join('\n');
+}
 
+// Each section below was inlined in `renderMatrix` until the complexity rule fired on it
+// at 35 — the highest in the repository. Split rather than suppressed (R81's precedent:
+// answer the rule), and the sections are now individually readable, which the 90-line
+// version was not.
+
+function heading() {
+  return [
+    'coverage matrix — one row per shape, and DELIBERATELY NO TOTAL (R75)',
+    '',
+    '🔴 FOUR DIRECTIONS, AND SUMMING ACROSS THEM WOULD BE MEANINGLESS. A `claimed` row counts ' +
+      'found against expected. A `refusal` row reads BACKWARDS — the text is not a live path, so ' +
+      'a zero is right and a non-zero is the failure. An `unclaimed` row is a SCOPE DECISION: a ' +
+      'real file we choose not to index, and a miss there is not a bug (R92). A `gap` row is an ' +
+      'acknowledged debt with a ruling behind it.',
+  ];
+}
+
+function arithmeticLine(result) {
+  if (result.arithmetic.closes) {
+    return [
+      '',
+      `✅ arithmetic closes: every one of ${result.arithmetic.entries} key entries is in exactly one bucket.`,
+    ];
+  }
+  return [
+    '',
+    '🔴 THE ARITHMETIC DOES NOT CLOSE. Every number below is suspect:',
+    ...result.arithmetic.problems.map((problem) => `     ${problem}`),
+  ];
+}
+
+/**
+ * 🔴 **THE HONEST DENOMINATOR (R92): the shapes we CLAIM are the only population where a
+ * miss is a bug.** Per direction, and never one figure across all four — the whole value
+ * of this table is that there is nothing to quote out of context.
+ */
+function populations(result, emissionOf) {
+  const buckets = new Map();
   for (const row of result.rows) {
-    const emission = emissionOf(row.shape);
-    const direction =
-      emission === 'declined'
-        ? 'refusal — a MISS here means the engine claimed it'
-        : emission === 'gap'
-          ? 'gap — zero is expected until a reader exists'
-          : '';
-    lines.push(
-      `${pad(row.shape, width)}  ${num(row.met)}/${num(row.expected)}  ${num(row.missed)} ${num(row.threw)} ${num(row.knownGap)}  ${direction}`,
-    );
+    const emission = emissionOf(row.shape) ?? 'engine';
+    // ⚠️ `gap` is its OWN population and is deliberately not folded into `claimed`. A gap
+    // is an acknowledged debt with a ruling behind it, so counting its 47 entries against
+    // the claimed figure would drag that number down for a reason that is not a defect —
+    // and `claimed` has to mean exactly "a miss here is a bug" or it means nothing at all.
+    const direction = emission === 'engine' ? 'claimed' : emission;
+    const bucket = buckets.get(direction) ?? { rows: 0, expected: 0, met: 0, missed: 0 };
+    bucket.rows += 1;
+    bucket.expected += row.expected;
+    bucket.met += row.met;
+    bucket.missed += row.missed;
+    buckets.set(direction, bucket);
   }
 
-  lines.push('');
+  const lines = ['', 'populations — read separately, never added together:'];
+  for (const [direction, bucket] of [...buckets].sort()) {
+    const count = String(bucket.rows).padStart(3);
+    lines.push(`  ${direction.padEnd(11)} ${count} rows  ${reading(direction, bucket)}`);
+  }
+  return lines;
+}
+
+function reading(direction, bucket) {
+  if (direction === 'claimed') {
+    return `${bucket.met} of ${bucket.expected} met — THE ONLY POPULATION WHERE A MISS IS A BUG`;
+  }
+  if (direction === 'gap') {
+    return `${bucket.expected} entries nothing reads yet, each with a knownGap naming the ruling`;
+  }
+  return `${bucket.expected} entries, ${bucket.missed} where the engine claimed something`;
+}
+
+function rowTable(result, emissionOf, width) {
+  const pad = (text) => String(text).padEnd(width);
+  const num = (value) => String(value).padStart(4);
+  const lines = [
+    '',
+    `${pad('shape')}  ${num('met')}/${num('exp')}  ${num('miss')} ${num('threw')} ${num('gap')}  direction`,
+    '-'.repeat(width + 40),
+  ];
+  for (const row of result.rows) {
+    const counts = `${num(row.met)}/${num(row.expected)}  ${num(row.missed)} ${num(row.threw)} ${num(row.knownGap)}`;
+    lines.push(`${pad(row.shape)}  ${counts}  ${directionOf(emissionOf(row.shape))}`);
+  }
+  return lines;
+}
+
+function directionOf(emission) {
+  if (emission === 'declined') {
+    return 'refusal — not a live path; a MISS here means the engine claimed it';
+  }
+  if (emission === 'unclaimed') {
+    return 'UNCLAIMED — a real file, deliberately not indexed. A miss is not a bug';
+  }
+  if (emission === 'gap') return 'gap — zero is expected until a reader exists';
+  return '';
+}
+
+function findingList(result) {
   const defects = result.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind));
   const noted = result.findings.filter((item) => NON_DEFECT_KINDS.includes(item.kind));
-  lines.push(`findings: ${defects.length} to answer, ${noted.length} noted`);
-  lines.push(
+  const lines = [
+    '',
+    `findings: ${defects.length} to answer, ${noted.length} noted`,
     "  🔴 EACH ONE IS A QUESTION, NOT A VERDICT (R90). Both sides state their case: the key's " +
       "`why` is what the tree author says a correct engine does; the engine's note is what it " +
       'says about its own decision. A row reading 0 of N may mean the KEY is wrong.',
-  );
+  ];
   for (const item of [...defects, ...noted]) {
-    lines.push(
-      `  [${item.kind}] ${item.file}:${item.line} ${JSON.stringify(item.raw)} — ${item.detail}`,
-    );
+    const where = `${item.file}:${item.line} ${JSON.stringify(item.raw)}`;
+    lines.push(`  [${item.kind}] ${where} — ${item.detail}`);
     if (item.keyWhy !== '') lines.push(`        key says:    ${item.keyWhy}`);
     if (item.keyGap !== '') lines.push(`        knownGap:    ${item.keyGap}`);
     if (item.engineNote !== '') lines.push(`        engine says: ${item.engineNote}`);
   }
+  return lines;
+}
 
-  lines.push('');
-  lines.push(`unkeyed emissions (engine claimed, key lists nothing): ${result.unkeyed.length}`);
-  for (const item of result.unkeyed) {
-    lines.push(
-      `  ${item.file}@${item.start} ${item.shape} ${item.resolution} ${JSON.stringify(item.rawPath)}`,
-    );
-  }
+function unkeyedList(result) {
+  return [
+    '',
+    `unkeyed emissions (engine claimed, key lists nothing): ${result.unkeyed.length}`,
+    ...result.unkeyed.map(
+      (item) =>
+        `  ${item.file}@${item.start} ${item.shape} ${item.resolution} ${JSON.stringify(item.rawPath)}`,
+    ),
+  ];
+}
 
+function disagreementList(result) {
   const unexplained = result.shapeDisagreements.filter((item) => !item.explained);
-  lines.push('');
-  lines.push(
+  return [
+    '',
     `shape disagreements: ${result.shapeDisagreements.length}, of which UNEXPLAINED: ${unexplained.length}`,
-  );
-  lines.push(
     '  (explained = the key shape declares adapterEmitsAs naming what the engine emitted — R87)',
-  );
-  for (const item of unexplained) {
-    lines.push(`  ${item.file}:${item.line}  key ${item.keyShape}  ->  engine ${item.engineShape}`);
-  }
+    ...unexplained.map(
+      (item) => `  ${item.file}:${item.line}  key ${item.keyShape}  ->  engine ${item.engineShape}`,
+    ),
+  ];
+}
 
-  lines.push('');
-  lines.push('🔴 what this instrument cannot tell you:');
-  for (const spot of blindSpots()) lines.push(`  - ${spot}`);
-
-  return lines.join('\n');
+function blindSpotList() {
+  return [
+    '',
+    '🔴 what this instrument cannot tell you:',
+    ...blindSpots().map((spot) => `  - ${spot}`),
+  ];
 }

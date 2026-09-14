@@ -62,11 +62,19 @@ export interface UnkeyedEmission {
   readonly rawPath: string;
 }
 
+/** Whether the matrix's own buckets add up. A table that does not add up still prints. */
+export interface Arithmetic {
+  readonly closes: boolean;
+  readonly problems: readonly string[];
+  readonly entries: number;
+}
+
 export interface MatrixResult {
   readonly rows: readonly MatrixRow[];
   readonly findings: readonly MatrixFinding[];
   readonly unkeyed: readonly UnkeyedEmission[];
   readonly shapeDisagreements: readonly ShapeDisagreement[];
+  readonly arithmetic: Arithmetic;
 }
 
 /** One reference as the engine produced it, at a UTF-16 code-unit offset. */
@@ -107,6 +115,13 @@ export function renderMatrix(
   result: MatrixResult,
   options?: { readonly emissionOf?: (id: string) => string | undefined },
 ): string;
+
+/** Does every key entry land in exactly one bucket? Exported so its proofs can damage it. */
+export function reconcile(
+  rows: readonly MatrixRow[],
+  key: { readonly files: readonly { readonly entries: readonly unknown[] }[] },
+  findings: readonly unknown[],
+): Arithmetic;
 
 /** What the instrument cannot tell you, as prose a rendering cannot omit. */
 export function blindSpots(): readonly string[];

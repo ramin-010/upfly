@@ -31,6 +31,7 @@ import {
   NON_DEFECT_KINDS,
   type ShapeDisagreement,
   buildMatrix,
+  reconcile,
   renderMatrix,
 } from '../../../coverage-tree/tools/matrix.mjs';
 
@@ -387,5 +388,62 @@ describe('the rendering', () => {
     const rendered = renderMatrix(result, { emissionOf: () => 'declined' });
 
     expect(rendered).toContain('a MISS here means the engine claimed it');
+  });
+});
+
+describe("the matrix's own arithmetic, proved able to fail", () => {
+  // 🔴 A TABLE THAT DOES NOT ADD UP STILL PRINTS, AND IT PRINTS CONFIDENTLY. Nothing else
+  // in the module would notice a verdict double-counting or naming a bucket that does not
+  // exist — `row[verdict.bucket] += 1` would cheerfully create one.
+  //
+  // ⚠️ And this check exists because I first tried to verify it from OUTSIDE by parsing
+  // the rendered table. The regex silently matched only the rows without a direction
+  // label and reported a one-entry discrepancy that was entirely my parser's. An
+  // instrument verifiable only by scraping its own output is one nobody verifies twice.
+  const row = (over: Partial<MatrixRow>): MatrixRow => ({
+    shape: 'html.img.src',
+    expected: 3,
+    met: 3,
+    missed: 0,
+    threw: 0,
+    knownGap: 0,
+    staleGap: 0,
+    ...over,
+  });
+  const keyOf = (entries: number) => ({ files: [{ entries: Array.from({ length: entries }) }] });
+
+  it('closes on a well-formed set of rows', () => {
+    expect(reconcile([row({})], keyOf(3), []).closes).toBe(true);
+  });
+
+  it('🔴 goes red when a row loses an entry between its buckets', () => {
+    const result = reconcile([row({ met: 2 })], keyOf(3), []);
+
+    expect(result.closes).toBe(false);
+    expect(result.problems[0]).toContain('buckets sum to 2, expected 3');
+  });
+
+  it('🔴 goes red when a row double-counts one', () => {
+    const result = reconcile([row({ met: 3, missed: 1 })], keyOf(3), []);
+
+    expect(result.closes).toBe(false);
+  });
+
+  it('🔴 goes red when the rows do not account for every key entry', () => {
+    // The failure mode that matters most: a file group silently skipped. The rows all add
+    // up individually and the table reads fine.
+    const result = reconcile([row({})], keyOf(9), []);
+
+    expect(result.closes).toBe(false);
+    expect(result.problems[0]).toContain('account for 3 entries, the key holds 9');
+  });
+
+  it('🔴 goes red when a non-met entry produced no finding', () => {
+    // A miss with nothing to read about it is the silent-skip shape (rule 9) inside the
+    // instrument built to find silent skips.
+    const result = reconcile([row({ met: 2, missed: 1 })], keyOf(3), []);
+
+    expect(result.closes).toBe(false);
+    expect(result.problems.some((p: string) => p.includes('against 0 findings'))).toBe(true);
   });
 });

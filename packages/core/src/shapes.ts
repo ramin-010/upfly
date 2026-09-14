@@ -70,15 +70,43 @@ export type ShapeEmission =
    */
   | 'gap'
   /**
-   * The engine deliberately reports nothing, and that is CORRECT. A decoy, a data URI,
-   * a path inside a code fence. 🔴 **Here a NON-zero count is the failure**, so the
-   * matrix reads this row in the opposite direction.
+   * The text is NOT A LIVE PATH TO A FILE, so reporting nothing is correct. A decoy, a
+   * data URI, a path inside a code fence, an `url(#grain)` naming an element.
+   * 🔴 **Here a NON-zero count is the failure**, so the matrix reads this row backwards.
    *
    * ⚠️ It says nothing about *where* the refusal happens. An adapter may decline to
    * emit at all, or emit and have the resolver discard it; `adapterEmitsAs` is what
    * separates those.
    */
-  | 'declined';
+  | 'declined'
+  /**
+   * 🔴 **A REAL FILE AT THE OTHER END THAT WE DELIBERATELY DO NOT CLAIM.** A SCOPE
+   * DECISION, and the value exists because without it a scope decision is
+   * indistinguishable from a defect (R92).
+   *
+   * **The test, written down so it is not re-argued per shape:** is there a real file
+   * there, reachable, that the engine chooses not to index? Then `unclaimed`. Is the text
+   * not a live path at all? Then `declined`. R32's own words for the first case are
+   * *“real, reachable, not ours”* — an absolute URL, an `<iframe src>` naming a document,
+   * a `rel=stylesheet` link.
+   *
+   * ⚠️ **THE COST OF NOT HAVING IT, measured:** eight tree entries — a `.vtt`, a `.mp3`,
+   * an `.ogg`, two `.pdf`s, a `.mp4`, a `.woff2` — read as eight matrix misses, and the
+   * engine was doing exactly what R78 Q1 ruled. A row that reads as a failure and is a
+   * choice trains a reader to discount the column, which is R75's objection.
+   *
+   * ✅ **AND IT GIVES THE MATRIX AN HONEST DENOMINATOR.** `engine` + `gap` is the
+   * population we CLAIM, and that is the only population where a miss is a bug. Rows that
+   * are `declined` or `unclaimed` read in the opposite direction and must never be summed
+   * with the others.
+   *
+   * ⚠️ **A CLAIMED SHAPE CAN STILL HOLD UNCLAIMED TARGETS, and that is an ENTRY-level
+   * fact rather than a shape-level one.** `html.video.src` is claimed — the tree has one
+   * pointing at a `.png` that resolves — while every `.mp4` in it is out of scope. The
+   * shape stays `engine`; the individual entry says `expect: out-of-scope`. Conflating
+   * the two levels is what produced the eight.
+   */
+  | 'unclaimed';
 
 // 🔴 THERE WAS A FOURTH VALUE, `mixed`, AND IT IS DELIBERATELY GONE (R83).
 //
@@ -227,18 +255,21 @@ export const SHAPES = [
     id: 'html.link.href.other',
     label: 'link@href the predicate refuses',
     spec: '4a',
-    emission: 'declined',
+    emission: 'unclaimed',
     why:
-      'Every rel value linkPointsAtAnImage declines — a stylesheet, a webmanifest. Homogeneous ' +
-      'once preload left, so a zero here is the correct reading and a NON-zero is the failure.',
+      'Every rel value linkPointsAtAnImage declines — a stylesheet, a webmanifest. Both are REAL ' +
+      'files we choose not to index, which makes this a scope decision rather than a refusal of ' +
+      'nonsense (R92). Homogeneous once preload left, so a zero is correct and NON-zero is the failure.',
   },
   { id: 'html.object.data', label: 'object@data', spec: '4a', emission: 'engine' },
   {
     id: 'html.iframe.src',
     label: 'iframe@src',
     spec: '4a',
-    emission: 'declined',
-    why: 'A path-shaped attribute that must never become a finding. Non-zero is the failure.',
+    emission: 'unclaimed',
+    why:
+      'A real document at the other end that we choose not to index — the key calls it "precision, ' +
+      'not recall" (R92). Non-zero is the failure.',
   },
   { id: 'html.svg.image.href', label: 'SVG image@href', spec: '4a', emission: 'engine' },
   { id: 'html.svg.image.xlink', label: 'SVG image@xlink:href', spec: '4a', emission: 'engine' },
@@ -655,12 +686,22 @@ export const SHAPES = [
     emission: 'declined',
     why: 'Disposition wins over host: it is keyed the same in .html and .css. Dropped by isExternalUrl.',
   },
-  { id: 'path.absolute-url', label: 'an absolute URL', spec: '4g', emission: 'declined' },
+  {
+    id: 'path.absolute-url',
+    label: 'an absolute URL',
+    spec: '4g',
+    emission: 'unclaimed',
+    why: "R32's own words: real, reachable, not ours. A scope decision, not a refusal of nonsense (R92).",
+  },
   {
     id: 'path.protocol-relative',
     label: 'a protocol-relative URL',
     spec: '4g',
-    emission: 'declined',
+    emission: 'unclaimed',
+    why:
+      'A remote file, reachable over whichever scheme the page loaded with — real, and not ours ' +
+      '(R92). ⚠️ The key\'s motivation calls it "not a path", which is true of its SYNTAX and not ' +
+      'of its target; the target is what decides claimed from unclaimed.',
   },
   {
     id: 'path.charref',
