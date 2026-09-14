@@ -147,20 +147,20 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
 
   it('gives every declared shape an emission class, and a reason where it is not obvious', () => {
     for (const shape of SHAPES) {
-      expect(['engine', 'gap', 'declined', 'mixed'], `${shape.id}`).toContain(shape.emission);
+      expect(['engine', 'gap', 'declined'], `${shape.id}`).toContain(shape.emission);
 
-      // `mixed` is unruled and `declined` reads a row backwards. Neither may be silent —
-      // UNLESS the family already says it. `decoy.*` declining, `unread.*` being a gap
-      // and `path.*` declining are what those families MEAN, and demanding prose there
-      // is ceremony that teaches people to write filler.
+      // A `declined` row reads BACKWARDS — a zero is correct and a non-zero is the
+      // failure — so it may not be silent, UNLESS the family already says it. `decoy.*`
+      // declining, `unread.*` being a gap and `path.*` declining are what those families
+      // MEAN, and demanding prose there is ceremony that teaches people to write filler.
       //
       // ⚠️ The first version of this test exempted every `md.*` shape, which was not a
       // principle but a shortcut around four reasons I had not written. It hid them.
-      if ((shape.emission === 'mixed' || shape.emission === 'declined') && !familyExplains(shape)) {
-        const rule = 'A row that reads backwards, or one nobody has ruled on, has to say why.';
+      if (shape.emission === 'declined' && !familyExplains(shape)) {
+        const rule = 'A row that reads backwards has to say why.';
         expect(
           (shape.why ?? '').length > 0,
-          `${shape.id} is '${shape.emission}' and its family does not explain that. ${rule}`,
+          `${shape.id} is 'declined' and its family does not explain that. ${rule}`,
         ).toBe(true);
       }
     }

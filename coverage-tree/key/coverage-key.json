@@ -8,7 +8,7 @@
     "resolved": "Points at exactly one asset, and `target` names it.",
     "resolved-pattern": "One reference standing for N assets; `target` is the full list.",
     "dynamic": "The path is assembled at runtime. There is no static path to resolve, and nobody typed a wrong one.",
-    "out-of-scope": "An absolute URL, a protocol-relative URL, an npm package specifier, or a real file the engine deliberately does not index (R32).",
+    "out-of-scope": "An absolute URL, a protocol-relative URL, an npm package specifier, or a real file the engine deliberately does not index (R32). 🔴 LIKE `discarded`, THIS COVERS TWO ENGINE BEHAVIOURS and the measuring harness must accept either: the engine may emit a reference whose resolution is `out-of-scope` (a real .mp4 it can see but will not index), or emit NOTHING AT ALL (an absolute URL, dropped by isExternalUrl before it ever becomes a reference; a link@href the predicate refuses). It must NOT accept a resolved, broken or rewritten outcome. Written down 2026-09-14: the value listed its situations but never its behaviours, so 12 entries would have read as misses for correct behaviour.",
     "unresolved-alias": "Alias-shaped, with no rule that maps it.",
     "broken": "A well-formed, asserted reference to a file that does not exist. A finding.",
     "discarded": "🔴 MUST NOT BE TREATED AS A LIVE REFERENCE. The spec used one word for two engine behaviours, and both satisfy this: the engine may emit nothing at all (a url() inside a comment is never collected), or emit a reference whose resolution is `discarded`. The measuring harness accepts either. It must NOT accept a resolved, broken or rewritten outcome.",
@@ -130,15 +130,22 @@
     },
     {
       "id": "html.link.href.icon",
-      "label": "link@href, icons",
+      "label": "link@href asserted as an icon",
       "spec": "4a",
-      "motivation": "The favicon family, including one that points at an SVG."
+      "motivation": "ADDED: 4a names link@href \"for icons\" and stops. R83: this row is branch A of linkPointsAtAnImage — any rel token containing \"icon\", which covers icon, shortcut icon, apple-touch-icon and mask-icon."
+    },
+    {
+      "id": "html.link.href.preload",
+      "label": "link@href asserted as a preloaded image",
+      "spec": "4a",
+      "motivation": "R83: branch B of linkPointsAtAnImage — rel=preload AND as=image — which is a separate return from the icon branch and fails separately.",
+      "singleReason": "🔴 ONE INSTANCE, DELIBERATELY NOT PADDED. Manufacturing two more rel=preload links so the table looks right is R67 aimed at the tree instead of at a test: the tree would then be shaped by what makes a row readable rather than by what the world contains. It is a §8.5 growth item and reality will supply them — rel=preload as=image is how a modern page preloads its LCP hero, so it sits beside `new URL(..., import.meta.url)`: not exotic, just untested."
     },
     {
       "id": "html.link.href.other",
-      "label": "link@href, stylesheet and manifest",
+      "label": "link@href the predicate refuses",
       "spec": "4a",
-      "motivation": "ADDED: 4a names link@href \"for icons\" and stops. A stylesheet link and a manifest link sit in the same attribute and must not be treated alike."
+      "motivation": "ADDED: a stylesheet link and a manifest link sit in the same attribute as an icon and must not be treated alike. R83: this row is what linkPointsAtAnImage REFUSES, so it is homogeneous and a zero is the correct reading — a non-zero would be the failure."
     },
     {
       "id": "html.object.data",
@@ -2228,9 +2235,9 @@
         {
           "raw": "/img/hero.jpg",
           "occurrence": 1,
-          "shape": "html.link.href.other",
+          "shape": "html.link.href.preload",
           "expect": "resolved",
-          "why": "rel=preload as=image: the same attribute again, this time holding a real asset. Three rel values, three different correct outcomes.",
+          "why": "rel=preload as=image. R83: its own shape, because linkPointsAtAnImage claims it through a SECOND, INDEPENDENT branch — delete the icon branch and this still works, delete this branch and icon still works. Two independently-failing things must not share a row.",
           "target": "apps/web/public/img/hero.jpg",
           "offset": 438,
           "line": 12,

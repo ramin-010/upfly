@@ -83,12 +83,32 @@ it up with options and a recommendation and ask the parent chat.
 Commit locally as you go. **Never push, never publish, never tag** — hand Rinkal the exact commands
 and let him run them. `git push` and `gh` are denied at the permission layer.
 
-⚠️ **There is no pre-commit hook. Run `pnpm check` yourself before every commit** (rule 3); it takes
-~20s and is lint + typecheck + test.
+✅ **There IS a pre-commit hook again, wired 2026-09-14 (R81).** A `PreToolUse(Bash)` hook runs
+`pnpm check` — lint + typecheck + test — and **denies** a commit in this repo while it is red.
+`[wip]` in the message is the sanctioned escape hatch. **Run `pnpm check` yourself anyway** (rule 3):
+the hook is insurance against a lapse, not a substitute for knowing the state of your own tree.
 
-This file used to promise a hook that ran it for you, with `[wip]` as the escape hatch. That hook was
-**removed rather than fixed** after it was found to have four bugs and to have never once fired — the
-clearest instance of the phase's most reliable lesson, that a construction which cannot carry the bug
-beats the discipline of avoiding it. The removal was right; leaving the promise here was not, because
-it told the next chat its commits were gated when nothing was checking them. **Open question for the
-parent chat:** rebuild it so it *can* fail, or leave the check manual and keep this paragraph.
+🔴 **`pnpm test` IS NOT THE GATE.** `pnpm check` is, and CI runs `pnpm lint` first. Every chat had
+been opening with `pnpm test` and calling the result a green baseline while lint was failing on all
+six matrix cells — a baseline measured with a third of the gate is not a baseline.
+
+**What this paragraph used to say, and why the correction matters more than the fix.** It promised a
+hook, then — after that hook was found to have four bugs and to have **never once fired** — it
+promised the opposite, that none existed. Both readings were acted on. It now has **six bugs on
+record**, and the two found on the day it was rewired are the instructive ones:
+
+- **Bug 5: it denied a commit in a DIFFERENT repository.** The fix for bug 4 anchored its `cd` match
+  to the start of the command, so `export … && cd …/notes && git commit` fell through to a stale
+  session cwd. Fixed with an invariant rather than by matching one more shape — **any `cd` at all
+  means the session cwd is unusable** — because guessing at command shapes is what produced bugs 3,
+  4 and 5.
+- **Bug 5b: a backstop that could only ever fire falsely.** It read *“does upfly-v3 have staged
+  changes”*, which is never evidence about where a commit lands: git resolves the repository from
+  the working directory upward. Deleted, not narrowed.
+
+🔴 **THE FAILURE MODE TO WATCH IS A FALSE DENY, NOT A MISSED ONE.** A gate that refuses a commit it
+had no business refusing **trains the escape hatch**, and once `[wip]` becomes reflex the gate is
+dead while the suite still *looks* protected. That is worse than never firing. **So if it denies you
+unexpectedly, suspect the gate first** and run `.claude/hooks/precommit-check.test.sh` — 13 cases,
+including the four `cd` shapes with a deliberately stale session cwd. A missed gate is caught by CI;
+a false deny is caught by nobody, because the person just works around it.

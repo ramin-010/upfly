@@ -66,13 +66,19 @@ export type ShapeEmission =
    * a path inside a code fence. 🔴 **Here a NON-zero count is the failure**, so the
    * matrix reads this row in the opposite direction.
    */
-  | 'declined'
-  /**
-   * Some instances are emitted and some are declined, by a rule that reads an attribute
-   * rather than the syntax. ⚠️ **Raised as R83 and not yet ruled** — it is the one shape
-   * where a row cannot be read in a single direction.
-   */
-  | 'mixed';
+  | 'declined';
+
+// 🔴 THERE WAS A FOURTH VALUE, `mixed`, AND IT IS DELIBERATELY GONE (R83).
+//
+// It existed for one shape — `html.link.href.other`, whose four entries split 1 emitted
+// / 3 declined — and it meant *“nobody has ruled on this”* rather than naming a
+// behaviour. The ruling split that shape three ways instead, so every row became
+// homogeneous and the value had nothing left to describe.
+//
+// ⚠️ It is removed from the union rather than left unused, because a placeholder that
+// outlives its question becomes furniture and the next ambiguous shape would reach for
+// it instead of being ruled on. That is the same hazard `UNTESTED_SHAPE_IDS` is guarded
+// against by the reconciliation going red when a debt is quietly paid.
 
 export interface ShapeDeclaration {
   readonly id: string;
@@ -117,17 +123,45 @@ export const SHAPES: readonly ShapeDeclaration[] = [
   { id: 'html.embed.src', label: 'embed@src', spec: '4a', emission: 'engine' },
   { id: 'html.input.src', label: 'input@src', spec: '4a', emission: 'engine' },
   { id: 'html.track.src', label: 'track@src', spec: '4a', emission: 'engine' },
-  { id: 'html.link.href.icon', label: 'link@href, icons', spec: '4a', emission: 'engine' },
+  //
+  // 🔴 THREE ROWS, NOT ONE, AND THE MEASUREMENT IS WHAT DECIDED IT (R83).
+  // `linkPointsAtAnImage` is two independent branches with two separate returns:
+  // delete the icon branch and preload still works, delete the preload branch and icon
+  // still works. Under the ladder above they are two shapes — and what the predicate
+  // REFUSES is a third. Folding preload into icon would have put two
+  // independently-failing things in one row, one day after the rule against that was
+  // written down.
+  //
+  // ⚠️ Named for what they ASSERT, not for their contents. The old label was
+  // "stylesheet and manifest", which described three of its four entries — and a row
+  // named for its contents rather than its assertion is how the two directions got
+  // mixed in the first place.
+  {
+    id: 'html.link.href.icon',
+    label: 'link@href asserted as an icon',
+    spec: '4a',
+    emission: 'engine',
+  },
+  {
+    id: 'html.link.href.preload',
+    label: 'link@href asserted as a preloaded image',
+    spec: '4a',
+    emission: 'engine',
+    why:
+      '⚠️ ONE tree instance, and deliberately NOT padded to three — manufacturing two more ' +
+      'rel=preload links so the table looks right is R67 aimed at the tree instead of at a test. ' +
+      "Carries a `singleReason` in the key and sits on §8.5's growth list beside " +
+      '`new URL(..., import.meta.url)`: rel=preload as=image is how a modern page preloads its ' +
+      'LCP hero, so reality will supply the instances. Not exotic, just untested.',
+  },
   {
     id: 'html.link.href.other',
-    label: 'link@href, stylesheet and manifest',
+    label: 'link@href the predicate refuses',
     spec: '4a',
-    emission: 'mixed',
+    emission: 'declined',
     why:
-      '🔴 R83. Four instances that split 1 emitted / 3 declined, by `rel` rather than by syntax: ' +
-      '`rel=preload as=image` IS claimed and expects `resolved`, while a stylesheet and a ' +
-      'webmanifest are not claimed and expect `out-of-scope`. A row over all four reads `1 of 4`, ' +
-      'which looks like a failure and is correct behaviour. Needs a split or a ruling.',
+      'Every rel value linkPointsAtAnImage declines — a stylesheet, a webmanifest. Homogeneous ' +
+      'once preload left, so a zero here is the correct reading and a NON-zero is the failure.',
   },
   { id: 'html.object.data', label: 'object@data', spec: '4a', emission: 'engine' },
   {
