@@ -35,7 +35,7 @@ import { appendFileSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
-import { IMAGE_EXTENSIONS, type Report, spellingsOf } from 'upfly-core';
+import { IMAGE_EXTENSIONS, type Report, spell, spellingsOf } from 'upfly-core';
 
 export type Verdict = 'confirmed-genuine' | 'confirmed-false' | 'ambiguous';
 
@@ -314,6 +314,31 @@ function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
 }
 
 /**
+ * Every spelling a source file might name this asset by.
+ *
+ * 🔴 **R121, and it is R119's tail pointed at the expensive direction.** `verifyDead`
+ * asked the token index for the basename EXACTLY AS IT SITS ON DISK, so an asset called
+ * `hero image.png` whose only mention writes `hero%20image.png` produced no hit and came
+ * back **`confirmed-genuine`** — *this filename appears nowhere in your codebase*, about a
+ * file the site is serving.
+ *
+ * ⚠️ **A false `broken` and a false `dead` are the same defect seen from both ends.** In
+ * `railsgirls-com` the engine emitted both about the same pair at the same time — a
+ * reference pointing at nothing AND a file nobody references — and neither instrument
+ * noticed the contradiction. **A false `broken` costs five minutes; a false `dead` costs
+ * the file.**
+ *
+ * ⚠️ Measured: four assets in that repository are named ONLY in an encoded spelling.
+ * R118 fixed the ENGINE, so they stopped being reported dead and the oracle's copy of the
+ * defect became unreachable from the corpus — which is why `verify.test.ts` owns the
+ * input now rather than hoping a repository supplies it (R117).
+ */
+function nameSpellings(asset: string): readonly string[] {
+  const name = posix.basename(asset);
+  return [...new Set([name, spell(name, 'percent-encoded'), spell(name, 'html-entities')])];
+}
+
+/**
  * The fallback for a basename the tokeniser cannot represent at all.
  *
  * ⚠️ **A different search strategy on purpose, not a wider regex.** `WhatsApp Image
@@ -336,21 +361,33 @@ function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
  * Returns `null` when the name *is* tokenisable, so the ordinary path runs unchanged.
  */
 function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
-  const name = posix.basename(asset);
-  if (index.canRepresent(name)) return null;
+  // 🔴 **Every SPELLING, and the search runs whenever ANY of them is unrepresentable.**
+  // `hero image.png` is representable, so the old guard returned `null` here and the token
+  // path ran — and the token path cannot see `hero%20image.png`, because `%` is not in the
+  // index's character class. The name being representable said nothing about the spelling
+  // the source actually used.
+  const spellings = nameSpellings(asset);
+  const unrepresentable = spellings.filter((spelling) => !index.canRepresent(spelling));
+  if (unrepresentable.length === 0) return null;
 
-  const needle = name.toLowerCase();
   const found: string[] = [];
   for (const [file, text] of index.lowerTexts) {
     if (file === asset) continue;
-    const at = text.indexOf(needle);
-    if (at === -1) continue;
-    const line = text.slice(0, at).split('\n').length;
-    found.push(`  ${file}:${line}`);
+    for (const spelling of unrepresentable) {
+      const at = text.indexOf(spelling.toLowerCase());
+      if (at === -1) continue;
+      const line = text.slice(0, at).split('\n').length;
+      found.push(`  ${file}:${line}  (as ${spelling})`);
+      break;
+    }
     if (found.length >= 5) break;
   }
 
   if (found.length === 0) {
+    // ⚠️ **Not a verdict yet when the literal name IS representable.** Returning
+    // `confirmed-genuine` here would answer for the token index without having asked it:
+    // the literal search covered only the spellings it could not hold. Fall through.
+    if (index.canRepresent(posix.basename(asset))) return null;
     return {
       kind: 'dead',
       subject: asset,
@@ -389,7 +426,11 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
   const name = posix.basename(asset).toLowerCase();
   const stem = name.slice(0, name.lastIndexOf('.'));
 
-  const exact = (index.hitsByToken.get(name) ?? []).filter((hit) => hit.file !== asset);
+  // Every spelling the index can actually hold. The ones it cannot were searched for
+  // literally above (R121).
+  const exact = nameSpellings(asset)
+    .flatMap((spelling) => index.hitsByToken.get(spelling.toLowerCase()) ?? [])
+    .filter((hit) => hit.file !== asset);
   if (exact.length > 0) {
     return {
       kind: 'dead',
@@ -456,9 +497,37 @@ function verifyHedge(
       continue;
     }
 
-    const token = posix.basename(asset).toLowerCase();
-    const hits = index.hitsByToken.get(token) ?? [];
-    const inFile = hits.filter((hit) => hit.file === file);
+    // ⚠️ **The same blind spot pointed the SAFE way, which is why it would have been
+    // fixed last (R121).** A citation at a line writing `hero%20image.png` produced no
+    // token hit, so the oracle called a perfectly good citation `confirmed-false` and
+    // failed the gate over an engine that was right. A correct engine reported as broken
+    // costs somebody an afternoon (R86's family).
+    const spellings = nameSpellings(asset);
+    const hits = spellings.flatMap(
+      (spelling) => index.hitsByToken.get(spelling.toLowerCase()) ?? [],
+    );
+    let inFile = hits.filter((hit) => hit.file === file);
+
+    // A spelling the token index cannot hold is looked for literally, in that file only.
+    if (inFile.length === 0) {
+      const text = index.lowerTexts.get(file);
+      if (text !== undefined) {
+        for (const spelling of spellings) {
+          if (index.canRepresent(spelling)) continue;
+          const at = text.indexOf(spelling.toLowerCase());
+          if (at === -1) continue;
+          inFile = [
+            {
+              file,
+              line: text.slice(0, at).split('\n').length,
+              text: spelling,
+              extensionSwapped: false,
+            },
+          ];
+          break;
+        }
+      }
+    }
 
     if (inFile.length === 0) {
       wrong.push(`${mention.where} — the file does not contain ${posix.basename(asset)}`);
