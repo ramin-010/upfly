@@ -12,12 +12,18 @@ import { MENTION_SURVIVES } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import { renderReport } from './report-human.js';
-import { REPORT_SCHEMA_VERSION, buildReport } from './report.js';
+import {
+  REPORT_SCHEMA_VERSION,
+  buildReport,
+  classifyReference,
+  refusalReasonId,
+} from './report.js';
 import type { Report } from './report.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';
+import type { Reference } from './types.js';
 import type { Adapter } from './types.js';
 
 /**
@@ -1047,6 +1053,11 @@ describe('buildReport', () => {
           rawPath: 'assets/logo.png',
           resolution: 'discarded',
           reason: 'a path-shaped string that resolved to nothing',
+          // R111: a guess nobody asserted is in no accuracy box at all. Scoring
+          // ourselves on a lockfile string measures the engine against work that was
+          // never its job, which is R109's objection one level down.
+          classification: 'not-a-claim',
+          refusalReason: null,
         },
       ]);
     });
@@ -1794,5 +1805,246 @@ describe('the public-dir caveat counts what the report lists', () => {
     ).length;
 
     expect(caveat?.count).toBe(listed);
+  });
+});
+
+/**
+ * R111 — R109's four boxes as a published FIELD.
+ *
+ * 🔴 **The report snapshots barely test this, and reading the diff is how that was
+ * found.** Four of the five framework fixtures produce NO `unsafe` reference at all, so
+ * their `byClassification` reads *everything resolved, nothing else* — a table that would
+ * look identical if the classifier returned one constant. `eleventy` contributes exactly
+ * one, a `{{ site.url }}` path. **One case out of five files is confirmation, not a test
+ * (R117)**, so the rest live here with their inputs owned.
+ */
+describe('classifyReference: the four boxes R109 defines', () => {
+  function reference(over: Partial<Reference>): Reference {
+    return {
+      file: '/p/page.html',
+      start: 0,
+      end: 1,
+      rawPath: '/img/hero.png',
+      kind: 'attr',
+      shape: 'html.img.src',
+      ceiling: 'high',
+      asserted: true,
+      resolution: 'resolved',
+      confidence: 'high',
+      resolvedPath: 'public/img/hero.png',
+      resolvedVia: 'serving-root',
+      ...over,
+    } as Reference;
+  }
+
+  describe('A — resolved with an answer', () => {
+    it('counts a plain resolution', () => {
+      expect(classifyReference(reference({}))).toBe('resolved-with-an-answer');
+    });
+
+    /**
+     * ⚠️ **`broken` is box A and that is not generosity (R109).** We found where the
+     * reference points and reported the truth: the file is not there. That is the user's
+     * defect and our success, and counting it against ourselves was part of the mistake
+     * R109 was issued to correct.
+     */
+    it('counts a broken reference, because we resolved it and told the truth', () => {
+      expect(
+        classifyReference(
+          reference({ resolution: 'broken', confidence: 'unsafe', resolvedPath: null }),
+        ),
+      ).toBe('resolved-with-an-answer');
+    });
+
+    it('counts a pattern that matched assets', () => {
+      expect(
+        classifyReference(
+          reference({
+            resolution: 'resolved-pattern',
+            confidence: 'medium',
+            resolvedPaths: ['public/img/a.png'],
+          }),
+        ),
+      ).toBe('resolved-with-an-answer');
+    });
+  });
+
+  describe('C — correctly refused, and ONLY for a named property of the reference', () => {
+    it('counts a deliberate scope boundary', () => {
+      const entry = reference({
+        resolution: 'out-of-scope',
+        confidence: 'unsafe',
+        resolvedPath: 'node_modules/pkg/logo.png',
+        exclusionReason: 'names a file inside an npm package',
+      });
+      expect(classifyReference(entry)).toBe('correctly-refused');
+      expect(refusalReasonId(entry)).toBe('out-of-scope');
+    });
+
+    it('counts a path assembled at runtime, in any of the interpolation syntaxes', () => {
+      for (const rawPath of ['/img/${name}.png', '/img/{{ name }}.png', '/img/#{$name}.png']) {
+        const entry = reference({
+          resolution: 'dynamic',
+          confidence: 'unsafe',
+          resolvedPath: null,
+          rawPath,
+        });
+        expect(classifyReference(entry)).toBe('correctly-refused');
+        expect(refusalReasonId(entry)).toBe('assembled-at-runtime');
+      }
+    });
+
+    it('counts a style attribute the adapter proved holds no reference (R118)', () => {
+      const entry = reference({
+        resolution: 'dynamic',
+        confidence: 'unsafe',
+        resolvedPath: null,
+        rawPath: 'margin 0 0 0 15px',
+        note: 'could not parse the style attribute: … — and it contains no url() or image-set(), so there is no reference in it to find',
+      });
+      expect(classifyReference(entry)).toBe('correctly-refused');
+      expect(refusalReasonId(entry)).toBe('no-reference-in-it-to-find');
+    });
+  });
+
+  /**
+   * 🔴 **THE DEFAULT IS AGAINST US, AND THIS BLOCK IS THE GUARD ON THAT TRAP.**
+   * *"There is no answer"* is our own judgement, so moving a reference from B to C is a
+   * one-line change that improves the headline. Every case here is one we might be tempted
+   * to call a correct refusal and cannot, because nothing about the REFERENCE proves an
+   * answer was impossible — only that we did not get it.
+   */
+  describe('B — missed with an answer, which is where anything unproven belongs', () => {
+    it('counts an alias we could not map', () => {
+      // A bundler config we did not read would have resolved this. Ours, until shown otherwise.
+      expect(
+        classifyReference(
+          reference({
+            resolution: 'unresolved-alias',
+            confidence: 'unsafe',
+            resolvedPath: null,
+            rawPath: '~/img/hero.png',
+          }),
+        ),
+      ).toBe('missed-with-an-answer');
+    });
+
+    it('counts a character reference the decoder could not read (R118)', () => {
+      expect(
+        classifyReference(
+          reference({
+            resolution: 'dynamic',
+            confidence: 'unsafe',
+            resolvedPath: null,
+            rawPath: '/img/caf&eacute;.png',
+            note: 'contains HTML character references, so the path text cannot be located exactly',
+          }),
+        ),
+      ).toBe('missed-with-an-answer');
+    });
+
+    it('counts a style attribute that failed to parse WITH a url() in it (R118)', () => {
+      expect(
+        classifyReference(
+          reference({
+            resolution: 'dynamic',
+            confidence: 'unsafe',
+            resolvedPath: null,
+            rawPath: 'margin 0 0; background: url(/hero.png)',
+            note: 'could not parse the style attribute: … — and it contains a url-taking function, so a reference may be hidden in it',
+          }),
+        ),
+      ).toBe('missed-with-an-answer');
+    });
+
+    it('counts a dynamic reference with no interpolation and no named reason', () => {
+      expect(
+        classifyReference(
+          reference({
+            resolution: 'dynamic',
+            confidence: 'unsafe',
+            resolvedPath: null,
+            rawPath: '/img/hero.png',
+          }),
+        ),
+      ).toBe('missed-with-an-answer');
+    });
+  });
+
+  it('puts an unasserted guess in no box at all', () => {
+    expect(
+      classifyReference(
+        reference({
+          resolution: 'discarded',
+          confidence: 'unsafe',
+          resolvedPath: null,
+          asserted: false,
+        }),
+      ),
+    ).toBe('not-a-claim');
+  });
+
+  /**
+   * 🔴 **The engine cannot report box D and the schema says so, rather than omitting it.**
+   * D is *we claimed something that was not there and do not know it*. A self-reported D is
+   * always zero, so `C / (C + D)` computed from this object would hand every consumer a free
+   * 100% refusal accuracy — the decoy-oracle failure moved into the schema, which is the one
+   * thing R111 exists to prevent.
+   */
+  it('publishes no box D, and marks its absence as a decision', async () => {
+    const report = await reportFor('plain-html');
+
+    expect(Object.keys(report.references.byClassification).sort()).toEqual([
+      'correctly-refused',
+      'missed-with-an-answer',
+      'not-a-claim',
+      'resolved-with-an-answer',
+    ]);
+    expect(report.references.refusalAccuracyIsNotSelfAssessable).toBe(true);
+  });
+
+  /**
+   * The run that made this necessary: the classification read 100.00% resolution accuracy
+   * across all five validation repositories, and R112 had already measured that about one
+   * in four `assembled-at-runtime` refusals has an answer we simply do not compute. A
+   * hundred per cent that a prior measurement contradicts is the number to distrust, so
+   * the contradiction travels in the schema beside the count rather than in prose.
+   */
+  it('publishes the known over-claim beside the count it inflates', async () => {
+    const report = await reportFor('eleventy');
+    const runtime = report.references.classificationBounds.find(
+      (entry) => entry.reason === 'assembled-at-runtime',
+    );
+
+    expect(runtime?.count).toBeGreaterThan(0);
+    expect(runtime?.bound).toMatch(/R112/);
+  });
+
+  it('carries no bound for a reason that has none', async () => {
+    const report = await reportFor('plain-html');
+
+    for (const entry of report.references.classificationBounds) {
+      expect(entry.reason).not.toBe('out-of-scope');
+    }
+  });
+
+  /**
+   * R103's lesson, applied to a new set of buckets on the day it is added: a bucket cannot
+   * gain an entry without the arithmetic noticing. Seven entries once vanished between the
+   * check and the page while the arithmetic line still said fine.
+   */
+  it('classifies every reference exactly once', async () => {
+    for (const name of NAMES) {
+      const report = await reportFor(name);
+      const classified = Object.values(report.references.byClassification).reduce(
+        (total, count) => total + count,
+        0,
+      );
+      const resolved = Object.values(report.references.byResolution).reduce(
+        (total, count) => total + count,
+        0,
+      );
+      expect(classified).toBe(resolved);
+    }
   });
 });

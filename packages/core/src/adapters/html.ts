@@ -284,7 +284,14 @@ function collectFromAttribute(input: {
       // — and the nastiest part is that it depended on whitespace: the two real cases in
       // the corpus happen to start with a space, so the measurement still showed them
       // surviving while the ordinary spelling was being dropped.
-      addEntityEscapedReference({ start, end }, context);
+      //
+      // 🔴 **AND IT ASKS THE SAME QUESTION THE PARSE-FAILURE BRANCH ASKS, WHICH IT DID NOT
+      // UNTIL THE REPORT WAS RENDERED AND READ (R111).** These 12 references on the five
+      // repositories were arriving with a note about *path text* — there is no path here,
+      // the text is a declaration list — and so landed in R109's box B, **our miss**, when
+      // every one of them provably holds no url-taking function. Same attribute, same
+      // question, two branches: one asked it and the other did not.
+      addStyleAttributeRefusal(raw, { start, end }, context);
       return;
     }
     collectFromStyleAttribute(raw, start, context);
@@ -476,6 +483,40 @@ function styleElementFailure(element: ParsedElement, context: Context, error: un
   );
 }
 
+/**
+ * A style attribute we cannot read, whichever way it defeated us.
+ *
+ * ⚠️ **One sentence shape for two causes, because the CONSEQUENCE is identical**: we did
+ * not get this attribute's CSS, and the only thing that decides whether that matters is
+ * whether a url-taking function is in there. A parse failure and an entity-escaped value
+ * are different problems with the same question, and answering it in one place is what
+ * stops the two drifting (R76).
+ */
+function addStyleAttributeRefusal(
+  css: string,
+  range: { start: number; end: number },
+  context: Context,
+): void {
+  context.references.push({
+    file: context.file,
+    start: range.start,
+    end: range.end,
+    rawPath: css,
+    kind: 'css-url',
+    shape: 'html.style.attribute',
+    ceiling: 'unsafe',
+    asserted: false,
+    note: `the style attribute contains HTML character references, so its CSS cannot be handed to the parser with offsets that hold${describeUrlFunction(css)}`,
+  });
+}
+
+/** The half of the note that decides R109's box: is there anything in here to miss? */
+function describeUrlFunction(css: string): string {
+  return CSS_URL_FUNCTION.test(css)
+    ? ' — and it contains a url-taking function, so a reference may be hidden in it'
+    : ' — and it contains no url() or image-set(), so there is no reference in it to find';
+}
+
 function collectFromStyleAttribute(css: string, baseOffset: number, context: Context): void {
   try {
     context.references.push(
@@ -503,7 +544,6 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
     // ⚠️ **The note says which, rather than the report guessing later.** R111: the engine
     // decides the classification once and publishes it; two consumers deriving it from a
     // parse-error string would derive it differently, and the copies drift (R76).
-    const holdsUrlFunction = CSS_URL_FUNCTION.test(css);
     context.references.push({
       file: context.file,
       start: baseOffset,
@@ -515,11 +555,7 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
       asserted: false,
       note: `could not parse the style attribute: ${
         error instanceof UpflyError ? error.message : String(error)
-      }${
-        holdsUrlFunction
-          ? ' — and it contains a url-taking function, so a reference may be hidden in it'
-          : ' — and it contains no url() or image-set(), so there is no reference in it to find'
-      }`,
+      }${describeUrlFunction(css)}`,
     });
   }
 }

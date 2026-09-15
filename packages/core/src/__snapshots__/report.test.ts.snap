@@ -29,6 +29,16 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
+      },
+    ],
     "servingRoots": {
       "declared": true,
       "dirs": [
@@ -53,6 +63,12 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     },
   ],
   "references": {
+    "byClassification": {
+      "correctly-refused": 0,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 7,
+    },
     "byConfidence": {
       "certain": 1,
       "high": 6,
@@ -74,8 +90,10 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "serving-root": 5,
       "speculative-root": 0,
     },
+    "classificationBounds": [],
     "discarded": null,
     "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
   "skipped": [],
@@ -105,7 +123,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 3,
+  "version": 4,
 }
 `;
 
@@ -168,6 +186,16 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       {
         "path": "node_modules",
         "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
       },
     ],
     "servingRoots": {
@@ -262,6 +290,12 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
   ],
   "references": {
+    "byClassification": {
+      "correctly-refused": 1,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 11,
+    },
     "byConfidence": {
       "certain": 0,
       "high": 10,
@@ -283,13 +317,23 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       "serving-root": 10,
       "speculative-root": 0,
     },
+    "classificationBounds": [
+      {
+        "bound": "R112 measured the unknowns behind 62 such references on the validation corpus: 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.",
+        "count": 1,
+        "reason": "assembled-at-runtime",
+      },
+    ],
     "discarded": null,
     "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [
       {
+        "classification": "correctly-refused",
         "file": "src/posts/first.md",
         "rawPath": "{{ site.url }}/img/templated.png",
         "reason": "contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically",
+        "refusalReason": "assembled-at-runtime",
         "resolution": "dynamic",
       },
     ],
@@ -321,7 +365,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 3,
+  "version": 4,
 }
 `;
 
@@ -405,6 +449,16 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
+      },
+    ],
     "servingRoots": {
       "declared": true,
       "dirs": [
@@ -429,6 +483,12 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     },
   ],
   "references": {
+    "byClassification": {
+      "correctly-refused": 0,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 11,
+    },
     "byConfidence": {
       "certain": 1,
       "high": 10,
@@ -450,8 +510,10 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
       "serving-root": 10,
       "speculative-root": 0,
     },
+    "classificationBounds": [],
     "discarded": null,
     "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
   "skipped": [],
@@ -481,7 +543,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 3,
+  "version": 4,
 }
 `;
 
@@ -533,6 +595,16 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
   ],
   "coverage": {
     "excludedRoots": [],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
+      },
+    ],
     "servingRoots": {
       "declared": true,
       "dirs": [
@@ -570,6 +642,12 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     },
   ],
   "references": {
+    "byClassification": {
+      "correctly-refused": 0,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 11,
+    },
     "byConfidence": {
       "certain": 0,
       "high": 10,
@@ -591,8 +669,10 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
       "serving-root": 0,
       "speculative-root": 0,
     },
+    "classificationBounds": [],
     "discarded": null,
     "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
   "skipped": [],
@@ -622,7 +702,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 3,
+  "version": 4,
 }
 `;
 
@@ -689,6 +769,16 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
         "reason": "a build or version-control directory named 'node_modules'",
       },
     ],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
+      },
+    ],
     "servingRoots": {
       "declared": true,
       "dirs": [
@@ -718,6 +808,12 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     },
   ],
   "references": {
+    "byClassification": {
+      "correctly-refused": 0,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 12,
+    },
     "byConfidence": {
       "certain": 2,
       "high": 10,
@@ -739,8 +835,10 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "serving-root": 7,
       "speculative-root": 0,
     },
+    "classificationBounds": [],
     "discarded": null,
     "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
   "skipped": [],
@@ -770,7 +868,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 307,
     "count": 1,
   },
-  "version": 3,
+  "version": 4,
 }
 `;
 

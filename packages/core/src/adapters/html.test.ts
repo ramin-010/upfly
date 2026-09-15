@@ -343,7 +343,11 @@ describe('htmlAdapter', () => {
           '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
           '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
         ]) {
-          expect(find(source).map((reference) => reference.shape)).toEqual(['path.charref']);
+          const references = find(source);
+          expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
+          // R111: it says whether anything could be hiding in there, because that is what
+          // decides whether it is our miss or a correct refusal.
+          expect(references[0]?.note).toMatch(/no reference in it to find/);
         }
       });
     });

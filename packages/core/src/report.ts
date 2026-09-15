@@ -22,6 +22,7 @@
  * forget to append to than five per-stage ones.
  */
 
+import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
 import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph.js';
@@ -41,6 +42,7 @@ import type { Mention, SweepResult } from './sweep.js';
 import type {
   Confidence,
   DiscoveryResult,
+  Reference,
   Resolution,
   ResolvedVia,
   UnscannedExtension,
@@ -78,7 +80,7 @@ import { groupUnscanned } from './unscanned.js';
  * Checked rather than assumed: the fixtures cannot show it, because not one of them has
  * an asset that fails to decode.
  */
-export const REPORT_SCHEMA_VERSION = 3;
+export const REPORT_SCHEMA_VERSION = 4;
 
 /** The numbers people screenshot. */
 export interface ReportSummary {
@@ -114,6 +116,152 @@ export interface ReportSummary {
   readonly probed: boolean;
 }
 
+/**
+ * R109's four boxes, as a FIELD the engine publishes rather than a rule four consumers
+ * each re-derive (R111).
+ *
+ * |  | the engine acted | the engine refused |
+ * |---|---|---|
+ * | **there is an answer** | **A** resolved it — success | **B** missed it — the only ordinary failure |
+ * | **there is no answer** | **D** claimed it anyway — the dangerous failure | **C** refused it — success |
+ *
+ * \U0001f534 **THE ENGINE CANNOT CLASSIFY D, AND THE SCHEMA SAYS SO OUT LOUD RATHER THAN OMITTING
+ * IT.** D is *we were wrong and do not know it* — a false link, a false `broken`, a false
+ * `dead`. By construction the engine believes every one of those was right, so a
+ * self-reported D would always be zero. **A consumer computing REFUSAL ACCURACY = C / (C + D)
+ * against a self-reported D gets 100% for free**, which is the decoy-oracle failure moved
+ * into the schema — precisely what R111 exists to prevent. D comes from an independent
+ * oracle (`bench/src/verify.ts`), and R119 and R121 are what happens when that oracle shares
+ * the engine's assumptions.
+ *
+ * \U0001f534 **AND THE DEFAULT IS AGAINST US.** *"There is no answer"* is our own judgement, so
+ * `correctly-refused` requires a NAMED property of the reference drawn from the closed list
+ * in `REFUSAL_REASONS`. Anything else is `missed-with-an-answer`. **If we cannot say why an
+ * answer was impossible, we assume there was one and we missed it.** Adding a new refusal
+ * reason is then a visible edit to a named list rather than a one-line tweak that moves a
+ * reference from B to C and improves the headline (R109's guard 2).
+ */
+export type ReferenceClass =
+  /** A — the engine found where it points. `broken` is HERE: we resolved it and told the truth. */
+  | 'resolved-with-an-answer'
+  /** B — an answer existed and we did not get it. The only ordinary failure. */
+  | 'missed-with-an-answer'
+  /** C — no answer existed and we declined, for a reason we can name about the reference. */
+  | 'correctly-refused'
+  /**
+   * Not in any box: a path-shaped guess nobody asserted.
+   *
+   * ⚠️ **Kept out of both accuracy figures on purpose.** A string in a lockfile that looks
+   * like a path was never a claim about an asset, so scoring ourselves on it measures the
+   * engine against work that was never its job — R109's original objection, one level down.
+   */
+  | 'not-a-claim';
+
+/**
+ * The closed list of properties that prove a reference HAS NO ANSWER.
+ *
+ * \U0001f534 **This list is the guard on R109's trap, and its being a list is the guard.** Each
+ * entry names something about the REFERENCE — its text, or a rule we published — that makes
+ * an answer impossible for anyone, not merely hard for us. *"We cannot handle it"* is not on
+ * the list and must never be added.
+ *
+ * ⚠️ Adding an entry moves references from `missed-with-an-answer` to `correctly-refused`
+ * and improves the headline. **That is a reviewable edit here, not a one-line tweak
+ * somewhere else**, which is the whole reason the test is a list membership rather than a
+ * chain of conditions.
+ */
+const REFUSAL_REASONS: ReadonlyArray<{
+  readonly id: string;
+  readonly holds: (reference: Reference) => boolean;
+  /**
+   * What this reason is known to get WRONG, measured, or `null` when nothing is known.
+   *
+   * 🔴 **A refusal reason moves references out of *our miss* and into *correctly
+   * refused*, which raises the headline. If we know it over-claims, the number cannot be
+   * published without that knowledge attached** — so the bound travels in the schema
+   * beside the count rather than in prose a consumer never reads. R74's habit: state the
+   * blind spot where the figure is, not in a footnote somewhere else.
+   */
+  readonly bound: string | null;
+}> = [
+  {
+    // A deliberate boundary we published: a real file we choose not to index (R92).
+    // The target is KNOWN — we simply do not act on it — so nothing was missed.
+    id: 'out-of-scope',
+    holds: (reference) => reference.resolution === 'out-of-scope',
+    bound: null,
+  },
+  {
+    // The path does not exist until something renders — a property of the written text,
+    // and R112 measured that 46 of 62 such unknowns are a parameter or a prop, which no
+    // analysis reaches.
+    //
+    // 🔴 **BOTH shared predicates, and the first version used only one.**
+    // `interpolationChunks` is the RESOLVER's vocabulary — `${}`, `#{}`, `@{}`, the three
+    // syntaxes a glob can be built from — and it does not know `{{ }}` or `{% %}`. Those
+    // are 49 of the `dynamic` references on the five validation repositories, all of them
+    // genuinely assembled at render time, and every one would have been filed as **our
+    // miss**. The test caught it on the first run.
+    //
+    // ⚠️ **`templateExpressionReason` is the function that made these `dynamic` in the
+    // first place**, so using it to explain why they were refused keeps one vocabulary
+    // instead of inventing a sixth list (R76).
+    id: 'assembled-at-runtime',
+    holds: (reference) =>
+      reference.resolution === 'dynamic' &&
+      (templateExpressionReason(reference.rawPath) !== null ||
+        interpolationChunks(reference.rawPath).length > 1),
+    bound:
+      'R112 measured the unknowns behind 62 such references on the validation corpus: 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.',
+  },
+  {
+    // R118: the attribute could not be parsed as CSS AND provably holds no url-taking
+    // function, so there is no reference inside it to find. The adapter established that
+    // and said so; this reads its answer rather than re-deriving it.
+    id: 'no-reference-in-it-to-find',
+    holds: (reference) => (reference.note ?? '').includes('no reference in it to find'),
+    bound: null,
+  },
+];
+
+/**
+ * Which of R109's boxes this reference is in.
+ *
+ * ⚠️ **`broken` is `resolved-with-an-answer` and that is not generosity (R109).** We found
+ * where the reference points and reported the truth: the file is not there. That is the
+ * user's defect and our success. Counting it against ourselves was part of the mistake
+ * R109 was issued to correct.
+ */
+export function classifyReference(reference: Reference): ReferenceClass {
+  if (reference.resolution === 'discarded') return 'not-a-claim';
+  if (
+    reference.resolution === 'resolved' ||
+    reference.resolution === 'resolved-pattern' ||
+    reference.resolution === 'broken'
+  ) {
+    return 'resolved-with-an-answer';
+  }
+
+  for (const reason of REFUSAL_REASONS) {
+    if (reason.holds(reference)) return 'correctly-refused';
+  }
+
+  // \U0001f534 THE DEFAULT, and it is deliberately the unflattering one. An `unresolved-alias`
+  // lands here: alias-shaped with no rule that maps it is OUR gap until somebody shows it
+  // is not — a bundler config we did not read would have resolved it. So does a character
+  // reference outside the decoder's bound (R118), and a style attribute that failed to
+  // parse while containing a `url()`.
+  return 'missed-with-an-answer';
+}
+
+/** The reason id that classified this reference as refused, for the itemised list. */
+export function refusalReasonId(reference: Reference): string | null {
+  for (const reason of REFUSAL_REASONS) {
+    if (reason.holds(reference)) return reason.id;
+  }
+  return null;
+}
+
 /** One reference the engine declined to link, listed rather than merely counted. */
 export interface ReferenceEntry {
   /** POSIX-relative source file. */
@@ -122,6 +270,31 @@ export interface ReferenceEntry {
   readonly resolution: Resolution;
   /** The adapter's note, or the exclusion rule — whichever explains this one. */
   readonly reason: string;
+  /**
+   * Which of R109's boxes this reference is in — a FIELD, not a derivation (R111).
+   *
+   * 🔴 **If the CLI derived it, the CLI, the extension, the agent contract and `bench/`
+   * would each hold a copy of the rule and the copies would drift.** That is R76's two
+   * vocabularies and R87's exemption list, in the schema. The engine decides once.
+   */
+  readonly classification: ReferenceClass;
+  /**
+   * WHICH named property made this a correct refusal, or `null` when it is not one.
+   *
+   * ⚠️ R109's guard 1: box C is ITEMISED, never totalled. A count of refusals is a
+   * number anyone can inflate; a list of refusals with a reason each is something a
+   * reader can disagree with.
+   */
+  readonly refusalReason: string | null;
+}
+
+/** A refusal reason this run relied on, and what it is known to get wrong. */
+export interface ClassificationBound {
+  readonly reason: string;
+  /** How many references this run classified with it. */
+  readonly count: number;
+  /** The measured over-claim, in words a reader can check. */
+  readonly bound: string;
 }
 
 export interface ReferenceReport {
@@ -141,6 +314,36 @@ export interface ReferenceReport {
    * counts sum to those two entries of `byResolution` and to nothing else.
    */
   readonly byResolvedVia: Readonly<Record<ResolvedVia, number>>;
+  /**
+   * Every reference in exactly one of R109's boxes, so neither accuracy figure can be
+   * assembled wrongly (R111).
+   *
+   * **RESOLUTION ACCURACY = A / (A + B)** — `resolved-with-an-answer` over itself plus
+   * `missed-with-an-answer`. That is the answer to *"how accurate is it"*.
+   *
+   * 🔴 **REFUSAL ACCURACY = C / (C + D) CANNOT BE COMPUTED FROM THIS OBJECT, AND THAT IS
+   * DELIBERATE.** D is *we claimed something that was not there and do not know it*, which
+   * the engine cannot self-report — a self-reported D is always zero and would hand every
+   * consumer a free 100%. D comes from an independent oracle, and R119 and R121 are what
+   * happens when that oracle shares the engine's assumptions.
+   */
+  readonly byClassification: Readonly<Record<ReferenceClass, number>>;
+  /**
+   * Always `true`. See {@link byClassification} — it marks the absence of D as a decision
+   * rather than an oversight, which is the difference between a schema that is honest and
+   * one that merely looks complete.
+   */
+  readonly refusalAccuracyIsNotSelfAssessable: true;
+  /**
+   * The known over-claims among the refusal reasons THIS RUN used, with their measurement.
+   *
+   * 🔴 **Empty means no reason in play is known to over-claim — it does NOT mean the
+   * figure is exact.** A non-empty entry means `correctly-refused` is too high by a
+   * measured amount and `missed-with-an-answer` is too low by the same amount, so a
+   * consumer printing a resolution accuracy has this sitting next to the number it would
+   * otherwise print alone.
+   */
+  readonly classificationBounds: readonly ClassificationBound[];
   /**
    * The "I could not be sure" bucket, in full: `dynamic`, `unresolved-alias` and
    * `out-of-scope`.
@@ -191,6 +394,30 @@ export interface CoverageReport {
    * report cannot describe a run that did not happen.
    */
   readonly servingRoots: ServingRoots;
+  /**
+   * The mechanisms THIS RUN did not put to work, distinct from what it refused (R96, R111).
+   *
+   * 🔴 **R96 is the reason this exists and it is the worst bug the project has had, because
+   * it made us look BETTER.** A `knownGap` saying *"the resolver climbs ancestors looking for
+   * a directory named `public`, so it will wrongly resolve this"* was tested under DECLARED
+   * serving roots — a configuration in which that climb never runs. The entry came out
+   * `broken`, agreed with the key, and the harness printed *"the gap is closed"*, **retiring a
+   * live defect and deleting the only written record of it.**
+   *
+   * ⚠️ **"Not exercised" is not "refused", and conflating them is the whole point.** A
+   * refusal is something the engine considered and declined, and it is in `unsafe` with a
+   * reason. This is machinery that never ran, so **the report says nothing about it either
+   * way** — and a consumer that treats silence as a pass is making the mistake R96 names.
+   */
+  readonly notExercised: readonly NotExercised[];
+}
+
+/** One mechanism this run did not put to work, and why not. */
+export interface NotExercised {
+  /** A stable id a consumer can match on: `serving-root-detection`, `probe`, `aliases`. */
+  readonly mechanism: string;
+  /** Why it did not run — a fact about this run's INPUTS, never about the engine. */
+  readonly why: string;
 }
 
 /** Where a skip happened, so a reader can tell a parse failure from a bad symlink. */
@@ -672,6 +899,27 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
     if (isLinked(reference)) byResolvedVia[reference.resolvedVia] += 1;
   }
 
+  const byClassification: Record<ReferenceClass, number> = {
+    'resolved-with-an-answer': 0,
+    'missed-with-an-answer': 0,
+    'correctly-refused': 0,
+    'not-a-claim': 0,
+  };
+  for (const reference of graph.references) byClassification[classifyReference(reference)] += 1;
+
+  const boundCounts = new Map<string, number>();
+  for (const reference of graph.references) {
+    const id = refusalReasonId(reference);
+    if (id !== null) boundCounts.set(id, (boundCounts.get(id) ?? 0) + 1);
+  }
+  const classificationBounds: ClassificationBound[] = [];
+  for (const reason of REFUSAL_REASONS) {
+    const count = boundCounts.get(reason.id) ?? 0;
+    if (count > 0 && reason.bound !== null) {
+      classificationBounds.push({ reason: reason.id, count, bound: reason.bound });
+    }
+  }
+
   const unsafe: ReferenceEntry[] = [];
   for (const reference of graph.references) {
     if (
@@ -689,6 +937,8 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
         reference.resolution === 'out-of-scope'
           ? reference.exclusionReason
           : (reference.note ?? defaultReason(reference.resolution)),
+      classification: classifyReference(reference),
+      refusalReason: refusalReasonId(reference),
     });
   }
 
@@ -698,6 +948,8 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
         rawPath: reference.rawPath,
         resolution: reference.resolution,
         reason: reference.note ?? 'a path-shaped string that resolved to nothing',
+        classification: classifyReference(reference),
+        refusalReason: refusalReasonId(reference),
       }))
     : null;
 
@@ -705,6 +957,9 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
     byResolution,
     byConfidence,
     byResolvedVia,
+    byClassification,
+    refusalAccuracyIsNotSelfAssessable: true,
+    classificationBounds,
     unsafe,
     discardedCount: byResolution.discarded,
     discarded,
@@ -753,7 +1008,34 @@ function coverageReport(input: ReportInput): CoverageReport {
       reason: root.reason,
     })),
     servingRoots: input.servingRoots,
+    notExercised: notExercised(input),
   };
+}
+
+/**
+ * What this run did not exercise, decided from its INPUTS.
+ *
+ * ⚠️ Every entry is a fact about what the caller supplied, not a judgement about the
+ * engine. That is what keeps this list from becoming a place to park excuses.
+ */
+function notExercised(input: ReportInput): NotExercised[] {
+  const entries: NotExercised[] = [];
+
+  if (input.servingRoots.declared) {
+    entries.push({
+      mechanism: 'serving-root-detection',
+      why: 'the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)',
+    });
+  }
+
+  if (input.probes === undefined) {
+    entries.push({
+      mechanism: 'probe',
+      why: 'the run did not measure any asset, so oversized and format-opportunity findings could not be produced',
+    });
+  }
+
+  return entries;
 }
 
 /**
