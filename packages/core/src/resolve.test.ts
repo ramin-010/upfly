@@ -469,11 +469,14 @@ describe('resolveReferences', () => {
       ['a scoped package asset', '@scope/pkg/logo.png', 'attr'],
       ['a bare specifier in an import', 'some-pkg/logo.png', 'import'],
     ])('%s is out-of-scope, not unresolved-alias (R32)', (_name, rawPath, kind) => {
-      // ⚠️ These moved buckets. `unresolved-alias` means *"we expect to resolve this
-      // once aliases land"* — it is a promise, not a description — and a package's
-      // files live in `node_modules`, which the walk prunes, so no alias config will
-      // ever resolve them. `out-of-scope` already means "known, and known not to be
-      // an indexed asset", which is exactly this.
+      // ⚠️ These moved buckets. A package's files live in `node_modules`, which the
+      // walk prunes, so no alias config will ever resolve them. `out-of-scope` means
+      // "known, and known not to be an indexed asset", which is exactly this.
+      //
+      // 🔴 **R97 narrowed what counts, and BOTH of these still qualify because both
+      // carry a SUBPATH** — `@scope/pkg` + `/logo.png`, `some-pkg` + `/logo.png`. That
+      // is what makes "names a file inside an npm package" a sentence about a real
+      // file. `@missing/astro.png` has no subpath and is tested below.
       const reference = resolveOne({ rawPath, kind: kind as 'attr' | 'import' });
 
       expect(reference?.resolution).toBe('out-of-scope');
@@ -481,6 +484,52 @@ describe('resolveReferences', () => {
       expect(reference?.resolution === 'out-of-scope' ? reference.exclusionReason : null).toContain(
         'npm package',
       );
+    });
+
+    /**
+     * 🔴 **R97 — `out-of-scope` WAS A FALSE CLAIM ON THESE, AND THE ENGINE HAD NO EVIDENCE
+     * FOR IT.** The bucket's own reason reads *"names a file inside an npm package"*: a
+     * positive assertion about a real file, made without ever looking in `node_modules`.
+     * `@missing/astro.png` is a scope and a name and nothing else — **there is no subpath
+     * for that sentence to be about.** The engine was calling it a package only because
+     * the ALIAS LOOKUP one rung above had failed, which is a conclusion drawn from the
+     * absence of evidence for something else.
+     *
+     * ⚠️ **And `unresolved-alias` is now PERMANENT, not pending.** R32's comment said it
+     * promised resolution once aliases landed. They landed — `~/assets/img/logo.png` and
+     * `@img/aliased.png` resolve today, and four `knownGap`s saying otherwise were retired
+     * by measurement. What is left here is *"alias-shaped, with no rule that maps it"*,
+     * which describes the situation and asserts nothing more.
+     */
+    it.each([
+      ['a scope and a name, no subpath', '@missing/astro.png', 'import'],
+      ['the same as a plain string', '@missing/paths.png', 'string'],
+    ])('%s is unresolved-alias, NOT a package (R97)', (_name, rawPath, kind) => {
+      const reference = resolveOne({ rawPath, kind: kind as 'import' | 'string' });
+
+      expect(reference?.resolution).toBe('unresolved-alias');
+    });
+
+    it('🔴 an ORDINARY package import never reaches this question at all', () => {
+      // ⚠️ Written after the obvious version of it FAILED and the failure was the useful
+      // part. `import x from '@scope/pkg'` produces NO reference: the extension filter
+      // upstream drops an extensionless path with a `high` ceiling long before the
+      // package-or-alias decision. So R97's narrowing cannot reclassify the millions of
+      // ordinary scoped imports in the world — they were never in this bucket to lose.
+      // That is the safety argument for the change, and it is a measurement rather than a
+      // claim because this line is what measures it.
+      expect(resolveOne({ rawPath: '@scope/pkg', kind: 'import' })).toBeUndefined();
+    });
+
+    it('🔴 still calls a scoped package WITH a subpath out-of-scope — the control', () => {
+      // The other direction, and R32's own example. A rule that stopped claiming every
+      // `@scope/…` would pass the cases above and silently give up the bucket entirely.
+      const reference = resolveOne({
+        rawPath: '@11ty/logo/img/logo-96x96.png',
+        kind: 'import',
+      });
+
+      expect(reference?.resolution).toBe('out-of-scope');
     });
 
     it('keeps the alias conventions out of the package bucket — the control', () => {

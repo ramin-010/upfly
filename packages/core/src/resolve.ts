@@ -213,11 +213,19 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   // 6. Alias-shaped and no declared alias matched.
   if (isAliasShaped(path, raw.kind)) {
     // ⚠️ R32 — an npm package specifier is NOT an alias, and must not sit in a bucket
-    // that promises a resolution alias resolution will never deliver. `unresolved-alias`
-    // means *"we expect to resolve this once aliases land"*: it is a promise, not a
-    // description. `resolveModule('@11ty/logo/img/logo-96x96.png')` points into
-    // `node_modules`, which is pruned — known, and known not to be an indexed asset,
+    // meant for something else. `resolveModule('@11ty/logo/img/logo-96x96.png')` points
+    // into `node_modules`, which is pruned — known, and known not to be an indexed asset,
     // which is precisely what `out-of-scope` is defined as.
+    //
+    // 🔴 **R97 CORRECTS THE SENTENCE THIS COMMENT USED TO CARRY.** It said
+    // `unresolved-alias` *"means we expect to resolve this once aliases land — a promise,
+    // not a description"*. **Aliases have landed.** `~/assets/img/logo.png` and
+    // `@img/aliased.png` resolve today, and the four `knownGap`s that said otherwise were
+    // retired by measurement. So the promise is discharged, and what is left in this
+    // bucket is PERMANENT rather than pending: **an alias-shaped path with no rule that
+    // maps it**, which describes the situation exactly and asserts nothing further.
+    // ⚠️ A reader who still believes the old sentence will read every entry here as a
+    // to-do and go looking for the work that clears it. There is none.
     if (isPackageSpecifier(path, raw.kind)) {
       return {
         ...raw,
@@ -357,8 +365,18 @@ function resolveThroughAlias(
  * elsewhere — all four `resolveModule('@11ty/logo/…')` in `eleventy.config.js`.
  */
 function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
-  // `@scope/name/…` — a non-empty scope. `@/…` has an empty one and is the alias.
-  if (/^@[^/]+\//.test(path)) return true;
+  // 🔴 `@scope/name/SUBPATH` — and the subpath is the point (R97). `out-of-scope` says
+  // *"names a file inside an npm package, which is not an indexed asset"*, which is a
+  // POSITIVE CLAIM ABOUT A REAL FILE. `@missing/astro.png` names no file inside anything:
+  // it is a scope and a name and nothing else, so there is no subpath for that sentence to
+  // be about, and the resolver never looked in `node_modules` to check. The engine was
+  // asserting a package because the ALIAS LOOKUP HAD FAILED one rung above — a conclusion
+  // drawn from the absence of evidence for something else entirely.
+  //
+  // ⚠️ `@11ty/logo/img/logo-96x96.png` still matches and must: scope, name, and a path
+  // *inside* the package. That is the case R32 was written about and it is unchanged.
+  // `@/…` has an empty scope and is the alias convention, excluded by `[^/]+`.
+  if (/^@[^/]+\/[^/]+\//.test(path)) return true;
   // A bare specifier in an import position: `lodash/x.png`, never `./x.png`.
   if (kind !== 'import') return false;
   // `@` is excluded here because the scoped-package case is already decided above: an

@@ -464,3 +464,55 @@ describe('htmlAdapter', () => {
     });
   });
 });
+
+/**
+ * 🔴 **R98 — `<noscript>` CONTENT WAS RAW TEXT, AND THE WORD `noscript` APPEARED NOWHERE
+ * IN THE ENGINE.** parse5 defaults `scriptingEnabled` to true, and with scripting enabled
+ * the HTML spec says a `<noscript>` element's children are raw text: the parser returns one
+ * text node and the `<img>` inside never becomes an element. Nothing was suppressing these
+ * — they were never parsed.
+ *
+ * ⚠️ **It fails in the expensive direction.** `<noscript><img>` is the standard lazy-load
+ * fallback, so `optimize --replace` rewrites every reference it can see, converts the
+ * asset, and leaves the fallback naming a file that is gone — breaking precisely the render
+ * that has no JavaScript to recover. Same severity class as R77.
+ */
+describe('R98 — an image inside <noscript> is markup, not text', () => {
+  it('finds it', () => {
+    const source = '<figure><noscript><img src="/img/hero.png"></noscript></figure>';
+
+    expect(find(source).map((reference) => reference.rawPath)).toEqual(['/img/hero.png']);
+  });
+
+  it('keeps finding the ones around it — the control', () => {
+    // A parser option is a blunt instrument. The case that would have caught a change
+    // that fixed noscript and broke ordinary markup.
+    const source =
+      '<img src="/a.png">\n<noscript><img src="/b.png"></noscript>\n<img src="/c.png">';
+
+    expect(find(source).map((reference) => reference.rawPath)).toEqual([
+      '/a.png',
+      '/b.png',
+      '/c.png',
+    ]);
+  });
+
+  it('reads a <noscript> in the head, where the parser takes a different branch', () => {
+    // `scriptingEnabled` changes head parsing as well as body parsing, and a `<noscript>`
+    // in the head is where a real document puts a tracking pixel fallback.
+    const source =
+      '<html><head><noscript><link rel="icon" href="/icon.png"></noscript></head><body></body></html>';
+
+    expect(find(source).map((reference) => reference.rawPath)).toEqual(['/icon.png']);
+  });
+
+  it('🔴 does NOT yet read <template>, and that gap is pinned rather than silent', () => {
+    // parse5 puts a template's children in a separate `content` fragment that `walk`
+    // never descends into, so this is a DIFFERENT mechanism from noscript and is not
+    // fixed by the parser option. Raised as a growth item with its shape id
+    // (`html.template.content`) rather than fixed here. ⚠️ The assertion is deliberately
+    // of today's WRONG behaviour: when somebody implements it this test goes red and
+    // names itself, which is the opposite of the gap being discovered by accident.
+    expect(find('<template><img src="/img/hero.png"></template>')).toEqual([]);
+  });
+});

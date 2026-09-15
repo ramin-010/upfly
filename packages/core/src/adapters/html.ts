@@ -119,7 +119,25 @@ export const htmlAdapter: Adapter = defineAdapter({
   findReferences({ file, text }): RawReference[] {
     // parse5 follows the HTML spec's recovery rules, so there is no such thing as
     // an unparseable document and no error branch to handle here.
-    const document = parse(text, { sourceCodeLocationInfo: true });
+    //
+    // 🔴 `scriptingEnabled: false` — R98, AND IT IS A ONE-WORD OPTION THAT WAS SILENTLY
+    // LOSING REFERENCES. parse5 defaults it to TRUE, and with scripting enabled the HTML
+    // spec says a `<noscript>` element's contents are RAW TEXT: the parser hands back one
+    // text node and the `<img>` inside it never becomes an element. Measured before the
+    // change — `<noscript><img src="/a.png"></noscript>` yielded **nothing**, while the
+    // identical tag one line outside yielded a reference.
+    //
+    // ⚠️ **`<noscript><img>` is the standard lazy-loading fallback**, so those references
+    // were invisible in exactly the documents that have the most of them — and invisible
+    // in the expensive direction: `optimize --replace` rewrites what it can see, converts
+    // the asset, and leaves the fallback pointing at a file that is gone. The render it
+    // breaks is the one with no JavaScript to recover.
+    //
+    // **False is the correct setting for a tool that rewrites files**, not a trick: we are
+    // not a browser with a script engine, and every byte in the document is a byte we may
+    // have to edit. A browser with scripting off — and any user who has it off — sees this
+    // markup, which is the whole reason an author writes a `<noscript>` fallback at all.
+    const document = parse(text, { sourceCodeLocationInfo: true, scriptingEnabled: false });
 
     const references: RawReference[] = [];
     walk(document, { file, text, references });
