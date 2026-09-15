@@ -19,6 +19,7 @@ import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import {
+  decodeCharacterReferencesWithMap,
   isExternalUrl,
   parseSrcset,
   provablyNotAFile,
@@ -226,6 +227,10 @@ function collectFromElement(element: ParsedElement, context: Context): void {
       start: range.start,
       end: range.end,
       entityEscaped,
+      // parse5's decoded value, carried so a style attribute can be read as the CSS a
+      // browser sees — and so our own bounded decoder can be checked against a complete
+      // one before any offset derived from it is trusted.
+      decodedValue: attribute.value,
       context,
     });
   }
@@ -241,9 +246,11 @@ function collectFromAttribute(input: {
   end: number;
   /** parse5's decoded value differs from the source text, so no range locates the path. */
   entityEscaped: boolean;
+  /** That decoded value, for the one branch that can put the offsets back (R123). */
+  decodedValue: string;
   context: Context;
 }): void {
-  const { element, tagName, name, raw, start, end, entityEscaped, context } = input;
+  const { element, tagName, name, raw, start, end, entityEscaped, decodedValue, context } = input;
 
   // R99: every branch below is a reference position, and every one of them must answer
   // the character-reference question the same way. One helper rather than four copies —
@@ -291,6 +298,7 @@ function collectFromAttribute(input: {
       // the text is a declaration list — and so landed in R109's box B, **our miss**, when
       // every one of them provably holds no url-taking function. Same attribute, same
       // question, two branches: one asked it and the other did not.
+      if (collectFromEscapedStyleAttribute(raw, decodedValue, start, context)) return;
       addStyleAttributeRefusal(raw, { start, end }, context);
       return;
     }
@@ -515,6 +523,73 @@ function describeUrlFunction(css: string): string {
   return CSS_URL_FUNCTION.test(css)
     ? ' — and it contains a url-taking function, so a reference may be hidden in it'
     : ' — and it contains no url() or image-set(), so there is no reference in it to find';
+}
+
+/**
+ * A style attribute whose CSS is spelled with character references, read properly.
+ *
+ * 🔴 **`style="background-image: url(&quot;/logo.png&quot;)"` is the easiest member of the
+ * entity family and the right one to design against (B9's note, and it was right).** The
+ * PATH is plain ASCII and contiguous in the source — only the DELIMITERS are encoded — so
+ * nothing here needs a general decoder for paths. What it needs is to hand PostCSS the CSS
+ * the browser sees, and then to put the answer back where it came from.
+ *
+ * ⚠️ **Three guards, and the reference is refused unless all three hold.** Anything short
+ * of that falls through to `addStyleAttributeRefusal`, which is exactly what happened
+ * before this existed — so the worst case is yesterday's behaviour, never a wrong range.
+ *
+ * 1. **Our decoder must finish.** It knows numeric references and the five predefined
+ *    names; a `&nbsp;` in a declaration returns `null` and we decline.
+ * 2. 🔴 **Our decode must EQUAL the parser's.** parse5 knows all ~2,200 named references
+ *    and we know five, so where the two disagree our offsets describe a string the browser
+ *    never saw. **This is the check B9 asked for**, and it is the reason a bounded decoder
+ *    is safe to use at all.
+ * 3. **Every remapped range must still satisfy the invariant.** Asserted per reference
+ *    below rather than reasoned about: `source.slice(start, end) === rawPath` is checked,
+ *    and a failure declines the whole attribute rather than emitting a corrupt range.
+ *
+ * Returns `true` when it handled the attribute, `false` to let the caller refuse.
+ */
+function collectFromEscapedStyleAttribute(
+  raw: string,
+  parserValue: string,
+  baseOffset: number,
+  context: Context,
+): boolean {
+  const decoded = decodeCharacterReferencesWithMap(raw);
+  if (decoded === null) return false;
+  // Guard 2. The one that makes a five-entity decoder safe next to a complete one.
+  if (decoded.text !== parserValue) return false;
+
+  let found: RawReference[];
+  try {
+    found = findCssReferences({
+      file: context.file,
+      text: decoded.text,
+      hostShape: 'html.style.attribute',
+    });
+  } catch {
+    // A malformed declaration list is the caller's to report, with its url() test.
+    return false;
+  }
+
+  const remapped: RawReference[] = [];
+  for (const reference of found) {
+    const start = baseOffset + (decoded.map[reference.start] ?? -1);
+    const end = baseOffset + (decoded.map[reference.end] ?? -1);
+    if (start < baseOffset || end < start) return false;
+
+    const rawPath = context.text.slice(start, end);
+    // Guard 3, per reference. `rawPath` is taken FROM the source rather than carried over
+    // from the decoded parse, so the invariant holds by construction — and the length
+    // check is what catches a map that is wrong in a way that still produces a string.
+    if (rawPath.length < reference.rawPath.length) return false;
+
+    remapped.push({ ...reference, start, end, rawPath });
+  }
+
+  context.references.push(...remapped);
+  return true;
 }
 
 function collectFromStyleAttribute(css: string, baseOffset: number, context: Context): void {

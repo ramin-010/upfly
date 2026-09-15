@@ -284,7 +284,38 @@ function skippedSection(report: Report): string[] {
     // `api-reference.mdx  script-src 'self' …` cold, the question it provoked was
     // whether the `.mdx` was being treated as an image — which nothing on the page
     // answered. One line of header costs less than the doubt did.
-    lines.push(`${count(references.unsafe.length, 'reference')} could not be resolved safely`, '');
+    // 🔴 **R109's distinction, in the HEADING, because the heading was the defect.**
+    // *"N references could not be resolved safely"* is one sentence over two opposite
+    // things — a path that does not exist until something renders, which nobody could
+    // resolve, and one we simply failed on — and it reads as *N things we got wrong*.
+    // **That is precisely the reading R109 was issued to correct**, and it was still live
+    // here after the JSON had been fixed: rendered on `eleventy-docs` the page said
+    // *"56 references could not be resolved safely"* immediately above *"56 of them had
+    // no answer to find, and 0 we could not resolve"*. The heading contradicted the line
+    // under it.
+    const refused = references.unsafe.filter(
+      (entry) => entry.classification === 'correctly-refused',
+    );
+    const missed = references.unsafe.length - refused.length;
+
+    if (missed === 0) {
+      lines.push(
+        `${count(references.unsafe.length, 'reference')} had no answer to find`,
+        '',
+        '  none of these is a path that points at a file — each is built at run time, or',
+        '  names something deliberately outside what Upfly indexes',
+        '',
+      );
+    } else if (refused.length === 0) {
+      lines.push(`${count(missed, 'reference')} could not be resolved`, '');
+    } else {
+      lines.push(
+        `${count(references.unsafe.length, 'reference')} were not linked`,
+        '',
+        `  ${missed} could not be resolved, and ${refused.length} had no answer to find`,
+        '',
+      );
+    }
     // Only when there is a list to head. A column key above an empty list is its
     // own small piece of noise, and this section is often entirely counted.
     if (listed.length > 0) {
@@ -293,6 +324,14 @@ function skippedSection(report: Report): string[] {
     for (const entry of listed) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
       lines.push(`    ${entry.resolution} — ${entry.reason}`);
+      // ⚠️ **Only where it ADDS something.** A refusal's `reason` already says why it is
+      // one — *names a file inside an npm package* is not improved by *no answer to find
+      // (out-of-scope)* underneath it, and printing both on every entry was a wall of
+      // restatement. What the reader cannot otherwise tell is which entries are OURS, so
+      // that is the line that prints.
+      if (entry.classification !== 'correctly-refused') {
+        lines.push('    — and this one is ours: an answer exists and we did not find it');
+      }
     }
     if (counted > 0) {
       // Phrased to sidestep verb agreement rather than to get it right: this file
@@ -306,6 +345,25 @@ function skippedSection(report: Report): string[] {
       );
     }
     lines.push('');
+  }
+
+  if (references.classificationBounds.length > 0) {
+    // 🔴 **R122: the resolution accuracy this report can compute MUST NOT BE QUOTED, and
+    // the reason is printed rather than assumed to be known.** It measures where the
+    // engine draws its own boundary, not whether the engine is right — so the known
+    // over-claim goes on the page beside the counts it inflates, not in a footnote.
+    lines.push('What the counts above are known to get wrong', '');
+    for (const entry of references.classificationBounds) {
+      lines.push(`  ${entry.count} classified as "${entry.reason}", and:`);
+      for (const line of wrapWords(entry.bound, 74)) lines.push(`    ${line}`);
+      lines.push('');
+      // The provenance prints too. A bound a reader cannot date is one they cannot check,
+      // and an unfalsifiable caveat is worth less than no caveat at all.
+      for (const line of wrapWords(`measured: ${entry.measuredAgainst}`, 74)) {
+        lines.push(`    ${line}`);
+      }
+      lines.push('');
+    }
   }
 
   if (references.discardedCount > 0) {
@@ -798,4 +856,26 @@ function count(value: number, noun: string): string {
 
 function dimensions(width: number | null, height: number | null): string {
   return width === null || height === null ? '' : `, ${width}×${height}`;
+}
+
+/**
+ * Break a sentence at word boundaries, so a measured bound reads as prose rather than
+ * running off the terminal.
+ *
+ * Deliberately dumb: no hyphenation, no locale awareness. The only thing it must never do
+ * is split a path or a number, and splitting on spaces alone cannot.
+ */
+function wrapWords(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    if (line === '') line = word;
+    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line !== '') out.push(line);
+  return out;
 }

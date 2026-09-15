@@ -339,16 +339,32 @@ describe('htmlAdapter', () => {
        * while the ordinary spelling was being thrown away.
        */
       it('leaves a style attribute alone — its text is CSS, not a URL', () => {
+        // ⚠️ **R123 SUPERSEDED THE OUTCOME AND NOT THE POINT.** The assertion used to be
+        // that this emits an UNSAFE reference, because the attribute could not be read.
+        // It can be read now: it decodes to `width: 100%; font: 12px "Inter"`, parses,
+        // holds no `url()`, and therefore yields nothing at all — exactly as the
+        // unescaped spelling does. A valid style attribute with no `url()` was never a
+        // reference, and the entry it used to produce described our inability rather than
+        // its contents.
+        //
+        // 🔴 What this test is still FOR is unchanged: the external-URL test must not run
+        // here, because `URL_SCHEME` is *letters then a colon* and `width: 100%` reads as
+        // a scheme. Both spellings stay, because that bug depended on whitespace.
         for (const source of [
           '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
           '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
         ]) {
-          const references = find(source);
-          expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
-          // R111: it says whether anything could be hiding in there, because that is what
-          // decides whether it is our miss or a correct refusal.
-          expect(references[0]?.note).toMatch(/no reference in it to find/);
+          expect(find(source)).toEqual([]);
         }
+      });
+
+      it('and one that cannot be read still says whether it could be hiding a reference', () => {
+        // The refusal path is still reachable — this is not parseable CSS — and R111's
+        // classification still depends on the sentence it carries.
+        const references = find('<div style="margin 0 0 &quot;x&quot;"></div>');
+
+        expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
+        expect(references[0]?.note).toMatch(/no reference in it to find/);
       });
     });
   });
@@ -414,6 +430,79 @@ describe('htmlAdapter', () => {
       expect(references).toHaveLength(1);
       expect(references[0]?.ceiling).toBe('unsafe');
       expect(references[0]?.note).toMatch(/character references/);
+    });
+  });
+
+  /**
+   * R123 — the last member of the entity family, and the one that MOVES A RANGE.
+   *
+   * 🔴 `style="background-image: url(&quot;/logo.png&quot;)"` is CSS the HTML parser has
+   * already decoded, so handing PostCSS the SOURCE text gives `&quot;/logo.png&quot;` as
+   * one unquoted token — extension `.png&quot;`, dropped by rung 3. The decoded text
+   * parses correctly and returns offsets into a string that is not the file, so the
+   * decode carries a MAP back.
+   *
+   * ⚠️ **The path itself is plain ASCII and contiguous in the source; only the
+   * DELIMITERS are encoded.** That is what makes this member the easiest one and the
+   * right one to design against.
+   */
+  describe('R123 — a style attribute whose CSS is spelled with character references', () => {
+    it('reads the CSS a browser sees, and points at the SOURCE text', () => {
+      const source = '<span style="background-image: url(&quot;/logo.png&quot;)"></span>';
+      const references = find(source);
+
+      expect(references).toHaveLength(1);
+      const reference = references[0];
+      if (reference === undefined) throw new Error('unreachable');
+      expect(reference.rawPath).toBe('/logo.png');
+      expect(reference.ceiling).toBe('high');
+      // The invariant, asserted rather than assumed. This is the only change in the
+      // family that moves a range, so it is the only one where this can fail.
+      expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+    });
+
+    it('handles a numeric reference for the quote too', () => {
+      const source = '<span style="background: url(&#34;/logo.png&#34;)"></span>';
+      const references = find(source);
+
+      expect(references.map((reference) => reference.rawPath)).toEqual(['/logo.png']);
+      expect(source.slice(references[0]?.start ?? 0, references[0]?.end ?? 0)).toBe('/logo.png');
+    });
+
+    it('keeps the path ENCODED when the path itself carries a reference', () => {
+      // The delimiters decode; the path does not. `rawPath` stays the source text and
+      // R118's spelling machinery resolves it — the two changes compose rather than
+      // fighting.
+      const source = '<span style="background: url(&quot;/a&amp;b.png&quot;)"></span>';
+      const references = find(source);
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.rawPath).toBe('/a&amp;b.png');
+      expect(source.slice(references[0]?.start ?? 0, references[0]?.end ?? 0)).toBe('/a&amp;b.png');
+    });
+
+    /**
+     * 🔴 **Guard 2, and it is why a five-entity decoder is safe beside a complete one.**
+     * parse5 knows every named reference and we know five. Where the two disagree our
+     * offsets describe a string the browser never saw, so the attribute is refused
+     * exactly as it was before any of this existed — the worst case is yesterday's
+     * behaviour, never a wrong range.
+     */
+    it('refuses when our decoder and the parser disagree', () => {
+      const source = '<span style="background: url(&quot;/caf&eacute;.png&quot;)"></span>';
+      const references = find(source);
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.shape).toBe('html.style.attribute');
+    });
+
+    it('still refuses an entity-escaped attribute that is not parseable CSS', () => {
+      const references = find('<span style="margin 0 0 &quot;x&quot;"></span>');
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/no reference in it to find/);
     });
   });
 

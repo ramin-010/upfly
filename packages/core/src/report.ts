@@ -183,6 +183,20 @@ const REFUSAL_REASONS: ReadonlyArray<{
    * blind spot where the figure is, not in a footnote somewhere else.
    */
   readonly bound: string | null;
+  /**
+   * WHAT the bound was measured against, and WHEN — required whenever `bound` is set.
+   *
+   * 🔴 **A bound nobody can check is R117 inside the schema.** The measurement is prose
+   * in a string field: a person can verify it and a machine cannot, and it goes stale the
+   * moment the corpus changes. **So it carries its own provenance**, and a reader who
+   * knows the corpus has moved can tell at a glance that the sentence beside the count no
+   * longer describes anything.
+   *
+   * ⚠️ It cannot be enforced automatically and is not pretending to be. What it does is
+   * make the staleness VISIBLE rather than silent, which is the difference between a
+   * figure that ages and one that quietly lies.
+   */
+  readonly measuredAgainst: string | null;
 }> = [
   {
     // A deliberate boundary we published: a real file we choose not to index (R92).
@@ -190,6 +204,7 @@ const REFUSAL_REASONS: ReadonlyArray<{
     id: 'out-of-scope',
     holds: (reference) => reference.resolution === 'out-of-scope',
     bound: null,
+    measuredAgainst: null,
   },
   {
     // The path does not exist until something renders — a property of the written text,
@@ -212,7 +227,9 @@ const REFUSAL_REASONS: ReadonlyArray<{
       (templateExpressionReason(reference.rawPath) !== null ||
         interpolationChunks(reference.rawPath).length > 1),
     bound:
-      'R112 measured the unknowns behind 62 such references on the validation corpus: 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.',
+      'Of 62 such references, 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.',
+    measuredAgainst:
+      'R112, 2026-09-15, on the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www). ⚠️ If that corpus has changed, this bound has not been re-measured and does not describe it.',
   },
   {
     // R118: the attribute could not be parsed as CSS AND provably holds no url-taking
@@ -221,6 +238,7 @@ const REFUSAL_REASONS: ReadonlyArray<{
     id: 'no-reference-in-it-to-find',
     holds: (reference) => (reference.note ?? '').includes('no reference in it to find'),
     bound: null,
+    measuredAgainst: null,
   },
 ];
 
@@ -295,6 +313,13 @@ export interface ClassificationBound {
   readonly count: number;
   /** The measured over-claim, in words a reader can check. */
   readonly bound: string;
+  /**
+   * What that measurement was taken against, and when.
+   *
+   * 🔴 Present so a reader can tell whether the sentence still applies. A bound with no
+   * provenance is unfalsifiable, which is the failure R117 names — here, in the schema.
+   */
+  readonly measuredAgainst: string;
 }
 
 export interface ReferenceReport {
@@ -916,7 +941,14 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   for (const reason of REFUSAL_REASONS) {
     const count = boundCounts.get(reason.id) ?? 0;
     if (count > 0 && reason.bound !== null) {
-      classificationBounds.push({ reason: reason.id, count, bound: reason.bound });
+      classificationBounds.push({
+        reason: reason.id,
+        count,
+        bound: reason.bound,
+        // A bound without its provenance is exactly the thing this field exists to stop,
+        // so the fallback SAYS so rather than printing an empty string.
+        measuredAgainst: reason.measuredAgainst ?? 'not recorded — treat this bound as unverified',
+      });
     }
   }
 

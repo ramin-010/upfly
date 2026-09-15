@@ -18,7 +18,7 @@ import {
   classifyReference,
   refusalReasonId,
 } from './report.js';
-import type { Report } from './report.js';
+import type { ClassificationBound, ReferenceEntry, Report } from './report.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
@@ -977,7 +977,10 @@ describe('buildReport', () => {
       // to keep covering everything, listed or not.
       const text = renderReport(reportWith(['/view/${style}/${name}', '/api/${id}']));
 
-      expect(text).toContain('2 references could not be resolved safely');
+      // R111/R123 moved the WORDING of this heading, not its job: the full count still
+      // appears even though only one entry is listed, which is what rule 9 requires.
+      // These two are built at run time, so the heading is the no-answer one.
+      expect(text).toContain('2 references had no answer to find');
       expect(text).toContain('none with a filename to check');
     });
   });
@@ -1102,7 +1105,7 @@ describe('buildReport', () => {
       // The ordering that the previous generation of this project got wrong: a
       // limitation printed after eighty findings is a limitation nobody reads.
       const text = renderReport(await reportFor('eleventy'));
-      const unresolved = text.indexOf('could not be resolved safely');
+      const unresolved = text.search(/had no answer to find|could not be resolved|were not linked/);
       const findings = text.indexOf('Findings');
 
       expect(unresolved).toBeGreaterThan(-1);
@@ -2017,7 +2020,11 @@ describe('classifyReference: the four boxes R109 defines', () => {
     );
 
     expect(runtime?.count).toBeGreaterThan(0);
-    expect(runtime?.bound).toMatch(/R112/);
+    expect(runtime?.bound).toMatch(/16 are NOT/);
+    // The provenance is its own field, not a sentence buried in the bound: a caveat a
+    // reader cannot date is one they cannot check, which is R117 inside the schema.
+    expect(runtime?.measuredAgainst).toMatch(/R112, 2026-09-15/);
+    expect(runtime?.measuredAgainst).toMatch(/If that corpus has changed/);
   });
 
   it('carries no bound for a reason that has none', async () => {
@@ -2046,5 +2053,129 @@ describe('classifyReference: the four boxes R109 defines', () => {
       );
       expect(classified).toBe(resolved);
     }
+  });
+});
+
+/**
+ * R111's fields, RENDERED — because until this existed nothing printed them, every
+ * `renderReport` snapshot passed unchanged when they were added, and **a field nothing
+ * renders is a field nothing has read.**
+ *
+ * 🔴 Rendering it found the defect that mattered most: on `eleventy-docs` the page said
+ * *"56 references could not be resolved safely"* directly above *"56 of them had no answer
+ * to find, and 0 we could not resolve"*. **The heading contradicted the line beneath it, and
+ * it is the exact sentence R109 was issued to correct** — still live in the renderer after
+ * the JSON had been fixed.
+ */
+describe('renderReport and R109 boxes', () => {
+  /**
+   * A REAL report with only the reference slice replaced.
+   *
+   * ⚠️ The first version hand-built the whole `Report` and broke on a field the renderer
+   * reads three sections earlier. A stub that has to mirror a growing schema is a second
+   * copy of it, and it goes stale exactly as any other copy does (R76).
+   */
+  async function withUnsafe(
+    entries: ReferenceEntry[],
+    bounds: ClassificationBound[] = [],
+  ): Promise<string> {
+    const base = await reportFor('plain-html');
+    return renderReport({
+      ...base,
+      references: {
+        ...base.references,
+        unsafe: entries,
+        classificationBounds: bounds,
+        discardedCount: 0,
+        discarded: null,
+      },
+    } as Report);
+  }
+
+  function entry(over: Partial<ReferenceEntry>): ReferenceEntry {
+    return {
+      file: 'page.html',
+      rawPath: '/img/hero.png',
+      resolution: 'dynamic',
+      reason: 'no static path to resolve',
+      classification: 'correctly-refused',
+      refusalReason: 'assembled-at-runtime',
+      ...over,
+    } as ReferenceEntry;
+  }
+
+  it('does not say "could not be resolved" when nothing was ours to resolve', async () => {
+    const text = await withUnsafe([entry({})]);
+
+    expect(text).toContain('had no answer to find');
+    expect(text).not.toContain('could not be resolved safely');
+  });
+
+  it('says plainly when they ARE ours', async () => {
+    const text = await withUnsafe([
+      entry({ classification: 'missed-with-an-answer', refusalReason: null }),
+    ]);
+
+    expect(text).toContain('could not be resolved');
+    expect(text).toContain('this one is ours');
+  });
+
+  it('splits the two when a run has both', async () => {
+    const text = await withUnsafe([
+      entry({}),
+      entry({
+        rawPath: '/img/other.png',
+        classification: 'missed-with-an-answer',
+        refusalReason: null,
+      }),
+    ]);
+
+    expect(text).toContain('were not linked');
+    expect(text).toContain('1 could not be resolved, and 1 had no answer to find');
+  });
+
+  /**
+   * ⚠️ **A refusal's own reason already explains it**, so repeating the box underneath
+   * every entry was a wall of restatement. What a reader cannot otherwise tell is which
+   * entries are ours, and that is the only line that prints.
+   */
+  it('does not restate the box under an entry that already explains itself', async () => {
+    const text = await withUnsafe([
+      entry({
+        resolution: 'out-of-scope',
+        reason: 'names a file inside an npm package',
+        refusalReason: 'out-of-scope',
+      }),
+    ]);
+
+    expect(text).toContain('names a file inside an npm package');
+    expect(text).not.toContain('no answer to find (out-of-scope)');
+  });
+
+  /**
+   * 🔴 R122: the resolution accuracy this report can compute must never be quoted, so the
+   * known over-claim prints beside the counts it inflates — WITH its provenance, because a
+   * bound a reader cannot date is one they cannot check.
+   */
+  it('prints a known over-claim and what it was measured against', async () => {
+    const text = await withUnsafe(
+      [entry({})],
+      [
+        {
+          reason: 'assembled-at-runtime',
+          count: 52,
+          bound: 'sixteen of sixty-two have an answer we do not compute.',
+          measuredAgainst: 'R112, 2026-09-15, on the five pinned validation repositories.',
+        },
+      ],
+    );
+
+    expect(text).toContain('known to get wrong');
+    expect(text).toContain('52 classified as "assembled-at-runtime"');
+    expect(text).toContain('measured: R112, 2026-09-15');
+  });
+
+  it('prints nothing about bounds when none apply', async () => {
+    expect(await withUnsafe([entry({})])).not.toContain('known to get wrong');
   });
 });

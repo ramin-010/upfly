@@ -319,8 +319,9 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
     "classificationBounds": [
       {
-        "bound": "R112 measured the unknowns behind 62 such references on the validation corpus: 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.",
+        "bound": "Of 62 such references, 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.",
         "count": 1,
+        "measuredAgainst": "R112, 2026-09-15, on the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www). ⚠️ If that corpus has changed, this bound has not been re-measured and does not describe it.",
         "reason": "assembled-at-runtime",
       },
     ],
@@ -378,12 +379,29 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
   10 of 12 references resolved, pointing at 3 of those images
   5 images with no reference Upfly could follow
 
-1 reference could not be resolved safely
+1 reference had no answer to find
+
+  none of these is a path that points at a file — each is built at run time, or
+  names something deliberately outside what Upfly indexes
 
   (the file it was found in, then the path text as written)
 
   src/posts/first.md  {{ site.url }}/img/templated.png
     dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
+
+What the counts above are known to get wrong
+
+  1 classified as "assembled-at-runtime", and:
+    Of 62 such references, 46 are a parameter, a prop or instance state, which
+    nothing reaches — but 16 are NOT. A same-file const with a finite set of
+    values, a filename from a build-time glob, an imported module constant:
+    those have an answer and we do not compute it, so they are misses this
+    reason absorbs. Read as roughly three in four.
+
+    measured: R112, 2026-09-15, on the five pinned validation repositories
+    (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www). ⚠️ If
+    that corpus has changed, this bound has not been re-measured and does not
+    describe it.
 
 Findings — 6 items
 

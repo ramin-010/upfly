@@ -381,6 +381,80 @@ export function spell(path: string, spelling: PathSpelling): string {
 }
 
 /**
+ * The text with every character reference resolved, PLUS the map back to where each
+ * decoded character came from.
+ *
+ * 🔴 **This is what lets an entity-escaped style attribute be read at all, and the map
+ * is the whole of why it is safe.** `style="background-image: url(&quot;/logo.png&quot;)"`
+ * is CSS the HTML parser has already decoded, so handing the SOURCE text to PostCSS gives
+ * `&quot;/logo.png&quot;` as an unquoted token — extension `.png&quot;`, dropped by rung 3.
+ * Handing it the DECODED text parses correctly and returns offsets into a string that is
+ * not the file.
+ *
+ * ⚠️ **`map[i]` is the source offset of decoded character `i`, and the array is one
+ * longer than the text** so a half-open decoded range `[a, b)` maps to the source range
+ * `[map[a], map[b])`. An entity contributes its whole span to the one character it
+ * produced, which is what makes a range that starts or ends inside a decoded region land
+ * on the entity boundary rather than in the middle of `&quot;`.
+ *
+ * 🔴 **The caller must still check the result against the parser's own decoded value
+ * before trusting it (see `html.ts`), and refuse when they differ.** This decoder knows a
+ * bounded set of references; the HTML parser knows all of them. Where they disagree the
+ * honest answer is to decline, because the alternative is a range that points at the wrong
+ * characters — and 0 range-invariant failures over 127,288 checks is the strongest number
+ * this project owns.
+ *
+ * Returns `null` when a reference is outside the bound, exactly as the plain decoder does.
+ */
+export function decodeCharacterReferencesWithMap(
+  text: string,
+): { readonly text: string; readonly map: readonly number[] } | null {
+  const decoded: string[] = [];
+  const map: number[] = [];
+  let index = 0;
+
+  while (index < text.length) {
+    ENTITY_ONCE.lastIndex = index;
+    const match = text.charAt(index) === '&' ? ENTITY_ONCE.exec(text) : null;
+
+    if (match === null || match.index !== index) {
+      map.push(index);
+      decoded.push(text.charAt(index));
+      index += 1;
+      continue;
+    }
+
+    const character = decodeOneReference(match[1] ?? '');
+    if (character === null) return null;
+    // Every code unit of the decoded character maps to the START of the reference, and
+    // the sentinel below carries its end. A reference producing a surrogate pair is
+    // therefore still addressable as one span.
+    for (const unit of character) {
+      map.push(index);
+      decoded.push(unit);
+    }
+    index += match[0].length;
+  }
+
+  map.push(text.length);
+  return { text: decoded.join(''), map };
+}
+
+/** The entity pattern, sticky, so it can be anchored at a position rather than searched. */
+const ENTITY_ONCE = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/y;
+
+/** One reference's body to its character, or `null` when it is outside the bound. */
+function decodeOneReference(body: string): string | null {
+  if (body.startsWith('#')) {
+    const isHex = body[1] === 'x' || body[1] === 'X';
+    const code = Number.parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+    if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
+    return String.fromCodePoint(code);
+  }
+  return PREDEFINED_ENTITIES.get(body.toLowerCase()) ?? null;
+}
+
+/**
  * The text with every character reference resolved, or `null` when one of them is
  * outside the bound above.
  *
