@@ -25,9 +25,12 @@ export type { AdapterDefinition } from './adapters/define.js';
 export { markdownAdapter, maskInactiveRegions } from './adapters/markdown.js';
 export {
   isExternalUrl,
+  spell,
+  spellingsOf,
   splitPathSuffix,
   templateExpressionReason,
 } from './adapters/reference-path.js';
+export type { PathSpelling } from './adapters/reference-path.js';
 export {
   DEFAULT_IGNORED_DIRECTORIES,
   IGNORE_FILE_NAME,

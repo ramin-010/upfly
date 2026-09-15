@@ -11,6 +11,7 @@
  * would land in the wrong place.
  */
 
+import type { PathSpelling } from './adapters/reference-path.js';
 import type { ShapeId } from './shapes.js';
 
 /** How certain we are that rewriting a reference is safe. */
@@ -203,6 +204,17 @@ export type Reference =
       readonly confidence: Confidence;
       readonly resolvedPath: string;
       readonly resolvedVia: ResolvedVia;
+      /**
+       * Which spelling of `rawPath` the lookup answered on. Absent means `literal`.
+       *
+       * 🔴 **Recorded rather than re-derived, because the two cases are INDISTINGUISHABLE
+       * in the source.** `enc%20name.png` is a real file whose name contains a percent
+       * sign; `hero%20image.png` is a different real file called `hero image.png`. Both
+       * are percent-shaped text and only the lookup knows which one answered. A rewriter
+       * that re-derived this from `rawPath` would put a raw space inside a URL half the
+       * time — see `spell()` in `adapters/reference-path.ts`.
+       */
+      readonly spelling?: PathSpelling;
     })
   | (RawReference & {
       readonly resolution: 'resolved-pattern';

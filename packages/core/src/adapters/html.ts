@@ -22,6 +22,7 @@ import {
   isExternalUrl,
   parseSrcset,
   provablyNotAFile,
+  spellingsOf,
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
@@ -263,7 +264,14 @@ function collectFromAttribute(input: {
   // allows.** Until a project states its own origin, an absolute URL is not ours (R113).
   const escaped = (isSrcset = false): void => {
     if (escapedIsSomebodyElses(raw, isSrcset)) return;
-    addEntityEscapedReference({ start, end }, context);
+    // ⚠️ A `srcset` is a LIST, so one range cannot be one path and there is nothing to
+    // decode into a lookup. It keeps the old unsafe report; only single-URL attributes
+    // are promoted.
+    if (isSrcset) {
+      addEntityEscapedReference({ start, end }, context);
+      return;
+    }
+    addCharacterReferenceReference(raw, { start, end }, context);
   };
 
   if (name === 'style') {
@@ -481,6 +489,21 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
   } catch (error) {
     // A malformed inline style should not take down a whole document, but it must
     // not vanish either: report it as unsafe so the run has a record of it.
+    //
+    // 🔴 **AND THE REPORT MUST BE ABLE TO TELL THE TWO KINDS APART, BECAUSE THEY ARE
+    // OPPOSITE OUTCOMES (R118).** Measured across the five validation repositories, 33
+    // style attributes fail to parse and **not one of them contains a `url()`** — they are
+    // `style="float:right; margin 0 0 0 15px"`, an author's missing colon, and two Astro
+    // `style={{…}}` expressions that are not CSS at all. There is no reference in them to
+    // find, so refusing them is a **correct refusal**: R109's box C, a success.
+    //
+    // A malformed attribute that DOES contain a url-taking function is the other thing
+    // entirely — a reference we may be failing to see, R109's box B.
+    //
+    // ⚠️ **The note says which, rather than the report guessing later.** R111: the engine
+    // decides the classification once and publishes it; two consumers deriving it from a
+    // parse-error string would derive it differently, and the copies drift (R76).
+    const holdsUrlFunction = CSS_URL_FUNCTION.test(css);
     context.references.push({
       file: context.file,
       start: baseOffset,
@@ -492,10 +515,27 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
       asserted: false,
       note: `could not parse the style attribute: ${
         error instanceof UpflyError ? error.message : String(error)
+      }${
+        holdsUrlFunction
+          ? ' — and it contains a url-taking function, so a reference may be hidden in it'
+          : ' — and it contains no url() or image-set(), so there is no reference in it to find'
       }`,
     });
   }
 }
+
+/**
+ * The two CSS functions that take a file path, for deciding whether an UNPARSEABLE
+ * declaration list could be hiding a reference.
+ *
+ * ⚠️ **Deliberately the same two the CSS adapter actually collects** — `url()` and the
+ * `image-set()` family, vendor prefixes included. A quoted string on its own is a
+ * reference only inside a preprocessor variable declaration, which a `style` attribute
+ * cannot contain. If the CSS adapter ever learns a third position, this test has to learn
+ * it too, and that coupling is the reason it is written as one named constant rather than
+ * inlined as a string search.
+ */
+const CSS_URL_FUNCTION = /\b(?:url|(?:-[a-z]+-)?image-set)\s*\(/i;
 
 /**
  * Locate the value inside an attribute's source range.
@@ -542,6 +582,46 @@ function escapedIsSomebodyElses(raw: string, isSrcset: boolean): boolean {
   return (
     candidates.length > 0 && candidates.every((candidate) => isExternalUrl(candidate.url, 'attr'))
   );
+}
+
+/**
+ * A URL-valued attribute whose path is spelled with character references.
+ *
+ * 🔴 **This used to be `unsafe` unconditionally, and that was right only while nothing
+ * decoded (R118).** The range covers the ENCODED source text and `rawPath` is that text,
+ * so the invariant `source.slice(start, end) === rawPath` holds exactly as before — what
+ * changes is that the resolver now also tries the decoded spelling, and `relocate`
+ * re-encodes when it writes. `/gallery/a&amp;b.png` names `a&b.png` and is rewritable.
+ *
+ * 🔴 **BUT ONLY WHEN THE WHOLE PATH DECODES, AND THIS IS THE SAFETY ARGUMENT.** Promoting
+ * the ceiling means a lookup, and a lookup that misses does not shrug — it falls through
+ * to **`broken`**. So a path containing a character reference outside the bound in
+ * `spellingsOf` stays `unsafe`: it goes on being reported as *"we could not read this"*,
+ * exactly as it did yesterday. **Declining costs a row in the matrix; a false `broken`
+ * costs the promise the product is sold on.**
+ */
+function addCharacterReferenceReference(
+  raw: string,
+  range: { start: number; end: number },
+  context: Context,
+): void {
+  const decodable = spellingsOf(raw).some(({ spelling }) => spelling === 'html-entities');
+  if (!decodable) {
+    addEntityEscapedReference(range, context);
+    return;
+  }
+
+  context.references.push({
+    file: context.file,
+    start: range.start,
+    end: range.end,
+    rawPath: raw,
+    kind: 'attr',
+    shape: 'path.charref',
+    ceiling: 'high',
+    asserted: true,
+    note: 'the path is spelled with HTML character references; it is resolved decoded and rewritten re-encoded',
+  });
 }
 
 function addEntityEscapedReference(range: { start: number; end: number }, context: Context): void {

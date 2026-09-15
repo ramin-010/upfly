@@ -28,6 +28,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assembledPathIsGlobbable,
   provablyNotAFile,
+  spell,
+  spellingsOf,
   splitPathSuffix,
   staticExtensionOf,
 } from './reference-path.js';
@@ -201,5 +203,121 @@ describe('a delimiter inside an unknown segment is not a delimiter', () => {
     expect(staticExtensionOf('styles/${config?.style ?? "x"}/${item}.json')).toBe('.json');
     // And an extension genuinely hidden by a hole stays hidden — unknown is not ruled out.
     expect(staticExtensionOf('src/app/layout.${ext}')).toBe('');
+  });
+});
+
+/**
+ * R118 — decode before you decide, and keep the range honest.
+ *
+ * 🔴 **The pair in the second block is the whole point and it is why an engine cannot
+ * simply "support percent-encoding".** `enc%20name.png` is a real file whose NAME contains
+ * a percent sign; `hero%20image.png` is a different real file called `hero image.png`. The
+ * two are indistinguishable as text. An engine that never decodes gets the second wrong, one
+ * that always decodes gets the first wrong, and only literal-then-decoded gets both.
+ */
+describe('spellingsOf', () => {
+  it('always offers the literal spelling first', () => {
+    expect(spellingsOf('/gallery/hero.png')).toEqual([
+      { spelling: 'literal', path: '/gallery/hero.png' },
+    ]);
+  });
+
+  it('offers the percent-decoded spelling after the literal one', () => {
+    expect(spellingsOf('/gallery/hero%20image.png')).toEqual([
+      { spelling: 'literal', path: '/gallery/hero%20image.png' },
+      { spelling: 'percent-encoded', path: '/gallery/hero image.png' },
+    ]);
+  });
+
+  it('decodes every character-reference form', () => {
+    for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png', 'a&#X26;b.png']) {
+      expect(spellingsOf(written).map((candidate) => candidate.path)).toContain('a&b.png');
+    }
+  });
+
+  /**
+   * 🔴 A path we cannot FULLY decode offers no decoded candidate at all, and that is the
+   * safety argument for promoting these to a lookup. A lookup that misses does not shrug —
+   * it falls through to `broken`, and a false `broken` is the one outcome this project
+   * promises never to produce. The bound is stated in `spellingsOf` and is deliberate:
+   * `&eacute;` stays unreadable rather than becoming a wrong answer.
+   */
+  it('offers NOTHING decoded when one reference is outside the bound', () => {
+    expect(spellingsOf('caf&eacute;.png').map((candidate) => candidate.spelling)).toEqual([
+      'literal',
+    ]);
+  });
+
+  it('offers nothing decoded when the percent-encoding is malformed', () => {
+    // `decodeURIComponent` THROWS here rather than returning anything (R86).
+    expect(spellingsOf('100%.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
+    expect(spellingsOf('a%ZZb.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
+  });
+
+  it('leaves a bare ampersand alone — `c&s.png` is a real filename in the corpus', () => {
+    expect(spellingsOf('/images/c&s.png').map((candidate) => candidate.spelling)).toEqual([
+      'literal',
+    ]);
+  });
+});
+
+/**
+ * 🔴 The half that makes the decode safe to ship. `relocate` builds a reference's new
+ * text from the ON-DISK path, so a file genuinely called `hero image.png` would be written
+ * back with a raw space inside a URL. Decode and re-encode are one change.
+ */
+describe('spell', () => {
+  it('re-encodes a percent-spelled path per segment, leaving the slashes alone', () => {
+    expect(spell('gallery/hero image.avif', 'percent-encoded')).toBe('gallery/hero%20image.avif');
+    expect(spell('gallery/hero image (2) copy.avif', 'percent-encoded')).toBe(
+      'gallery/hero%20image%20(2)%20copy.avif',
+    );
+  });
+
+  it('re-encodes an entity-spelled path', () => {
+    expect(spell('gallery/a&b.avif', 'html-entities')).toBe('gallery/a&amp;b.avif');
+  });
+
+  it('leaves a literal path exactly as it is', () => {
+    expect(spell('gallery/hero image.avif', 'literal')).toBe('gallery/hero image.avif');
+  });
+
+  it('round-trips: every decoded spelling re-encodes to something that decodes back', () => {
+    for (const written of ['/g/hero%20image.png', '/g/a&amp;b.png']) {
+      for (const { spelling, path } of spellingsOf(written)) {
+        if (spelling === 'literal') continue;
+        const respelled = spell(path, spelling);
+        expect(spellingsOf(respelled).map((c) => c.path)).toContain(path);
+      }
+    }
+  });
+});
+
+/**
+ * 🔴 A `#` inside a character reference is not a fragment delimiter, and this cost
+ * `path.charref` two of its four entries. `/gallery/a&#38;b.png` split at the `#` of its own
+ * numeric reference, leaving `/gallery/a&` — no extension, so rung 3 dropped it. The named
+ * form `&amp;` resolved perfectly, which is what made the row look like a partial success
+ * rather than one rule missing one encoding.
+ */
+describe('a delimiter inside a character reference is not a delimiter', () => {
+  const cases: ReadonlyArray<[raw: string, path: string, suffix: string]> = [
+    ['/gallery/a&#38;b.png', '/gallery/a&#38;b.png', ''],
+    ['/gallery/a&#x26;b.png', '/gallery/a&#x26;b.png', ''],
+    ['/gallery/a&amp;b.png', '/gallery/a&amp;b.png', ''],
+    // A real fragment after a reference still splits.
+    ['/gallery/a&#38;b.svg#icon', '/gallery/a&#38;b.svg', '#icon'],
+    // And a real query.
+    ['/gallery/a&#38;b.png?v=2', '/gallery/a&#38;b.png', '?v=2'],
+  ];
+
+  for (const [raw, path, suffix] of cases) {
+    it(`splits ${raw} correctly`, () => {
+      expect(splitPathSuffix(raw)).toEqual({ path, suffix });
+    });
+  }
+
+  it('lets the extension filter see the extension again', () => {
+    expect(staticExtensionOf('/gallery/a&#38;b.png')).toBe('.png');
   });
 });

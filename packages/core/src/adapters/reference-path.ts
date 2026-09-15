@@ -122,17 +122,32 @@ export function splitPathSuffix(rawPath: string): { path: string; suffix: string
 }
 
 /**
- * A same-length copy of `rawPath` with every `${…}`, `#{…}`, `@{…}`, `{{…}}` and `{%…%}`
- * replaced by filler, so a search for a delimiter cannot land inside one.
+ * A same-length copy of `rawPath` with every unknown segment and every character
+ * reference replaced by filler, so a search for a delimiter cannot land inside one.
  *
  * Same length by construction — the offsets it returns are offsets into the original.
  */
 function maskUnknownSegments(rawPath: string): string {
-  return rawPath.replace(UNKNOWN_SEGMENT, (match) => '\u0000'.repeat(match.length));
+  return rawPath
+    .replace(UNKNOWN_SEGMENT, (match) => '\u0000'.repeat(match.length))
+    .replace(CHARACTER_REFERENCE, (match) => '\u0000'.repeat(match.length));
 }
 
 /** Every unknown-segment spelling, as one pattern. Kept beside the masker it serves. */
 const UNKNOWN_SEGMENT = /\$\{[^}]*\}|#\{[^}]*\}|@\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}/g;
+
+/**
+ * 🔴 **A CHARACTER REFERENCE CONTAINS A `#`, AND THAT COST `path.charref` TWO OF ITS
+ * FOUR ENTRIES.** `/gallery/a&#38;b.png` was split at the `#` of its own numeric reference,
+ * leaving the path `/gallery/a&` — no extension, so rung 3 dropped it. The named form
+ * `&amp;` resolved perfectly, which is exactly what made the row look like a partial
+ * success rather than one rule missing one encoding.
+ *
+ * ⚠️ **One rule, three encodings.** A `?` or `#` inside an interpolation, inside a
+ * template tag, or inside a character reference is not a delimiter — it is a character of
+ * the encoded unit. Fixing them on three different days is how the third one stayed broken.
+ */
+const CHARACTER_REFERENCE = /&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /** Template syntaxes that build a path at render time, and what to call each one. */
 const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
@@ -263,6 +278,160 @@ export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
  * — the mistake B9 made in the other direction when `splitPathSuffix` split
  * `/theme-#{$mode}.png` at the `#` and lost the extension.
  */
+/**
+ * How a path's TEXT spells characters that are not literally themselves.
+ *
+ * 🔴 **The whole family — `path.charref`, `html.percent-encoded`, `md.style-attribute` —
+ * is one decision: DECODE BEFORE YOU DECIDE, AND KEEP THE RANGE HONEST.** Three rules
+ * hold it together and none of them may be dropped:
+ *
+ * 1. **`rawPath` stays the SOURCE text, always.** The range invariant is
+ *    `source.slice(start, end) === rawPath`, it has held for 127,288 checks, and it is
+ *    the strongest number this project owns. Decoding into `rawPath` would break it on
+ *    every entry in this family at once. So the decoded form is never stored; it is
+ *    *tried*, and the reference records which spelling answered.
+ * 2. **The literal spelling is tried FIRST.** `enc%20name.png` is a real file whose name
+ *    contains a percent sign, and `hero image.png` is a different real file reached by
+ *    writing `hero%20image.png`. The coverage tree holds both on purpose: an engine that
+ *    never decodes gets the second wrong and one that always decodes gets the first
+ *    wrong. **Only trying both, in this order, passes.**
+ * 3. 🔴 **A path we cannot FULLY decode is not claimed at all.** If one `&…;` in the text
+ *    is outside the set below, the reference stays `unsafe` rather than becoming a
+ *    lookup that will miss. **A miss at that point is not a shrug — it is a `broken`
+ *    finding**, and a false `broken` is the one outcome this project promises never to
+ *    produce. Declining is free; guessing is not.
+ *
+ * ⚠️ **THE BOUND ON (3), STATED RATHER THAN HIDDEN (R74's habit).** The decoder here
+ * knows numeric character references — `&#38;` and `&#x26;` — and the five predefined
+ * names `&amp; &lt; &gt; &quot; &apos;`. It does NOT know the other ~2,200 HTML named
+ * entities. A filename containing `&eacute;` therefore stays `unsafe` exactly as it does
+ * today: **no regression, and a refusal with a record rather than a wrong answer.**
+ * Widening it means a dependency on the `entities` table, which is a real option and is
+ * not taken on a corpus that contains zero such paths.
+ */
+export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities';
+
+/** A named reference we are willing to decode, and what it stands for. */
+const PREDEFINED_ENTITIES: ReadonlyMap<string, string> = new Map([
+  ['amp', '&'],
+  ['lt', '<'],
+  ['gt', '>'],
+  ['quot', '"'],
+  ['apos', "'"],
+]);
+
+const ENTITY = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+/**
+ * Every spelling this text could be, literal first.
+ *
+ * Returns one entry when nothing is encoded, and never returns a partially decoded
+ * string: a text the decoder cannot finish contributes no candidate at all.
+ */
+export function spellingsOf(rawPath: string): ReadonlyArray<{
+  readonly spelling: PathSpelling;
+  readonly path: string;
+}> {
+  const candidates: { spelling: PathSpelling; path: string }[] = [
+    { spelling: 'literal', path: rawPath },
+  ];
+
+  const entities = decodeCharacterReferences(rawPath);
+  if (entities !== null && entities !== rawPath) {
+    candidates.push({ spelling: 'html-entities', path: entities });
+  }
+
+  const percent = decodePercent(rawPath);
+  if (percent !== null && percent !== rawPath) {
+    candidates.push({ spelling: 'percent-encoded', path: percent });
+  }
+
+  return candidates;
+}
+
+/**
+ * Write `path` back in `spelling`, so a rewritten reference reads the way the author
+ * wrote it.
+ *
+ * 🔴 **This is the half that makes the decode safe to ship.** `relocate.ts` builds a
+ * reference's new text from `move.to`, which is the ON-DISK path — so a file genuinely
+ * named `hero image.png`, reached through `hero%20image.png`, would be rewritten with a
+ * **raw space inside a URL**. Resolving these is what makes them rewritable, so the
+ * decode and the re-encode are one change and not two.
+ */
+export function spell(path: string, spelling: PathSpelling): string {
+  switch (spelling) {
+    case 'literal':
+      return path;
+    case 'percent-encoded':
+      // Per SEGMENT: `/` is structure, not content, and encoding it would turn one path
+      // into one very oddly named file.
+      return path
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+    case 'html-entities':
+      // Only `&` is re-encoded. The others in the table cannot appear unescaped in an
+      // attribute value we located, and inventing entities for them would change text
+      // the author did not write.
+      return path.replaceAll('&', '&amp;');
+    default:
+      return path;
+  }
+}
+
+/**
+ * The text with every character reference resolved, or `null` when one of them is
+ * outside the bound above.
+ *
+ * ⚠️ `null` is the third outcome and it is the important one (R86). Returning the
+ * partially decoded string would hand the resolver a path that is neither what the
+ * author wrote nor what the file is called.
+ */
+function decodeCharacterReferences(text: string): string | null {
+  if (!text.includes('&')) return text;
+
+  let decodable = true;
+  const decoded = text.replace(ENTITY, (match, body: string) => {
+    if (body.startsWith('#')) {
+      const isHex = body[1] === 'x' || body[1] === 'X';
+      const code = Number.parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+        decodable = false;
+        return match;
+      }
+      return String.fromCodePoint(code);
+    }
+    const named = PREDEFINED_ENTITIES.get(body.toLowerCase());
+    if (named === undefined) {
+      decodable = false;
+      return match;
+    }
+    return named;
+  });
+
+  // An `&` that is not part of a reference we resolved is an `&` in the filename, which
+  // is fine — `c&s.png` is a real file in the validation corpus. What is NOT fine is a
+  // reference we recognised the shape of and could not read.
+  return decodable ? decoded : null;
+}
+
+/**
+ * The text with percent-escapes resolved, or `null` when the text is not valid
+ * percent-encoding.
+ *
+ * ⚠️ `decodeURIComponent` THROWS on a lone `%` or a bad hex pair, and a throw is a third
+ * outcome rather than a miss (R86). `100%` in a style attribute reaches here.
+ */
+function decodePercent(text: string): string | null {
+  if (!text.includes('%')) return text;
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
+}
+
 export function provablyNotAFile(rawPath: string): string | null {
   if (rawPath.endsWith('/')) {
     return 'the path ends in `/`, so it names a directory rather than a file';

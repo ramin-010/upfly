@@ -223,14 +223,25 @@ describe('htmlAdapter', () => {
   });
 
   describe('HTML character references', () => {
-    it('reports an entity-bearing path as unsafe instead of mislocating it', () => {
-      // parse5 decodes `&amp;`, so the value is shorter than its source text and no
-      // range would point at the path correctly. Rewriting on a mismatched range
-      // would corrupt the document, so this is reported and left alone.
-      const references = find('<img src="a&amp;b.png">');
+    /**
+     * ⚠️ **This test asserted `unsafe` until R118, and the change is a RULING rather
+     * than a relaxation.** The reasoning it carried — *the decoded value is shorter than
+     * the source, so no range points at the path* — was only ever an argument against
+     * storing the DECODED text. The range covers the ENCODED source text and `rawPath` is
+     * that text, so the invariant holds exactly as before; what changed is that the
+     * resolver now also tries the decoded spelling and `relocate` re-encodes on the way
+     * out. The reference is located, resolvable and rewritable.
+     */
+    it('locates an entity-bearing path without decoding it into rawPath', () => {
+      const source = '<img src="a&amp;b.png">';
+      const references = find(source);
       expect(references).toHaveLength(1);
-      expect(references[0]?.ceiling).toBe('unsafe');
-      expect(references[0]?.note).toMatch(/character references/);
+      const reference = references[0];
+      if (reference === undefined) throw new Error('unreachable');
+      expect(reference.ceiling).toBe('high');
+      expect(reference.shape).toBe('path.charref');
+      expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+      expect(reference.rawPath).toBe('a&amp;b.png');
     });
 
     it('leaves an ordinary path untouched by that rule', () => {
@@ -276,7 +287,8 @@ describe('htmlAdapter', () => {
         const references = find('<img src="./images/c&amp;s.png">');
         expect(references).toHaveLength(1);
         expect(references[0]?.shape).toBe('path.charref');
-        expect(references[0]?.ceiling).toBe('unsafe');
+        // `unsafe` until R118 made this spelling resolvable. See the block below.
+        expect(references[0]?.ceiling).toBe('high');
       });
 
       it('reports it in every other reference position too, not just img src', () => {
@@ -334,6 +346,70 @@ describe('htmlAdapter', () => {
           expect(find(source).map((reference) => reference.shape)).toEqual(['path.charref']);
         }
       });
+    });
+  });
+
+  /**
+   * R118. The two kinds of unparseable style attribute are OPPOSITE outcomes and the note
+   * has to say which, because the report classifies from it and must not re-derive the
+   * rule (R111).
+   *
+   * Measured on the five validation repositories: 33 style attributes fail to parse and
+   * **none of them contains a `url()`**. They are an author's missing colon
+   * (`margin 0 0 0 15px`) and two Astro `style={{...}}` expressions. Refusing those is a
+   * correct refusal \u2014 there is no reference in them to find.
+   */
+  describe('an unparseable style attribute says whether it could be hiding a reference', () => {
+    it('says there is nothing to find when no url-taking function is present', () => {
+      const references = find('<div style="float:right; margin 0 0 0 15px; border:0;"></div>');
+      expect(references).toHaveLength(1);
+      expect(references[0]?.note).toMatch(/no reference in it to find/);
+      expect(references[0]?.ceiling).toBe('unsafe');
+    });
+
+    it('says a reference may be hidden when one IS present', () => {
+      const references = find('<div style="margin 0 0 0 15px; background: url(/hero.png)"></div>');
+      expect(references).toHaveLength(1);
+      expect(references[0]?.note).toMatch(/a reference may be hidden/);
+    });
+
+    it('counts image-set as a url-taking function too', () => {
+      const references = find(
+        '<div style="margin 0 0 0; background: -webkit-image-set(url(/a.png) 1x)"></div>',
+      );
+      expect(references[0]?.note).toMatch(/a reference may be hidden/);
+    });
+
+    it('leaves a well-formed style attribute alone', () => {
+      expect(paths('<div style="background: url(/hero.png)"></div>')).toEqual(['/hero.png']);
+    });
+  });
+
+  /**
+   * R118 \u2014 a path spelled with character references is resolvable, and the RANGE still
+   * covers the encoded source text so the invariant is untouched.
+   */
+  describe('character-reference paths are located, decoded and re-encoded', () => {
+    for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png']) {
+      it(`locates ${written} exactly, without decoding into rawPath`, () => {
+        const source = `<img src="/gallery/${written}">`;
+        const references = find(source);
+        expect(references).toHaveLength(1);
+        const reference = references[0];
+        if (reference === undefined) throw new Error('unreachable');
+        expect(reference.shape).toBe('path.charref');
+        expect(reference.ceiling).toBe('high');
+        // The range invariant, asserted here rather than assumed.
+        expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+        expect(reference.rawPath).toBe(`/gallery/${written}`);
+      });
+    }
+
+    it('refuses a reference it cannot fully decode rather than risking a false broken', () => {
+      const references = find('<img src="/gallery/caf&eacute;.png">');
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/character references/);
     });
   });
 

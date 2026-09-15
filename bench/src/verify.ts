@@ -35,7 +35,7 @@ import { appendFileSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
-import { IMAGE_EXTENSIONS, type Report } from 'upfly-core';
+import { IMAGE_EXTENSIONS, type Report, spellingsOf } from 'upfly-core';
 
 export type Verdict = 'confirmed-genuine' | 'confirmed-false' | 'ambiguous';
 
@@ -161,7 +161,22 @@ function verifyBroken(
 ): ItemVerdict {
   const subject = `${file} → ${rawPath}`;
   const path = rawPath.split('?')[0]?.split('#')[0] ?? rawPath;
-  const candidates = candidatePaths(file, path, publicDirs);
+
+  // 🔴 **EVERY SPELLING, BECAUSE THIS ORACLE SHARED THE ENGINE'S BLIND SPOT AND
+  // CERTIFIED FOUR FALSE FINDINGS AS GENUINE (R119).** It asked `index.files.has(candidate)`
+  // with the path exactly as written, so `images/lodz/2015/netguru%20(1).jpg` missed a real
+  // file called `netguru (1).jpg` — and the basename test missed it too, for the same
+  // reason. It then returned **`confirmed-genuine` with evidence attached**, which is worse
+  // than returning nothing: the run printed *"None came back false"* over 1,886 adjudicated
+  // findings while four of them were false.
+  //
+  // ⚠️ **An oracle that shares the mechanism it is checking is not an oracle.** The point
+  // of this file is that it does not use the engine — its own index, its own grep — and it
+  // was nevertheless reproducing the engine's exact defect, because *not decoding* is the
+  // default behaviour of any string comparison. R96's family, and the damaging direction:
+  // it AGREED.
+  const spellings = spellingsOf(path).map((candidate) => candidate.path);
+  const candidates = spellings.flatMap((spelling) => candidatePaths(file, spelling, publicDirs));
 
   const found = candidates.filter((candidate) => index.files.has(candidate));
   if (found.length > 0) {
@@ -176,9 +191,10 @@ function verifyBroken(
   // A file of that name somewhere else in the tree is not a resolution, but it is
   // the shape of "somebody moved it" and a person should see it rather than have
   // the machine rule on it.
-  const name = posix.basename(path).toLowerCase();
-  const elsewhere = [...index.files].filter(
-    (entry) => posix.basename(entry).toLowerCase() === name,
+  // Asked of every spelling too: a percent-encoded basename matches nothing on disk.
+  const names = new Set(spellings.map((spelling) => posix.basename(spelling).toLowerCase()));
+  const elsewhere = [...index.files].filter((entry) =>
+    names.has(posix.basename(entry).toLowerCase()),
   );
 
   if (elsewhere.length > 0) {

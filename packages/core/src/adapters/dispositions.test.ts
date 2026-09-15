@@ -107,9 +107,28 @@ describe('path.charref — the spelling beats the construct (R88(a))', () => {
     expect(only(html(source)).shape).toBe('html.svg.feimage');
   });
 
-  it('stays unsafe, because the source range cannot point at the decoded path', () => {
-    // The reason the shape exists at all: 20 source characters, 16 decoded. A rewrite
-    // over the source range would truncate the document.
-    expect(only(html('<img src="/gallery/a&amp;b.png">')).ceiling).toBe('unsafe');
+  /**
+   * ⚠️ **This assertion read `unsafe` until R118, and its stated reason was the thing
+   * that was wrong.** *20 source characters, 16 decoded, so a rewrite over the source
+   * range would truncate the document* is an argument against writing the DECODED path
+   * back — which nothing does. `rawPath` is the encoded source text, the range covers
+   * exactly that text, and `relocate` re-encodes what it writes. **The invariant was never
+   * in danger; the sentence had simply outlived the design.** (R85: a comment is an
+   * assertion about code, and a stale one costs more than no comment.)
+   */
+  it('is located and resolvable, and the range still covers the ENCODED text', () => {
+    const source = '<img src="/gallery/a&amp;b.png">';
+    const reference = only(html(source));
+
+    expect(reference.ceiling).toBe('high');
+    expect(reference.rawPath).toBe('/gallery/a&amp;b.png');
+    expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+  });
+
+  it('stays unsafe when the entity is one the decoder does not know', () => {
+    // The control for the assertion above: promoting the ceiling means a lookup, and a
+    // lookup that misses becomes a `broken` finding. A path we cannot fully decode is
+    // refused rather than guessed at.
+    expect(only(html('<img src="/gallery/caf&eacute;.png">')).ceiling).toBe('unsafe');
   });
 });

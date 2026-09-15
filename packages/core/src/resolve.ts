@@ -14,7 +14,12 @@
  */
 
 import { dirname, resolve as resolvePath } from 'node:path';
-import { INTERPOLATIONS, splitPathSuffix, staticExtensionOf } from './adapters/reference-path.js';
+import {
+  INTERPOLATIONS,
+  spellingsOf,
+  splitPathSuffix,
+  staticExtensionOf,
+} from './adapters/reference-path.js';
 import type { AliasMap } from './aliases.js';
 import { expandAlias } from './aliases.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
@@ -187,17 +192,32 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   const { path } = splitPathSuffix(raw.rawPath);
 
   // 3. Not a file we track. Dropped entirely, with no report line.
-  if (!isImageExtension(extensionOf(path))) return null;
+  //
+  // ⚠️ Asked of every SPELLING, not only the written one. `/gallery/hero%20image.png`
+  // ends in `.png` either way, but `/gallery/a&amp;b.png` does not carry its extension
+  // in the decoded form of some other member of this family — and asking with a single
+  // spelling is how a whole row reads 0 of N for a reason nobody can see.
+  if (!spellingsOf(path).some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))) {
+    return null;
+  }
 
   // 4. Points at an asset we found.
-  const target = index.lookup(path, raw, root, publicDirs);
-  if (target !== null) {
+  //
+  // 🔴 **Every spelling, literal first (R118).** `enc%20name.png` is a real file with a
+  // percent sign in its name and `hero%20image.png` is a different real file called
+  // `hero image.png`. An engine that never decodes gets the second wrong; one that always
+  // decodes gets the first wrong; **only literal-then-decoded gets both**, and the
+  // coverage tree holds the pair on purpose so the order is a test rather than a habit.
+  for (const { spelling, path: candidate } of spellingsOf(path)) {
+    const found = index.lookup(candidate, raw, root, publicDirs);
+    if (found === null) continue;
     return {
       ...raw,
       resolution: 'resolved',
       confidence: raw.ceiling,
-      resolvedPath: target.path,
-      resolvedVia: target.via,
+      resolvedPath: found.path,
+      resolvedVia: found.via,
+      ...(spelling === 'literal' ? {} : { spelling }),
     };
   }
 

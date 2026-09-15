@@ -35,6 +35,7 @@
  * proceeds normally.
  */
 
+import { spell } from './adapters/reference-path.js';
 import type { AliasMap, AliasRule } from './aliases.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
@@ -465,21 +466,36 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   const suffix = rawPath.slice(pathPartOf(rawPath).length);
   const path = pathPartOf(rawPath);
 
+  // 🔴 **EVERY RETURN BELOW BUILDS THE NEW TEXT FROM `move.to`, WHICH IS THE ON-DISK
+  // PATH, AND THE AUTHOR DID NOT NECESSARILY WRITE PATHS THAT WAY (R118).** A file
+  // genuinely named `hero image.png` is reached from HTML by writing
+  // `hero%20image.png`; handing back `move.to` verbatim would put a **raw space inside a
+  // URL**, which is not a cosmetic difference — the rewritten reference stops working.
+  // Resolving this family is what made these rewritable in the first place, so the
+  // decode and the re-encode are one change.
+  //
+  // ⚠️ `reference.spelling` rather than a look at `rawPath`, because the two cases are
+  // indistinguishable in the text: `enc%20name.png` IS the filename in one case and is
+  // an encoding of `enc name.png` in another. Only the lookup knows which answered.
+  const spelling =
+    reference.resolution === 'resolved' ? (reference.spelling ?? 'literal') : 'literal';
+  const asWritten = (target: string): string => spell(target, spelling);
+
   const rule = aliasRuleFor(path, toPosix(reference.file), input.aliases);
   if (rule !== null) {
     const aliased = aliasTextFor(rule, move.to, input.graph.root);
-    return aliased === null ? null : `${aliased}${suffix}`;
+    return aliased === null ? null : `${asWritten(aliased)}${suffix}`;
   }
 
   if (reference.resolution === 'resolved' && reference.resolvedVia === 'serving-root') {
     const base = servingRootFor(move.to, input.servingRoots);
     if (base === null) return null;
     const rest = base === '' ? move.to : move.to.slice(base.length + 1);
-    return `/${rest}${suffix}`;
+    return `/${asWritten(rest)}${suffix}`;
   }
 
   if (reference.resolution === 'resolved' && reference.resolvedVia === 'project-root') {
-    return `/${move.to}${suffix}`;
+    return `/${asWritten(move.to)}${suffix}`;
   }
 
   const from = directoryOf(toPosix(relativePath(input.graph.root, reference.file)));
@@ -487,7 +503,7 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   // `./` is kept when the original had it and not invented when it did not, so the
   // edit changes the path and nothing else about the line.
   const dotted = path.startsWith('./') && !relative.startsWith('../') ? `./${relative}` : relative;
-  return `${dotted}${suffix}`;
+  return `${asWritten(dotted)}${suffix}`;
 }
 
 /** The serving root the new path sits under, or `null` when none does. */
