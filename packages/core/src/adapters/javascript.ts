@@ -36,6 +36,7 @@ import {
   isExternalUrl,
   parseSrcset,
   plausiblePathShape,
+  provablyNotAFile,
   splitPathSuffix,
 } from './reference-path.js';
 
@@ -931,6 +932,13 @@ function addReference(input: {
   // is hosted somewhere we do not manage, and `` `${base}/hero.png` `` still starts
   // with a hole rather than a scheme, so it is untouched.
   if (isExternalUrl(rawPath, kind)) return;
+
+  // R108, and it belongs beside the external-URL test for exactly the reason R21 gives
+  // above: `skipPathChecks` means *suffix splitting would be wrong on this text*, and
+  // every time a question has been put INSIDE that branch it has stopped being asked of
+  // the references that need it most. A path that ends in `/` is a directory whether or
+  // not its middle is a hole.
+  if (provablyNotAFile(rawPath) !== null) return;
 
   if (skipPathChecks) {
     into.push({

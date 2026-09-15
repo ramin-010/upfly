@@ -98,10 +98,41 @@ export function splitPathSuffix(rawPath: string): { path: string; suffix: string
   // alias prefix of a Node subpath import, and splitting there would leave an empty
   // path that vanishes at the next check. A leading `?` has no such reading.
   const from = rawPath.startsWith('#') ? 1 : 0;
-  const index = rawPath.slice(from).search(/[?#]/);
+
+  // 🔴 **A `?` or `#` INSIDE AN UNKNOWN SEGMENT IS NOT A DELIMITER, and reading it as
+  // one is how the extension filter stopped firing on templated paths.**
+  // `styles/${config?.style ?? 'new-york-v4'}/${item}.json` split at the `?` of the
+  // optional chain, leaving the path `styles/${config` — no extension, so
+  // `staticExtensionOf` returned `''`, so `provablyNotAnAsset` could not rule out a
+  // `.json` that is written right there in the source.
+  //
+  // ⚠️ **Masked rather than stripped, so every offset below still indexes `rawPath`.**
+  // Searching a hole-free copy would give an index into the wrong string, which is the
+  // class of bug this whole file exists to avoid. It is the same masking `astro.ts` uses
+  // on the frontmatter fence and for the same reason.
+  //
+  // ⚠️ B9 made the opposite mistake here and it cost three references: `#` opens a URL
+  // fragment in CSS and an INTERPOLATION in SCSS, `/theme-#{$mode}.png` was split at the
+  // `#`, the extension went with the discarded half and the reference was dropped
+  // entirely. Both halves of that ambiguity are now one rule in one place.
+  const masked = maskUnknownSegments(rawPath);
+  const index = masked.slice(from).search(/[?#]/);
   if (index === -1) return { path: rawPath, suffix: '' };
   return { path: rawPath.slice(0, from + index), suffix: rawPath.slice(from + index) };
 }
+
+/**
+ * A same-length copy of `rawPath` with every `${…}`, `#{…}`, `@{…}`, `{{…}}` and `{%…%}`
+ * replaced by filler, so a search for a delimiter cannot land inside one.
+ *
+ * Same length by construction — the offsets it returns are offsets into the original.
+ */
+function maskUnknownSegments(rawPath: string): string {
+  return rawPath.replace(UNKNOWN_SEGMENT, (match) => '\u0000'.repeat(match.length));
+}
+
+/** Every unknown-segment spelling, as one pattern. Kept beside the masker it serves. */
+const UNKNOWN_SEGMENT = /\$\{[^}]*\}|#\{[^}]*\}|@\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}/g;
 
 /** Template syntaxes that build a path at render time, and what to call each one. */
 const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
@@ -159,9 +190,13 @@ export const INTERPOLATIONS = Object.freeze([
  */
 export function interpolationChunks(rawPath: string): readonly string[] {
   let marked = rawPath;
-  for (const pattern of INTERPOLATIONS) marked = marked.replace(pattern, ' ');
-  return marked.split(' ');
+  for (const pattern of INTERPOLATIONS) marked = marked.replace(pattern, '\u0000');
+  return marked.split('\u0000');
 }
+// ⚠️ `'\u0000'` as an ESCAPE SEQUENCE, not a raw NUL byte. Two raw ones used to
+// sit in the lines above, and they made this whole file BINARY to `grep`, `git diff`
+// and every review tool — a real cost for a character nobody can see on the page.
+// Identical value, greppable file.
 
 export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
   const first = chunks[0] ?? '';
@@ -189,6 +224,67 @@ export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
  * Reporting `<img src="{{ image }}">` as broken would be a false positive of exactly
  * the kind the audit must have none of.
  */
+/**
+ * Why this text cannot name a file at all, or `null` when it might.
+ *
+ * 🔴 **R108, and it is the third phantom population after R99's.** The engine collects a
+ * JSX or template-literal `src` regardless of whether the result could ever be an image,
+ * because R78 Q1's extension filter has nothing to test — *a dynamic path has no
+ * extension to filter on*. So `` <iframe src={`/scratch2/${projectId}/adminpanel/`}> ``
+ * became an `unsafe` reference, was counted as something we could not handle, and
+ * **hedged nothing, because there is no asset behind it.**
+ *
+ * ✅ **Every rule here decides on what the static text PROVES, never on what it
+ * suggests** — the same discipline as R80(b)'s *one unknown segment is a pattern, two is
+ * a guess*:
+ *
+ * | | proof |
+ * |---|---|
+ * | ends in `/` | a directory. Whatever the holes interpolate to, nothing follows the slash |
+ * | begins with `?` | a query string. There is no path part at all |
+ * | its last `/`-segment begins with `#` | a fragment, which names a place in a document |
+ *
+ * 🔴 **`/view/${styleName}/${item.name}` IS NOT IN THAT LIST AND MUST NOT BE**, even
+ * though reading the repository shows it is a route. `item.name` could end in `.png`.
+ * The same protection keeps `` `report.${type}` `` — `${type}` could be `png`, making
+ * `report.png`. **We rule on the text; we do not rule on what we happen to know.**
+ *
+ * ⚠️ **AND THAT IS WHY THIS FUNCTION CANNOT REACH R108's HEADLINE, WHICH IS WORTH SAYING
+ * PLAINLY RATHER THAN QUIETLY MISSING.** R108 reports *133 of 142 non-charref `dynamic`
+ * references can never be an image*, and that is true — it was established by reading all
+ * 142 one at a time. Measured on the same corpus, these three rules catch **3**. The
+ * difference is not a weaker implementation of the same idea: *what a human reader
+ * concludes from a repository* and *what the static text proves* are two different
+ * populations, and only the second can be a rule. **Closing the gap would mean ruling on
+ * what the text suggests, which is the one thing R108 forbids.**
+ *
+ * ⚠️ **`#{`, `${` and `@{` open an INTERPOLATION, not a fragment.** `#{$mode}.png` is a
+ * path SCSS builds, and reading its `#` as a fragment marker would drop a real reference
+ * — the mistake B9 made in the other direction when `splitPathSuffix` split
+ * `/theme-#{$mode}.png` at the `#` and lost the extension.
+ */
+export function provablyNotAFile(rawPath: string): string | null {
+  if (rawPath.endsWith('/')) {
+    return 'the path ends in `/`, so it names a directory rather than a file';
+  }
+  if (rawPath.startsWith('?')) {
+    return 'the path begins with `?`, so it is a query string rather than a path';
+  }
+
+  const lastSegment = rawPath.slice(rawPath.lastIndexOf('/') + 1);
+  if (
+    lastSegment.startsWith('#') &&
+    !INTERPOLATION_OPENERS.some((o) => lastSegment.startsWith(o))
+  ) {
+    return 'the last segment is a `#fragment`, which names a place in a document rather than a file';
+  }
+
+  return null;
+}
+
+/** The three spellings of "an unknown segment starts here", for the fragment test. */
+const INTERPOLATION_OPENERS: readonly string[] = ['#{', '${', '@{'];
+
 export function templateExpressionReason(rawPath: string): string | null {
   for (const [marker, name] of TEMPLATE_EXPRESSIONS) {
     if (rawPath.includes(marker)) {

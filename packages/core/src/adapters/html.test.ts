@@ -236,6 +236,105 @@ describe('htmlAdapter', () => {
     it('leaves an ordinary path untouched by that rule', () => {
       expect(find('<img src="a-b.png">')[0]?.ceiling).toBe('high');
     });
+
+    /**
+     * R99. The guard above is right about the cases it was written for and it used to
+     * fire on **every attribute of every element**, before anything decided whether the
+     * attribute was a reference position at all.
+     *
+     * Measured across the five validation repositories: **536 references carried that
+     * reason and 535 were phantoms.** 402 of them were absolute URLs in real reference
+     * positions, 133 were attributes that are not references at all — `alt` prose, an
+     * `<a href>`, a PKCS7 certificate blob in a `<meta content>` — and exactly one was a
+     * genuine local image path with a character reference in it.
+     *
+     * 🔴 **The shape of the bug is the INVERSE of the one rule 9 guards.** Rule 9 stops
+     * us silently DROPPING a reference; this silently INVENTED them, and every invention
+     * landed in `unsafe` where it was counted as something we could not handle. A tool
+     * that manufactures its own failures measures itself as worse than it is, which is
+     * why it went unexamined: the number moved in the direction that reads as humility.
+     */
+    describe('R99 — only where the attribute is a reference position at all', () => {
+      const silent: ReadonlyArray<[name: string, source: string]> = [
+        ['alt prose', '<img src="ok.png" alt="Rails Girls Baltimore: March 1st &amp; 2nd">'],
+        ['an anchor href', '<a href="http://example.com/x?a=1&amp;b=2">x</a>'],
+        ['a meta content', '<meta content="-----BEGIN PKCS7-----MIIHNwYJKoZIhvc&#43;Q==">'],
+        ['a title attribute', '<div title="Tom &amp; Jerry"></div>'],
+        ['a data attribute', '<div data-q="a=1&amp;b=2"></div>'],
+        ['a stylesheet link', '<link rel="stylesheet" href="/s.css?a=1&amp;b=2">'],
+      ];
+
+      for (const [name, source] of silent) {
+        it(`emits nothing for ${name}`, () => {
+          expect(find(source).filter((reference) => reference.shape === 'path.charref')).toEqual(
+            [],
+          );
+        });
+      }
+
+      it('still reports the one shape it was written for', () => {
+        const references = find('<img src="./images/c&amp;s.png">');
+        expect(references).toHaveLength(1);
+        expect(references[0]?.shape).toBe('path.charref');
+        expect(references[0]?.ceiling).toBe('unsafe');
+      });
+
+      it('reports it in every other reference position too, not just img src', () => {
+        for (const source of [
+          '<video poster="./c&amp;s.png"></video>',
+          '<object data="./c&amp;s.svg"></object>',
+          '<link rel="icon" href="./c&amp;s.png">',
+          '<input type="image" src="./c&amp;s.png">',
+        ]) {
+          expect(find(source).map((reference) => reference.shape)).toEqual(['path.charref']);
+        }
+      });
+
+      /**
+       * R99's second half, and the larger one: the guard bypassed `isExternalUrl` as
+       * well as the position test. **An entity in a query string does not make another
+       * host's file ours**, so the answer must not depend on the spelling.
+       */
+      it('drops an escaped path that is somebody else’s, exactly as the unescaped one is', () => {
+        expect(find('<img src="http://graph.facebook.com/p?type=square&width=100">')).toEqual([]);
+        expect(find('<img src="http://graph.facebook.com/p?type=square&amp;width=100">')).toEqual(
+          [],
+        );
+      });
+
+      it('asks a srcset candidate by candidate, because one list is not one URL', () => {
+        // All external: nothing of ours is being mislocated.
+        expect(find('<img srcset="https://a/x.png?a=1&amp;b=2 1x, https://a/y.png 2x">')).toEqual(
+          [],
+        );
+        // One local candidate: the attribute still holds a path we cannot locate.
+        expect(
+          find('<img srcset="https://a/x.png 1x, ./c&amp;s.png 2x">').map(
+            (reference) => reference.shape,
+          ),
+        ).toEqual(['path.charref']);
+      });
+
+      /**
+       * 🔴 The external-URL test must not run on a style attribute, and this test is
+       * here because the first version of the fix ran it and dropped the attribute
+       * silently. `URL_SCHEME` is *letters then a colon*, so `width: 100%` reads as a
+       * scheme.
+       *
+       * ⚠️ **Both spellings, because the bug depended on WHITESPACE.** The only two real
+       * cases in the validation corpus begin with a space, which does not match the
+       * scheme pattern — so they went on being emitted and the measurement looked clean
+       * while the ordinary spelling was being thrown away.
+       */
+      it('leaves a style attribute alone — its text is CSS, not a URL', () => {
+        for (const source of [
+          '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
+          '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
+        ]) {
+          expect(find(source).map((reference) => reference.shape)).toEqual(['path.charref']);
+        }
+      });
+    });
   });
 
   describe('query strings', () => {

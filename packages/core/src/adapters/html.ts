@@ -21,6 +21,7 @@ import { defineAdapter } from './define.js';
 import {
   isExternalUrl,
   parseSrcset,
+  provablyNotAFile,
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
@@ -194,15 +195,38 @@ function collectFromElement(element: ParsedElement, context: Context): void {
     if (range === null) continue; // A valueless attribute such as `hidden`.
 
     const raw = context.text.slice(range.start, range.end);
-    if (raw !== attribute.value) {
-      // parse5 decodes entities, so `src="a&amp;b.png"` is 11 characters of source
-      // and 7 of value. We cannot point at the path inside it, and a rewrite based
-      // on a mismatched range would corrupt the file — so say so and move on.
-      addEntityEscapedReference(range, context);
-      continue;
-    }
 
-    collectFromAttribute({ element, tagName, name: sourceName, raw, start: range.start, context });
+    // 🔴 **THE CHARACTER-REFERENCE TEST USED TO BE HERE AND IT WAS ONE SCOPE TOO EARLY
+    // (R99).** parse5 decodes entities, so `src="a&amp;b.png"` is 11 characters of source
+    // and 7 of value; we cannot point at the path inside it and a rewrite on a mismatched
+    // range would corrupt the file. All of that is right. What was wrong is that it fired
+    // on **every attribute of every element** — before anything had decided whether the
+    // attribute was a reference position at all. Measured across the five validation
+    // repositories: **536 references carried that reason and 535 were phantoms** — other
+    // people's `href` URLs, `alt` prose, a PKCS7 certificate blob in a `<meta content>`.
+    //
+    // ⚠️ **Note the SHAPE of that bug, because it is the inverse of the one rule 9 guards.**
+    // Rule 9 exists to stop us silently DROPPING a reference. This silently INVENTED
+    // them, and every invention landed in `unsafe`, where it was counted as something we
+    // could not handle. **A tool that manufactures its own failures measures itself as
+    // worse than it is** — and that is why nobody looked for a year: the number moved in
+    // the direction that reads as humility, and a number moving that way does not get
+    // audited.
+    //
+    // So the flag travels and the decision happens inside, at each position that has
+    // already been judged a reference.
+    const entityEscaped = raw !== attribute.value;
+
+    collectFromAttribute({
+      element,
+      tagName,
+      name: sourceName,
+      raw,
+      start: range.start,
+      end: range.end,
+      entityEscaped,
+      context,
+    });
   }
 }
 
@@ -213,16 +237,57 @@ function collectFromAttribute(input: {
   name: string;
   raw: string;
   start: number;
+  end: number;
+  /** parse5's decoded value differs from the source text, so no range locates the path. */
+  entityEscaped: boolean;
   context: Context;
 }): void {
-  const { element, tagName, name, raw, start, context } = input;
+  const { element, tagName, name, raw, start, end, entityEscaped, context } = input;
+
+  // R99: every branch below is a reference position, and every one of them must answer
+  // the character-reference question the same way. One helper rather than four copies —
+  // a fifth reference position added later gets the answer by construction.
+  //
+  // 🔴 **AND THE HELPER DROPS SOMEBODY ELSE'S URL FIRST, WHICH IS R99'S SECOND HALF AND
+  // THE LARGER ONE.** Moving the test inward removed 135 of the 536 phantoms and left
+  // **402**, every one of them an absolute URL sitting in a real reference position —
+  // `<img src="http://graph.facebook.com/…?type=square&amp;width=100">` and its kind. The
+  // guard bypassed not only the position question but `isExternalUrl`, which every
+  // unescaped attribute passes through. **An entity in the query string does not make
+  // another host's file ours**, so the answer must not depend on the spelling:
+  // `src="https://x/a.png"` emits nothing and `src="https://x/a&amp;b.png"` must emit
+  // nothing too.
+  //
+  // ⚠️ **That is a move on evidence ABOUT THE REFERENCE — it is on another host — and not
+  // a judgement about what we can handle, which is the only kind of move R109's guard 2
+  // allows.** Until a project states its own origin, an absolute URL is not ours (R113).
+  const escaped = (isSrcset = false): void => {
+    if (escapedIsSomebodyElses(raw, isSrcset)) return;
+    addEntityEscapedReference({ start, end }, context);
+  };
 
   if (name === 'style') {
+    if (entityEscaped) {
+      // 🔴 **NOT `escaped()` — the external-URL test must NOT run on a style attribute,
+      // and the test suite caught this one line after it was written.** A style
+      // attribute holds CSS, and `URL_SCHEME` is *letters then a colon*, so
+      // `width: 100%; font: 12px &quot;Inter&quot;` reads as a scheme and the whole
+      // attribute vanished. **A silent skip introduced by the fix for a silent invention**
+      // — and the nastiest part is that it depended on whitespace: the two real cases in
+      // the corpus happen to start with a space, so the measurement still showed them
+      // surviving while the ordinary spelling was being dropped.
+      addEntityEscapedReference({ start, end }, context);
+      return;
+    }
     collectFromStyleAttribute(raw, start, context);
     return;
   }
 
   if ((SRCSET_ATTRIBUTES.get(tagName) ?? []).includes(name)) {
+    if (entityEscaped) {
+      escaped(true);
+      return;
+    }
     const candidates = parseSrcset(raw);
     for (const candidate of candidates) {
       addAttributeReference(
@@ -237,6 +302,10 @@ function collectFromAttribute(input: {
 
   const single = SINGLE_URL_ATTRIBUTES.get(tagName)?.get(name);
   if (single !== undefined) {
+    if (entityEscaped) {
+      escaped();
+      return;
+    }
     addAttributeReference(raw, start, context, single);
     return;
   }
@@ -246,7 +315,12 @@ function collectFromAttribute(input: {
     // third — `html.link.href.other` — and nothing is emitted for it, which is what
     // makes that row read as a zero-is-correct one.
     const claim = linkImageClaim(element);
-    if (claim !== null) addAttributeReference(raw, start, context, claim);
+    if (claim === null) return;
+    if (entityEscaped) {
+      escaped();
+      return;
+    }
+    addAttributeReference(raw, start, context, claim);
   }
 }
 
@@ -448,6 +522,28 @@ function attributeValueRange(
   return { start: startOffset + index, end: endOffset };
 }
 
+/**
+ * Whether an entity-escaped attribute names nothing of ours, so there is no path we are
+ * failing to locate.
+ *
+ * ⚠️ **A `srcset` is a LIST and must be asked candidate by candidate**, because one
+ * external URL beside one local path is not an external attribute. It is asked on the
+ * source text rather than on parse5's decoded value for the same reason everything else
+ * here is: the decoded value has no offsets into the file.
+ *
+ * ⚠️ **A `style` attribute never reaches here, and that is load-bearing.** Its text is CSS,
+ * and `URL_SCHEME` is *letters then a colon*, so `width: 100%` reads as a scheme and the
+ * whole declaration would be dropped. The style branch calls `addEntityEscapedReference`
+ * directly for that reason; see the comment there.
+ */
+function escapedIsSomebodyElses(raw: string, isSrcset: boolean): boolean {
+  if (!isSrcset) return isExternalUrl(raw, 'attr');
+  const candidates = parseSrcset(raw);
+  return (
+    candidates.length > 0 && candidates.every((candidate) => isExternalUrl(candidate.url, 'attr'))
+  );
+}
+
 function addEntityEscapedReference(range: { start: number; end: number }, context: Context): void {
   context.references.push({
     file: context.file,
@@ -457,8 +553,14 @@ function addEntityEscapedReference(range: { start: number; end: number }, contex
     kind: 'attr',
     // 🔴 A DISPOSITION, NOT A HOST SHAPE (R88(a)): what takes this reference out is the
     // spelling of the path, so it beats whatever attribute the path sits in — the same
-    // way an absolute URL does. The precedence is structural rather than a ladder
-    // choice: this fires in `collectFromAttributes` BEFORE any host shape is chosen.
+    // way an absolute URL does.
+    //
+    // ⚠️ **The precedence used to be structural and that was R99's bug.** This fired
+    // before any host shape was chosen, which also meant before anything asked whether
+    // the attribute was a reference position — so `path.charref` beat not only the host
+    // shape but the question *is this a reference at all*. It is now reached from inside
+    // each reference position, so the disposition still wins over the construct and no
+    // longer wins over the position.
     shape: 'path.charref',
     ceiling: 'unsafe',
     asserted: true,
@@ -469,6 +571,10 @@ function addEntityEscapedReference(range: { start: number; end: number }, contex
 function addAttributeReference(raw: string, start: number, context: Context, shape: ShapeId): void {
   if (raw === '') return;
   if (isExternalUrl(raw, 'attr')) return;
+  // R108. Beside the external-URL test because it answers the same kind of question —
+  // *is there a file of ours at the end of this at all* — and before the template branch
+  // because that branch is where a path with no testable extension ends up.
+  if (provablyNotAFile(raw) !== null) return;
 
   const reason = templateExpressionReason(raw);
   if (reason !== null) {
