@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 // while the real error came back.
 import {
   ACCEPTS,
+  BUCKETS,
   type MatrixFinding,
   type MatrixResult,
   type MatrixRow,
@@ -43,6 +44,8 @@ interface Entry {
   offset: number;
   line: number;
   knownGap?: string;
+  /** R96: which mechanism this entry's gap names, when it names one. */
+  gapMechanism?: string;
 }
 
 /** One keyed file with one entry, which is all most cases need. */
@@ -297,6 +300,119 @@ describe('a knownGap is a sanctioned divergence, and a settled one is a defect',
   });
 });
 
+/**
+ * 🔴 **R96 — and these cases exist because the harness DID retire a live defect.**
+ *
+ * Two `docs-examples/public/example.html` entries carry a gap saying *"detection climbs
+ * ancestors looking for a directory named `public` and will wrongly resolve this"*.
+ * `measure.mjs` feeds the key's DECLARED roots, so detection never ran; both entries came
+ * out `broken`, matched their `expect`, and printed **"the gap is closed"**. Probed against
+ * `detectServingRoots` the same day: it claims `docs-examples/public` and resolves both.
+ * The defect is entirely live and the record of it was one commit from deletion.
+ *
+ * ⚠️ **The first case below is the one that matters, and it is the agreement case.** A
+ * mismatch was always going to stay a gap; it is AGREEMENT that retires one, so agreement
+ * reached with the mechanism switched off is the whole bug.
+ */
+describe('R96 — a gap can only be retired by a run that exercises the mechanism it names', () => {
+  const gapped = (mechanism: string) =>
+    keyWith({
+      expect: 'broken',
+      knownGap: 'detection will climb ancestors and misresolve this',
+      gapMechanism: mechanism,
+    });
+
+  it('🔴 does NOT call a gap stale when its mechanism was not exercised, even on agreement', () => {
+    const result = buildMatrix(
+      gapped('serving-root-detection'),
+      observed([{ start: 10, resolution: 'broken' }]),
+      { exercises: new Set() },
+    );
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 0, notExercised: 1 });
+    expect(firstFinding(result)).toMatchObject({
+      kind: 'gap-not-exercised',
+      gapMechanism: 'serving-root-detection',
+    });
+    expect(firstFinding(result).detail).toContain('which is not evidence');
+  });
+
+  it('DOES call it stale once the run exercises that mechanism', () => {
+    // The other direction, so the rule is a condition rather than a blanket refusal. A
+    // guard that can only ever say no is R75's row nobody reads.
+    const result = buildMatrix(
+      gapped('serving-root-detection'),
+      observed([{ start: 10, resolution: 'broken' }]),
+      { exercises: new Set(['serving-root-detection']) },
+    );
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, notExercised: 0 });
+    expect(firstFinding(result)).toMatchObject({ kind: 'stale-known-gap' });
+  });
+
+  it('leaves a gap with no declared mechanism to the ordinary rule', () => {
+    // 58 of the key's entries carry a gap and only two name a mechanism. The default must
+    // not change for the other 56, or R96 would quietly freeze every debt in the key.
+    const result = buildMatrix(
+      keyWith({ knownGap: 'no reader yet' }),
+      observed([{ start: 10, resolution: 'resolved' }]),
+      { exercises: new Set() },
+    );
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, notExercised: 0 });
+  });
+
+  it('🔴 is NOT counted as a defect, but IS printed under its own heading', () => {
+    // Gating on it would make the run permanently red for a configuration measure.mjs
+    // chose on purpose, and a permanently-red gate is one people route around. Visible
+    // instead of fatal — but visible in prose, not only as a column of zeroes.
+    const result = buildMatrix(
+      gapped('serving-root-detection'),
+      observed([{ start: 10, resolution: 'broken' }]),
+    );
+    const rendered = renderMatrix(result);
+
+    expect(NON_DEFECT_KINDS).toContain('gap-not-exercised');
+    expect(rendered).toContain('NOT EXERCISED by this run');
+    expect(rendered).toContain('serving-root-detection');
+  });
+
+  it('🔴 THROWS on a gapMechanism outside the vocabulary, rather than freezing the entry', () => {
+    // A typo matches nothing in `exercises`, so the entry becomes a gap nobody can ever
+    // retire — and it reads as caution. Both mistakes here fail in the direction that
+    // looks fine, which is why this is a throw and not a row.
+    expect(() =>
+      buildMatrix(
+        gapped('serving-root-detektion'),
+        observed([{ start: 10, resolution: 'broken' }]),
+      ),
+    ).toThrow(/unknown gap mechanism/);
+  });
+
+  it('🔴 THROWS when the CALLER claims a mechanism that does not exist', () => {
+    // The mirror: a misspelled `exercises` entry matches no gap, so the run silently
+    // claims less than it does and every affected gap stays frozen.
+    expect(() =>
+      buildMatrix(
+        gapped('serving-root-detection'),
+        observed([{ start: 10, resolution: 'broken' }]),
+        {
+          exercises: new Set(['srving-root-detection']),
+        },
+      ),
+    ).toThrow(/caller claims to exercise/);
+  });
+
+  it('🔴 THROWS on a gapMechanism with no knownGap to retire', () => {
+    expect(() =>
+      buildMatrix(
+        keyWith({ gapMechanism: 'serving-root-detection' }),
+        observed([{ start: 10, resolution: 'resolved' }]),
+      ),
+    ).toThrow(/no knownGap/);
+  });
+});
+
 describe('it joins in BOTH directions', () => {
   it('🔴 reports a reference the engine claimed where the key lists nothing', () => {
     // The direction B7's probe could not see at all, and the more dangerous of the two:
@@ -389,6 +505,49 @@ describe('the rendering', () => {
 
     expect(rendered).toContain('a MISS here means the engine claimed it');
   });
+
+  /**
+   * 🔴 **THE CHECK VERIFIED THE DATA STRUCTURE AND NOTHING VERIFIED THE RENDERING.**
+   *
+   * `reconcile` summed six buckets and `rowTable` printed five, dropping `staleGap` from a
+   * column headed `gap`. Seven entries vanished between the two — `html.img.src` printed
+   * `27/29 miss 0`, `js.import.alias.mapped` printed `0/5 miss 0` — while the arithmetic
+   * line said ✅ every run, because the arithmetic really did close where it was checked.
+   * The comment twenty lines above the bug already said *"a table that does not add up
+   * still prints, and it prints confidently"*.
+   *
+   * ⚠️ These assert the PAGE, which is the surface the earlier proofs could not reach.
+   */
+  describe('the printed table, which is not the same thing as the arithmetic', () => {
+    it('prints a column for every bucket an entry can land in', () => {
+      const header = renderMatrix(result)
+        .split('\n')
+        .find((line) => line.trimStart().startsWith('shape'));
+      if (header === undefined) throw new Error('the rendered table has no header row');
+
+      for (const bucket of BUCKETS) expect(header).toContain(bucket.label);
+    });
+
+    it("🔴 says so loudly when a row's printed columns do not sum to its `exp`", () => {
+      // Built by hand rather than through buildMatrix: this is the state that cannot occur
+      // while BUCKETS is the single source, and the point is that the PAGE would catch it
+      // if it ever did. A proof that can only run through the happy path proves nothing.
+      const damaged = {
+        ...result,
+        rows: [{ ...rowOf(result, 'html.img.src'), expected: 9 }],
+      } as MatrixResult;
+
+      const rendered = renderMatrix(damaged);
+
+      expect(rendered).toContain('DO NOT SUM TO `exp`');
+      expect(rendered).toContain('html.img.src');
+    });
+
+    it('stays quiet when every row balances', () => {
+      // The other direction. A warning that is always on is a warning nobody reads.
+      expect(renderMatrix(result)).not.toContain('DO NOT SUM TO');
+    });
+  });
 });
 
 describe("the matrix's own arithmetic, proved able to fail", () => {
@@ -408,6 +567,7 @@ describe("the matrix's own arithmetic, proved able to fail", () => {
     threw: 0,
     knownGap: 0,
     staleGap: 0,
+    notExercised: 0,
     ...over,
   });
   const keyOf = (entries: number) => ({ files: [{ entries: Array.from({ length: entries }) }] });

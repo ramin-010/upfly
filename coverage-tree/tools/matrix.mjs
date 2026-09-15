@@ -79,6 +79,61 @@ export function toCodeUnits(bytes, byteOffset) {
 }
 
 /**
+ * Every bucket an entry can land in — **declared ONCE, and the columns are derived from
+ * it.**
+ *
+ * 🔴 **THIS LIST EXISTS BECAUSE THE TABLE PRINTED A SUM THAT DID NOT CLOSE, AND THE
+ * COMMENT TWENTY LINES BELOW ALREADY NAMED THAT EXACT FAILURE.** `reconcile` summed six
+ * buckets; `rowTable` printed five, dropping `staleGap` from a column headed `gap`. Seven
+ * entries vanished between the check and the page — `html.img.src` read `27/29 miss 0`,
+ * `js.import.alias.mapped` read `0/5 miss 0` — and the instrument's own arithmetic line
+ * said ✅ the whole time, because **the check verified the data structure and nothing
+ * verified the rendering.**
+ *
+ * ⚠️ Fixed structurally rather than by adding the missing column: both the check and the
+ * table now iterate this array, so a bucket cannot gain an entry without gaining a column.
+ * A second enumeration of the same set is the defect; one more column would have been the
+ * same defect waiting for the next bucket.
+ *
+ * `emitsFinding` is here for the same reason — `reconcile` cross-checks the bucket counts
+ * against the finding list, and that pairing was a third hand-written enumeration.
+ */
+export const BUCKETS = Object.freeze([
+  { key: 'met', label: 'met', emitsFinding: false },
+  { key: 'missed', label: 'miss', emitsFinding: true },
+  { key: 'threw', label: 'threw', emitsFinding: true },
+  { key: 'knownGap', label: 'gap', emitsFinding: false },
+  { key: 'staleGap', label: 'stale', emitsFinding: true },
+  { key: 'notExercised', label: 'n/x', emitsFinding: true },
+]);
+
+/**
+ * The mechanisms a `knownGap` can name, and the vocabulary a key entry may declare.
+ *
+ * 🔴 **R96. A GAP'S TEXT IS A SPECIFICATION OF THE INSTRUMENT THAT CAN RETIRE IT.** A gap
+ * whose text says *"detection climbs ancestors looking for a directory named `public` and
+ * will misresolve this"* cannot be retired by a run that feeds declared roots — detection
+ * never ran. Before R96 the two `docs-examples/public/example.html` entries came out
+ * `broken`, matched their `expect`, and printed **"the gap is closed"** for a defect that
+ * is entirely live in the product.
+ *
+ * ⚠️ **This is the third variant of R86's family in two days and it is the worst of them.**
+ * A throw read as a decline and a scope decision read as a defect both make the engine
+ * look WORSE than it is, and someone chasing a phantom finds nothing wrong. This one makes
+ * it look BETTER: it retires a live defect, and the record that would have told the next
+ * reader about it is the thing that gets deleted.
+ *
+ * Declared per entry rather than inferred from the prose, because inferring it means
+ * pattern-matching English and being wrong in the direction that deletes debts.
+ */
+export const GAP_MECHANISMS = Object.freeze([
+  // The resolver's ancestor climb for a conventionally-named serving root. Bypassed
+  // whenever a caller supplies `servingRoots.declared`, which `measure.mjs` does on
+  // purpose (R92) — correct for measuring resolution, disqualifying for retiring this.
+  'serving-root-detection',
+]);
+
+/**
  * Compare the two instruments.
  *
  * @param key the parsed answer key.
@@ -88,25 +143,37 @@ export function toCodeUnits(bytes, byteOffset) {
  *   could not read the file at all. A file absent from this map is itself a defect —
  *   reported, not skipped, because a silently missing file is how a matrix reads green
  *   over work it never did.
+ * @param exercises R96: the `GAP_MECHANISMS` this run actually puts through their paces.
+ *   A `knownGap` naming a mechanism outside this set can be neither confirmed nor retired
+ *   by the run, and lands in `notExercised` rather than being read as closed. The default
+ *   is EMPTY, which is the safe direction: a gap stays on the books until a caller states
+ *   that it ran the thing the gap is about.
  */
-export function buildMatrix(key, observed, { declarationOf = () => undefined } = {}) {
+export function buildMatrix(
+  key,
+  observed,
+  { declarationOf = () => undefined, exercises = new Set() } = {},
+) {
   const rows = new Map();
   const findings = [];
   const rowOf = (shape) => {
     let row = rows.get(shape);
     if (row === undefined) {
-      row = { shape, expected: 0, met: 0, missed: 0, threw: 0, knownGap: 0, staleGap: 0 };
+      row = { shape, expected: 0 };
+      for (const bucket of BUCKETS) row[bucket.key] = 0;
       rows.set(shape, row);
     }
     return row;
   };
+
+  assertMechanismsAreDeclared(key, exercises);
 
   for (const group of key.files) {
     const observation = observed.get(group.path);
     for (const entry of group.entries) {
       const row = rowOf(entry.shape);
       row.expected += 1;
-      const verdict = classify(entry, observation);
+      const verdict = classify(entry, observation, exercises);
       row[verdict.bucket] += 1;
       if (verdict.kind !== null) {
         findings.push(finding(group, entry, verdict.kind, verdict.detail, verdict.note));
@@ -121,6 +188,45 @@ export function buildMatrix(key, observed, { declarationOf = () => undefined } =
     shapeDisagreements: shapeDisagreements(key, observed, declarationOf),
     arithmetic: reconcile([...rows.values()], key, findings),
   };
+}
+
+/**
+ * Every `gapMechanism` the key names must be in the vocabulary, and so must every
+ * mechanism the caller claims to exercise.
+ *
+ * 🔴 **It THROWS rather than reporting, because both mistakes fail in the direction that
+ * looks fine.** A misspelled `gapMechanism` matches nothing in `exercises`, so the entry
+ * becomes permanently `not exercised` — a gap nobody can ever retire, which reads as
+ * caution. A misspelled `exercises` entry matches no gap, so the run silently claims less
+ * than it does. Neither produces a red row; both produce a quietly wrong table, and R75's
+ * first rule is that a matrix built on a broken instrument reads exactly like one that is
+ * not. `measure.mjs` already refuses to run on a key/tree disagreement for the same reason.
+ */
+function assertMechanismsAreDeclared(key, exercises) {
+  const known = new Set(GAP_MECHANISMS);
+  const unknown = new Set();
+  for (const group of key.files) {
+    for (const entry of group.entries) {
+      if (entry.gapMechanism !== undefined && !known.has(entry.gapMechanism)) {
+        unknown.add(
+          `key ${group.path}:${entry.line} declares gapMechanism "${entry.gapMechanism}"`,
+        );
+      }
+      // A mechanism on an entry with no gap has nothing to retire and is a transcription
+      // slip, not a policy: it would sit there looking meaningful and doing nothing.
+      if (entry.gapMechanism !== undefined && entry.knownGap === undefined) {
+        unknown.add(`key ${group.path}:${entry.line} declares a gapMechanism but has no knownGap`);
+      }
+    }
+  }
+  for (const mechanism of exercises) {
+    if (!known.has(mechanism)) unknown.add(`caller claims to exercise "${mechanism}"`);
+  }
+  if (unknown.size > 0) {
+    const vocabulary = GAP_MECHANISMS.join(', ');
+    const offenders = [...unknown].sort().join('\n  ');
+    throw new Error(`unknown gap mechanism(s) — the vocabulary is ${vocabulary}:\n  ${offenders}`);
+  }
 }
 
 /**
@@ -143,7 +249,11 @@ export function reconcile(rows, key, findings) {
   const problems = [];
   let expected = 0;
   for (const row of rows) {
-    const parts = row.met + row.missed + row.threw + row.knownGap + row.staleGap;
+    // Summed over `BUCKETS`, which is also what the table prints. Before R96 this summed a
+    // hand-written list of six while the table printed a hand-written list of five, and
+    // the discrepancy was invisible from here: this loop closed, the table did not, and
+    // only the ✅ was on the page.
+    const parts = BUCKETS.reduce((total, bucket) => total + row[bucket.key], 0);
     if (parts !== row.expected) {
       problems.push(`${row.shape}: buckets sum to ${parts}, expected ${row.expected}`);
     }
@@ -153,10 +263,16 @@ export function reconcile(rows, key, findings) {
   if (expected !== entries) {
     problems.push(`rows account for ${expected} entries, the key holds ${entries}`);
   }
-  // Every finding belongs to exactly one non-met bucket, so the two counts must agree.
-  const accounted = rows.reduce((total, row) => total + row.missed + row.threw + row.staleGap, 0);
+  // Every finding belongs to exactly one bucket that declares `emitsFinding`, so the two
+  // counts must agree — and which buckets those are is read from `BUCKETS` rather than
+  // listed again here.
+  const accounted = rows.reduce(
+    (total, row) =>
+      total + BUCKETS.reduce((sum, bucket) => sum + (bucket.emitsFinding ? row[bucket.key] : 0), 0),
+    0,
+  );
   if (accounted !== findings.length) {
-    problems.push(`${accounted} non-met entries against ${findings.length} findings`);
+    problems.push(`${accounted} finding-bearing entries against ${findings.length} findings`);
   }
   return { closes: problems.length === 0, problems, entries };
 }
@@ -187,12 +303,25 @@ function finding(group, entry, kind, detail, engineNote) {
     // Both sides' own words, so a reader can adjudicate without opening two files.
     keyWhy: entry.why ?? '',
     keyGap: entry.knownGap ?? '',
+    // R96: which mechanism this entry's gap names, when it names one. Carried on the
+    // finding so the renderer can say WHICH instrument would have to run, rather than
+    // only that some instrument did not.
+    gapMechanism: entry.gapMechanism ?? '',
     engineNote: engineNote ?? '',
   };
 }
 
-/** Kinds that are NOT defects: reported for visibility, never counted against the run. */
-export const NON_DEFECT_KINDS = ['threw-expected-silence'];
+/**
+ * Kinds that are NOT defects: reported for visibility, never counted against the run.
+ *
+ * ⚠️ `gap-not-exercised` is here **and it is not a concession.** It says "this instrument
+ * cannot answer this question", which is a fact about the harness, not a fault in the
+ * engine — and gating on it would make the run permanently red for a configuration
+ * `measure.mjs` chose on purpose. A permanently-red gate is a gate people route around,
+ * and that is how the pre-commit hook nearly died. It is printed under its own heading
+ * instead, with a count, so it cannot be mistaken for a clean row.
+ */
+export const NON_DEFECT_KINDS = ['threw-expected-silence', 'gap-not-exercised'];
 
 /**
  * What one keyed entry turned out to be. Split out of `buildMatrix` rather than
@@ -200,7 +329,7 @@ export const NON_DEFECT_KINDS = ['threw-expected-silence'];
  * never silence it) — and the four outcomes read as a ladder here, which the inlined
  * version did not.
  */
-function classify(entry, observation) {
+function classify(entry, observation, exercises = new Set()) {
   // A file we never observed is not evidence of anything. Reported per entry, so the
   // row's `expected` still counts it rather than the group vanishing.
   if (observation === undefined) {
@@ -243,6 +372,23 @@ function classify(entry, observation) {
   const note = found?.note ?? '';
 
   if (entry.knownGap !== undefined) {
+    // 🔴 R96, AND IT IS CHECKED BEFORE `agrees` RATHER THAN AFTER. A gap naming a mechanism
+    // this run does not exercise cannot be retired by this run, and — this is the whole
+    // point — it is *agreement* that would retire it. The two
+    // `docs-examples/public/example.html` entries expect `broken`, the engine under
+    // declared roots says `broken`, they agreed, and the matrix printed "the gap is
+    // closed" about a defect that fires on every real invocation. Reading the agreement
+    // first and the mechanism second is the version of this that shipped.
+    if (entry.gapMechanism !== undefined && !exercises.has(entry.gapMechanism)) {
+      return {
+        bucket: 'notExercised',
+        kind: 'gap-not-exercised',
+        detail:
+          `this run does not exercise \`${entry.gapMechanism}\`, so the gap can be neither ` +
+          `confirmed nor retired here — the engine said ${actual}, which is not evidence`,
+        note,
+      };
+    }
     // A knownGap that has been closed must be REMOVED, not left standing. Same hazard as
     // a growth-list shape that quietly gained coverage: a debt nobody settles the record
     // of goes on being printed as a debt, and a reader learns to discount the column.
@@ -374,6 +520,7 @@ export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
     ...heading(),
     ...arithmeticLine(result),
     ...populations(result, emissionOf),
+    ...notExercisedNote(result),
     ...rowTable(result, emissionOf, width),
     ...findingList(result),
     ...unkeyedList(result),
@@ -443,6 +590,28 @@ function populations(result, emissionOf) {
   return lines;
 }
 
+/**
+ * 🔴 **R96, stated on the page rather than only in a column.** An entry counted here is
+ * one the harness is NOT QUALIFIED to judge: its `knownGap` names a mechanism this run
+ * switched off, so both a match and a mismatch would be an artefact of the configuration.
+ * The `n/x` column carries the number; this paragraph carries the reason, because a reader
+ * scanning for zeroes will read a column as "nothing to see".
+ */
+function notExercisedNote(result) {
+  const items = result.findings.filter((item) => item.kind === 'gap-not-exercised');
+  if (items.length === 0) return [];
+  const mechanisms = [...new Set(items.map((item) => item.gapMechanism))].sort();
+  return [
+    '',
+    `⚠️  ${items.length} entr${items.length === 1 ? 'y is' : 'ies are'} NOT EXERCISED by this run ` +
+      `(mechanism${mechanisms.length === 1 ? '' : 's'}: ${mechanisms.join(', ')}).`,
+    '   Their knownGaps can be neither confirmed nor retired here, and the engine agreeing with',
+    '   the key on them means nothing — the mechanism the gap names never ran. Before R96 these',
+    '   printed as "the gap is closed", which retired a live defect and deleted the only record',
+    '   of it. They are listed under findings as `gap-not-exercised`.',
+  ];
+}
+
 function reading(direction, bucket) {
   if (direction === 'claimed') {
     return `${bucket.met} of ${bucket.expected} met — THE ONLY POPULATION WHERE A MISS IS A BUG`;
@@ -453,17 +622,49 @@ function reading(direction, bucket) {
   return `${bucket.expected} entries, ${bucket.missed} where the engine claimed something`;
 }
 
+/** The buckets other than `met`, which is printed against `expected` rather than beside it. */
+const NON_MET_BUCKETS = BUCKETS.filter((bucket) => bucket.key !== 'met');
+
+/**
+ * The numbers this row actually PRINTS, in print order.
+ *
+ * 🔴 **The renderer and the check now read the same function.** The bug R96 was found
+ * through was two independent enumerations of one bucket set — `reconcile` summed six and
+ * the table printed five — so the table under-reported seven entries while the arithmetic
+ * line said ✅. Deriving the cells from `BUCKETS` means a new bucket appears as a column
+ * whether or not anybody remembers to add one.
+ */
+function cellsOf(row) {
+  return NON_MET_BUCKETS.map((bucket) => row[bucket.key]);
+}
+
 function rowTable(result, emissionOf, width) {
   const pad = (text) => String(text).padEnd(width);
   const num = (value) => String(value).padStart(4);
+  const headers = NON_MET_BUCKETS.map((bucket) => num(bucket.label)).join(' ');
   const lines = [
     '',
-    `${pad('shape')}  ${num('met')}/${num('exp')}  ${num('miss')} ${num('threw')} ${num('gap')}  direction`,
+    `${pad('shape')}  ${num('met')}/${num('exp')}  ${headers}  direction`,
     '-'.repeat(width + 40),
   ];
   for (const row of result.rows) {
-    const counts = `${num(row.met)}/${num(row.expected)}  ${num(row.missed)} ${num(row.threw)} ${num(row.knownGap)}`;
+    const cells = cellsOf(row).map(num).join(' ');
+    const counts = `${num(row.met)}/${num(row.expected)}  ${cells}`;
     lines.push(`${pad(row.shape)}  ${counts}  ${directionOf(emissionOf(row.shape))}`);
+  }
+  // 🔴 THE PRINTED TABLE, CHECKED AS PRINTED. `reconcile` proves the data structure adds
+  // up; this proves the PAGE does. They were the same proof until they silently were not,
+  // and the gap between them was where seven entries lived for a day.
+  const unbalanced = result.rows.filter(
+    (row) => row.met + cellsOf(row).reduce((total, cell) => total + cell, 0) !== row.expected,
+  );
+  if (unbalanced.length > 0) {
+    lines.push(
+      '',
+      '🔴 THE COLUMNS ABOVE DO NOT SUM TO `exp` ON THESE ROWS, SO THE TABLE IS HIDING ENTRIES:',
+      ...unbalanced.map((row) => `     ${row.shape}`),
+      '   A bucket exists that no column prints. Add it to BUCKETS rather than to this list.',
+    );
   }
   return lines;
 }

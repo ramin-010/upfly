@@ -1329,7 +1329,7 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "@img/* maps to shared/assets/img/*.",
-          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
+          "knownGap": "R99 / markdown.ts: the markdown adapter CLAIMS .mdx and reads it, but it reads only markdown image syntax and JSX attributes — an ESM import line is never examined, so this lands nowhere rather than in unresolved-alias. MEASURED 2026-09-15: the adapter emits 4 references from this file and none is an import. The previous text here blamed tsconfig paths resolution, which had already landed; it was copied from four sibling entries where that WAS the cause. Same reader gap as the three mdx.import misses.",
           "target": "shared/assets/img/thumb.png",
           "offset": 319,
           "line": 11,
@@ -1801,8 +1801,7 @@
           "why": "And a third, this time CSS rather than HTML.",
           "offset": 2391,
           "line": 83,
-          "column": 39,
-          "knownGap": "R85 / markdown.ts maskInactiveRegions: four-space code blocks are deliberately NOT masked, because telling one from a continuation line inside a list needs a real block parser and guessing wrong would blank a real reference. So today the engine collects these; discarded is the IDEAL, not the current behaviour."
+          "column": 39
         },
         {
           "raw": "/img/texture.png",
@@ -1900,7 +1899,6 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "An alias import in the fence.",
-          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/hero.jpg",
           "offset": 180,
           "line": 5,
@@ -4321,7 +4319,6 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "~/* maps to shared/*. The FOURTH logo.png.",
-          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/logo.png",
           "offset": 155,
           "line": 4,
@@ -4333,7 +4330,6 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "@img/* maps to shared/assets/img/*.",
-          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/aliased.png",
           "offset": 203,
           "line": 5,
@@ -4731,7 +4727,6 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "An alias in a string rather than an import.",
-          "knownGap": "Phase 2 owns tsconfig paths resolution; today this lands in unresolved-alias.",
           "target": "shared/assets/img/hero.jpg",
           "offset": 3097,
           "line": 86,
@@ -5609,7 +5604,8 @@
           "offset": 495,
           "line": 14,
           "column": 15,
-          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible."
+          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible.",
+          "gapMechanism": "serving-root-detection"
         },
         {
           "raw": "/logo.png",
@@ -5620,7 +5616,8 @@
           "offset": 583,
           "line": 15,
           "column": 15,
-          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible."
+          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible.",
+          "gapMechanism": "serving-root-detection"
         },
         {
           "raw": "./sample.png",

@@ -173,7 +173,28 @@ for (const group of key.files) {
   });
 }
 
-const result = buildMatrix(key, observed, { declarationOf: (id) => shapeById(id) });
+/**
+ * 🔴 R96 — WHICH MECHANISMS THIS RUN ACTUALLY EXERCISES, DECLARED, AND IT IS EMPTY.
+ *
+ * `declaredRoots` above bypasses `detectServingRoots` deliberately and correctly: measuring
+ * RESOLUTION against auto-detection would blame the reader for a detection gap (the comment
+ * on `declaredRoots` is the argument). But the same switch disqualifies this run from
+ * retiring any gap whose text names that detection — and two entries in
+ * `docs-examples/public/example.html` name exactly it. They came out `broken`, matched
+ * their `expect`, and the matrix printed **"the gap is closed"** about a defect that fires
+ * on every real invocation: `detectServingRoots` claims `docs-examples/public` and resolves
+ * both references against it.
+ *
+ * ⚠️ **An empty set is the correct default and not a placeholder.** A mechanism belongs in
+ * here only once this file actually runs it, and the safe direction for a mistake is a gap
+ * that stays on the books, never one retired by a run that never touched it.
+ */
+const EXERCISED_MECHANISMS = new Set();
+
+const result = buildMatrix(key, observed, {
+  declarationOf: (id) => shapeById(id),
+  exercises: EXERCISED_MECHANISMS,
+});
 process.stdout.write(`${renderMatrix(result, { emissionOf: (id) => shapeById(id)?.emission })}\n`);
 
 // Exit non-zero on anything the tree says is a defect, so this can gate as well as

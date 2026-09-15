@@ -24,7 +24,26 @@ export interface MatrixRow {
   readonly knownGap: number;
   /** A `knownGap` whose entry now agrees: the debt was settled and the record was not. */
   readonly staleGap: number;
+  /**
+   * R96: a `knownGap` naming a mechanism this run did not exercise. **Never `staleGap`,
+   * whatever the engine said** — agreement reached with the mechanism switched off is an
+   * artefact of the configuration, and reading it as closure retires a live defect.
+   */
+  readonly notExercised: number;
 }
+
+/** One bucket an entry can land in. The table's columns are derived from this list. */
+export interface Bucket {
+  readonly key: 'met' | 'missed' | 'threw' | 'knownGap' | 'staleGap' | 'notExercised';
+  readonly label: string;
+  /** Whether an entry in this bucket produces a finding. `reconcile` cross-checks it. */
+  readonly emitsFinding: boolean;
+}
+
+export declare const BUCKETS: readonly Bucket[];
+
+/** The vocabulary a key entry's `gapMechanism` may name (R96). */
+export declare const GAP_MECHANISMS: readonly string[];
 
 export interface MatrixFinding {
   readonly file: string;
@@ -36,11 +55,14 @@ export interface MatrixFinding {
     | 'threw'
     | 'threw-expected-silence'
     | 'stale-known-gap'
+    | 'gap-not-exercised'
     | 'not-observed';
   readonly detail: string;
   /** The tree author's claim about what a correct engine does. R90: both sides speak. */
   readonly keyWhy: string;
   readonly keyGap: string;
+  /** Which mechanism this entry's gap names, when it names one (R96). */
+  readonly gapMechanism: string;
   /** The engine's own words about its decision. */
   readonly engineNote: string;
 }
@@ -108,6 +130,12 @@ export function buildMatrix(
   observed: ReadonlyMap<string, Observation>,
   options?: {
     readonly declarationOf?: (id: string) => { adapterEmitsAs?: readonly string[] } | undefined;
+    /**
+     * R96: the `GAP_MECHANISMS` this run actually exercises. A `knownGap` naming anything
+     * outside it lands in `notExercised` and can never be retired by this run. Defaults to
+     * EMPTY — the safe direction, because the alternative deletes a debt nobody tested.
+     */
+    readonly exercises?: ReadonlySet<string>;
   },
 ): MatrixResult;
 
