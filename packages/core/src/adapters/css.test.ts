@@ -429,3 +429,94 @@ describe('a parenthesis inside quotes is a character, not a function call (R26 c
     expect(reference?.ceiling).toBe('unsafe');
   });
 });
+
+/**
+ * A quoted path parked in a preprocessor variable.
+ *
+ * 🔴 **THE ASSET IS NOT HEDGED, WHICH IS WHY THIS IS A DEFECT RATHER THAN A MISSING ROW.**
+ * Without this, the only thing the engine sees is `url($hero)` — correctly `dynamic`, a
+ * hedge that protects the REFERENCE and says nothing about the FILE. If `/img/hero.jpg` is
+ * named nowhere else it looks dead, and `--replace` converts it and leaves the declaration
+ * pointing at a name that is gone. Silently.
+ *
+ * ⚠️ **Two mechanisms, and only one of them is a declaration.** `$x: '…'` reaches
+ * `walkDecls`; Less's `@x: '…'` is an AT-RULE to CSS's grammar and never does. A test that
+ * only covered Sass would have passed against an engine that reads none of the Less half.
+ */
+describe('a path in a preprocessor variable declaration is a reference', () => {
+  it.each([
+    ['scss', '$hero: "/img/hero.jpg";\n', '/img/hero.jpg', 'styles.scss'],
+    ['scss, single-quoted', "$hero: '/img/hero.jpg';\n", '/img/hero.jpg', 'styles.scss'],
+    ['scss, relative', "$logo: '../assets/logo.png';\n", '../assets/logo.png', 'styles.scss'],
+    ['less', '@hero: "/img/hero.jpg";\n', '/img/hero.jpg', 'styles.less'],
+    ['less, single-quoted', "@hero: '/img/hero.jpg';\n", '/img/hero.jpg', 'styles.less'],
+    // Odd spacing, because the Less offset is computed from `@` + name + `afterName` and
+    // that arithmetic is exactly where an off-by-one lives.
+    ['less, extra spacing', '@hero:    "/img/hero.jpg";\n', '/img/hero.jpg', 'styles.less'],
+  ])('finds one in %s', (_name, source, expected, file) => {
+    const references = cssAdapter.findReferences({ file: `/project/${file}`, text: source });
+
+    expect(references.map((reference) => reference.rawPath)).toEqual([expected]);
+    // The range invariant, checked by slicing rather than asserted.
+    expect(slices(source, references)).toEqual([expected]);
+  });
+
+  it('marks it a GUESS, which is what keeps a wrong one out of the report', () => {
+    const [reference] = cssAdapter.findReferences({
+      file: '/project/styles.scss',
+      text: "$hero: '/img/hero.jpg';\n",
+    });
+
+    // `asserted: false` is the difference between a hedge and a false positive: one that
+    // hits nothing is `discarded`, where an asserted one would be reported `broken`.
+    expect(reference).toMatchObject({ asserted: false, shape: 'scss.url' });
+    expect(reference?.note).toContain('guessed rather than asserted');
+  });
+
+  /**
+   * 🔴 **THE REJECTIONS ARE THE HALF THAT MATTERS.** A rule that collects every quoted
+   * string in a variable would manufacture exactly the false positives R49 warns about,
+   * and these are the strings it must refuse. **Measured on the validation corpus: of 16
+   * quoted-string variable declarations across 194 real `.scss`/`.less` files, 0 have a
+   * file extension — and every one of them is a media query, the first case below.**
+   */
+  it.each([
+    ['a media query', '$big: "only screen and (min-width : 900px)";\n', 'styles.scss'],
+    ['a directory with no extension', "$image-root: '/gallery';\n", 'styles.scss'],
+    ['a less directory', '@image-root: "/gallery";\n', 'styles.less'],
+    ['a selector list', '$extras: ".thumbnail-creator, .thumbnail-loves";\n', 'styles.scss'],
+    ['an external url', "$cdn: 'https://cdn.example.com/x.png';\n", 'styles.scss'],
+    // Prose that happens to name a file. The JS rule's SPACED_PATH anchoring is what
+    // rejects this, and it is shared rather than reimplemented here.
+    ['prose naming a file', "$note: 'see ./old.png for details';\n", 'styles.scss'],
+    // Not a variable at all: in an ordinary declaration a quoted string is TEXT.
+    ['content, which is a caption', '.a { content: "note.png"; }\n', 'styles.scss'],
+    ['a plain CSS custom property', '.a { --brand: "/img/hero.jpg"; }\n', 'styles.css'],
+  ])('refuses %s', (_name, source, file) => {
+    expect(cssAdapter.findReferences({ file: `/project/${file}`, text: source })).toEqual([]);
+  });
+
+  it('does not disturb the url() that USES the variable', () => {
+    // The use stays `dynamic` — nothing static to resolve, and nobody typed a wrong path.
+    // Both are emitted, at two different positions, and that is the point: the
+    // declaration names the file and the use names the variable.
+    const source = "$hero: '/img/hero.jpg';\n.a { background: url($hero); }\n";
+    const references = cssAdapter.findReferences({ file: '/project/s.scss', text: source });
+
+    expect(references.map((reference) => [reference.shape, reference.rawPath])).toEqual([
+      ['scss.url', '/img/hero.jpg'],
+      ['scss.variable', '$hero'],
+    ]);
+  });
+
+  it('does not claim a string inside a function, which url() and image-set already own', () => {
+    // `!position.nested`: inside a function the string is an argument, and the two
+    // functions that take a path are handled above this rule.
+    const references = cssAdapter.findReferences({
+      file: '/project/s.scss',
+      text: "$shadow: some-fn('/img/hero.jpg');\n",
+    });
+
+    expect(references).toEqual([]);
+  });
+});

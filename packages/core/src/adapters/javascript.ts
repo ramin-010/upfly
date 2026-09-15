@@ -35,6 +35,7 @@ import {
   assembledPathIsGlobbable,
   isExternalUrl,
   parseSrcset,
+  plausiblePathShape,
   splitPathSuffix,
 } from './reference-path.js';
 
@@ -335,88 +336,6 @@ function collectFromNode(node: BabelNode, context: Context): void {
  * hedge, because Phase 2 can then act on it — and one that does not is `discarded`
  * silently, which is already the ruled behaviour for a guess.
  */
-/**
- * Whether a bare string is shaped enough like a path to guess at (R26).
- *
- * ⚠️ **The line this replaces said `a path never contains whitespace`, and that is
- * simply false.** Spaces come from every CMS upload and every dragged-in file, so
- * `["/ncc/Firing Practice.webp"]` yielded nothing and the asset came back a confident
- * `dead` — *"safe to delete"* about a file on a live site. The claim was stated as fact
- * in a comment, which is why nobody questioned it.
- *
- * A comma still disqualifies: that is the unsplit `srcSet` shape
- * (`"/a.jpg 1x, /b.jpg 2x"`), which is a list rather than a path. So are tabs and
- * newlines, which no real path carries.
- *
- * **A space is allowed only alongside a `/`, and that rule is measured rather than
- * guessed.** Two repositories point opposite ways and separate cleanly:
- *
- * - `D:/RBU/RBU-Website`: **109** quoted image paths contain a space, and **109 of 109
- *   contain a slash.** Every real case is a served path.
- * - `shadcn-ui`: **87** quoted strings contain a space and end in an image extension,
- *   and **0 of 87 contain a slash.** All 13 distinct values are accessible UI labels —
- *   `"Remove workspace.png"`, `"Open desk-reference.jpg"`. Prose, not paths.
- *
- * Without the slash, a spaced string is indistinguishable from a sentence, and treating
- * one as a reference risks the expensive direction: a speculative string that *resolves*
- * becomes a real link Phase 2 will rewrite.
- *
- * ⚠️ **The known limit, deliberately not widened:** a bare spaced filename with no
- * separator — `{ file: 'My Logo.svg' }`, R14's shape with a space in it — stays
- * invisible. **Measured frequency across all four repositories: zero.** It is pinned by
- * a test in `javascript.test.ts` so the gap is written down rather than silent, and
- * widening it is one clause here.
- */
-function plausiblePathShape(path: string): boolean {
-  if (/[\t\n\r,]/.test(path)) return false;
-  if (!path.includes(' ')) return true;
-  return SPACED_PATH.test(path) && path.includes('/');
-}
-
-/**
- * A string that is *nothing but* a path, allowing single spaces inside it.
- *
- * ⚠️ **The slash rule alone was not enough, and the suite caught it.** `never mistakes
- * text for code` failed on three cases that contain both a space and a slash:
- *
- * ```
- * "see ./old.png for details"        prose in an object property
- * `we removed ./old.png last week`   prose in a template
- * "import logo from './old.png'"     an import statement quoted as text
- * ```
- *
- * What separates those from `/ncc/Firing Practice.webp` is not the slash — it is that
- * **prose continues after the extension.** So the pattern is anchored at both ends and
- * must finish on a real extension: `.` followed only by letters or digits. That rejects
- * `.png for details` (spaces after the dot) and `.png'` (a trailing quote), while
- * `.webp` and `.jpg` pass.
- *
- * `*` is in the character class because `collectSpeculativeTemplate` joins its holes with
- * one, so `` `/gallery/Firing Practice ${n}.webp` `` arrives here as
- * `/gallery/Firing Practice *.webp`.
- *
- * ⚠️ **`(` and `)` are here, and only here — this is a per-syntax fix, not a global one.**
- * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` is what a phone screenshot plus a
- * browser's duplicate-download suffix produces, and it is the commonest way a
- * non-developer gets an image into a repository. Measured on `RBU-Website`: **9 images
- * carry a paren and 4 of them were referenced and reported `dead` anyway** — 0.7% of 553.
- *
- * A string literal is already a quoted context, so a paren inside it is an ordinary
- * character. **It is not one everywhere else**: in unquoted CSS `url(…)` and in bare
- * Markdown `![](…)` a paren is the closing delimiter, and admitting it there breaks the
- * parse rather than widening it. Both of those have quoted and angle-bracket forms that
- * already carry such a name correctly, so nothing is lost by leaving them alone. Measured:
- * of twelve reference positions, **only the bare string literal lost a paren path**.
- *
- * The end anchor is what keeps this safe. `"url(hero.png)"` as a bare JS string ends on
- * `)`, not on an extension, so it is still rejected — the widening admits filenames, not
- * function calls.
- *
- * Note that `extensionOf` cannot do this job: `extname('see ./old.png for details')`
- * returns `'.png for details'`, which is non-empty, so the extension check upstream was
- * satisfied by prose all along — the old whitespace ban was what had been hiding it.
- */
-const SPACED_PATH = /^[\w@.\-/*()]+(?: [\w@.\-/*()]+)*\.[A-Za-z0-9]+$/;
 
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;

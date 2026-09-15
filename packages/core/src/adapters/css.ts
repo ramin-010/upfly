@@ -12,7 +12,7 @@
  * resolves a path and never asks whether a file exists.
  */
 
-import postcss, { type Declaration, type Root } from 'postcss';
+import postcss, { type AtRule, type Declaration, type Root } from 'postcss';
 import lessParser from 'postcss-less';
 import scssParser from 'postcss-scss';
 import valueParser, { type Node as ValueNode } from 'postcss-value-parser';
@@ -22,7 +22,7 @@ import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
-import { isExternalUrl, splitPathSuffix } from './reference-path.js';
+import { isExternalUrl, plausiblePathShape, splitPathSuffix } from './reference-path.js';
 
 /**
  * Dialect parsers, by extension.
@@ -112,9 +112,21 @@ export function findCssReferences(input: {
   }
 
   const references: RawReference[] = [];
+  const run: CssRun = { file, baseOffset, extension, hostShape, references };
   root.walkDecls((declaration) => {
-    collectFromDeclaration(declaration, { file, baseOffset, extension, hostShape, references });
+    collectFromDeclaration(declaration, run);
   });
+  // 🔴 A SECOND WALK, BECAUSE LESS'S VARIABLES ARE A DIFFERENT NODE TYPE. `$hero: '…'` is a
+  // Declaration to postcss-scss and reaches `walkDecls`; `@hero: '…'` is an AT-RULE to
+  // postcss-less — `@` opens an at-rule in CSS's grammar — so it never reaches `walkDecls`
+  // at all and no amount of work inside `collectFromDeclaration` could have found it.
+  // ⚠️ Two mechanisms, and the key already had that right: `scss.url` and `less.url` are
+  // separate rows, and R82's ladder says a thing that fails differently IS a separate row.
+  if (extension === '.less') {
+    root.walkAtRules((atRule) => {
+      collectFromVariableAtRule(atRule, run);
+    });
+  }
 
   // Document order already, but sorting makes determinism a property of the code
   // rather than of PostCSS's traversal order.
@@ -159,12 +171,19 @@ interface CssRun {
   readonly references: RawReference[];
 }
 
-/** What one declaration adds: the two things that decide a shape on their own. */
+/** What one declaration adds: the things that decide a shape on their own. */
 interface DeclarationContext {
   /** `--brand-image` means the url is reached through a custom property. */
   readonly property: string;
   /** `@font-face` bodies hold fonts, which are real files the engine never indexes. */
   readonly inFontFace: boolean;
+  /**
+   * A preprocessor variable declaration — `$hero: '/img/hero.jpg'` or
+   * `@hero: "/img/hero.jpg"`. A bare quoted string is a PATH here and is not one in an
+   * ordinary declaration, where `content: "note.png"` is text. See
+   * `collectVariableDeclarationString`.
+   */
+  readonly isVariableDeclaration: boolean;
 }
 
 function collectFromDeclaration(declaration: Declaration, run: CssRun): void {
@@ -192,12 +211,52 @@ function collectFromDeclaration(declaration: Declaration, run: CssRun): void {
       parent !== undefined &&
       parent.type === 'atrule' &&
       (parent as { name?: string }).name?.toLowerCase() === 'font-face',
+    // `$hero: '…'` reaches `walkDecls` as an ordinary declaration whose property starts
+    // with `$`. Less's `@hero: '…'` does NOT — it is an at-rule, and
+    // `collectFromVariableAtRule` handles it.
+    isVariableDeclaration: run.extension === '.scss' && property.startsWith('$'),
   };
 
   collectFromValueNodes(valueParser(value).nodes, valueStart, run, declarationContext, {
     imageSet: 'none',
     nested: false,
   });
+}
+
+/**
+ * Less's `@hero: '/img/hero.jpg'`, which the declaration walk never sees.
+ *
+ * postcss-less marks these `variable: true` and puts the text in both `params` and
+ * `value`. **The flag is checked rather than the shape of the name**, so `@media`,
+ * `@import` and `@font-face` cannot fall in here by resembling one.
+ *
+ * ⚠️ The offset is computed as `@` + name + `afterName`, which is where postcss-less keeps
+ * the colon and the spacing around it. Measured against the source text rather than
+ * assumed: `@banner:   "…"` with three spaces lands on the opening quote exactly, and the
+ * range invariant `source.slice(start, end) === rawPath` is the thing that must not move.
+ */
+function collectFromVariableAtRule(atRule: AtRule, run: CssRun): void {
+  const { variable, name, params } = atRule as AtRule & { variable?: boolean };
+  if (variable !== true || params === '') return;
+
+  const atRuleStart = atRule.source?.start?.offset;
+  if (atRuleStart === undefined) {
+    throw new UpflyError(
+      'ADAPTER_PARSE_FAILED',
+      `PostCSS returned an at-rule without a source position in ${run.file}.`,
+    );
+  }
+
+  const afterName = atRule.raws.afterName ?? ':';
+  const valueStart = run.baseOffset + atRuleStart + 1 + name.length + afterName.length;
+
+  collectFromValueNodes(
+    valueParser(params).nodes,
+    valueStart,
+    run,
+    { property: `@${name}`, inFontFace: false, isVariableDeclaration: true },
+    { imageSet: 'none', nested: false },
+  );
 }
 
 /** Where in a value the url() sits, which the shape needs and the resolver does not. */
@@ -248,8 +307,79 @@ function collectFromValueNodes(
         position,
         quote: node.quote ?? '"',
       });
+      continue;
+    }
+
+    if (node.type === 'string' && declaration.isVariableDeclaration && !position.nested) {
+      collectVariableDeclarationString(node, base, run, declaration, position);
     }
   }
+}
+
+/**
+ * A quoted path parked in a preprocessor variable, which is a reference to that file.
+ *
+ * 🔴 **THE ASSET IS NOT HEDGED, AND THAT IS WHY THIS MATTERS MORE THAN A MISSING ROW.**
+ * `$hero: '/img/hero.jpg'` is invisible today, so the only thing the engine sees is
+ * `url($hero)` — which it correctly calls `dynamic`, a hedge that protects the *reference*
+ * and says nothing about the *file*. If `/img/hero.jpg` is named nowhere else it looks
+ * DEAD, and `optimize --replace` will convert it and leave the declaration pointing at a
+ * name that no longer exists. **Silently. That is this product's own failure mode aimed at
+ * itself**, and it is the argument for reading the declaration rather than for widening
+ * the glob on the use.
+ *
+ * ⚠️ **Not a new rule — the JavaScript adapter has had exactly this one for months.**
+ * `collectSpeculativeString` treats a path-shaped string literal as a candidate with
+ * `asserted: false` and the note *"guessed rather than asserted"*, and the resolver throws
+ * away the ones that hit nothing. The CSS adapter had no equivalent, and **that
+ * inconsistency is the case for this change on a repository that has never seen our
+ * fixtures** — not that our tree happens to hold six of them.
+ *
+ * 🔴 **MEASURED ACROSS THE FIVE VALIDATION REPOSITORIES, 2026-09-15, AND THE HONEST RESULT
+ * IS TWO-SIDED.** 194 `.scss`/`.less` files, **16** quoted-string variable declarations,
+ * **0** of them with a file extension, so this rule adds **0 references and 0 false
+ * positives** there. That is strong evidence for its SAFETY and **no evidence at all for
+ * its frequency** — the pattern simply does not occur in those five. All 16 near-misses are
+ * media queries (`$big: "only screen and (min-width : …)"`), and they are rejected by the
+ * extension test rather than by luck. ⚠️ The claim that this shape is common in the wild is
+ * a belief about Sass conventions and is NOT measured; what is measured is that reading it
+ * costs nothing.
+ *
+ * **Restricted to variable declarations deliberately.** In an ordinary declaration a bare
+ * quoted string is text — `content: "note.png"` is a caption, not a file — so widening this
+ * to every declaration would manufacture the false positives R49 warns about. A variable is
+ * the one place a whole path is conventionally parked for a `url()` later on.
+ *
+ * ⚠️ `!position.nested`: inside a function the string is an argument, and the functions
+ * that take a path (`url`, `image-set`) are already handled above.
+ */
+function collectVariableDeclarationString(
+  node: ValueNode & { readonly sourceIndex: number; readonly quote?: string },
+  base: number,
+  run: CssRun,
+  declaration: DeclarationContext,
+  position: ValuePosition,
+): void {
+  const { path } = splitPathSuffix(node.value);
+  // The same bound the JS and JSON adapters use: anything with a file extension is a
+  // candidate, and what counts as an ASSET extension stays with the resolver, which is the
+  // one place that policy lives. `$dir: '/gallery'` fails here and must.
+  if (path === '' || extensionOf(path) === '' || isExternalUrl(node.value, 'string')) return;
+  if (!plausiblePathShape(path)) return;
+
+  addReference({
+    text: path,
+    // `sourceIndex` sits on the opening quote; the path starts one after it.
+    start: base + node.sourceIndex + 1,
+    run,
+    declaration,
+    position,
+    quote: node.quote ?? '"',
+    // 🔴 A GUESS, AND IT SAYS SO. `asserted: false` is what lets the resolver drop the ones
+    // that hit nothing as `discarded` rather than reporting them `broken` — the difference
+    // between a hedge and a false positive, and the reason this can be turned on at all.
+    asserted: false,
+  });
 }
 
 function collectFromUrlFunction(
@@ -372,8 +502,18 @@ function addReference(input: {
   position: ValuePosition;
   /** The quote character the author used, or `''` for an unquoted url token. */
   quote: string;
+  /**
+   * Whether the author SAID this was an asset. A `url()` says so; a quoted string parked
+   * in a preprocessor variable only looks like one. Defaults to true, because every
+   * caller but `collectVariableDeclarationString` is a construct that asserts.
+   *
+   * ⚠️ It is what separates a hedge from a false positive: an unasserted path that hits
+   * nothing is `discarded`, an asserted one is reported `broken`.
+   */
+  asserted?: boolean;
 }): void {
   const { text, start, run, declaration, position, quote } = input;
+  const asserted = input.asserted ?? true;
   const { file, references } = run;
   if (text === '') return;
   if (isExternalUrl(text, 'css-url')) return;
@@ -394,7 +534,7 @@ function addReference(input: {
       kind: 'css-url',
       shape,
       ceiling: 'unsafe',
-      asserted: true,
+      asserted,
       note: reason,
     });
     return;
@@ -412,7 +552,8 @@ function addReference(input: {
     kind: 'css-url',
     shape,
     ceiling: 'high',
-    asserted: true,
+    asserted,
+    ...(asserted ? {} : { note: 'a path-shaped string literal, guessed rather than asserted' }),
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),
   });
 }
