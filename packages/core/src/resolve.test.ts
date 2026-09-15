@@ -906,3 +906,37 @@ describe('serving roots carry where they came from', () => {
     expect(guessed).toEqual(declared);
   });
 });
+
+/**
+ * 🔴 **THE OTHER HALF OF R80(b), AND IT WOULD HAVE LOOKED LIKE THE FIRST HALF FAILING.**
+ * `matchPattern` replaced `${…}` and nothing else, so even a correctly-ceilinged
+ * `#{$mode}` path would have been globbed for a LITERAL `#{$mode}` and matched nothing —
+ * the reference would fall back to `dynamic` and the ceiling change would appear to have
+ * done nothing at all. Two halves in two files, which is exactly the split R89 found
+ * last time this rule went unwired.
+ */
+describe('R80(b) — the glob understands all three interpolation syntaxes', () => {
+  it.each([
+    ['JavaScript', './images/${name}.png'],
+    ['SCSS', './images/#{$name}.png'],
+    ['Less', './images/@{name}.png'],
+  ])('%s', (_name, rawPath) => {
+    const reference = resolveOne({ rawPath, ceiling: 'medium' });
+
+    // one.png, two.png and three.png -- all three, deliberately. Linking only the first
+    // would leave the rest looking unreferenced, which is a false `dead asset`.
+    expect(reference?.resolution).toBe('resolved-pattern');
+    expect(reference?.resolution === 'resolved-pattern' ? reference.resolvedPaths.length : 0).toBe(
+      3,
+    );
+  });
+
+  it('falls back to dynamic when the pattern names nothing — never broken', () => {
+    // The safety property that makes the ceiling change costless: a `medium` reference
+    // can only gain links or stay dynamic. It can never become a `broken` finding about
+    // a path the author did not write.
+    const reference = resolveOne({ rawPath: './nothing/#{$x}.png', ceiling: 'medium' });
+
+    expect(reference?.resolution).toBe('dynamic');
+  });
+});

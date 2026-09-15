@@ -520,3 +520,75 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
     expect(references).toEqual([]);
   });
 });
+
+/**
+ * 🔴 **R80(b) WAS RULED, THE CONDITION WAS WRITTEN AND SHARED AND TESTED, AND THE CSS
+ * ADAPTER NEVER CALLED IT.** `assembledPathIsGlobbable` has governed the JavaScript
+ * adapter's template literals since R89. A SCSS interpolation went straight to `unsafe`,
+ * and `resolveOne` refuses an unsafe reference outright — so `resolved-pattern` was
+ * reachable ONLY through a JS template literal. The rule was not missing; it was unwired.
+ *
+ * ⚠️ **This is an adapter test, so it asserts the CEILING rather than the resolution.**
+ * The ceiling is the decision this file owns; whether the pattern names anything is
+ * `matchPattern`'s question and is tested in `resolve.test.ts`.
+ */
+describe('R80(b) — a trailing interpolation is a pattern, not a dead end', () => {
+  const ceilingOf = (source: string, file = '/project/s.scss') =>
+    cssAdapter.findReferences({ file, text: source })[0]?.ceiling;
+
+  it.each([
+    ['a varying name', '.a { background: url("/theme-#{$mode}.png"); }'],
+    [
+      'a varying name with a suffix after it',
+      '.a { background: url("/srcset/tile@#{$density}x.png"); }',
+    ],
+    ['a varying directory BELOW a fixed one', '.a { background: url("/img/#{$dir}/hero.png"); }'],
+  ])('%s is medium, so the resolver globs it', (_name, source) => {
+    expect(ceilingOf(source)).toBe('medium');
+  });
+
+  it.each([
+    [
+      'a leading interpolation, nothing fixed before it',
+      '.a { background: url("#{$root}/photo.png"); }',
+    ],
+    ['two unknowns in one name', '.a { background: url("/icons/#{$theme}-#{$size}.png"); }'],
+  ])('%s stays unsafe — globbing it would sweep in strangers', (_name, source) => {
+    expect(ceilingOf(source)).toBe('unsafe');
+  });
+
+  it('applies to Less too, which has its own marker', () => {
+    expect(ceilingOf('.a { background: url("/theme-@{mode}.png"); }', '/project/s.less')).toBe(
+      'medium',
+    );
+  });
+
+  /**
+   * 🔴 **`#` MEANS TWO THINGS, AND THE FIRST VERSION OF THIS FIX GOT IT WRONG.** In CSS it
+   * opens a URL fragment; in SCSS it opens an interpolation. `splitPathSuffix` knows only
+   * the first, so `/theme-#{$mode}.png` came back as the path `/theme-` with `{$mode}.png`
+   * discarded as a fragment — no image extension, dropped at rung 3, and the matrix moved
+   * from `dynamic` to **`absent`**. A silent skip introduced by the fix for a silent skip,
+   * and the matrix is what caught it within one run.
+   */
+  it('🔴 keeps the WHOLE path: a `#{` is an interpolation, not a fragment', () => {
+    const source = '.a { background: url("/theme-#{$mode}.png"); }';
+    const [reference] = cssAdapter.findReferences({ file: '/project/s.scss', text: source });
+
+    expect(reference?.rawPath).toBe('/theme-#{$mode}.png');
+    // The range invariant, checked by slicing rather than asserted.
+    expect(source.slice(reference?.start, reference?.end)).toBe('/theme-#{$mode}.png');
+  });
+
+  it('still treats a real fragment as a fragment when there is no interpolation', () => {
+    // The control. A fix that stopped splitting suffixes altogether would pass every
+    // case above and break `url("/img/sprite.svg#icon")`.
+    const [reference] = cssAdapter.findReferences({
+      file: '/project/s.scss',
+      text: '.a { background: url("/img/hero.png?v=2"); }',
+    });
+
+    expect(reference?.rawPath).toBe('/img/hero.png');
+    expect(reference?.note).toContain('query or fragment preserved');
+  });
+});

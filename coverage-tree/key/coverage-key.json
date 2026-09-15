@@ -3914,8 +3914,7 @@
           ],
           "offset": 2658,
           "line": 87,
-          "column": 28,
-          "knownGap": "MEASURED 2026-09-14 (R89): the engine reports this dynamic, not resolved-pattern. A SCSS interpolation is marked unsafe by the CSS adapter and resolveOne refuses an unsafe reference outright, so no glob ever runs — resolved-pattern is reachable today only through a JS template literal. resolved-pattern is the IDEAL here (R78 Q3 rules a trailing interpolation a pattern), and the three sibling scss.interpolation.trailing entries carry the same unrecorded divergence. Scope raised rather than patched: the full list is the measuring harness's first job, not a probe's."
+          "column": 28
         }
       ]
     },

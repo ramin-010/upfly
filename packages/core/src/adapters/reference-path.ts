@@ -133,6 +133,36 @@ const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[]
  * @param chunks the literal text between the unknown segments, in order. A path with one
  * interpolation has two chunks; either may be empty.
  */
+/**
+ * Every interpolation syntax that stands for one unknown segment of a path.
+ *
+ * 🔴 **`matchPattern` KNEW ONLY THE FIRST OF THESE, WHICH IS HALF OF WHY R80(b) NEVER
+ * REACHED SCSS.** The resolver's glob replaced `${…}` and nothing else, so even a
+ * correctly-ceilinged `#{$mode}` path would have globbed for a literal `#{$mode}` and
+ * matched nothing. Listed once, here, and used by both the adapter that decides the
+ * ceiling and the resolver that acts on it — the two halves being separate is precisely
+ * what R89 found last time.
+ */
+export const INTERPOLATIONS = Object.freeze([
+  /\$\{[^}]*\}/g, // JavaScript and Astro: `${mode}`
+  /#\{[^}]*\}/g, // SCSS: `#{$mode}`
+  /@\{[^}]*\}/g, // Less: `@{mode}`
+]);
+
+/**
+ * The literal text between a path's unknown segments, for any of the three syntaxes.
+ *
+ * ⚠️ Shared so that the ceiling decision and the glob are made from the SAME chunks. The
+ * JavaScript adapter derived its chunks from Babel's parsed `quasis` while the CSS adapter
+ * had no chunks at all; deriving both from the written text is what lets one rule govern
+ * three dialects.
+ */
+export function interpolationChunks(rawPath: string): readonly string[] {
+  let marked = rawPath;
+  for (const pattern of INTERPOLATIONS) marked = marked.replace(pattern, ' ');
+  return marked.split(' ');
+}
+
 export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
   const first = chunks[0] ?? '';
   if (!first.includes('/')) return false;

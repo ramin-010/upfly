@@ -14,7 +14,7 @@
  */
 
 import { dirname, resolve as resolvePath } from 'node:path';
-import { splitPathSuffix, staticExtensionOf } from './adapters/reference-path.js';
+import { INTERPOLATIONS, splitPathSuffix, staticExtensionOf } from './adapters/reference-path.js';
 import type { AliasMap } from './aliases.js';
 import { expandAlias } from './aliases.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
@@ -455,7 +455,13 @@ class AssetIndex {
     root: string,
     publicDirs: readonly string[],
   ): { matches: readonly string[]; via: ResolvedVia } {
-    const { path } = splitPathSuffix(rawPath.replace(/\$\{[^}]*\}/g, HOLE));
+    // 🔴 ALL THREE INTERPOLATION SYNTAXES, NOT JUST JAVASCRIPT'S. This replaced `${…}`
+    // and nothing else, so a SCSS `#{$mode}` path would have been globbed for a literal
+    // `#{$mode}` and matched nothing — the second half of why R80(b) never reached SCSS,
+    // and one that would have looked like the ceiling fix simply not working.
+    let marked = rawPath;
+    for (const interpolation of INTERPOLATIONS) marked = marked.replace(interpolation, HOLE);
+    const { path } = splitPathSuffix(marked);
 
     for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
       const matches: string[] = [];

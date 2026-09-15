@@ -22,7 +22,13 @@ import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
-import { isExternalUrl, plausiblePathShape, splitPathSuffix } from './reference-path.js';
+import {
+  assembledPathIsGlobbable,
+  interpolationChunks,
+  isExternalUrl,
+  plausiblePathShape,
+  splitPathSuffix,
+} from './reference-path.js';
 
 /**
  * Dialect parsers, by extension.
@@ -478,9 +484,52 @@ function shapeOf(input: {
  * SCSS and Less interpolation, and the comment that CSS-in-JS substitution leaves
  * behind, all appear *inside* quotes routinely.
  */
+/**
+ * Whether a `#{…}` / `@{…}` path constrains enough to be globbed rather than given up on.
+ *
+ * 🔴 **R80(b) WAS RULED, THE CONDITION WAS WRITTEN AND SHARED AND TESTED, AND THE CSS
+ * ADAPTER NEVER CALLED IT.** `assembledPathIsGlobbable` has governed the JavaScript
+ * adapter's template literals since R89; a SCSS interpolation went straight to `unsafe`,
+ * and `resolveOne` refuses an unsafe reference outright, so **`resolved-pattern` was
+ * reachable only through a JS template literal.** The rule was not missing — it was
+ * unwired, which is the pipeline leaking rather than new work.
+ *
+ * R78 Q3's distinction, unchanged: a **trailing** interpolation varies the NAME inside a
+ * fixed directory and can be globbed; a **leading** one varies the directory and cannot,
+ * because the glob would sweep in assets nobody referenced.
+ */
+function interpolationIsGlobbable(rawPath: string): boolean {
+  // 🔴 NOT `splitPathSuffix` FIRST, AND THE FIRST VERSION OF THIS DID EXACTLY THAT.
+  // `#` opens a URL FRAGMENT in CSS and opens an INTERPOLATION in SCSS, and
+  // `splitPathSuffix` only knows the first meaning — so `/theme-#{$mode}.png` came back
+  // as path `/theme-` with fragment `{$mode}.png`. The globbable test then ran on
+  // `/theme-`, said yes, and the reference was emitted as `/theme-`: no image extension,
+  // dropped at rung 3, **and the matrix went from `dynamic` to `absent`** — a silent skip
+  // introduced by the fix for a silent skip. The interpolation markers are checked on the
+  // written text, before anything interprets a `#`.
+  return assembledPathIsGlobbable(interpolationChunks(rawPath));
+}
+
+/** Whether a path carries an interpolation, in any of the three dialects. */
+function isInterpolated(text: string): boolean {
+  return text.includes('#{') || text.includes('@{');
+}
+
 function dynamicReason(rawPath: string, quoted: boolean): string | null {
-  if (rawPath.includes('#{')) return 'SCSS interpolation: the path is not known statically';
-  if (rawPath.includes('@{')) return 'Less interpolation: the path is not known statically';
+  // ⚠️ The globbable ones return `null` here so that `addReference` gives them a `medium`
+  // ceiling instead of `unsafe`. They are still not literal paths — `matchPattern` is what
+  // decides whether the pattern names anything, and falls back to `dynamic` when it does
+  // not. So this can only ever ADD links; it cannot turn a dynamic reference broken.
+  if (rawPath.includes('#{')) {
+    return interpolationIsGlobbable(rawPath)
+      ? null
+      : 'SCSS interpolation in the directory: too little is fixed to glob (R78 Q3)';
+  }
+  if (rawPath.includes('@{')) {
+    return interpolationIsGlobbable(rawPath)
+      ? null
+      : 'Less interpolation in the directory: too little is fixed to glob (R78 Q3)';
+  }
   if (rawPath.startsWith('$')) return 'SCSS variable: the path is not known statically';
   if (rawPath.startsWith('@')) return 'Less variable: the path is not known statically';
   if (!quoted && rawPath.includes('(')) {
@@ -540,8 +589,20 @@ function addReference(input: {
     return;
   }
 
-  const { path, suffix } = splitPathSuffix(text);
+  // 🔴 AN INTERPOLATED PATH IS NOT SPLIT, BECAUSE `#` MEANS TWO THINGS. In CSS it opens a
+  // fragment; in SCSS it opens an interpolation. `splitPathSuffix` knows only the first, so
+  // splitting `/theme-#{$mode}.png` yields the path `/theme-` and throws the rest away as a
+  // fragment. Every interpolated reference here is one the author wrote as a whole.
+  const interpolated = isInterpolated(text);
+  const { path, suffix } = interpolated ? { path: text, suffix: '' } : splitPathSuffix(text);
   if (path === '') return; // A bare `?query` names no file.
+
+  // 🔴 A GLOBBABLE INTERPOLATION IS `medium`, NEVER `high` — and getting this wrong would
+  // be worse than the gap it fixes. `dynamicReason` returns `null` for these so they reach
+  // this line, but they are not literal paths: at `high` the resolver would look
+  // `/theme-#{$mode}.png` up verbatim, find nothing, and report a **broken reference the
+  // author never wrote**. `medium` sends it to `matchPattern`, which globs it and falls
+  // back to `dynamic` when the pattern names nothing — so this can only ADD links.
 
   references.push({
     file,
@@ -551,7 +612,7 @@ function addReference(input: {
     rawPath: path,
     kind: 'css-url',
     shape,
-    ceiling: 'high',
+    ceiling: interpolated ? 'medium' : 'high',
     asserted,
     ...(asserted ? {} : { note: 'a path-shaped string literal, guessed rather than asserted' }),
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),
