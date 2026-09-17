@@ -49,6 +49,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { argv, stdout } from 'node:process';
+import { pathToFileURL } from 'node:url';
 import {
   type Adapter,
   IMAGE_EXTENSIONS,
@@ -85,7 +86,7 @@ interface Scored {
 }
 
 /** One source directory's verdict: can its true root be told from every wrong one? */
-interface DirectoryVerdict {
+export interface DirectoryVerdict {
   readonly dir: string;
   readonly references: number;
   readonly candidates: number;
@@ -99,7 +100,7 @@ interface DirectoryVerdict {
   readonly truthUnreachable: boolean;
 }
 
-interface RepoResult {
+export interface RepoResult {
   readonly repo: string;
   readonly truth: readonly string[];
   readonly references: number;
@@ -173,7 +174,7 @@ async function measureRepo(
   return measureRepoAt(`${VALIDATION_ROOT}/${name}`, name, truth, verbose);
 }
 
-async function measureRepoAt(
+export async function measureRepoAt(
   root: string,
   name: string,
   truth: readonly string[],
@@ -403,4 +404,15 @@ AD-HOC TREE: ${tree}
   }
 }
 
-await main();
+/**
+ * Run only when invoked as the entry point, so a test can import the measurement.
+ *
+ * ⚠️ **`bench/`'s convention is that entry points carry a top-level `main()` and are not
+ * importable** — `samples.ts` says so, and a test that imported one would run it. This is
+ * the standard ESM main-module check rather than an exception to that rule: under vitest
+ * `process.argv[1]` is the test runner, so `main()` does not fire and the file behaves as
+ * a library. **The reason it matters here is R117.** This instrument's ability to return
+ * *no* was demonstrated by a command somebody has to remember to run; an assertion that
+ * runs on every `pnpm check` is the version that survives.
+ */
+if (import.meta.url === pathToFileURL(argv[1] ?? '').href) await main();
