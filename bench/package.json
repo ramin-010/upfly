@@ -16,6 +16,7 @@
     "encode-quality": "tsc --build && node dist/encode-quality.js",
     "move-run": "tsc --build && node dist/move-run.js",
     "noise": "tsc --build && node dist/noise.js",
+    "root-inference": "tsc --build && node dist/root-inference.js",
     "transferability": "tsc --build && node dist/transferability.js"
   },
   "dependencies": {
