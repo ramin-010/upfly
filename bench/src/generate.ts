@@ -52,8 +52,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 
-/** Bumped when the tree's shape changes, so an old one is never silently reused. */
-const TREE_VERSION = 4;
+/**
+ * Bumped when the tree's shape changes, so an old one is never silently reused.
+ *
+ * **v5 (R126, 2026-09-17): markdown gained HTML, and `.js` stopped being TypeScript.**
+ * 🔴 **Every performance figure recorded against v4 describes a tree that no longer
+ * exists** — §5.1(g)'s miss, the CI ceiling at `run.ts`, and R124's shares. They are
+ * labelled with their tree in the notes rather than overwritten, the same habit R123
+ * put in the report with `measuredAgainst`. **The tree gets SLOWER at this version and
+ * that is the repair working, not a regression.**
+ */
+const TREE_VERSION = 5;
 
 export const TOTAL_FILES = 10_000;
 export const TOTAL_IMAGES = 2_000;
@@ -262,8 +271,7 @@ async function writeSources(root: string, images: readonly string[]): Promise<vo
     }
 
     const path = join(root, directory, `file-${index}${kind}`);
-    const body = sourceText(kind, directory, referenceable, random, unreferenced);
-    await writeFile(path, padTo(body, kind, targetSize(kind, random), random));
+    await writeFile(path, buildFileText(kind, directory, referenceable, random, unreferenced));
     written += 1;
   }
 }
@@ -319,13 +327,19 @@ function targetSize(extension: string, random: () => number): number {
  * the bytes back while leaving that sixth understated. Each kind is padded with
  * more of what it already is.
  */
-function padTo(body: string, extension: string, target: number, random: () => number): string {
+function padTo(
+  body: string,
+  extension: string,
+  target: number,
+  random: () => number,
+  shape: MarkdownShape = { markup: false, refuting: false },
+): string {
   const parts = [body];
   let size = body.length;
   let unit = 0;
 
   while (size < target) {
-    const chunk = filler(extension, unit, random);
+    const chunk = filler(extension, unit, random, shape);
     parts.push(chunk);
     size += chunk.length;
     unit += 1;
@@ -339,7 +353,12 @@ function padTo(body: string, extension: string, target: number, random: () => nu
   return `${parts.join('\n')}\n`;
 }
 
-function filler(extension: string, unit: number, random: () => number): string {
+function filler(
+  extension: string,
+  unit: number,
+  random: () => number,
+  shape: MarkdownShape = { markup: false, refuting: false },
+): string {
   const word = () => WORDS[Math.floor(random() * WORDS.length)] ?? 'value';
 
   switch (extension) {
@@ -349,8 +368,23 @@ function filler(extension: string, unit: number, random: () => number): string {
     case '.html':
       return `  <section class="s-${unit}"><h2>${word()} ${word()}</h2><p>${word()} ${word()} ${word()} ${word()}.</p></section>`;
     case '.md':
-    case '.mdx':
-      return `\n## ${word()} ${word()}\n\n${word()} ${word()} ${word()} ${word()} ${word()} ${word()}, ${word()} ${word()} ${word()}.\n`;
+    case '.mdx': {
+      const prose = `\n## ${word()} ${word()}\n\n${word()} ${word()} ${word()} ${word()} ${word()} ${word()}, ${word()} ${word()} ${word()}.\n`;
+      if (!shape.markup) return prose;
+
+      // Real markdown's tags are overwhelmingly INSIDE fenced code blocks — docs
+      // sites showing markup rather than using it — and the adapter masks a fence
+      // before parse5 reads it. So the common case here is fenced: bytes and tags
+      // that cost the parse5 pass its time and can never yield a reference. Roughly
+      // a third is live markup carrying no image, which is the other real shape.
+      // Neither can produce a reference; only `shape.refuting` does that.
+      const draw = random();
+      if (draw < 0.55) return prose;
+      if (draw < 0.85) {
+        return `${prose}\n\`\`\`html\n<div class="${word()}-${unit}">\n  <p>${sentence(word)}</p>\n  <img src="/${word()}-${unit}.png" alt="${word()}">\n</div>\n\`\`\`\n`;
+      }
+      return `${prose}\n<div class="note-${unit}">\n  <p>${sentence(word)}</p>\n  <a href="#${word()}-${unit}">${word()}</a><br>\n</div>\n`;
+    }
     case '.json':
       return `,\n  "${word()}${unit}": { "${word()}": ${unit}, "${word()}": "${word()}-${unit}" }`;
     case '.vue':
@@ -372,6 +406,28 @@ function filler(extension: string, unit: number, random: () => number): string {
         `      <span>{${word()}}</span>`,
         '    </section>',
         '  );',
+        '}',
+      ].join('\n');
+    // 🔴 `.js` is NOT `.ts` and shared filler made 128 of the tree's 160 `.js` files
+    // invalid JavaScript (R124, B11). The `default` branch below writes a TypeScript
+    // parameter annotation — `helper0(buffer: number): number` — which Babel rejects
+    // at line 5 column 31 when the file is plain `.js`. The engine handled it
+    // correctly, reporting the file `unscanned` with a reason, so rule 9 never broke;
+    // what broke is the MEASUREMENT. The tree's `.js` parse cost was 80% the cost of
+    // FAILING, and a cost measured over a population that silently excludes four
+    // fifths of itself is not that population's cost.
+    //
+    // Found only because a probe counted throws instead of letting them vanish (R86).
+    case '.js':
+    case '.jsx':
+    case '.mjs':
+    case '.cjs':
+      return [
+        `/** ${sentence(word)} */`,
+        `export function helper${unit}(${word()}) {`,
+        `  // ${sentence(word)}`,
+        `  const ${word()}${unit} = ${word()} * ${unit + 1};`,
+        `  return ${word()}${unit} + ${unit};`,
         '}',
       ].join('\n');
     default:
@@ -428,6 +484,75 @@ function expandWeights(): string[] {
   return kinds;
 }
 
+/**
+ * What kind of markdown document this is, drawn once per file.
+ *
+ * 🔴 **R126. Before this, the tree's markdown could not contain an angle bracket BY
+ * CONSTRUCTION** — the head emitted `# Title`, `![alt]()` and `[link]()`, the filler
+ * emitted `## heading` plus prose, and neither can produce a tag. So the safety of
+ * *"skip the parse5 pass when there is no markup"* on 2,640 of 2,640 documents was a
+ * property of this generator, not a measurement. **A corpus that can confirm but not
+ * refute is not evidence (R117), and that is a cleaner statement of it than any count.**
+ *
+ * ⚠️ **Both rates are measured, not chosen.** Across the five validation repositories'
+ * 3,222 markdown documents:
+ *
+ * | | real corpus | here |
+ * |---|---|---|
+ * | documents carrying any HTML tag | **71.5%** | `MARKUP_SHARE` |
+ * | documents where dropping the parse5 pass **loses a reference** | **0.9%** | `REFUTING_SHARE` |
+ * | tags per document, mean | 19.4 | ~18, from the filler rate |
+ *
+ * 🔴 **The two rates are 80× apart and the gap is the whole point.** astro-docs has
+ * 2,604 markdown documents at 19.6 tags each and **zero** where the skip would lose
+ * anything: nearly all of its markup sits inside fenced code blocks, which the adapter
+ * masks before parse5 ever sees it. A first measurement of this on RAW text said 7.7%
+ * and was wrong by 8× for exactly that reason. The filler below reproduces the shape —
+ * most markup fenced, some live, references rare — because a tree that put its tags
+ * only in live positions would overstate what the skip can save.
+ */
+export interface MarkdownShape {
+  /** This document carries raw HTML at all — fenced, live, or both. */
+  readonly markup: boolean;
+  /** 🔴 This document carries an image reference ONLY the parse5 pass can find. */
+  readonly refuting: boolean;
+}
+
+/** Measured: 2,305 of 3,222 real markdown documents carry at least one HTML tag. */
+const MARKUP_SHARE = 0.715;
+
+/** Measured: 30 of 3,222 would lose a reference if the parse5 pass were skipped. */
+const REFUTING_SHARE = 0.01;
+
+function markdownShapeFor(extension: string, random: () => number): MarkdownShape {
+  if (extension !== '.md' && extension !== '.mdx') return { markup: false, refuting: false };
+
+  const markup = random() < MARKUP_SHARE;
+  const refuting = random() < REFUTING_SHARE;
+  // A refuting document carries live markup by definition, so the draw cannot
+  // produce the one combination that would make it unreachable.
+  return { markup: markup || refuting, refuting };
+}
+
+/**
+ * One generated file, head plus padding, exactly as the tree writes it.
+ *
+ * Exported so `generate.test.ts` can prove the refuting class exists by running **this**
+ * rather than a copy of it. A prover that exercises a reimplementation proves something
+ * about the reimplementation.
+ */
+export function buildFileText(
+  extension: string,
+  directory: string,
+  images: readonly string[],
+  random: () => number,
+  unreferenced: readonly string[] = [],
+): string {
+  const shape = markdownShapeFor(extension, random);
+  const body = sourceText(extension, directory, images, random, unreferenced, shape);
+  return padTo(body, extension, targetSize(extension, random), random, shape);
+}
+
 /** A plausible file of the given kind, referencing a few images. */
 function sourceText(
   extension: string,
@@ -442,6 +567,7 @@ function sourceText(
    * the cost of looking *and* recording — the half that grows with the answer.
    */
   unreferenced: readonly string[] = [],
+  shape: MarkdownShape = { markup: false, refuting: false },
 ): string {
   const pick = () =>
     images[Math.floor(random() * images.length)] ?? images[0] ?? 'public/img/x.png';
@@ -467,8 +593,31 @@ function sourceText(
         '</body></html>',
       ].join('\n');
     case '.md':
-    case '.mdx':
-      return ['# Title', '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`].join('\n');
+    case '.mdx': {
+      const head = ['# Title', '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`];
+      if (!shape.refuting) return head.join('\n');
+
+      // 🔴 THE REFUTING INPUT, and the reason this branch exists at all.
+      //
+      // Every path below is reachable ONLY through the parse5 pass: the Markdown
+      // regexes match `![alt](path)` and `[label]: path` and nothing else, so an
+      // `<img src>` or a `background-image` is invisible to them. Drop the parse5
+      // call and these references stop being found — which is what makes them the
+      // input the old tree could not hold. `.md` stamps them `md.raw-html`, `.mdx`
+      // stamps the same markup `mdx.jsx`, and the style attribute is
+      // `md.style-attribute`, so all three HTML-born shapes are represented.
+      //
+      // ⚠️ Deliberately NOT inside a fence. Fenced markup is masked before parse5
+      // sees it, which is why astro-docs can hold 19.6 tags a document and still
+      // refute nothing.
+      head.push(
+        '',
+        `<img src="${up}${pick()}" alt="${extension === '.mdx' ? 'jsx' : 'raw'}">`,
+        '',
+        `<div style="background-image: url('${up}${pick()}')"></div>`,
+      );
+      return head.join('\n');
+    }
     case '.json':
       // Opened rather than closed: `padTo` appends `,\n "key": …` members, so the
       // brace is added by `writeSources` at the end. A malformed JSON file would be
