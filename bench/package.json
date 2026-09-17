@@ -15,6 +15,7 @@
     "fixture-build": "tsc --build && node dist/fixture-build.js",
     "encode-quality": "tsc --build && node dist/encode-quality.js",
     "move-run": "tsc --build && node dist/move-run.js",
+    "lossless-cohort": "tsc --build && node dist/lossless-cohort.js",
     "noise": "tsc --build && node dist/noise.js",
     "root-inference": "tsc --build && node dist/root-inference.js",
     "transferability": "tsc --build && node dist/transferability.js"
