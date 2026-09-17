@@ -36,13 +36,18 @@ beforeAll(() => {
   // reads a directory rather than a list.
   writeFileSync(join(root, 'img', 'hero image.png'), 'x');
   writeFileSync(join(root, 'img', 'a&b.png'), 'x');
+  // 🔴 R130's refuting input. This asset is mentioned NOWHERE under its own extension —
+  // only as `only%20encoded.jpg`, the same stem under a different one, in a spelling the
+  // literal stem lookup cannot match. The honest verdict is `ambiguous`; the defect
+  // returned `confirmed-genuine`.
+  writeFileSync(join(root, 'img', 'only encoded.png'), 'x');
   // \U0001f534 The source names both assets ONLY in an encoded spelling. That is the input that
   // refutes `verifyDead`, and the corpus no longer supplies it: R118 fixed the ENGINE, so
   // these assets stopped being reported dead and the oracle's copy of the defect went
   // unreachable. The checker owns the input now (R117).
   writeFileSync(
     join(root, 'page.html'),
-    '<img src="./img/hero%20image.png"><img src="./img/a&amp;b.png">',
+    '<img src="./img/hero%20image.png"><img src="./img/a&amp;b.png"><img src="./img/only%20encoded.jpg">',
   );
   writeFileSync(join(root, 'empty.html'), '<p>nothing here</p>');
 });
@@ -155,6 +160,27 @@ describe('verifyDead asks every spelling too', () => {
     const result = await verifyFindings(root, deadReport('img/nobody-mentions-me.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+
+  /**
+   * 🔴 **R130 — the same defect one level down, and the branch nobody examined because it
+   * looked like the cheap one.**
+   *
+   * `verifyDead`'s extension-swap branch asked `hitsByStem` for the asset's stem **exactly
+   * as it sits on disk**, while R121 taught the branch directly above it to ask in every
+   * spelling. So for `img/only encoded.png`, whose only mention in the repository writes
+   * `only%20encoded.jpg` — the same name under a different extension, in an encoded
+   * spelling — the lookup found nothing.
+   *
+   * ⚠️ **And the miss does not land on `ambiguous`.** It falls straight through to
+   * `confirmed-genuine`, which prints *"no mention of this file anywhere, under any image
+   * extension"* about a name the codebase does mention. The branch that produces the
+   * softest verdict when it fires was reaching the hardest one when it did not.
+   */
+  it('🔴 does not certify an asset dead when only an encoded, extension-swapped mention exists', async () => {
+    const result = await verifyFindings(root, deadReport('img/only encoded.png'), ['']);
+
+    expect(result.items[0]?.verdict).toBe('ambiguous');
   });
 });
 

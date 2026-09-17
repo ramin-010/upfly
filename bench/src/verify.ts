@@ -360,6 +360,52 @@ function nameSpellings(asset: string): readonly string[] {
  *
  * Returns `null` when the name *is* tokenisable, so the ordinary path runs unchanged.
  */
+/**
+ * The stem under a different image extension, found by literal search.
+ *
+ * ⚠️ **Runs only for spellings the token index cannot represent**, exactly as
+ * `literalHits` does, so it costs the number of such names rather than the corpus. A
+ * representable spelling was already asked of `hitsByStem` by the caller.
+ *
+ * ⚠️ **It requires a real extension boundary.** Searching for the stem alone would match
+ * `only encoded-2.png` and any longer name beginning with the same letters, which would
+ * turn a caution flag into noise. The character after the stem must be a dot, and what
+ * follows must be an image extension that is **not** the asset's own — the asset's own
+ * extension is the exact-match case and was answered above.
+ */
+function literalStemHits(
+  asset: string,
+  stems: ReadonlySet<string>,
+  index: RepoIndex,
+): readonly string[] {
+  const unrepresentable = [...stems].filter(
+    (stem) => !index.canRepresent(`${stem}${posix.extname(asset)}`),
+  );
+  if (unrepresentable.length === 0) return [];
+
+  const own = posix.extname(asset).toLowerCase();
+  const others = IMAGE_EXTENSIONS.filter((extension) => extension !== own);
+  const found: string[] = [];
+
+  for (const [file, text] of index.lowerTexts) {
+    if (file === asset) continue;
+    for (const stem of unrepresentable) {
+      for (const extension of others) {
+        const needle = `${stem}${extension}`.toLowerCase();
+        const at = text.indexOf(needle);
+        if (at === -1) continue;
+        const line = text.slice(0, at).split('\n').length;
+        found.push(`  ${file}:${line}  (as ${stem}${extension})`);
+        break;
+      }
+      if (found.length >= 5) break;
+    }
+    if (found.length >= 5) break;
+  }
+
+  return found;
+}
+
 function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
   // 🔴 **Every SPELLING, and the search runs whenever ANY of them is unrepresentable.**
   // `hero image.png` is representable, so the old guard returned `null` here and the token
@@ -423,9 +469,6 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
   const literal = literalHits(asset, index);
   if (literal !== null) return literal;
 
-  const name = posix.basename(asset).toLowerCase();
-  const stem = name.slice(0, name.lastIndexOf('.'));
-
   // Every spelling the index can actually hold. The ones it cannot were searched for
   // literally above (R121).
   const exact = nameSpellings(asset)
@@ -443,9 +486,55 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
     };
   }
 
-  const swapped = (index.hitsByStem.get(stem) ?? []).filter(
-    (hit) => hit.extensionSwapped && hit.file !== asset,
+  // 🔴 R130: the stem must be asked for in every spelling too, and this is R121's defect
+  // one level down. `stem` above is the basename EXACTLY AS IT SITS ON DISK, so an asset
+  // called `hero image.png` whose only mention writes `hero%20image.jpg` misses here —
+  // and the miss does not land on `ambiguous`, it falls through to the
+  // **`confirmed-genuine`** return below, which prints *"no mention of this file
+  // anywhere, under any image extension"* about a name the codebase does mention.
+  //
+  // ⚠️ R121 fixed the exact-match branch directly above with `nameSpellings` and left
+  // this one asking the literal question. **The cheap-looking branch was the one still
+  // pointed the expensive way**: a false `broken` costs five minutes, a false `dead`
+  // costs the file.
+  const stems = new Set(
+    nameSpellings(asset).map((spelling) => {
+      const lower = spelling.toLowerCase();
+      const cut = lower.lastIndexOf('.');
+      return cut === -1 ? lower : lower.slice(0, cut);
+    }),
   );
+  const swapped = [...stems]
+    .flatMap((candidate) => index.hitsByStem.get(candidate) ?? [])
+    .filter((hit) => hit.extensionSwapped && hit.file !== asset);
+
+  // 🔴 AND ASKING IN EVERY SPELLING IS NOT ENOUGH HERE, WHICH IS THE PART THAT SURPRISED
+  // ME. The token index cannot hold `%` at all — it is outside the tokeniser's character
+  // class — so `only%20encoded.jpg` is indexed under the stem `20encoded`, and NO
+  // spelling of `only encoded` can ever match it. Spelling the question correctly does
+  // not help when the index cannot hold the answer.
+  //
+  // R121 already solved that shape for the exact branch, with a literal substring search
+  // reserved for the spellings the index provably cannot represent (`literalHits`). This
+  // is that same fallback for the stem, and it is bounded the same way: it runs only for
+  // unrepresentable spellings, so its cost is the count of those names rather than the
+  // corpus.
+  if (swapped.length === 0) {
+    const literal = literalStemHits(asset, stems, index);
+    if (literal.length > 0) {
+      return {
+        kind: 'dead',
+        subject: asset,
+        verdict: 'ambiguous',
+        evidence: [
+          'the exact filename appears nowhere, but the same name under another image',
+          'extension does — found by literal search, because the token index cannot',
+          'represent the spelling the source used:',
+          ...literal.slice(0, 5),
+        ],
+      };
+    }
+  }
   if (swapped.length > 0) {
     return {
       kind: 'dead',
