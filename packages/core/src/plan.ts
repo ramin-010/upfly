@@ -15,7 +15,7 @@
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
-import type { AssetProbe, EncodeFormat } from './probe.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
 import type { ServingRoots } from './resolve.js';
@@ -107,7 +107,15 @@ export interface PlannedConversion {
   /** POSIX-relative path the encode will be written to. */
   readonly target: string;
   readonly format: EncodeFormat;
-  readonly quality: number;
+  /**
+   * The setting the saving was measured at, and the one the write must use.
+   *
+   * 🔴 **R131: `'lossless'` here is an instruction to `optimize`, not a label.** The plan
+   * chose it because the lossless encode measured FEWER BYTES than the lossy one, so a
+   * write that quietly used quality 80 would put a different file on disk from the one
+   * whose saving was advertised. It travels to `encodeToFile` for that reason.
+   */
+  readonly quality: EncodeSetting;
   readonly savedBytes: number;
   /** True when the original is removed once the references move. */
   readonly replacesOriginal: boolean;
@@ -278,7 +286,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
 
 interface Saving {
   readonly savedBytes: number;
-  readonly quality: number;
+  readonly quality: EncodeSetting;
 }
 
 /**

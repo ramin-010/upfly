@@ -114,9 +114,14 @@ describe('relocate, on the real tree', () => {
     });
 
     it('refuses a pattern sibling and names every asset the pattern binds', async () => {
-      // R70(c), inheriting R65. The user asked for one file; moving all three silently
+      // R70(c), inheriting R65. The user asked for one file; moving all of them silently
       // is not the fix, and moving one breaks the single edit that stands for all of
       // them. ✅ This is the case `fixtures/partial-pattern` was built for.
+      //
+      // ⚠️ **Four since R138**, not three: the fixture gained `theme-not-an-image.png` as
+      // a blocker that no encoder improvement can undo. The count is asserted because the
+      // refusal QUOTES it — a message naming three assets while binding four is the kind
+      // of wrong that reads as right.
       const plan = await relocateFixture([
         { from: 'public/theme-dark.png', to: 'public/img/theme-dark.png' },
       ]);
@@ -124,7 +129,8 @@ describe('relocate, on the real tree', () => {
       expect(plan.refused.map((refusal) => refusal.code)).toEqual(['binds-a-pattern']);
       expect(plan.refused[0]?.reason).toContain('public/theme-light.png');
       expect(plan.refused[0]?.reason).toContain('public/theme-sepia.png');
-      expect(plan.refused[0]?.reason).toContain('Move all 3, or none');
+      expect(plan.refused[0]?.reason).toContain('public/theme-not-an-image.png');
+      expect(plan.refused[0]?.reason).toContain('Move all 4, or none');
     });
 
     it('refuses a destination outside the project, which §1.2 already settled', async () => {

@@ -59,7 +59,7 @@ export async function createSharpProbe(
    * are produced by the same settings by construction rather than by two call sites
    * being kept in step.
    */
-  const encoder = (path: string, format: EncodeFormat, animated: boolean) => {
+  const encoder = (path: string, format: EncodeFormat, animated: boolean, lossless = false) => {
     // `{ animated }` is not optional in spirit. Without it sharp keeps the first
     // frame and nothing else: a ten-frame fixture encodes to 616 bytes instead of
     // 8370, so every animated GIF would report a saving only achievable by
@@ -75,8 +75,17 @@ export async function createSharpProbe(
     const pipeline = sharp(path, { animated, limitInputPixels: MAX_ENCODE_PIXELS });
     switch (format) {
       case 'webp':
-        return pipeline.webp({ quality: quality.webp });
+        // R131: `lossless` and `quality` are alternatives, not a pair — sharp ignores
+        // `quality` when `lossless` is set, and passing both would put a number in the
+        // call that has no effect on the output and every appearance of having one.
+        return lossless
+          ? pipeline.webp({ lossless: true })
+          : pipeline.webp({ quality: quality.webp });
       case 'avif':
+        // Deliberately not offered for AVIF. R47 measured `avif 75` holding on the class
+        // this exists for — 25.6% saving, worst textured SSIM 0.9934 — and R129's 5,857
+        // images say nothing about lossless AVIF. An option nobody measured is an option
+        // nobody should be able to select.
         return pipeline.avif({ quality: quality.avif });
       default: {
         const unhandled: never = format;
@@ -106,19 +115,19 @@ export async function createSharpProbe(
       };
     },
 
-    async encodedBytes({ path, format, animated }): Promise<number> {
-      const buffer = await encoder(path, format, animated).toBuffer();
+    async encodedBytes({ path, format, animated, lossless }): Promise<number> {
+      const buffer = await encoder(path, format, animated, lossless).toBuffer();
       return buffer.length;
     },
 
-    async encodeToFile({ path, format, animated, destination }): Promise<number> {
+    async encodeToFile({ path, format, animated, destination, lossless }): Promise<number> {
       // The staged tree mirrors the project tree, so a destination is routinely
       // several directories deep inside a run directory that did not exist a moment
       // ago. sharp reports that as "unable to open for write", which reads like a
       // permissions problem and is not one. A port that writes a file owns getting
       // somewhere to write it.
       await mkdir(dirname(destination), { recursive: true });
-      const { size } = await encoder(path, format, animated).toFile(destination);
+      const { size } = await encoder(path, format, animated, lossless).toFile(destination);
       return size;
     },
   };

@@ -87,7 +87,7 @@ async function planFor(publicPolicy: PublicPolicy) {
 
 describe('R67: a partial-failure state, built by hand because no real repository has one', () => {
   describe('the premise, which every assertion below depends on', () => {
-    it('resolves one reference to three separate assets', async () => {
+    it('resolves one reference to four separate assets', async () => {
       // If this ever became two references, or resolved to one asset, the withdrawal
       // below would stop being a *partial* failure and the fixture would quietly stop
       // testing what it exists to test — while still passing.
@@ -96,72 +96,124 @@ describe('R67: a partial-failure state, built by hand because no real repository
       expect(patternTargets(graph).map((path) => path.split(/[\\/]/).pop())).toEqual([
         'theme-dark.png',
         'theme-light.png',
+        'theme-not-an-image.png',
         'theme-sepia.png',
       ]);
     });
 
-    it('has exactly one sibling that genuinely does not convert, measured', async () => {
-      // 🔴 The fixture's whole load-bearing fact, and it is a real encode. 70 bytes of
-      // PNG come back as 94 bytes of WebP, so `theme-dark` blocks the pattern because
-      // of what it *is*, not because a test said so.
+    it('🔴 has exactly one sibling that cannot convert, PINNED TO ITS REASON', async () => {
+      // 🔴 **R138. This asserts the skip CODE, not merely that a sibling declined, and
+      // that distinction is the whole lesson of this fixture's second repair.**
       //
-      // ⚠️ **Each asset is compared to its OWN source size**, and the first version of
-      // this test was not: it hardcoded 70 for `theme-dark` and infinity for everything
-      // else, which meant that swapping `theme-dark` for a convertible photo left it
-      // **green** while the three tests below went red. Caught by mutating the fixture,
-      // which is the only mutation that could have caught it — the same lesson as R65's
-      // blocker sort, arriving a third time. A premise test that cannot see its own
-      // premise change is worse than no premise test, because it reads as the guard.
-      const { graph, probes } = await planFor('keep-original');
-      const sourceBytes = new Map(
-        graph.assets.map((node) => [node.asset.relative, node.asset.bytes]),
+      // The blocker used to be `theme-dark.png`: 70 bytes of PNG that webp 80 turned into
+      // 94, so it blocked the pattern because of what it *is*. But that reason depended
+      // on ENCODER BEHAVIOUR — the most changeable thing in the system — and R79 had
+      // already measured that class as nearly empty (56 combinations, WebP won every
+      // one) while keeping this fixture as its last member. **A proof built on the last
+      // surviving instance of a class we had already measured as dying.**
+      //
+      // R131's lossless mode emptied it: the same 1×1 encodes losslessly to 36 bytes, so
+      // it converts. And there is no replacement image — across 471 real PNGs, **0
+      // defeat both encodes**, because a minimal PNG is ~67 bytes against lossless WebP's
+      // ~36-byte floor, and on larger images lossless WebP beats PNG by design.
+      //
+      // So the blocker is now a file that is not an image at all and can never become
+      // one. R129 met three real instances of exactly this shape in the corpus —
+      // `rg-lisboa-header.png`, `szrubyist.png`, `rg-nairobi-header.png` — so it is the
+      // commonest real cause rather than a contrivance.
+      //
+      // ⚠️ **Asserting only "one sibling did not convert" would let the next encoder
+      // improvement change the CAUSE silently while this test went on passing.** That is
+      // the shape this same test was already hardened against once before, and it is why
+      // the code is named here rather than the outcome.
+      const { probes } = await planFor('keep-original');
+      const blocked = probes.filter((entry) =>
+        entry.skipped.some((skip) => skip.code === 'not-an-image'),
       );
 
-      const grew = probes.filter((entry) => {
-        const webp = entry.encoded.find((size) => size.format === 'webp');
-        const source = sourceBytes.get(entry.relative);
-        // ⚠️ Throws rather than defaulting. A `?? 0` here is what hid the first
-        // version's defect a second time: every WebP is larger than zero, so a lookup
-        // that missed reported the whole tree as growing and the assertion failed for
-        // a reason that had nothing to do with the fixture.
-        if (source === undefined) throw new Error(`no source size for ${entry.relative}`);
-        return webp !== undefined && webp.bytes >= source;
-      });
+      expect(blocked.map((entry) => entry.relative)).toEqual(['public/theme-not-an-image.png']);
+    });
 
-      expect(grew.map((entry) => entry.relative)).toEqual(['public/theme-dark.png']);
+    it('🔴 keeps theme-dark as the corpus evidence that lossy grows and lossless rescues', async () => {
+      // ✅ **R138: the artefact another chat placed deliberately is not discarded, it is
+      // promoted.** `theme-dark.png` no longer blocks the pattern, and what it does
+      // instead is worth more: it is the one image in this repository demonstrating
+      // R131's entire case in a single file — webp 80 GROWS it from 70 bytes to 94,
+      // lossless takes it to 36, same file, same run.
+      //
+      // R129 measured 1,736 images of this shape across 5,857. This is the one that lives
+      // in a fixture, and it keeps its history.
+      const { graph, probes } = await planFor('keep-original');
+      const source = graph.assets.find((node) => node.asset.relative === 'public/theme-dark.png');
+      const probe = probes.find((entry) => entry.relative === 'public/theme-dark.png');
+      const webp = probe?.encoded.find((size) => size.format === 'webp');
+
+      if (source === undefined || webp === undefined) {
+        throw new Error('theme-dark.png must be probed for webp');
+      }
+
+      // The setting chosen is lossless, and it beats a source the lossy encode grew.
+      expect(webp.quality).toBe('lossless');
+      expect(webp.bytes).toBeLessThan(source.asset.bytes);
     });
   });
 
   describe('R65: the withdrawal fires on a real tree for the first time', () => {
-    it('withdraws both converting siblings and says why for each', async () => {
-      // Under `replace` the originals go, so a pattern can only be rewritten if all
-      // three convert. One decline takes the other two with it — and until R65 those
-      // two vanished from the plan with nothing said about them anywhere.
+    it('withdraws every converting sibling and says why for each', async () => {
+      // Under `replace` the originals go, so a pattern can only be rewritten if all four
+      // convert. One decline takes the rest with it — and until R65 they vanished from
+      // the plan with nothing said about them anywhere.
+      //
+      // ⚠️ **`theme-dark` is now among the withdrawn rather than the blocker (R138).** It
+      // converts — losslessly, at 36 bytes against a 70-byte source — and is withdrawn
+      // because `theme-not-an-image` cannot convert at all. That is the fixture getting
+      // stronger: the withdrawal now fires over THREE siblings instead of two.
       const { plan } = await planFor('replace');
       const withdrawn = plan.declined.filter((entry) =>
         entry.reason.includes('shares a pattern reference with it'),
       );
 
       expect(withdrawn.map((entry) => entry.path)).toEqual([
+        'public/theme-dark.png',
         'public/theme-light.png',
         'public/theme-sepia.png',
       ]);
       for (const entry of withdrawn) {
         // Naming the blocker is the actionable half: fix one file and three convert.
-        expect(entry.reason).toContain('public/theme-dark.png');
+        expect(entry.reason).toContain('public/theme-not-an-image.png');
       }
     });
 
-    it('accounts for all three targets, with none left over', async () => {
+    it('accounts for all four targets, with none left over', async () => {
       // Stated as arithmetic rather than as a spot check. An asset in neither list is
       // the defect R65 fixed, and this goes red the moment one reappears there.
-      const { plan } = await planFor('replace');
+      const { plan, probes } = await planFor('replace');
       const converted = plan.conversions.map((conversion) => conversion.asset);
       const declined = plan.declined.map((entry) => entry.path);
+      // 🔴 **The blocker is accounted for by its PROBE SKIP, not by the plan — and that
+      // asymmetry is a finding, raised in STATE.md rather than fixed here.**
+      //
+      // Under the old fixture the blocker was measured and grew, so the planner declined
+      // it and it appeared in `declined` with a reason. A blocker that was never measured
+      // has no plan entry at all: the plan names `theme-not-an-image.png` as the cause of
+      // three withdrawals while giving it no line of its own. It is not SILENT — rule 9
+      // holds, because the probe records `not-an-image` and the report prints it — but a
+      // reader of the plan alone meets a cause with no entry.
+      //
+      // ⚠️ The guarantee this test exists for is kept intact: an asset in **neither** the
+      // plan's lists **nor** the probe's skips still fails here. What widened is where
+      // "accounted for" is allowed to live, and that widening is stated rather than
+      // assumed.
+      const skipped = probes
+        .filter((entry) => entry.skipped.length > 0)
+        .map((entry) => entry.relative);
 
-      for (const target of ['theme-dark', 'theme-light', 'theme-sepia']) {
+      for (const target of ['theme-dark', 'theme-light', 'theme-not-an-image', 'theme-sepia']) {
         const asset = `public/${target}.png`;
-        expect([...converted, ...declined], `${asset} is in neither list`).toContain(asset);
+        expect(
+          [...converted, ...declined, ...skipped],
+          `${asset} is in no list at all — not converted, not declined, not skipped`,
+        ).toContain(asset);
       }
       expect(converted).not.toContain('public/theme-light.png');
     });
@@ -175,7 +227,7 @@ describe('R67: a partial-failure state, built by hand because no real repository
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['src/App.jsx']);
     });
 
-    it('converts both siblings under keep-original, where nothing is withdrawn', async () => {
+    it('converts every convertible sibling under keep-original, where nothing is withdrawn', async () => {
       // The same tree, the same measurements, the opposite policy. The originals
       // survive, so the pattern keeps resolving and only the rewrite is declined —
       // which is what makes the withdrawal above a consequence of `replace` rather
@@ -184,6 +236,13 @@ describe('R67: a partial-failure state, built by hand because no real repository
 
       expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
         'public/banner.png',
+        // R131's second demonstration: webp 80 GROWS this 1,912-byte screenshot to
+        // 19,426 and lossless takes it to 220. Unlike `theme-dark` its saving clears
+        // `minSavingBytes`, so it also reaches the report's `savingQuality`.
+        'public/screenshot.png',
+        // R138: converts losslessly now, where webp 80 grew it. `theme-not-an-image` is
+        // absent because it is not an image and never enters the plan.
+        'public/theme-dark.png',
         'public/theme-light.png',
         'public/theme-sepia.png',
         'src/inline-logo.jpg',

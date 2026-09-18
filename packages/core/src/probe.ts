@@ -84,6 +84,15 @@ export interface ImageProbe {
     readonly path: string;
     readonly format: EncodeFormat;
     readonly animated: boolean;
+    /**
+     * Encode exactly rather than at this probe's quality (R131).
+     *
+     * ⚠️ **The POLICY of when to ask for this lives in core, not in the port.** A port
+     * that decided for itself which images deserve lossless would be making a planning
+     * decision the report could not explain, and `probeAssets` would have no honest
+     * setting to record beside the bytes.
+     */
+    readonly lossless?: boolean;
   }): Promise<number>;
   /**
    * Encode to a file instead of to a byte count, and report the bytes written.
@@ -98,6 +107,16 @@ export interface ImageProbe {
     readonly format: EncodeFormat;
     readonly animated: boolean;
     readonly destination: string;
+    /**
+     * 🔴 **Must match the setting the saving was MEASURED at (R131).**
+     *
+     * `audit` advertises a saving and `optimize` writes the file that delivers it. If
+     * the plan chose lossless because it measured fewer bytes and the write then used
+     * quality 80, the file on disk is not the file that was promised — and the saving
+     * the user was shown was real but is no longer the one they got. `PlannedConversion`
+     * carries the setting for exactly this reason.
+     */
+    readonly lossless?: boolean;
   }): Promise<number>;
 }
 
@@ -206,19 +225,39 @@ export interface ProbeDiagnostic {
   readonly detail: string;
 }
 
+/**
+ * How an encode was produced: a lossy quality setting, or exactly.
+ *
+ * 🔴 **R131. `'lossless'` is a setting, not a quality of 100**, and the difference is the
+ * reason this is a union rather than a number. A lossless WebP is bit-exact; a lossy one
+ * at 100 is not, and writing `100` would be precisely the lie the `quality` field's own
+ * comment exists to prevent. A sentinel — `0`, `-1`, `100` — reads as a setting to every
+ * consumer that formats it and is not one.
+ *
+ * R129 measured what makes this worth carrying: across 5,857 images lossless produces
+ * fewer bytes than webp 80 on **1,736** of them, **1,689 of which are PNG**, and on those
+ * it beats the lossy encode by 30.2% median at perfect fidelity.
+ */
+export type EncodeSetting = number | 'lossless';
+
 /** What one encode measured. */
 export interface EncodedSize {
   readonly format: EncodeFormat;
   readonly bytes: number;
   /**
-   * The quality this byte count was produced at.
+   * The setting this byte count was produced at.
    *
    * Carried on the measurement rather than looked up beside it, so a saving cannot
    * be written down anywhere without the setting that produced it. A 95% saving at
    * quality 50 and a 44% saving at quality 90 are both true and describe different
    * products, so the number alone does not mean anything.
+   *
+   * ⚠️ **Since R131 this varies PER IMAGE, not per run.** Two PNGs in the same run can
+   * carry `80` and `'lossless'`, because the choice is made by comparing their byte
+   * counts. Anything that summarises this across assets has to aggregate rather than
+   * assign — see `savingQuality` in `report.ts`, which did the latter.
    */
-  readonly quality: number;
+  readonly quality: EncodeSetting;
 }
 
 /**
@@ -553,17 +592,40 @@ async function probeOne(
     }
 
     try {
+      // The measurement has to describe an image equivalent to the original. Without
+      // this a ten-frame GIF encodes to a single frame and reports a saving of ~92%
+      // that is only achievable by throwing nine frames away.
+      const animated = (metadata?.pages ?? 1) > 1;
+      const lossyBytes = await options.probe.encodedBytes({ path: asset.path, format, animated });
+
+      // 🔴 R131 / R129. For a PNG source, measure the exact encode too and keep whichever
+      // is smaller. **Lossless is bit-exact, so when it also produces fewer bytes it wins
+      // on both axes and there is nothing left to weigh** — which is why this needs no
+      // "text-heavy" classifier and never consults a perceptual metric. That matters:
+      // PSNR rated text-heavy images HIGHER at every quality and would have argued for
+      // LOWERING quality on exactly this class (R47). A byte comparison against an exact
+      // encode cannot be inverted by a metric it does not use.
+      //
+      // ⚠️ **PNG only, and the trigger is the source container rather than the picture.**
+      // R129 measured 5,857 images: lossless wins 1,736 times and 1,689 of those are PNG,
+      // while a JPEG source wins 7 times in 1,693 and loses by 135% median, because
+      // encoding already-lossy pixels exactly preserves their artefacts at full price.
+      // Restricting to PNG keeps 97.3% of the benefit and skips 34% of the second encodes,
+      // which are not free: lossless measures at 1.30x the lossy encode.
+      //
+      // ⚠️ **ONE entry is recorded, not two.** Everything downstream — `measuredSavings`,
+      // `formatOpportunity`, the report's per-format grouping — assumes at most one
+      // measurement per format and would silently take whichever came last.
+      const tryLossless = format === 'webp' && asset.extension === '.png';
+      const losslessBytes = tryLossless
+        ? await options.probe.encodedBytes({ path: asset.path, format, animated, lossless: true })
+        : Number.POSITIVE_INFINITY;
+
+      const useLossless = losslessBytes < lossyBytes;
       encoded.push({
         format,
-        quality: options.probe.quality[format],
-        bytes: await options.probe.encodedBytes({
-          path: asset.path,
-          format,
-          // The measurement has to describe an image equivalent to the original.
-          // Without this a ten-frame GIF encodes to a single frame and reports a
-          // saving of ~92% that is only achievable by throwing nine frames away.
-          animated: (metadata?.pages ?? 1) > 1,
-        }),
+        quality: useLossless ? 'lossless' : options.probe.quality[format],
+        bytes: useLossless ? losslessBytes : lossyBytes,
       });
     } catch (error) {
       // R64. The pixel limit is the one failure of the five with a fix the reader

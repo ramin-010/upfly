@@ -389,6 +389,11 @@ async function stage(
       // Getting this wrong writes a one-frame GIF and reports a saving only
       // achievable by destroying the animation.
       animated: animated.has(conversion.asset),
+      // 🔴 R131. The plan chose this setting because it MEASURED fewer bytes that way.
+      // Writing at the probe's default quality instead would put a different file on
+      // disk from the one whose saving the user was shown — the advertised number would
+      // have been real and the delivered file would not match it.
+      lossless: conversion.quality === 'lossless',
       destination: `${input.graph.root}/${runDir}/${staged}`,
     });
 

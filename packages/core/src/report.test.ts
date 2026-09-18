@@ -119,6 +119,30 @@ describe('buildReport', () => {
     expect(await reportFor(name)).toMatchSnapshot();
   });
 
+  /**
+   * 🔴 **R131's condition: an approved artefact must carry a lossless entry.**
+   *
+   * The five snapshots above carry `savingQuality: {}` — none of those fixtures produces
+   * a `format-opportunity` at all — so bumping them to schema 5 proves the version moved
+   * and nothing about the field that moved with it. This one is probed for real against
+   * `partial-pattern`, where `theme-dark.png` is 70 bytes that webp 80 grows to 94 and
+   * lossless takes to 36.
+   *
+   * ⚠️ **And it is the guard for R139's list.** The old field was assignment inside a
+   * loop, so it kept whichever finding came last — invisible while every image in a run
+   * shared one setting. This fixture is the first where two settings coexist, which is
+   * exactly the case a scalar could not represent.
+   */
+  it('🔴 carries both settings when a run mixes them (R131, R139)', async () => {
+    const report = await reportFor('partial-pattern', true);
+
+    expect(report.summary.savingQuality.webp).toEqual([80, 'lossless']);
+  });
+
+  it('partial-pattern: matches the approved JSON shape, lossless included', async () => {
+    expect(await reportFor('partial-pattern', true)).toMatchSnapshot();
+  });
+
   it.each(NAMES)('%s: matches the approved human rendering', async (name) => {
     expect(renderReport(await reportFor(name))).toMatchSnapshot();
   });

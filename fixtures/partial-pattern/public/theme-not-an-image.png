@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head><title>404 Not Found</title></head>
+  <body>
+    <h1>Not Found</h1>
+    <p>
+      This file has a .png name and is an HTML error page. That is deliberate, and the
+      NAME says so: §5.1(h)'s convention is that a fixture which breaks a rule on purpose
+      declares itself in its filename, the way missing-on-purpose.png and does-not-exist
+      already do. fixture-integrity.test.ts allows this one name and still fails on every
+      other image whose bytes disagree with its extension - which is the accident it
+      exists to catch, the v2 extension converting fixtures in place.
+
+      It probes as ProbeSkipCode 'not-an-image', and it is the pattern's blocker (R138).
+
+      The blocker used to be theme-dark.png: a 1x1 PNG that webp 80 grew from 70 bytes to
+      94. That reason depended on ENCODER BEHAVIOUR, the most changeable thing in the
+      system. R79 had already measured that class as nearly empty - 56 combinations, WebP
+      won every one - and kept this fixture as its last member, and R131's lossless mode
+      emptied it: the same 1x1 encodes losslessly to 36 bytes, so it converts.
+
+      There is no replacement image either. Across 471 real PNGs, zero defeat both
+      encodes: a minimal PNG is ~67 bytes against lossless WebP's ~36-byte floor, and on
+      larger images lossless WebP beats PNG by design.
+
+      R129 met three real instances of THIS shape in the corpus - rg-lisboa-header.png,
+      szrubyist.png and rg-nairobi-header.png - so it is the commonest real cause rather
+      than a contrivance, and no encoder improvement can ever undo it.
+    </p>
+  </body>
+</html>

@@ -22,6 +22,17 @@ export function Banner() {
   return <img src="/banner.png" alt="Banner" />;
 }
 
+export function Screenshot() {
+  // R131's second demonstration, and the one that reaches the REPORT.
+  //
+  // A UI screenshot: flat panels, hard edges, 1px rules. webp 80 does not merely fail
+  // to help, it GROWS 1,912 bytes into 19,426 — ten times the source — while lossless
+  // takes it to 220. That is R47's finding in one file, and unlike `theme-dark.png`
+  // the saving clears `minSavingBytes`, so it becomes a `format-opportunity` and its
+  // setting reaches `summary.savingQuality`.
+  return <img src="/screenshot.png" alt="A screenshot of the interface" />;
+}
+
 export default function App() {
   const [mode, setMode] = useState('light');
 
@@ -29,6 +40,7 @@ export default function App() {
     <main>
       <img src={inlineLogo} alt="Logo" />
       <Banner />
+      <Screenshot />
       <ThemePreview mode={mode} />
       <button type="button" onClick={() => setMode('dark')}>
         Dark

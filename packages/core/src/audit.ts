@@ -28,7 +28,7 @@ import { findDuplicates } from './duplicates.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
-import type { AssetProbe, EncodeFormat } from './probe.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
 import { type ResolutionHealth, resolutionHealth } from './resolution-health.js';
 import type { ReadFilePort } from './scan.js';
 import type { Mention, SweepResult } from './sweep.js';
@@ -108,7 +108,7 @@ export interface FormatOpportunityFinding {
    * measurement rather than looked up, so the number and its setting cannot come
    * apart on the way to the report.
    */
-  readonly quality: number;
+  readonly quality: EncodeSetting;
 }
 
 /**

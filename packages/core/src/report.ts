@@ -35,7 +35,7 @@ import {
   relativePath,
 } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
-import type { AssetProbe, EncodeFormat, ProbeSkipCode } from './probe.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './probe.js';
 import { isLinked } from './reference.js';
 import type { ServingRoots } from './resolve.js';
 import type { Mention, SweepResult } from './sweep.js';
@@ -80,7 +80,7 @@ import { groupUnscanned } from './unscanned.js';
  * Checked rather than assumed: the fixtures cannot show it, because not one of them has
  * an asset that fails to decode.
  */
-export const REPORT_SCHEMA_VERSION = 4;
+export const REPORT_SCHEMA_VERSION = 5;
 
 /** The numbers people screenshot. */
 export interface ReportSummary {
@@ -101,7 +101,7 @@ export interface ReportSummary {
    */
   readonly potentialSavingBytes: number;
   /**
-   * The encode quality each measured format was produced at.
+   * Every setting each measured format's savings were produced at, sorted, deduplicated.
    *
    * Derived from the measurements themselves rather than from configuration, so it
    * always describes the run that produced `potentialSavingBytes` even if the
@@ -110,8 +110,21 @@ export interface ReportSummary {
    * A saving without this is not a figure. The same image saves 95% at quality 50
    * and 44% at quality 90, and a reader who is not told which cannot know what they
    * are being offered.
+   *
+   * 🔴 **A LIST since R131, and it was a scalar that LIED the moment settings varied.**
+   * The old field was built by `savingQuality[finding.to] = finding.quality` — assignment
+   * inside a loop, so it recorded whichever finding came last. That was invisible while
+   * quality was fixed per format, and R131 is exactly the change that makes it vary: a
+   * run can now encode one PNG at 80 and the next losslessly, because the choice is made
+   * per image by comparing byte counts. A scalar would have reported one of them and
+   * silently dropped the other.
+   *
+   * ⚠️ **The SHAPE is B11's call, not the parent chat's**, and is raised in STATE.md.
+   * R131 ruled the per-entry type (`number | 'lossless'`); this field follows from it but
+   * was not itself ruled. A list keeps every setting rather than inventing a `'mixed'`
+   * sentinel, which would tell a reader that settings differed without telling them how.
    */
-  readonly savingQuality: Readonly<Partial<Record<EncodeFormat, number>>>;
+  readonly savingQuality: Readonly<Partial<Record<EncodeFormat, readonly EncodeSetting[]>>>;
   /** `false` when the run was `--no-probe`; oversized and opportunities are absent. */
   readonly probed: boolean;
 }
@@ -874,11 +887,27 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
   // Best per asset, not the sum of every measurement: an asset measured against
   // both webp and avif would otherwise be counted twice.
   const bestSaving = new Map<string, number>();
-  const savingQuality: Partial<Record<EncodeFormat, number>> = {};
+  // Accumulated into a set per format, not assigned: see `savingQuality`'s comment.
+  // Rule 11 wants byte-identical output for identical input, so the settings are sorted
+  // deterministically — numbers ascending, then `'lossless'`, which has no place on a
+  // numeric scale and is therefore given a fixed one rather than a compared one.
+  const settings = new Map<EncodeFormat, Set<EncodeSetting>>();
   for (const finding of findings) {
     if (finding.kind !== 'format-opportunity') continue;
     bestSaving.set(finding.asset, Math.max(bestSaving.get(finding.asset) ?? 0, finding.savedBytes));
-    savingQuality[finding.to] = finding.quality;
+    const seen = settings.get(finding.to) ?? new Set<EncodeSetting>();
+    seen.add(finding.quality);
+    settings.set(finding.to, seen);
+  }
+
+  const savingQuality: Partial<Record<EncodeFormat, readonly EncodeSetting[]>> = {};
+  for (const [format, seen] of settings) {
+    savingQuality[format] = [...seen].sort((a, b) => {
+      if (a === b) return 0;
+      if (a === 'lossless') return 1;
+      if (b === 'lossless') return -1;
+      return a - b;
+    });
   }
 
   return {

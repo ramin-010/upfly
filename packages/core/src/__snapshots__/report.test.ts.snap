@@ -123,7 +123,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -366,7 +366,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -561,7 +561,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -587,6 +587,177 @@ Worth knowing
   assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
+`;
+
+exports[`buildReport > partial-pattern: matches the approved JSON shape, lossless included 1`] = `
+{
+  "caveats": [
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [],
+    "notExercised": [
+      {
+        "mechanism": "serving-root-detection",
+        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+      },
+    ],
+    "servingRoots": {
+      "declared": true,
+      "dirs": [
+        "public",
+      ],
+    },
+    "unscannedExtensions": [],
+    "unscannedFileCount": 0,
+  },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "diagnosticsFile": null,
+  "findings": [
+    {
+      "asset": "public/banner.png",
+      "bytes": 71744,
+      "from": "png",
+      "kind": "format-opportunity",
+      "quality": 80,
+      "savedBytes": 63780,
+      "savedPercent": 88,
+      "to": "webp",
+      "wouldBe": 7964,
+    },
+    {
+      "asset": "public/screenshot.png",
+      "bytes": 1912,
+      "from": "png",
+      "kind": "format-opportunity",
+      "quality": "lossless",
+      "savedBytes": 1692,
+      "savedPercent": 88,
+      "to": "webp",
+      "wouldBe": 220,
+    },
+    {
+      "asset": "public/theme-light.png",
+      "bytes": 7195,
+      "from": "png",
+      "kind": "format-opportunity",
+      "quality": 80,
+      "savedBytes": 6345,
+      "savedPercent": 88,
+      "to": "webp",
+      "wouldBe": 850,
+    },
+    {
+      "asset": "public/theme-sepia.png",
+      "bytes": 10869,
+      "from": "png",
+      "kind": "format-opportunity",
+      "quality": 80,
+      "savedBytes": 9739,
+      "savedPercent": 89,
+      "to": "webp",
+      "wouldBe": 1130,
+    },
+    {
+      "asset": "src/inline-logo.jpg",
+      "bytes": 12557,
+      "from": "jpeg",
+      "kind": "format-opportunity",
+      "quality": 80,
+      "savedBytes": 1925,
+      "savedPercent": 15,
+      "to": "webp",
+      "wouldBe": 10632,
+    },
+  ],
+  "references": {
+    "byClassification": {
+      "correctly-refused": 0,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 4,
+    },
+    "byConfidence": {
+      "certain": 1,
+      "high": 2,
+      "medium": 1,
+      "unsafe": 0,
+    },
+    "byResolution": {
+      "broken": 0,
+      "discarded": 0,
+      "dynamic": 0,
+      "out-of-scope": 0,
+      "resolved": 3,
+      "resolved-pattern": 1,
+      "unresolved-alias": 0,
+    },
+    "byResolvedVia": {
+      "file": 1,
+      "project-root": 0,
+      "serving-root": 3,
+      "speculative-root": 0,
+    },
+    "classificationBounds": [],
+    "discarded": null,
+    "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
+    "unsafe": [],
+  },
+  "skipped": [
+    {
+      "reason": "metadata: this file could not be read as an image, so nothing about it could be measured",
+      "stage": "measurement",
+      "what": "public/theme-not-an-image.png",
+    },
+    {
+      "reason": "webp: this file could not be read as an image, so there is nothing to encode",
+      "stage": "measurement",
+      "what": "public/theme-not-an-image.png",
+    },
+  ],
+  "staleConversions": [],
+  "summary": {
+    "assetBytes": 105995,
+    "assets": 7,
+    "findings": {
+      "broken": 0,
+      "dead": 0,
+      "duplicate": 0,
+      "format-opportunity": 5,
+      "oversized": 0,
+      "possibly-dead": 0,
+      "serving-root-unknown": 0,
+    },
+    "linkedReferences": 4,
+    "potentialSavingBytes": 83481,
+    "probed": true,
+    "referencedAssets": 7,
+    "references": 4,
+    "savingQuality": {
+      "webp": [
+        80,
+        "lossless",
+      ],
+    },
+    "sourceFiles": 1,
+  },
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 5,
+}
 `;
 
 exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
@@ -720,7 +891,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 
@@ -886,7 +1057,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 307,
     "count": 1,
   },
-  "version": 4,
+  "version": 5,
 }
 `;
 

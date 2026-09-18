@@ -174,6 +174,20 @@ describe('fixture integrity (build plan §5.1h)', () => {
       for (const asset of assets) {
         const signature = signatures.find(([extension]) => asset.extension === extension);
         if (signature === undefined) continue;
+        // ⚠️ **One declared exception, and it declares itself in its NAME (R138).**
+        //
+        // `theme-not-an-image.png` is an HTML error page carrying a `.png` name, on
+        // purpose: it is `fixtures/partial-pattern`'s pattern blocker, and it probes as
+        // `not-an-image`. It follows §5.1(h)'s existing convention — the one that lets
+        // `missing-on-purpose.png` and `does-not-exist` sit in these trees without
+        // weakening the check that finds the accidental ones.
+        //
+        // 🔴 **Keyed on the basename, never on a flag or a count.** This test's job is to
+        // catch the v2 extension converting fixtures in place, which is how 26 of these
+        // were destroyed and 17 dangling references appeared. An allowance that matched
+        // "any file that fails" or "at most one failure" would let that back in; one that
+        // matches a single self-describing name cannot.
+        if (asset.relative.endsWith('/theme-not-an-image.png')) continue;
 
         const bytes = await readFile(asset.path);
         expect([...bytes.subarray(0, signature[1].length)]).toEqual([...signature[1]]);
