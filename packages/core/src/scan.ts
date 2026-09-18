@@ -32,6 +32,7 @@ import {
   DEFAULT_POOL_WORKERS,
   MIN_POOLED_FILES,
   type ScanPool,
+  type ScanPoolAnatomy,
   type ScanPoolOptions,
   type ScanPoolReason,
   type ScanPoolReport,
@@ -178,6 +179,14 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
   const files = options.sourceFiles;
 
   const { pool, reason } = startPool(options, files.length);
+  /**
+   * The pool's numbers, taken before it is torn down.
+   *
+   * 🔴 `anatomy` and `fellBack` are live getters on a pool whose workers are terminated in
+   * the `finally` below, and a decomposition read after teardown is a decomposition of
+   * nothing. Snapshotting is the whole reason this variable exists.
+   */
+  let poolReport: { workers: number; fellBack: number; anatomy: ScanPoolAnatomy } | null = null;
 
   try {
     for (let index = 0; index < files.length; index += concurrency) {
@@ -216,6 +225,9 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
       }
     }
   } finally {
+    if (pool !== null) {
+      poolReport = { workers: pool.workers, fellBack: pool.fellBack, anatomy: pool.anatomy };
+    }
     // In a `finally` so a throw anywhere above cannot leave four OS threads alive in
     // somebody else's process. That is the failure R127 is most concerned about: the
     // library is a guest, and a guest that leaks threads is worse than a slow one.
@@ -227,10 +239,11 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
     unscanned,
     mentions,
     pool: {
-      engaged: pool !== null,
-      reason: pool === null ? reason : 'engaged',
-      workers: pool?.workers ?? 0,
-      fellBack: pool?.fellBack ?? 0,
+      engaged: poolReport !== null,
+      reason: poolReport === null ? reason : 'engaged',
+      workers: poolReport?.workers ?? 0,
+      fellBack: poolReport?.fellBack ?? 0,
+      ...(poolReport === null ? {} : { anatomy: poolReport.anatomy }),
     },
   };
 }

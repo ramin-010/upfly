@@ -37,10 +37,47 @@ export interface ScanTaskMessage {
   readonly text: string;
 }
 
+/**
+ * A message that does no work, for measuring what a round trip costs on its own.
+ *
+ * 🔴 **R152 asked which of three things the pool's unexplained ~4,400 ms is, and named the
+ * suspicion it must not be built on:** *"~0.57 ms per file points at round-trip latency
+ * rather than copying — THAT IS AN INFERENCE, NOT A MEASUREMENT."* This turns it into one.
+ * A ping with an empty payload measures latency alone; a ping carrying a real file's text
+ * measures latency plus the copy, and the difference is the copy. **Neither can be
+ * separated from parsing while a parse is in the message.**
+ */
+export interface ScanPingMessage {
+  readonly id: number;
+  readonly ping: true;
+  /** Echoed back untouched, so a payload costs exactly what a task's text would cost. */
+  readonly text: string;
+}
+
+export type ScanWorkerMessage = ScanTaskMessage | ScanPingMessage;
+
 /** What comes back. `ScannedFile` is arrays of primitives; see the note above. */
 export interface ScanTaskResult {
   readonly id: number;
   readonly scanned: ScannedFile | null;
+  /**
+   * Milliseconds inside `parseOne` — the work that was supposed to move off the main
+   * thread, timed where it actually happens.
+   *
+   * 🔴 **A DURATION, never a timestamp.** Every worker thread has its own
+   * `performance.timeOrigin`, so a stamp taken in a worker and compared against one taken
+   * on the main thread is arithmetic between two different zeroes. Durations survive the
+   * boundary; instants do not, and a decomposition built on them would be confidently
+   * wrong in a way nothing would flag.
+   */
+  readonly parseMs: number;
+  /**
+   * Milliseconds for the whole handler: the parse plus building the reply.
+   *
+   * `handlerMs - parseMs` is what the worker itself spends on transport — mostly
+   * serialising the result — as distinct from what the main thread spends.
+   */
+  readonly handlerMs: number;
   /**
    * Set only when the worker itself failed, which is a bug in the pool rather than in the
    * file. 🔴 **The caller re-parses that file on the main thread instead of dropping it.**
@@ -51,6 +88,16 @@ export interface ScanTaskResult {
 }
 
 const byId = new Map<string, Adapter>(defaultAdapters.map((adapter) => [adapter.id, adapter]));
+
+/**
+ * The id a worker posts once, when its module graph has finished loading.
+ *
+ * 🔴 **Spin-up was the one share of R152's gap that could be guessed at from outside and
+ * was never measured.** A `new Worker` returns immediately and the module load — parse5,
+ * Babel, PostCSS and every adapter — happens afterwards, while the main thread is already
+ * posting tasks into a queue nobody is reading yet. This is the moment the reading starts.
+ */
+export const WORKER_READY_ID = -1;
 
 /**
  * Basenames arrive once, at spawn, rather than with every file.
@@ -64,7 +111,29 @@ const assetBasenames: ReadonlySet<string> = new Set<string>(
 
 if (!isMainThread && parentPort !== null) {
   const port = parentPort;
-  port.on('message', (message: ScanTaskMessage) => {
+  port.postMessage({
+    id: WORKER_READY_ID,
+    scanned: null,
+    parseMs: 0,
+    handlerMs: 0,
+    workerError: null,
+  } satisfies ScanTaskResult);
+  port.on('message', (message: ScanWorkerMessage) => {
+    const handlerStarted = performance.now();
+
+    // A ping does nothing and says so, which is the point: the round trip is measured with
+    // the work removed rather than subtracted from it (R152).
+    if ('ping' in message) {
+      port.postMessage({
+        id: message.id,
+        scanned: null,
+        parseMs: 0,
+        handlerMs: performance.now() - handlerStarted,
+        workerError: null,
+      } satisfies ScanTaskResult);
+      return;
+    }
+
     try {
       const adapter = byId.get(message.file.adapterId);
       if (adapter === undefined) {
@@ -74,19 +143,27 @@ if (!isMainThread && parentPort !== null) {
         port.postMessage({
           id: message.id,
           scanned: null,
+          parseMs: 0,
+          handlerMs: performance.now() - handlerStarted,
           workerError: `adapter '${message.file.adapterId}' is not a default adapter`,
         } satisfies ScanTaskResult);
         return;
       }
 
+      const parseStarted = performance.now();
+      const scanned = parseOne(
+        message.file,
+        adapter,
+        message.text,
+        assetBasenames.size === 0 ? undefined : assetBasenames,
+      );
+      const parseMs = performance.now() - parseStarted;
+
       port.postMessage({
         id: message.id,
-        scanned: parseOne(
-          message.file,
-          adapter,
-          message.text,
-          assetBasenames.size === 0 ? undefined : assetBasenames,
-        ),
+        scanned,
+        parseMs,
+        handlerMs: performance.now() - handlerStarted,
         workerError: null,
       } satisfies ScanTaskResult);
     } catch (error) {
@@ -96,6 +173,8 @@ if (!isMainThread && parentPort !== null) {
       port.postMessage({
         id: message.id,
         scanned: null,
+        parseMs: 0,
+        handlerMs: performance.now() - handlerStarted,
         workerError: error instanceof Error ? error.message : String(error),
       } satisfies ScanTaskResult);
     }

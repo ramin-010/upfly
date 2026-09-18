@@ -61,6 +61,11 @@ function pass(overrides: Partial<Breakdown> = {}): Breakdown {
     poolReason: 'not-requested',
     poolWorkers: 0,
     poolFellBack: 0,
+    poolSpinUpMs: 0,
+    poolActiveMs: 0,
+    poolParseMs: 0,
+    poolHandlerMs: 0,
+    poolTasks: 0,
     ...overrides,
   };
 }

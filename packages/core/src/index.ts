@@ -164,6 +164,7 @@ export {
   DEFAULT_POOL_WORKERS,
   MIN_POOLED_FILES,
   createScanPool,
+  type ScanPoolAnatomy,
   type ScanPoolOptions,
   type ScanPoolReason,
   type ScanPoolReport,

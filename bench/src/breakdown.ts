@@ -188,6 +188,12 @@ export interface Breakdown {
   readonly poolReason: string;
   readonly poolWorkers: number;
   readonly poolFellBack: number;
+  /** R153's anatomy, so CI can confirm or refute the laptop's split. Zeroes when unpooled. */
+  readonly poolSpinUpMs: number;
+  readonly poolActiveMs: number;
+  readonly poolParseMs: number;
+  readonly poolHandlerMs: number;
+  readonly poolTasks: number;
 }
 
 /**
@@ -327,6 +333,11 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     poolReason: parsed.pool.reason,
     poolWorkers: parsed.pool.workers,
     poolFellBack: parsed.pool.fellBack,
+    poolSpinUpMs: parsed.pool.anatomy?.spinUpMs ?? 0,
+    poolActiveMs: parsed.pool.anatomy?.poolActiveMs ?? 0,
+    poolParseMs: parsed.pool.anatomy?.workerParseMs ?? 0,
+    poolHandlerMs: parsed.pool.anatomy?.workerHandlerMs ?? 0,
+    poolTasks: parsed.pool.anatomy?.tasks ?? 0,
   };
 }
 
@@ -356,6 +367,12 @@ export interface BreakdownSample {
   readonly poolReason: string;
   readonly poolWorkers: number;
   readonly poolFellBack: number;
+  /** R153's anatomy, from the median pass. */
+  readonly poolSpinUpMs: number;
+  readonly poolActiveMs: number;
+  readonly poolParseMs: number;
+  readonly poolHandlerMs: number;
+  readonly poolTasks: number;
   /** From the pass whose `scan` was the median, so it describes a real single execution. */
   readonly parseByExtension: readonly (readonly [string, number])[];
   /** Step labels whose spread crossed `MAX_STEP_SPREAD_PERCENT`. */
@@ -407,6 +424,11 @@ export function summariseBreakdowns(passes: readonly Breakdown[]): BreakdownSamp
     adapterThrows: median.adapterThrows,
     poolReason: median.poolReason,
     poolWorkers: median.poolWorkers,
+    poolSpinUpMs: median.poolSpinUpMs,
+    poolActiveMs: median.poolActiveMs,
+    poolParseMs: median.poolParseMs,
+    poolHandlerMs: median.poolHandlerMs,
+    poolTasks: median.poolTasks,
     poolFellBack: passes.reduce((sum, pass) => sum + pass.poolFellBack, 0),
     parseByExtension: median.parseByExtension,
     unusableSteps,
@@ -646,6 +668,23 @@ export function renderPool(samples: readonly BreakdownSample[]): string {
           '    spin-up, cloning and serialisation.',
         ]),
     '',
+    // 🔴 R153. CI is the only instrument that can confirm or refute the laptop's split, and
+    // the laptop's headline pair was unusable (30–45% spread) while its ANATOMY reproduced
+    // across three runs. These three lines are what transfers.
+    ...(pooled.poolTasks === 0
+      ? []
+      : [
+          `    spin-up ${Math.round(pooled.poolSpinUpMs)} ms · worker idle ${(
+            ((pooled.poolActiveMs * Math.max(1, pooled.poolWorkers) - pooled.poolHandlerMs) /
+              Math.max(1, pooled.poolActiveMs * Math.max(1, pooled.poolWorkers))) *
+              100
+          ).toFixed(1)}% of available worker time`,
+          `    parse ${(pooled.poolParseMs / Math.max(1, pooled.poolTasks)).toFixed(3)} ms/file across ${pooled.poolWorkers} workers · ${Math.round(pooled.poolParseMs)} ms occupancy · ${pooled.poolTasks} tasks`,
+          '    🔴 Compare `ms/file` against an UNPOOLED parse of the same tree. On a laptop it',
+          '       rose 1.11 → 1.44 ms as the files were split four ways: per-worker JIT warm-up,',
+          '       which is work the pool CREATES and no amount of transport tuning removes (R153).',
+          '',
+        ]),
     '    ⚠️ Correctness is asserted elsewhere and not here: `scan-pool.test.ts` runs the',
     '       pooled and unpooled scans over a file that throws WITH partial references and',
     '       requires byte-identical output (R134). A faster wrong answer is not a result.',

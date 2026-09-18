@@ -39,7 +39,12 @@
  */
 
 import { Worker } from 'node:worker_threads';
-import type { ScanTaskMessage, ScanTaskResult } from './scan-worker.js';
+import {
+  type ScanPingMessage,
+  type ScanTaskMessage,
+  type ScanTaskResult,
+  WORKER_READY_ID,
+} from './scan-worker.js';
 import type { ScannedFile } from './scan.js';
 import type { SourceFile } from './types.js';
 
@@ -116,13 +121,73 @@ export interface ScanPoolReport {
    * repository with no references in it and no error, which is rule 9's P0 exactly.
    */
   readonly fellBack: number;
+  /**
+   * Where the pooled scan's time went. Absent when no pool ran.
+   *
+   * 🔴 **Reported rather than kept for a profiler**, because R152's question — which of
+   * spin-up, transport and barrier-tail idling the pool's unexplained milliseconds are —
+   * has to be answerable from a CI log. CI is the only instrument that can settle it on
+   * the machine §3.4's budget is set on.
+   */
+  readonly anatomy?: ScanPoolAnatomy;
+}
+
+/**
+ * Where a pooled scan's wall clock actually went.
+ *
+ * 🔴 **R152 ruled ONE MEASUREMENT AND NO FIX**, because three candidate causes and one
+ * unmeasured number is how a week disappears. CI measured the pool 31.7% SLOWER than the
+ * main thread — `scan` 4,075 → 5,366 ms — with parse at 0 ms on the main thread and reads
+ * down 77%. **The physics is right; the plumbing costs more than the physics saves**, and
+ * about 4,400 ms of the pooled run is machinery of an unmeasured kind.
+ *
+ * ⚠️ **Every field here is a DURATION summed on the side that owns the clock.** Worker
+ * threads each have their own `performance.timeOrigin`, so a worker's instant and the main
+ * thread's instant are measured from different zeroes; subtracting them would produce a
+ * decomposition that is confidently wrong and flags nothing.
+ *
+ * ⚠️ **The sums OVERLAP and are not a partition** — the same mistake the read/parse
+ * breakdown was built to prevent, at a smaller scale. Four workers run at once, so
+ * `workerHandlerMs` is occupancy across all of them and only `poolActiveMs` is wall clock.
+ */
+export interface ScanPoolAnatomy {
+  /**
+   * Pool construction until the LAST worker reported it had finished loading.
+   *
+   * A `new Worker` returns immediately; parse5, Babel, PostCSS and every adapter load
+   * afterwards, while the main thread is already queueing tasks nobody is reading.
+   */
+  readonly spinUpMs: number;
+  /** Workers that announced themselves. Fewer than `workers` means one never loaded. */
+  readonly ready: number;
+  readonly tasks: number;
+  /** First dispatch to last result. The only wall-clock figure here. */
+  readonly poolActiveMs: number;
+  /** Summed `dispatch → result` on the main thread. Occupancy across all workers. */
+  readonly roundTripMs: number;
+  /** Summed time inside `parseOne`, reported by the workers. The work that moved. */
+  readonly workerParseMs: number;
+  /** Summed whole-handler time. `handler - parse` is the workers' own serialisation. */
+  readonly workerHandlerMs: number;
+  /** Per worker, so an idle or overloaded one is visible rather than averaged away. */
+  readonly perWorkerHandlerMs: readonly number[];
+  readonly perWorkerTasks: readonly number[];
 }
 
 export interface ScanPool {
   run(file: SourceFile, text: string): Promise<ScannedFile | null>;
+  /**
+   * One round trip carrying `text`, doing no work at all.
+   *
+   * 🔴 **The measurement R152 named and refused to assume.** With an empty string this is
+   * pure latency; with a real file's text it is latency plus the copy, and the difference
+   * is the copy. Nothing can separate those two while a parse is still in the message.
+   */
+  ping(text: string): Promise<void>;
   /** Files a worker could not do, which the caller re-parsed on the main thread. */
   readonly fellBack: number;
   readonly workers: number;
+  readonly anatomy: ScanPoolAnatomy;
   close(): Promise<void>;
 }
 
@@ -181,6 +246,21 @@ export function createScanPool(
   let fellBack = 0;
   let closed = false;
 
+  // --- R153's anatomy. Accounting only; it changes no dispatch decision. -------------
+  const createdAt = performance.now();
+  const dispatchedAt = new Map<number, number>();
+  const index = new Map<Worker, number>(workers.map((worker, at) => [worker, at]));
+  let spinUpMs = 0;
+  let ready = 0;
+  let tasks = 0;
+  let firstDispatchAt = 0;
+  let lastResultAt = 0;
+  let roundTripMs = 0;
+  let workerParseMs = 0;
+  let workerHandlerMs = 0;
+  const perWorkerHandlerMs = workers.map(() => 0);
+  const perWorkerTasks = workers.map(() => 0);
+
   /**
    * A worker died. Hand its in-flight tasks back and stop routing to it.
    *
@@ -211,10 +291,34 @@ export function createScanPool(
 
   for (const worker of workers) {
     worker.on('message', (result: ScanTaskResult) => {
+      // A worker announcing it has finished loading. Recorded every time, because the
+      // LAST one is what spin-up cost — the pool is only as started as its slowest member.
+      if (result.id === WORKER_READY_ID) {
+        ready++;
+        spinUpMs = performance.now() - createdAt;
+        return;
+      }
+
       const waiting = pending.get(result.id);
       if (waiting === undefined) return;
       pending.delete(result.id);
       owner.delete(result.id);
+
+      const now = performance.now();
+      const sentAt = dispatchedAt.get(result.id);
+      dispatchedAt.delete(result.id);
+      if (sentAt !== undefined) {
+        roundTripMs += now - sentAt;
+        lastResultAt = now;
+      }
+      workerParseMs += result.parseMs;
+      workerHandlerMs += result.handlerMs;
+      const at = index.get(worker);
+      if (at !== undefined) {
+        perWorkerHandlerMs[at] = (perWorkerHandlerMs[at] ?? 0) + result.handlerMs;
+        perWorkerTasks[at] = (perWorkerTasks[at] ?? 0) + 1;
+      }
+
       if (result.workerError !== null) fellBack++;
       waiting.resolve(result.scanned);
     });
@@ -249,6 +353,10 @@ export function createScanPool(
         pending.set(id, { resolve, reject });
         owner.set(id, worker);
         try {
+          const at = performance.now();
+          if (firstDispatchAt === 0) firstDispatchAt = at;
+          dispatchedAt.set(id, at);
+          tasks++;
           worker.postMessage({ id, file, text } satisfies ScanTaskMessage);
         } catch {
           // It died between the liveness check and the post.
@@ -259,10 +367,44 @@ export function createScanPool(
         }
       });
     },
+    /**
+     * One round trip with no work in it.
+     *
+     * Serial by construction — the caller awaits each one — because a latency measured
+     * while four of them are in flight is a measurement of the queue, not of the trip.
+     */
+    ping(text: string): Promise<void> {
+      const alive = workers.filter((worker) => !dead.has(worker));
+      const worker = alive[0];
+      if (worker === undefined) return Promise.resolve();
+
+      const id = nextId++;
+      return new Promise<void>((resolve) => {
+        pending.set(id, { resolve: () => resolve(), reject: () => resolve() });
+        owner.set(id, worker);
+        worker.postMessage({ id, ping: true, text } satisfies ScanPingMessage);
+      });
+    },
     get fellBack() {
       return fellBack;
     },
     workers: workers.length,
+    get anatomy(): ScanPoolAnatomy {
+      return {
+        spinUpMs,
+        ready,
+        tasks,
+        // Zero until something has come back, rather than a negative number from an
+        // uninitialised pair — a decomposition that reports nonsense for an empty run is
+        // one nobody trusts on a full one.
+        poolActiveMs: lastResultAt === 0 ? 0 : lastResultAt - firstDispatchAt,
+        roundTripMs,
+        workerParseMs,
+        workerHandlerMs,
+        perWorkerHandlerMs: [...perWorkerHandlerMs],
+        perWorkerTasks: [...perWorkerTasks],
+      };
+    },
     async close(): Promise<void> {
       closed = true;
       await Promise.all(workers.map((worker) => worker.terminate()));
