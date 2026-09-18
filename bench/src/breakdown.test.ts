@@ -19,12 +19,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   type Breakdown,
+  EXPERIMENT_1,
   MAX_STEP_SPREAD_PERCENT,
   VARIANTS,
+  VARIANT_SPEC,
   type Variant,
   measureBreakdown,
   renderBreakdown,
   renderExperiment,
+  renderThreadpool,
   rotate,
   summariseBreakdowns,
 } from './breakdown.js';
@@ -65,7 +68,8 @@ describe('the variants differ in exactly one thing', () => {
     'claims the same files whether or not the parse is stubbed',
     async () => {
       const measured = new Map<Variant, Breakdown>();
-      for (const variant of VARIANTS) measured.set(variant, await measureBreakdown(TREE, variant));
+      for (const variant of EXPERIMENT_1)
+        measured.set(variant, await measureBreakdown(TREE, variant));
 
       const counts = new Set([...measured.values()].map((breakdown) => breakdown.files));
       // 🔴 The whole experiment is `scan(baseline) - scan(no-parse)`. If these disagree,
@@ -197,9 +201,9 @@ describe('what every breakdown says about itself', () => {
   });
 });
 
-/** Three variants at a chosen `scan`, everything else held still. */
-function experimentAt(scans: Record<Variant, readonly number[]>) {
-  return VARIANTS.map((variant) =>
+/** The named variants at a chosen `scan`, everything else held still. */
+function experimentAt(scans: Partial<Record<Variant, readonly number[]>>) {
+  return VARIANTS.filter((variant) => scans[variant] !== undefined).map((variant) =>
     summariseBreakdowns(
       (scans[variant] ?? []).map((scanMs) => pass({ variant, scanMs, readMs: scanMs - 100 })),
     ),
@@ -269,5 +273,70 @@ describe('R141 experiment 1’s reading', () => {
     // The default CI invocation samples the baseline only. An experiment block rendered
     // from one variant would be a subtraction against a missing operand.
     expect(renderExperiment([summariseBreakdowns([pass()])])).toBe('');
+  });
+});
+
+describe('R141 experiment 2’s reading', () => {
+  it('sets the threadpool on the child’s environment, never inside the library', () => {
+    // 🔴 §3.4: `UV_THREADPOOL_SIZE` is set in the CLI entry point, never in the library,
+    // because `upfly-core` runs inside somebody else's process. libuv also reads it once,
+    // when the pool is first used, so it CANNOT be an in-process treatment even if the
+    // rule allowed it. Both facts point at the same place: the spawn.
+    expect(VARIANT_SPEC['uv16-baseline'].env).toEqual({ UV_THREADPOOL_SIZE: '16' });
+    expect(VARIANT_SPEC.baseline.env).toEqual({});
+    expect(VARIANT_SPEC['uv16-baseline'].stubParse).toBe(VARIANT_SPEC.baseline.stubParse);
+    expect(VARIANT_SPEC['uv16-no-parse'].stubParse).toBe(VARIANT_SPEC['no-parse'].stubParse);
+  });
+
+  it('pairs each raised-pool run against the same work at the default pool', () => {
+    const rendered = renderThreadpool(
+      experimentAt({
+        baseline: [10_000, 10_010, 10_020],
+        'uv16-baseline': [9_900, 9_910, 9_920],
+        'no-parse': [4_000, 4_010, 4_020],
+        'uv16-no-parse': [3_000, 3_010, 3_020],
+      }),
+    );
+    // 100/10 010 and 1 000/4 010. The second pair moving far more than the first is the
+    // shape R141 predicts: with the main thread free, the completions have somewhere to go.
+    expect(rendered).toContain('-1.0%');
+    expect(rendered).toContain('-24.9%');
+  });
+
+  it('calls a move inside the spread what it is, rather than a result', () => {
+    // 🔴 R12's "26% off" and R19's "zero" were both single laptop measurements. A 1% move
+    // against a 20% spread has to print as nothing, or this repeats that exactly.
+    const rendered = renderThreadpool(
+      experimentAt({
+        baseline: [9_000, 10_000, 11_000],
+        'uv16-baseline': [8_900, 9_900, 10_900],
+      }),
+    );
+    expect(rendered).toContain('NOT a finding');
+  });
+
+  it('prints nothing when the raised-pool variants were not run', () => {
+    expect(renderThreadpool(experimentAt({ baseline: [10_000] }))).toBe('');
+  });
+});
+
+describe('one pass is not a floor', () => {
+  it('refuses to place experiment 1’s verdict against a single draw', () => {
+    // 🔴 `summarise([x])` reports 0% spread, which is true and is not a floor.
+    // `noise.test.ts` records the same trap on the same arithmetic. A verdict placed
+    // against it is R12's "26% off" being born again.
+    const rendered = renderExperiment(
+      experimentAt({ baseline: [10_000], 'no-parse': [4_000], 'no-parse-no-mentions': [3_000] }),
+    );
+    expect(rendered).toContain('ONE pass');
+    expect(rendered).not.toContain('MAIN THREAD');
+  });
+
+  it('refuses to place experiment 2’s rows against a single draw', () => {
+    const rendered = renderThreadpool(
+      experimentAt({ baseline: [10_000], 'uv16-baseline': [9_000] }),
+    );
+    expect(rendered).toContain('ONE PASS');
+    expect(rendered).not.toContain('NOT a finding');
   });
 });

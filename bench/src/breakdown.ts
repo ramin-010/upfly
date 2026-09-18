@@ -79,17 +79,77 @@ const exec = promisify(execFile);
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 /**
- * The treatments. Order is the order they are reported in, and each removes the one
- * above it plus one more, so consecutive differences are the cost of what was removed.
+ * The treatments.
+ *
+ * The first three are R141 experiment 1 and each removes the one above it plus one more,
+ * so consecutive differences are the cost of what was removed. The last two are
+ * **experiment 2**, which is the same work under a raised libuv threadpool.
+ *
+ * 🔴 **`UV_THREADPOOL_SIZE` is read by libuv when the pool is first used and cannot be
+ * changed afterwards, so it is a property of the PROCESS.** That is why it is a spawn-time
+ * `env` here rather than an assignment — and it is also §3.4's rule arriving from the
+ * other direction: *set it in the CLI entry point, never in the library.* The bench parent
+ * sets it on a child it owns. Nothing in `upfly-core` touches it.
+ *
+ * ⚠️ **`uv16-no-parse` is the informative half and it is easy to skip.** R12 measured 26%
+ * off, R19 measured zero, and both were on a laptop R124 later found at 39–63% background
+ * load. But R141's thesis is that reads are blocked by the MAIN THREAD rather than by
+ * libuv — so if that is right, raising the pool should do little at baseline and MORE once
+ * the parse is stubbed and the main thread is free to collect the completions.
  */
-export const VARIANTS = ['baseline', 'no-parse', 'no-parse-no-mentions'] as const;
+interface VariantSpec {
+  readonly label: string;
+  readonly stubParse: boolean;
+  readonly withMentions: boolean;
+  /** Extra environment for the child process that measures it. */
+  readonly env: Readonly<Record<string, string>>;
+}
+
+export const VARIANTS = [
+  'baseline',
+  'no-parse',
+  'no-parse-no-mentions',
+  'uv16-baseline',
+  'uv16-no-parse',
+] as const;
 export type Variant = (typeof VARIANTS)[number];
 
-export const VARIANT_LABEL: Readonly<Record<Variant, string>> = {
-  baseline: 'baseline',
-  'no-parse': 'no parse (R141 exp. 1)',
-  'no-parse-no-mentions': 'no parse, no mentions',
+/** R141 experiment 1's three treatments, which are a partition of `scan`. */
+export const EXPERIMENT_1: readonly Variant[] = ['baseline', 'no-parse', 'no-parse-no-mentions'];
+/** R141 experiment 2's pairs, each read against its same-named default-pool variant. */
+export const EXPERIMENT_2: readonly Variant[] = ['uv16-baseline', 'uv16-no-parse'];
+
+const UV16 = Object.freeze({ UV_THREADPOOL_SIZE: '16' });
+
+export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
+  baseline: { label: 'baseline', stubParse: false, withMentions: true, env: {} },
+  'no-parse': { label: 'no parse (R141 exp. 1)', stubParse: true, withMentions: true, env: {} },
+  'no-parse-no-mentions': {
+    label: 'no parse, no mentions',
+    stubParse: true,
+    withMentions: false,
+    env: {},
+  },
+  'uv16-baseline': {
+    label: 'baseline, UV pool 16',
+    stubParse: false,
+    withMentions: true,
+    env: UV16,
+  },
+  'uv16-no-parse': {
+    label: 'no parse, UV pool 16',
+    stubParse: true,
+    withMentions: true,
+    env: UV16,
+  },
 };
+
+export const VARIANT_LABEL: Readonly<Record<Variant, string>> = Object.freeze(
+  Object.fromEntries(VARIANTS.map((variant) => [variant, VARIANT_SPEC[variant].label])) as Record<
+    Variant,
+    string
+  >,
+);
 
 /**
  * Above this a step's samples disagree too much to attribute a change to it.
@@ -140,8 +200,7 @@ export interface Breakdown {
  * every boundary it crosses.
  */
 export async function measureBreakdown(root: string, variant: Variant): Promise<Breakdown> {
-  const stubParse = variant !== 'baseline';
-  const withMentions = variant !== 'no-parse-no-mentions';
+  const { stubParse, withMentions } = VARIANT_SPEC[variant];
 
   let readMs = 0;
   let parseMs = 0;
@@ -349,15 +408,32 @@ export async function sampleBreakdowns(
   const script = fileURLToPath(new URL('run.js', import.meta.url));
   const collected = new Map<Variant, Breakdown[]>(variants.map((variant) => [variant, []]));
 
+  // 🔴 Grouped by environment because `UV_THREADPOOL_SIZE` is a property of the PROCESS:
+  // libuv reads it when the pool is first used and it cannot be changed after. Variants
+  // that need the same environment share a child; variants that need a different one get
+  // their own. Each group is still rotated, so no variant is always measured first.
+  const groups = new Map<string, Variant[]>();
+  for (const variant of variants) {
+    const key = JSON.stringify(VARIANT_SPEC[variant].env);
+    const bucket = groups.get(key);
+    if (bucket === undefined) groups.set(key, [variant]);
+    else bucket.push(variant);
+  }
+
   for (let index = 0; index < processes; index++) {
-    const rotated = rotate(variants, index);
-    const { stdout: out } = await exec(
-      process.execPath,
-      [script, '--breakdown-child', `--variants=${rotated.join(',')}`],
-      { maxBuffer: 32 * 1024 * 1024 },
-    );
-    for (const pass of JSON.parse(out) as Breakdown[]) {
-      collected.get(pass.variant)?.push(pass);
+    for (const [key, members] of groups) {
+      const rotated = rotate(members, index);
+      const { stdout: out } = await exec(
+        process.execPath,
+        [script, '--breakdown-child', `--variants=${rotated.join(',')}`],
+        {
+          maxBuffer: 32 * 1024 * 1024,
+          env: { ...process.env, ...(JSON.parse(key) as Record<string, string>) },
+        },
+      );
+      for (const pass of JSON.parse(out) as Breakdown[]) {
+        collected.get(pass.variant)?.push(pass);
+      }
     }
   }
 
@@ -439,6 +515,8 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
   const noMentions = samples.find((sample) => sample.variant === 'no-parse-no-mentions');
   if (baseline === undefined || noParse === undefined) return '';
 
+  const partition = samples.filter((sample) => EXPERIMENT_1.includes(sample.variant));
+
   const lines: string[] = [
     '',
     '  R141 experiment 1 — what `scan` costs with parsing stubbed to a no-op',
@@ -446,7 +524,7 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
     '    variant                     scan       spread        vs baseline',
   ];
 
-  for (const sample of samples) {
+  for (const sample of partition) {
     const delta =
       sample === baseline
         ? '—'
@@ -489,19 +567,105 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 }
 
 /**
+ * R141 experiment 2 — one environment variable that has never had a clean measurement.
+ *
+ * ⚠️ **R12 measured 26% off and R19 measured zero, and both were taken on a laptop that
+ * R124 later found running at 39–63% background load.** Neither is evidence. This is the
+ * same question asked inside one CI run, against its own paired control.
+ *
+ * 🔴 **The second row is the one to read.** R141's thesis is that `read (wall)` is not a
+ * disk floor at all but the main thread being saturated by parse — so a bigger libuv pool
+ * should buy little at baseline (the completions have nowhere to go) and MORE once the
+ * parse is stubbed. **If instead the pool helps at baseline and not with parse stubbed,
+ * R141's thesis is wrong and the answer really is the read strategy.** Either way it is
+ * one environment variable, and §3.4 already rules where it may be set: the CLI entry
+ * point, never the library.
+ */
+export function renderThreadpool(samples: readonly BreakdownSample[]): string {
+  const pairs: readonly (readonly [Variant, Variant])[] = [
+    ['baseline', 'uv16-baseline'],
+    ['no-parse', 'uv16-no-parse'],
+  ];
+
+  const rows: string[] = [];
+  for (const [control, treatment] of pairs) {
+    const before = samples.find((sample) => sample.variant === control);
+    const after = samples.find((sample) => sample.variant === treatment);
+    if (before === undefined || after === undefined) continue;
+
+    const floor = spreadFloor(before, after);
+    const move =
+      ((after.scan.medianMs - before.scan.medianMs) / Math.max(1, before.scan.medianMs)) * 100;
+    rows.push(
+      `    ${VARIANT_LABEL[control].padEnd(24)} ${String(before.scan.medianMs).padStart(6)} ms  ->  ${String(
+        after.scan.medianMs,
+      ).padStart(6)} ms   ${`${move >= 0 ? '+' : ''}${move.toFixed(1)}%`.padStart(8)}   ${
+        floor === null
+          ? 'ONE PASS — no floor to place this against'
+          : Math.abs(move) <= floor
+            ? `inside the ${floor}% spread — NOT a finding`
+            : `outside the ${floor}% spread`
+      }`,
+      `    ${''.padEnd(24)} read (wall) ${before.read.medianMs} -> ${after.read.medianMs} ms`,
+    );
+  }
+
+  if (rows.length === 0) return '';
+
+  return [
+    '',
+    '  R141 experiment 2 — UV_THREADPOOL_SIZE=16 against the default 4',
+    '',
+    '    pair                         scan (4)      scan (16)      change   verdict',
+    ...rows,
+    '',
+    '    🔴 Read the SECOND pair. If the pool helps more once the parse is stubbed, the',
+    "       reads were waiting on the main thread, which is R141's thesis. If it helps at",
+    '       baseline and not with parse stubbed, that thesis is wrong and the answer is the',
+    '       read strategy. ⚠️ R12 said 26%, R19 said 0%, both on a laptop under load.',
+    '    ⚠️ §3.4: this variable is set in the CLI entry point, NEVER in the library. Here',
+    '       the bench parent sets it on a child it owns; nothing in `upfly-core` reads it.',
+    '',
+  ].join('\n');
+}
+
+/**
  * R141's decision rule, applied out loud — and refused when the spreads cannot carry it.
  *
  * ⚠️ **Stated as a share rather than as R141's absolute 1,500 / 5,000 ms**, because those
  * are this tree on this runner and the same rule has to survive both changing. The
  * question underneath is unchanged: is the main thread the bottleneck, or is the disk.
  */
+/**
+ * The noise floor two samples share, or `null` when there is not one.
+ *
+ * 🔴 **One pass has a spread of 0% and that is not a floor, it is an absence.**
+ * `noise.test.ts` records the same trap on the same arithmetic: *"calls a single sample
+ * perfectly tight, which is true and is why `--cold` needs reading"*. A verdict placed
+ * against a 0% floor derived from one draw is R12's *"26% off"* being born again.
+ */
+function spreadFloor(a: BreakdownSample, b: BreakdownSample): number | null {
+  if (a.passes < 2 || b.passes < 2) return null;
+  return Math.max(a.scan.spreadPercent, b.scan.spreadPercent);
+}
+
 function verdict(
   baseline: BreakdownSample,
   noParse: BreakdownSample,
   parseCost: number,
 ): readonly string[] {
-  const floorPercent = Math.max(baseline.scan.spreadPercent, noParse.scan.spreadPercent);
+  const floor = spreadFloor(baseline, noParse);
   const movePercent = (Math.abs(parseCost) / Math.max(1, baseline.scan.medianMs)) * 100;
+
+  if (floor === null) {
+    return [
+      `    VERDICT: parsing is ${((parseCost / Math.max(1, baseline.scan.medianMs)) * 100).toFixed(1)}% of scan's wall clock — but this ran ONE pass`,
+      '       per variant, so there is no spread to place it against. R141 expects ~−70%, which',
+      '       survives one sample; nothing smaller does. Re-run with --breakdown-passes=3.',
+    ];
+  }
+
+  const floorPercent = floor;
 
   if (movePercent <= floorPercent) {
     return [
