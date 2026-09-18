@@ -150,7 +150,13 @@ const UNKNOWN_SEGMENT = /\$\{[^}]*\}|#\{[^}]*\}|@\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]
 const CHARACTER_REFERENCE = /&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /** Template syntaxes that build a path at render time, and what to call each one. */
-const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
+// Exported for `could-hold-reference.ts` (R165), which must not skip the parse of a file
+// holding one of these: a templated destination is a reference position asserted with no
+// static extension, and it reaches the report as `dynamic`. A hand-kept second copy of
+// this table is the drift `default-adapter-ids.ts` already names — a sixth dialect added
+// here has to protect the skip automatically, or the skip silently starts eating the new
+// dialect's report lines.
+export const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
   ['{{', 'a Handlebars, Mustache, Vue or Jinja expression'],
   ['{%', 'a Liquid, Jinja or Nunjucks tag'],
   ['<%', 'an EJS or ERB expression'],

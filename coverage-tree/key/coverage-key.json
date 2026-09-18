@@ -1858,6 +1858,54 @@
       ]
     },
     {
+      "path": "apps/docs/src/content/guide/encoded-entity.md",
+      "entries": [
+        {
+          "raw": "/img/screenshot&#46;png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "R164: the extension is a decimal character reference, so the document holds no literal `.png` anywhere. `resolve.ts` tests every spelling `spellingsOf` produces, so it resolves and the markdown adapter does find it. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 227,
+          "line": 6,
+          "column": 23
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/encoded-percent-dot.md",
+      "entries": [
+        {
+          "raw": "/img/screenshot%2Epng",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "R164: the same picture with the dot percent-escaped. Separate from the entity spelling because the two decode by different code paths, so a fix can close one and miss the other. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 130,
+          "line": 5,
+          "column": 24
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/encoded-percent-letter.md",
+      "entries": [
+        {
+          "raw": "/img/screenshot.%70ng",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "R165: the escape covers a LETTER of the extension rather than the dot. 🔴 THIS IS THE ENTRY THAT REFUTES THE NARROW FIX. R164 ruled the token `%2`, which catches an escaped dot and misses this, because `decodePercent` runs `decodeURIComponent` over the whole path and any character may be escaped. With `%2` this row misses; with `%` it is met. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 238,
+          "line": 6,
+          "column": 27
+        }
+      ]
+    },
+    {
       "path": "apps/docs/src/pages/index.astro",
       "entries": [
         {

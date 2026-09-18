@@ -23,16 +23,27 @@
  * extension to exist. Missing that case would turn a performance change into a
  * correctness regression: a real reported finding vanishing with no error.
  *
- * So the list is two families:
- * 1. Every extension `paths.ts`'s `IMAGE_EXTENSIONS` tracks. `resolve.ts`'s step 3
- *    (`isImageExtension(extensionOf(candidate))`) never guesses an extension that is
- *    not literally in the text, so a reference that *does* resolve always carries one.
+ * So the list is four families, and each one was added because something got past the
+ * list as it stood:
+ * 1. Every extension `paths.ts`'s `IMAGE_EXTENSIONS` tracks.
  * 2. The constructs that assert a reference position independent of any extension:
  *    `url(`/`image-set(` (CSS, and CSS-in-JS via `javascript.ts`'s
  *    `collectFromTaggedTemplate`), the attribute names that gate a reference position
  *    for the HTML/JSX/Astro adapters (`src`, `href` — which also covers `xlink:href`
  *    — `poster`, `style`, which also covers `styled`), and the CSS-in-JS tag
  *    identifiers not already covered by `style`.
+ * 3. `ENCODED_SPELLING_TOKENS` — because the extension need not be spelled literally
+ *    (R164/R165). See its own comment; this is the family that produced a P0.
+ * 4. `TEMPLATE_TOKENS` — because a templated destination is a reference position with
+ *    no static extension at all, reported as `dynamic`.
+ *
+ * 🔴 **THE SKIP IS PER FILE, WHICH IS WHAT ANY REFUTING TEST HAS TO RESPECT.** One token
+ * anywhere in a document parses the whole document, so a fixture holding several
+ * spellings together cannot show which of them the list actually handles — the coverage
+ * tree carries `encoded-entity.md`, `encoded-percent-dot.md` and
+ * `encoded-percent-letter.md` as three separate documents for exactly that reason, and
+ * the first attempt at them, as one file, read identically whether the fix was right or
+ * wrong.
  *
  * Deliberately coarse in the same direction `MARKUP_OPENER` is coarse: `style` matches
  * the English word "styling" in prose just as readily as a `style=` attribute, which
@@ -50,6 +61,7 @@
  * case the coverage tree currently exercises.
  */
 
+import { TEMPLATE_EXPRESSIONS } from './adapters/reference-path.js';
 import { IMAGE_EXTENSIONS } from './paths.js';
 
 const ASSERTING_TOKENS: readonly string[] = [
@@ -64,9 +76,46 @@ const ASSERTING_TOKENS: readonly string[] = [
   'injectglobal',
 ];
 
+/**
+ * 🔴 **The extension does not have to be spelled literally, and missing that was R164.**
+ *
+ * `resolve.ts` asks `spellingsOf` for every spelling of a path before testing the
+ * extension, so a reference resolves if the LITERAL, the ENTITY-DECODED or the
+ * PERCENT-DECODED form ends in a tracked extension. `![alt](hero&#46;png)` and
+ * `![alt](hero%2Epng)` hold no `.png` anywhere and both resolve to a real asset — so the
+ * skip dropped a reference the markdown adapter does find, with no error and no report
+ * line. That is the under-approximation this module's own header calls a P0, and the
+ * coverage tree could not refute it because it held no markdown entry with an encoded
+ * extension.
+ *
+ * - **`&#` is complete for the entity class.** `PREDEFINED_ENTITIES` is only
+ *   `{amp, lt, gt, quot, apos}` → `& < > " '`, none of which can appear in an extension,
+ *   so any entity that hides one is numeric (`&#46;`, `&#x2E;`) and carries `&#`.
+ * - 🔴 **`%` is the token for the percent class, NOT `%2`.** R164 ruled `%2` from two
+ *   probed spellings where the DOT is escaped, but `decodePercent` runs
+ *   `decodeURIComponent` over the whole path, so any character can be escaped:
+ *   `hero.%70ng` decodes to `hero.png`, resolves, and holds no `%2`. Fixing the two
+ *   spellings that were probed rather than the class they belong to would be the same
+ *   mistake one level down.
+ */
+const ENCODED_SPELLING_TOKENS: readonly string[] = ['&#', '%'];
+
+/**
+ * A templated destination is a reference position asserted with NO static extension.
+ *
+ * `![logo]({{ site.logo }})` reaches the report as `dynamic` today — the markdown adapter
+ * emits it `ceiling: 'unsafe'`, and `resolve.ts` only drops such a reference when
+ * `provablyNotAnAsset`, which needs a static extension to be sure. Skipping the file
+ * deletes that line, which is the `url($icon-path)` case again in another dialect.
+ * Imported rather than copied so a sixth dialect protects this automatically.
+ */
+const TEMPLATE_TOKENS: readonly string[] = TEMPLATE_EXPRESSIONS.map(([marker]) => marker);
+
 const TOKENS: readonly string[] = [
   ...IMAGE_EXTENSIONS.map((extension) => extension.toLowerCase()),
   ...ASSERTING_TOKENS,
+  ...ENCODED_SPELLING_TOKENS,
+  ...TEMPLATE_TOKENS,
 ];
 
 /**
