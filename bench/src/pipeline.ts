@@ -70,11 +70,16 @@ export interface PipelineInput {
   /**
    * The directories the sweep and the audit treat as served.
    *
-   * ⚠️ Separate from `servingRoots`, and only because `validate.ts` passes different
-   * values to each on its unconfigured entries: the resolver gets the convention guess
-   * while the sweep and the audit get an empty list. That is an inconsistency in the
-   * harness rather than a design, it is preserved here so the extraction could be
-   * proved byte-identical, and it is raised in STATE.md.
+   * ⚠️ **THIS COMMENT DESCRIBED A STATE THAT NO LONGER EXISTS, AND A STALE COMMENT ABOUT AN
+   * INCONSISTENCY IS WORSE THAN NONE** — it tells the next reader to preserve a bug that is
+   * already fixed. It said `validate.ts` passed different values to each on its
+   * unconfigured entries, the resolver getting the convention guess while the sweep and the
+   * audit got an empty list. **Every caller now derives this from `servingRoots` itself**
+   * (`validate.ts:256`, `engine-run.ts`), and `validate.ts` records when and why it stopped.
+   *
+   * It stays a separate parameter because the two questions are genuinely different — *what
+   * does the resolver try* and *what does the audit consider served* — not because anyone
+   * still needs them to disagree.
    */
   readonly publicDirs: (servingRoots: ServingRoots) => readonly string[];
   /**

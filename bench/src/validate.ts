@@ -21,10 +21,11 @@ import { basename, join, relative } from 'node:path';
 import { argv, chdir, cwd, stdout } from 'node:process';
 import {
   type Adapter,
-  CONVENTIONAL_SERVING_ROOTS,
+  type DiscoveryResult,
   type Graph,
   IMAGE_EXTENSIONS,
   type ProbeDiagnostic,
+  type RawReference,
   type Reference,
   type Report,
   type ScanDiagnostic,
@@ -36,6 +37,7 @@ import {
 } from 'upfly-core';
 import { type PipelineOutput, runPipeline as enginePipeline } from './pipeline.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
+import { decideServingRoots } from './serving-root-decision.js';
 import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
@@ -187,13 +189,47 @@ function partialSummary(
  * Every repository here has hand-tuned serving roots, which means the corpus has
  * validated the CONFIGURED experience five times and the unconfigured one never. A
  * first run always has no configuration, so the unconfigured case is what everybody
- * meets first. `unconfigured` runs a repo the way a stranger would meet it: the
- * convention guess, marked as a guess.
+ * meets first. `unconfigured` runs a repo the way a stranger would meet it.
+ *
+ * 🔴 **AND UNTIL NOW IT RAN IT THE WAY A STRANGER WOULD HAVE MET IT IN JUNE.** This
+ * returned `CONVENTIONAL_SERVING_ROOTS` — the frozen `['public']` — while a real first run
+ * has gone through `detectServingRoots` since B3 and through R132's inference since R144.
+ * **So the entry whose whole purpose is *"what does a stranger see"* was simulating a
+ * behaviour the engine had stopped having**, and every §5.1 number taken from it described
+ * a version of Upfly nobody could install.
+ *
+ * ✅ **Measured before it was changed** (`detect-roots --delta`, four columns, all five
+ * repositories), against the hand-tuned list as the answer:
+ *
+ * | | frozen `['public']` | detection ∪ inference |
+ * |---|---|---|
+ * | `shadcn-ui` | **0 of 115**, `SERVING ROOT UNKNOWN` | **164 of 183 — identical to hand-tuned** |
+ * | `scratch-www` | **0 of 615**, `SERVING ROOT UNKNOWN` | identical to hand-tuned |
+ * | `eleventy-docs` | **0 of 14**, `SERVING ROOT UNKNOWN` | identical to hand-tuned |
+ * | `railsgirls-com` | identical (nothing matches, so it falls to the project root) | identical |
+ * | `astro-docs` | identical | identical |
+ *
+ * ⚠️ **The cost of the change is that the unconfigured entries now nearly DUPLICATE their
+ * configured twins**, because the gap they were built to show has closed. That is the
+ * result, not a defect — but it means this class is close to empty and the next chat should
+ * know it, because R137 is exactly what happens when a fixture rests on a class that a fix
+ * empties. **What still differs is `declared: false`**, which the report words differently.
  */
-function servingRootsFor(repo: RepoSpec): ServingRoots {
-  return repo.unconfigured === true
-    ? CONVENTIONAL_SERVING_ROOTS
-    : { dirs: repo.publicDirs, declared: true };
+function servingRootsFor(
+  repo: RepoSpec,
+  discovery: DiscoveryResult,
+  references: readonly RawReference[],
+): ServingRoots {
+  if (repo.unconfigured !== true) return { dirs: repo.publicDirs, declared: true };
+
+  // The same call `engine-run.ts` makes, because "what a stranger sees" has to be the code
+  // a stranger runs. Anything else is a simulation of our own guess about ourselves.
+  return decideServingRoots({
+    root: discovery.root,
+    directories: discovery.directories,
+    assets: discovery.assets,
+    references,
+  }).servingRoots;
 }
 
 /**
@@ -216,7 +252,7 @@ function servingRootsFor(repo: RepoSpec): ServingRoots {
 async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
   const output = await enginePipeline({
     root: join(VALIDATION_ROOT, repo.name),
-    servingRoots: () => servingRootsFor(repo),
+    servingRoots: (discovery, scanned) => servingRootsFor(repo, discovery, scanned.references),
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null,
   });
@@ -667,7 +703,7 @@ function worksheet(result: RepoResult): string {
   const lines = [
     `# ${labelOf(repo)} — §5.1(c)/(d) review worksheet`,
     '',
-    `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with NO configuration: the convention serving root, which this repository does not have' : ''}.`,
+    `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with NO configuration: serving roots detected and inferred exactly as a first run does (R147)' : ''}.`,
     `Root: \`${root}\``,
     '',
     'Every `broken` finding has been opened and every `dead` asset grepped **by machine**, against',

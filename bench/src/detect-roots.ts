@@ -22,6 +22,7 @@ import { argv, stdout } from 'node:process';
 import {
   type Adapter,
   type Asset,
+  CONVENTIONAL_SERVING_ROOTS,
   type Reference,
   type ServingRoots,
   buildGraph,
@@ -109,6 +110,13 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     });
 
   const configured = resolveWith({ dirs: repo.publicDirs, declared: true });
+
+  // 🔴 The frozen convention guess, and it is here because `validate.ts` still uses it for
+  // its `unconfigured` entries — the runs that are supposed to show *how a stranger meets
+  // this repository*. A stranger's run today gets detection, so that column has been
+  // simulating a behaviour the engine stopped having. This is the fourth column that says
+  // what replacing it would cost or buy, before it is replaced.
+  const guess = resolveWith(CONVENTIONAL_SERVING_ROOTS);
   const auto = resolveWith(detectServingRoots(discovery.directories, names));
 
   // 🔴 R132's third column: detection UNIONED with what the references actually resolve.
@@ -160,7 +168,10 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
 
   return [
     `${repo.name}: ${scanned.references.length} scanned, ${configured.length} resolved against`,
-    `  configured: ${health(configured)}`,
+    // A progression, and it is meant to be read downwards: each row is a better answer to
+    // the same question than the one above it, and `configured` is the answer itself.
+    `  configured: ${health(configured)}   <- the hand-tuned list, i.e. the ANSWER`,
+    `  guess:      ${health(guess)}   <- frozen ['public'], what validate.ts still does`,
     `  detected:   ${health(auto)}`,
     `  inferred:   ${health(inferred)}`,
     // 🔴 Printed even when it is zero. An inference that added nothing and an inference
@@ -168,6 +179,9 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     // line tells them apart.
     `  R132 added: ${added}   (from ${decision.assetReferences} root-relative asset references)`,
     ties,
+    '  GUESS against configured:',
+    ...table(configured, guess, 'guess'),
+    ...changed(configured, guess),
     '  DETECTED against configured:',
     ...table(configured, auto, 'detected'),
     ...changed(configured, auto),
