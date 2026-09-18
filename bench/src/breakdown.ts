@@ -91,11 +91,10 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
  * other direction: *set it in the CLI entry point, never in the library.* The bench parent
  * sets it on a child it owns. Nothing in `upfly-core` touches it.
  *
- * ⚠️ **`uv16-no-parse` is the informative half and it is easy to skip.** R12 measured 26%
- * off, R19 measured zero, and both were on a laptop R124 later found at 39–63% background
- * load. But R141's thesis is that reads are blocked by the MAIN THREAD rather than by
- * libuv — so if that is right, raising the pool should do little at baseline and MORE once
- * the parse is stubbed and the main thread is free to collect the completions.
+ * ⛔ **The threadpool variants are GONE (R146): experiment 2 is closed, four paired
+ * comparisons inside the spread on both platforms.** The last variant is R134's parse
+ * pool, which is the only one that ADDS engine behaviour rather than removing some — so it
+ * is the only one whose figure is a result rather than a bound.
  */
 interface VariantSpec {
   readonly label: string;
@@ -103,23 +102,28 @@ interface VariantSpec {
   readonly withMentions: boolean;
   /** Extra environment for the child process that measures it. */
   readonly env: Readonly<Record<string, string>>;
+  /** Run `scanSources` with R134's parse pool engaged. */
+  readonly pool?: boolean;
 }
 
-export const VARIANTS = [
-  'baseline',
-  'no-parse',
-  'no-parse-no-mentions',
-  'uv16-baseline',
-  'uv16-no-parse',
-] as const;
+export const VARIANTS = ['baseline', 'no-parse', 'no-parse-no-mentions', 'pooled'] as const;
 export type Variant = (typeof VARIANTS)[number];
 
 /** R141 experiment 1's three treatments, which are a partition of `scan`. */
 export const EXPERIMENT_1: readonly Variant[] = ['baseline', 'no-parse', 'no-parse-no-mentions'];
-/** R141 experiment 2's pairs, each read against its same-named default-pool variant. */
-export const EXPERIMENT_2: readonly Variant[] = ['uv16-baseline', 'uv16-no-parse'];
-
-const UV16 = Object.freeze({ UV_THREADPOOL_SIZE: '16' });
+/**
+ * ⛔ **R141 EXPERIMENT 2 IS CLOSED AND ITS VARIANTS ARE DELETED (R146).**
+ *
+ * CI ran it: **four paired comparisons across both platforms, every one inside the
+ * spread.** R19 was right, R12's 26% was laptop noise, and this chat's own laptop reading
+ * of −18.9% did not survive CI either. 🔴 **Nothing should re-run it** — a dead experiment
+ * left in the harness costs CI time on every push forever and is eventually read as an open
+ * question. The ruling holds the result; the harness does not need to keep asking.
+ *
+ * ⚠️ **The spawn-time `env` machinery it needed is KEPT**, because it cost nothing and
+ * R141's experiment 3 may want it.
+ */
+export const EXPERIMENT_2_CLOSED = true;
 
 export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
   baseline: { label: 'baseline', stubParse: false, withMentions: true, env: {} },
@@ -130,18 +134,10 @@ export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
     withMentions: false,
     env: {},
   },
-  'uv16-baseline': {
-    label: 'baseline, UV pool 16',
-    stubParse: false,
-    withMentions: true,
-    env: UV16,
-  },
-  'uv16-no-parse': {
-    label: 'no parse, UV pool 16',
-    stubParse: true,
-    withMentions: true,
-    env: UV16,
-  },
+  // 🔴 R134's parse pool, measured against `baseline` in the same run. It is the only
+  // variant that changes ENGINE behaviour rather than removing some of it, so it is the
+  // only one whose number is a result rather than a bound.
+  pooled: { label: 'pooled (R134)', stubParse: false, withMentions: true, env: {}, pool: true },
 };
 
 export const VARIANT_LABEL: Readonly<Record<Variant, string>> = Object.freeze(
@@ -181,6 +177,17 @@ export interface Breakdown {
   readonly adapterThrows: number;
   readonly files: number;
   readonly references: number;
+  /**
+   * What `scanSources` said about the pool.
+   *
+   * 🔴 Carried through to the render because a pool that declined to engage and a pool
+   * that engaged and bought nothing produce the same number and call for opposite
+   * responses. `not-requested` on the `pooled` variant would mean this measurement is of
+   * the baseline wearing another name.
+   */
+  readonly poolReason: string;
+  readonly poolWorkers: number;
+  readonly poolFellBack: number;
 }
 
 /**
@@ -200,7 +207,7 @@ export interface Breakdown {
  * every boundary it crosses.
  */
 export async function measureBreakdown(root: string, variant: Variant): Promise<Breakdown> {
-  const { stubParse, withMentions } = VARIANT_SPEC[variant];
+  const { stubParse, withMentions, pool } = VARIANT_SPEC[variant];
 
   let readMs = 0;
   let parseMs = 0;
@@ -278,6 +285,10 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     // and rightly: "absent" and "present but undefined" are different states, and the
     // mention pass's absence is the treatment being measured.
     ...(withMentions ? { assetBasenames: basenamesOf(found.assets) } : {}),
+    // 🔴 R134. `minFiles: 1` because the engagement floor is a separate question with its
+    // own instrument (`pool-floor.ts`); here the pool is being measured at full size and a
+    // floor that declined to engage would silently make this variant the baseline again.
+    ...(pool === true ? { pool: { minFiles: 1 } } : {}),
   });
   const scanMs = performance.now() - t1;
 
@@ -313,6 +324,9 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     adapterThrows,
     files: found.sourceFiles.length,
     references: parsed.references.length,
+    poolReason: parsed.pool.reason,
+    poolWorkers: parsed.pool.workers,
+    poolFellBack: parsed.pool.fellBack,
   };
 }
 
@@ -338,6 +352,10 @@ export interface BreakdownSample {
   readonly fileCounts: readonly number[];
   readonly references: number;
   readonly adapterThrows: number;
+  /** What the pool did, from the median pass. `not-requested` means it never ran. */
+  readonly poolReason: string;
+  readonly poolWorkers: number;
+  readonly poolFellBack: number;
   /** From the pass whose `scan` was the median, so it describes a real single execution. */
   readonly parseByExtension: readonly (readonly [string, number])[];
   /** Step labels whose spread crossed `MAX_STEP_SPREAD_PERCENT`. */
@@ -387,6 +405,9 @@ export function summariseBreakdowns(passes: readonly Breakdown[]): BreakdownSamp
     fileCounts: [...new Set(passes.map((pass) => pass.files))],
     references: median.references,
     adapterThrows: median.adapterThrows,
+    poolReason: median.poolReason,
+    poolWorkers: median.poolWorkers,
+    poolFellBack: passes.reduce((sum, pass) => sum + pass.poolFellBack, 0),
     parseByExtension: median.parseByExtension,
     unusableSteps,
   };
@@ -567,64 +588,67 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 }
 
 /**
- * R141 experiment 2 — one environment variable that has never had a clean measurement.
+ * R134's parse pool, read against the baseline in the same run.
  *
- * ⚠️ **R12 measured 26% off and R19 measured zero, and both were taken on a laptop that
- * R124 later found running at 39–63% background load.** Neither is evidence. This is the
- * same question asked inside one CI run, against its own paired control.
+ * 🔴 **This is the only figure in this file that is a RESULT rather than a bound.** The
+ * `no-parse` variants say what parsing costs — an upper limit on what any pool could ever
+ * recover. This says what one actually recovered, and the difference between those two
+ * numbers is everything the pool spends on spin-up, cloning and serialisation.
  *
- * 🔴 **The second row is the one to read.** R141's thesis is that `read (wall)` is not a
- * disk floor at all but the main thread being saturated by parse — so a bigger libuv pool
- * should buy little at baseline (the completions have nowhere to go) and MORE once the
- * parse is stubbed. **If instead the pool helps at baseline and not with parse stubbed,
- * R141's thesis is wrong and the answer really is the read strategy.** Either way it is
- * one environment variable, and §3.4 already rules where it may be set: the CLI entry
- * point, never the library.
+ * ✅ **CI measured the target before the pool existed:** parse is 69.4% of `scan` on
+ * Windows, and with every main-thread cost removed `scan` floors at 926 ms, putting the
+ * whole build at roughly 1,360 ms against §3.4's 3,000 ms. **So there is ~1,600 ms of
+ * headroom and this may waste most of it and still pass.**
+ *
+ * 🔴 **The first line to read is not the time, it is `reason`.** A pool that declined to
+ * engage produces the baseline's number under the pool's name, and a reader looking at a
+ * table of milliseconds cannot tell those apart.
  */
-export function renderThreadpool(samples: readonly BreakdownSample[]): string {
-  const pairs: readonly (readonly [Variant, Variant])[] = [
-    ['baseline', 'uv16-baseline'],
-    ['no-parse', 'uv16-no-parse'],
-  ];
+export function renderPool(samples: readonly BreakdownSample[]): string {
+  const baseline = samples.find((sample) => sample.variant === 'baseline');
+  const pooled = samples.find((sample) => sample.variant === 'pooled');
+  const floor = samples.find((sample) => sample.variant === 'no-parse-no-mentions');
+  if (baseline === undefined || pooled === undefined) return '';
 
-  const rows: string[] = [];
-  for (const [control, treatment] of pairs) {
-    const before = samples.find((sample) => sample.variant === control);
-    const after = samples.find((sample) => sample.variant === treatment);
-    if (before === undefined || after === undefined) continue;
-
-    const floor = spreadFloor(before, after);
-    const move =
-      ((after.scan.medianMs - before.scan.medianMs) / Math.max(1, before.scan.medianMs)) * 100;
-    rows.push(
-      `    ${VARIANT_LABEL[control].padEnd(24)} ${String(before.scan.medianMs).padStart(6)} ms  ->  ${String(
-        after.scan.medianMs,
-      ).padStart(6)} ms   ${`${move >= 0 ? '+' : ''}${move.toFixed(1)}%`.padStart(8)}   ${
-        floor === null
-          ? 'ONE PASS — no floor to place this against'
-          : Math.abs(move) <= floor
-            ? `inside the ${floor}% spread — NOT a finding`
-            : `outside the ${floor}% spread`
-      }`,
-      `    ${''.padEnd(24)} read (wall) ${before.read.medianMs} -> ${after.read.medianMs} ms`,
-    );
-  }
-
-  if (rows.length === 0) return '';
+  const move =
+    ((pooled.scan.medianMs - baseline.scan.medianMs) / Math.max(1, baseline.scan.medianMs)) * 100;
+  const spread = spreadFloor(baseline, pooled);
+  const ceiling =
+    floor === undefined
+      ? null
+      : ((floor.scan.medianMs - baseline.scan.medianMs) / Math.max(1, baseline.scan.medianMs)) *
+        100;
 
   return [
     '',
-    '  R141 experiment 2 — UV_THREADPOOL_SIZE=16 against the default 4',
+    '  R134 — the parse pool, against the baseline in this same run',
     '',
-    '    pair                         scan (4)      scan (16)      change   verdict',
-    ...rows,
+    `    pool engaged: ${pooled.poolReason}   workers: ${pooled.poolWorkers}   files handed back: ${pooled.poolFellBack}`,
+    ...(pooled.poolReason === 'engaged'
+      ? []
+      : ['    🔴 THE POOL DID NOT RUN. Every number below is the baseline under another name.']),
+    ...(pooled.poolFellBack === 0
+      ? []
+      : [`    🔴 ${pooled.poolFellBack} FILES FELL BACK TO THE MAIN THREAD. A worker is failing.`]),
     '',
-    '    🔴 Read the SECOND pair. If the pool helps more once the parse is stubbed, the',
-    "       reads were waiting on the main thread, which is R141's thesis. If it helps at",
-    '       baseline and not with parse stubbed, that thesis is wrong and the answer is the',
-    '       read strategy. ⚠️ R12 said 26%, R19 said 0%, both on a laptop under load.',
-    '    ⚠️ §3.4: this variable is set in the CLI entry point, NEVER in the library. Here',
-    '       the bench parent sets it on a child it owns; nothing in `upfly-core` reads it.',
+    `    scan   ${String(baseline.scan.medianMs).padStart(6)} ms  ->  ${String(pooled.scan.medianMs).padStart(6)} ms   ${`${move >= 0 ? '+' : ''}${move.toFixed(1)}%`}${
+      spread === null
+        ? '   ONE PASS — no floor to place this against'
+        : Math.abs(move) <= spread
+          ? `   inside the ${spread}% spread — NOT a finding`
+          : `   outside the ${spread}% spread`
+    }`,
+    ...(ceiling === null
+      ? []
+      : [
+          `    the ceiling, from the same run: ${ceiling.toFixed(1)}% — what removing ALL main-thread`,
+          '    work does. The gap between that and the line above is what the pool spends on',
+          '    spin-up, cloning and serialisation.',
+        ]),
+    '',
+    '    ⚠️ Correctness is asserted elsewhere and not here: `scan-pool.test.ts` runs the',
+    '       pooled and unpooled scans over a file that throws WITH partial references and',
+    '       requires byte-identical output (R134). A faster wrong answer is not a result.',
     '',
   ].join('\n');
 }

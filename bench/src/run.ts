@@ -45,7 +45,7 @@ import {
   measureBreakdown,
   renderBreakdown,
   renderExperiment,
-  renderThreadpool,
+  renderPool,
   sampleBreakdowns,
 } from './breakdown.js';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
@@ -345,7 +345,7 @@ async function main(): Promise<void> {
     for (const sample of samples) stdout.write(renderBreakdown(sample));
     if (variants.length > 1) {
       stdout.write(renderExperiment(samples));
-      stdout.write(renderThreadpool(samples));
+      stdout.write(renderPool(samples));
     }
 
     // `--measure-only` is what CI runs until a gate number exists that CI itself

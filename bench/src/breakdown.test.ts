@@ -22,12 +22,11 @@ import {
   EXPERIMENT_1,
   MAX_STEP_SPREAD_PERCENT,
   VARIANTS,
-  VARIANT_SPEC,
   type Variant,
   measureBreakdown,
   renderBreakdown,
   renderExperiment,
-  renderThreadpool,
+  renderPool,
   rotate,
   summariseBreakdowns,
 } from './breakdown.js';
@@ -59,6 +58,9 @@ function pass(overrides: Partial<Breakdown> = {}): Breakdown {
     adapterThrows: 0,
     files: 7_681,
     references: 18_434,
+    poolReason: 'not-requested',
+    poolWorkers: 0,
+    poolFellBack: 0,
     ...overrides,
   };
 }
@@ -276,50 +278,6 @@ describe('R141 experiment 1’s reading', () => {
   });
 });
 
-describe('R141 experiment 2’s reading', () => {
-  it('sets the threadpool on the child’s environment, never inside the library', () => {
-    // 🔴 §3.4: `UV_THREADPOOL_SIZE` is set in the CLI entry point, never in the library,
-    // because `upfly-core` runs inside somebody else's process. libuv also reads it once,
-    // when the pool is first used, so it CANNOT be an in-process treatment even if the
-    // rule allowed it. Both facts point at the same place: the spawn.
-    expect(VARIANT_SPEC['uv16-baseline'].env).toEqual({ UV_THREADPOOL_SIZE: '16' });
-    expect(VARIANT_SPEC.baseline.env).toEqual({});
-    expect(VARIANT_SPEC['uv16-baseline'].stubParse).toBe(VARIANT_SPEC.baseline.stubParse);
-    expect(VARIANT_SPEC['uv16-no-parse'].stubParse).toBe(VARIANT_SPEC['no-parse'].stubParse);
-  });
-
-  it('pairs each raised-pool run against the same work at the default pool', () => {
-    const rendered = renderThreadpool(
-      experimentAt({
-        baseline: [10_000, 10_010, 10_020],
-        'uv16-baseline': [9_900, 9_910, 9_920],
-        'no-parse': [4_000, 4_010, 4_020],
-        'uv16-no-parse': [3_000, 3_010, 3_020],
-      }),
-    );
-    // 100/10 010 and 1 000/4 010. The second pair moving far more than the first is the
-    // shape R141 predicts: with the main thread free, the completions have somewhere to go.
-    expect(rendered).toContain('-1.0%');
-    expect(rendered).toContain('-24.9%');
-  });
-
-  it('calls a move inside the spread what it is, rather than a result', () => {
-    // 🔴 R12's "26% off" and R19's "zero" were both single laptop measurements. A 1% move
-    // against a 20% spread has to print as nothing, or this repeats that exactly.
-    const rendered = renderThreadpool(
-      experimentAt({
-        baseline: [9_000, 10_000, 11_000],
-        'uv16-baseline': [8_900, 9_900, 10_900],
-      }),
-    );
-    expect(rendered).toContain('NOT a finding');
-  });
-
-  it('prints nothing when the raised-pool variants were not run', () => {
-    expect(renderThreadpool(experimentAt({ baseline: [10_000] }))).toBe('');
-  });
-});
-
 describe('one pass is not a floor', () => {
   it('refuses to place experiment 1’s verdict against a single draw', () => {
     // 🔴 `summarise([x])` reports 0% spread, which is true and is not a floor.
@@ -332,11 +290,49 @@ describe('one pass is not a floor', () => {
     expect(rendered).not.toContain('MAIN THREAD');
   });
 
-  it('refuses to place experiment 2’s rows against a single draw', () => {
-    const rendered = renderThreadpool(
-      experimentAt({ baseline: [10_000], 'uv16-baseline': [9_000] }),
-    );
+  it('refuses to place the pool’s row against a single draw', () => {
+    const rendered = renderPool(experimentAt({ baseline: [10_000], pooled: [9_000] }));
     expect(rendered).toContain('ONE PASS');
     expect(rendered).not.toContain('NOT a finding');
+  });
+});
+
+describe('R134’s parse pool, as the harness reads it', () => {
+  it('says the pool did not run rather than reporting the baseline under its name', () => {
+    // 🔴 The failure this line exists for: `pooled` declining to engage produces the
+    // baseline's number, and a reader looking at milliseconds cannot tell that apart from
+    // a pool that engaged and bought nothing. They call for opposite responses.
+    const samples = [
+      summariseBreakdowns([pass({ variant: 'baseline', scanMs: 5_000 })]),
+      summariseBreakdowns([
+        pass({ variant: 'pooled', scanMs: 5_000, poolReason: 'below-floor', poolWorkers: 0 }),
+      ]),
+    ];
+    expect(renderPool(samples)).toContain('THE POOL DID NOT RUN');
+  });
+
+  it('shouts when files fell back to the main thread, because that is a failing worker', () => {
+    const samples = [
+      summariseBreakdowns([pass({ variant: 'baseline', scanMs: 5_000 })]),
+      summariseBreakdowns([
+        pass({ variant: 'pooled', scanMs: 3_000, poolReason: 'engaged', poolFellBack: 7 }),
+      ]),
+    ];
+    expect(renderPool(samples)).toContain('FELL BACK');
+  });
+
+  it('prints the ceiling beside the result, so the overhead is visible', () => {
+    // The gap between "what the pool recovered" and "what removing ALL main-thread work
+    // recovers" IS the pool's overhead, and neither number means much without the other.
+    const rendered = renderPool(
+      experimentAt({
+        baseline: [10_000, 10_010, 10_020],
+        pooled: [6_000, 6_010, 6_020],
+        'no-parse-no-mentions': [3_000, 3_010, 3_020],
+      }),
+    );
+    expect(rendered).toContain('-40.0%');
+    expect(rendered).toContain('the ceiling');
+    expect(rendered).toContain('-69.9%');
   });
 });

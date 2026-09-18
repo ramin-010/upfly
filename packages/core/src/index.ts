@@ -157,6 +157,17 @@ export {
 export type { ResolveOptions, ServingRoots } from './resolve.js';
 export { scanSources } from './scan.js';
 export type { ReadFilePort, ScanDiagnostic, ScanOptions, ScanResult } from './scan.js';
+// R134's parse pool. `MIN_POOLED_FILES` and `DEFAULT_POOL_WORKERS` are exported because a
+// CLI has to be able to print the defaults it is choosing on the user's behalf, and R127
+// makes that choice the CLI's rather than the library's.
+export {
+  DEFAULT_POOL_WORKERS,
+  MIN_POOLED_FILES,
+  createScanPool,
+  type ScanPoolOptions,
+  type ScanPoolReason,
+  type ScanPoolReport,
+} from './scan-pool.js';
 export { conventionLinkFor, detectConventionRoots } from './conventions.js';
 export type { ConventionLink, ConventionRoot } from './conventions.js';
 export { sweepForMentions } from './sweep.js';

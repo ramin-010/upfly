@@ -24,9 +24,19 @@
  * Phase 2 — reads each file at the moment it edits it anyway.
  */
 
+import { DEFAULT_ADAPTER_IDS } from './adapters/default-adapter-ids.js';
 import { lineOf } from './citation.js';
 import { UpflyError } from './errors.js';
 import { imageFilenameCandidates } from './paths.js';
+import {
+  DEFAULT_POOL_WORKERS,
+  MIN_POOLED_FILES,
+  type ScanPool,
+  type ScanPoolOptions,
+  type ScanPoolReason,
+  type ScanPoolReport,
+  createScanPool,
+} from './scan-pool.js';
 import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /**
@@ -102,11 +112,34 @@ export interface ScanOptions {
    * is not needed to produce a correct report, only to debug an adapter.
    */
   readonly onDiagnostic?: (diagnostic: ScanDiagnostic) => void;
+  /**
+   * Move parsing and the mention pass onto worker threads.
+   *
+   * 🔴 **Absent means OFF, and that is R127 rather than caution.** `upfly-core` runs inside
+   * other people's processes — a VS Code extension host, a test runner, an agent — and
+   * spawning N OS threads in somebody else's host is a side effect nobody asked for. **The
+   * CLI owns its process and passes this; the library asks.** §3.4 ruled the same way one
+   * size down for `UV_THREADPOOL_SIZE`.
+   *
+   * ✅ **The answer does not change**, only the wall clock: a pooled scan and an unpooled
+   * one run the same `parseOne` over the same files in the same order, and
+   * `scan.test.ts` asserts that on a file that throws with partial references.
+   */
+  readonly pool?: ScanPoolOptions;
 }
 
 export interface ScanResult {
   /** Every reference found, in source-file order and then in source order. */
   readonly references: readonly RawReference[];
+  /**
+   * Whether a parse pool ran, and if not, why not.
+   *
+   * 🔴 **Always present, always with a reason.** A pool that declined to engage and said
+   * nothing is indistinguishable from one that engaged and bought nothing, and the two
+   * call for opposite responses. It is also the only way a caller learns that its custom
+   * adapter put it back on the main thread.
+   */
+  readonly pool: ScanPoolReport;
   /**
    * Files an adapter claimed but that were never scanned.
    *
@@ -144,37 +177,95 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
   const mentions: ScannedMention[] = [];
   const files = options.sourceFiles;
 
-  for (let index = 0; index < files.length; index += concurrency) {
-    const batch = files.slice(index, index + concurrency);
-    // `Promise.all` preserves input order, so batching does not make the output
-    // depend on which read finished first. Rule 11 needs that to be true by
-    // construction rather than by a sort applied afterwards.
-    const scanned = await Promise.all(
-      batch.map((file) =>
-        scanOne(file, adapterFor(file, byId), options.readFile, options.assetBasenames),
-      ),
-    );
+  const { pool, reason } = startPool(options, files.length);
 
-    for (const result of scanned) {
-      // Both, not either. R20: an adapter for a composite format finds references and
-      // *then* meets the part it cannot parse, so a failure and a set of correct
-      // references are not alternatives. The `if/else` this replaces discarded them
-      // here even when `scanOne` had carefully preserved them one layer down — which
-      // is where the defect actually lived, and a test written against the adapter
-      // alone would never have reached it.
-      references.push(...result.references);
-      if (result.failure !== null) unscanned.push(result.failure);
-      mentions.push(...result.mentions);
-      // Emitted here rather than inside the concurrent map above, so diagnostics
-      // arrive in source-file order instead of in whichever order the reads finished.
-      // Nothing deterministic reads this channel, so the ordering is not load-bearing
-      // -- but a debugging aid whose lines shuffle between runs is a worse debugging
-      // aid, and the ordered loop was already here.
-      if (result.diagnostic !== null) options.onDiagnostic?.(result.diagnostic);
+  try {
+    for (let index = 0; index < files.length; index += concurrency) {
+      const batch = files.slice(index, index + concurrency);
+      // `Promise.all` preserves input order, so batching does not make the output
+      // depend on which read finished first. Rule 11 needs that to be true by
+      // construction rather than by a sort applied afterwards.
+      //
+      // 🔴 **The pool changes what happens INSIDE one of these promises and nothing about
+      // their arrangement.** That is deliberate: it keeps rule 11 true for the same reason
+      // it was already true, and it leaves the barrier batch exactly where it is so
+      // R141's experiment 3 can be its own change later (R134 — this line takes one change
+      // at a time).
+      const scanned = await Promise.all(
+        batch.map((file) =>
+          scanOne(file, adapterFor(file, byId), options.readFile, options.assetBasenames, pool),
+        ),
+      );
+
+      for (const result of scanned) {
+        // Both, not either. R20: an adapter for a composite format finds references and
+        // *then* meets the part it cannot parse, so a failure and a set of correct
+        // references are not alternatives. The `if/else` this replaces discarded them
+        // here even when `scanOne` had carefully preserved them one layer down — which
+        // is where the defect actually lived, and a test written against the adapter
+        // alone would never have reached it.
+        references.push(...result.references);
+        if (result.failure !== null) unscanned.push(result.failure);
+        mentions.push(...result.mentions);
+        // Emitted here rather than inside the concurrent map above, so diagnostics
+        // arrive in source-file order instead of in whichever order the reads finished.
+        // Nothing deterministic reads this channel, so the ordering is not load-bearing
+        // -- but a debugging aid whose lines shuffle between runs is a worse debugging
+        // aid, and the ordered loop was already here.
+        if (result.diagnostic !== null) options.onDiagnostic?.(result.diagnostic);
+      }
     }
+  } finally {
+    // In a `finally` so a throw anywhere above cannot leave four OS threads alive in
+    // somebody else's process. That is the failure R127 is most concerned about: the
+    // library is a guest, and a guest that leaks threads is worse than a slow one.
+    await pool?.close();
   }
 
-  return { references, unscanned, mentions };
+  return {
+    references,
+    unscanned,
+    mentions,
+    pool: {
+      engaged: pool !== null,
+      reason: pool === null ? reason : 'engaged',
+      workers: pool?.workers ?? 0,
+      fellBack: pool?.fellBack ?? 0,
+    },
+  };
+}
+
+/**
+ * Start a pool, or say why not.
+ *
+ * 🔴 **Every branch here returns a REASON.** A pool is a performance decision, and a
+ * performance decision that reports nothing is one nobody can act on: *"it was not
+ * requested"*, *"this repository is too small to be worth it"* and *"your custom adapter
+ * cannot be moved to a worker"* call for three different responses, and a bare
+ * `engaged: false` would be all three at once.
+ */
+function startPool(
+  options: ScanOptions,
+  fileCount: number,
+): { pool: ScanPool | null; reason: ScanPoolReason } {
+  if (options.pool === undefined) return { pool: null, reason: 'not-requested' };
+
+  const minFiles = options.pool.minFiles ?? MIN_POOLED_FILES;
+  if (fileCount < minFiles) return { pool: null, reason: 'below-floor' };
+
+  // 🔴 A worker imports `defaultAdapters` and matches on `adapterId`, because an adapter
+  // is an object of functions and functions do not clone. So a caller with its own adapter
+  // CANNOT be pooled — and the wrong response to that is to pool the files whose adapter
+  // happens to be a default one, because then two files in the same scan would be read by
+  // adapters chosen on different grounds. Refuse the pool for the whole scan and say so.
+  const defaults = new Set(DEFAULT_ADAPTER_IDS);
+  if (options.adapters.some((adapter) => !defaults.has(adapter.id))) {
+    return { pool: null, reason: 'custom-adapter' };
+  }
+
+  const workers = Math.max(1, options.pool.workers ?? DEFAULT_POOL_WORKERS);
+  const pool = createScanPool(workers, options.assetBasenames);
+  return pool === null ? { pool: null, reason: 'unavailable' } : { pool, reason: 'engaged' };
 }
 
 function adapterFor(file: SourceFile, byId: ReadonlyMap<string, Adapter>): Adapter {
@@ -188,7 +279,7 @@ function adapterFor(file: SourceFile, byId: ReadonlyMap<string, Adapter>): Adapt
   return adapter;
 }
 
-interface ScannedFile {
+export interface ScannedFile {
   readonly references: readonly RawReference[];
   /** `null` when the file was read and parsed. */
   readonly failure: UnscannedFile | null;
@@ -202,6 +293,7 @@ async function scanOne(
   adapter: Adapter,
   readFile: ReadFilePort,
   assetBasenames: ReadonlySet<string> | undefined,
+  pool: ScanPool | null,
 ): Promise<ScannedFile> {
   let text: string;
   try {
@@ -217,6 +309,46 @@ async function scanOne(
     };
   }
 
+  // 🔴 The read stays HERE, on the main thread, and only the text crosses.
+  // `ScanOptions.readFile` is an injected port — the VS Code extension can hand back an
+  // unsaved editor buffer — and a function does not cross a worker boundary. A worker that
+  // read for itself would quietly ignore the caller's reader and audit the file on disk
+  // instead of the file the user is looking at.
+  if (pool !== null) {
+    try {
+      const scanned = await pool.run(file, text);
+      if (scanned !== null) return scanned;
+    } catch {
+      // The worker died. Fall through and parse here: the pool is an optimisation and
+      // losing a file to it is a silent skip, which is a P0 (rule 9).
+    }
+  }
+
+  return parseOne(file, adapter, text, assetBasenames);
+}
+
+/**
+ * Everything one file costs after its bytes are in hand: the mention pass, the adapter,
+ * and the error handling around both.
+ *
+ * 🔴 **Split out so the parse pool runs THE SAME CODE (R134).** A worker that
+ * re-implemented this would re-implement the two things that are easy to get wrong and
+ * silent when wrong: `UpflyError.partial`, which keeps the references found before an
+ * unclosed `<style>` (R20/R86), and the diagnostic channel, which must not reach a report
+ * (R60). ✅ **Neither crosses the worker boundary as an `Error`** — this function has
+ * already turned the throw into plain data by the time the pool sees a result, which is
+ * what makes R134's structured-clone trap unreachable rather than merely handled.
+ *
+ * ⚠️ **It also covers the MENTION PASS, and that is measured rather than tidy.** CI put
+ * the mention pass at 485 ms of `scan` — per file, synchronous, on the main thread, the
+ * same shape as parsing. Moving only the parse would have made this the new constraint.
+ */
+export function parseOne(
+  file: SourceFile,
+  adapter: Adapter,
+  text: string,
+  assetBasenames: ReadonlySet<string> | undefined,
+): ScannedFile {
   // One pass over text already in memory. Done before the adapter runs so that a
   // file which fails to parse still contributes its mentions — that file is exactly
   // the one whose references we do not know.
