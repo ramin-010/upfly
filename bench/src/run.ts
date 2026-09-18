@@ -23,6 +23,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform } from 'node:os';
+import { extname } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import {
   type Adapter,
@@ -272,6 +273,192 @@ function renderInvocations(
   ].join('\n');
 }
 
+/**
+ * One instrumented pass, so CI can attribute a change to a STEP rather than to the run.
+ *
+ * 🔴 **R134's sequencing depends on this and nothing else does.** Three changes are queued
+ * for the measured path: R132 lands in `resolve`, the markdown skip and the parse pool
+ * both land in `parse`. Without a breakdown, separating them costs one CI round-trip each
+ * — and CI is the only instrument that returns a usable number (R133: 1% spread against a
+ * laptop's 29–85%). With it, R131 + R132 + the skip can land together and one run still
+ * says which moved what.
+ *
+ * ✅ **Read against parse is measured from OUTSIDE the engine, with no core change.**
+ * `scanSources` takes its reader and its adapters as parameters, so wrapping both
+ * accumulates the real in-run cost of each — interleaved, at the real concurrency, in the
+ * real execution order. A separate read-everything-then-parse-everything pass would have
+ * decomposed a *different* execution and quietly reported it as this one's shape.
+ *
+ * ⚠️ **This pass is NOT the gate number and must never be quoted as one.** The wrappers add
+ * two `performance.now()` calls per file, and one pass is one sample. The headline above it
+ * stays clean: sampled, median of N, across separate invocations. This says only *where the
+ * time went*.
+ *
+ * ⚠️ **A throw is a third outcome (R86).** An adapter that throws still spent time parsing,
+ * and a wrapper that only records on the success path would under-count exactly the files
+ * that are hardest to parse. The timing is taken in `finally` and the throw is re-thrown
+ * untouched — including `UpflyError.partial`, which R134 warns must survive every boundary
+ * it crosses.
+ */
+interface Breakdown {
+  readonly discoverMs: number;
+  readonly scanMs: number;
+  readonly resolveMs: number;
+  readonly graphMs: number;
+  /** Inside `scan`: time spent in `readFile`, and time spent inside adapters. */
+  /** Wall-clock window with at least one read outstanding. Overlaps `parseMs`. */
+  readonly readMs: number;
+  /** Summed read durations. Divided by `readMs`, the effective concurrency. */
+  readonly readOccupancyMs: number;
+  /** Summed adapter time. Synchronous, so this IS elapsed time. */
+  readonly parseMs: number;
+  readonly parseByExtension: ReadonlyMap<string, number>;
+  /** R86, and printed even when zero. */
+  readonly adapterThrows: number;
+  readonly files: number;
+  readonly references: number;
+}
+
+async function measureBreakdown(root: string): Promise<Breakdown> {
+  let readMs = 0;
+  let parseMs = 0;
+  let adapterThrows = 0;
+  const parseByExtension = new Map<string, number>();
+
+  // 🔴 READS OVERLAP AND PARSES DO NOT, AND SUMMING BOTH THE SAME WAY IS WRONG.
+  // The first version of this added up each read's elapsed time and printed it as a
+  // share of the wall clock. It came out at **853%**, because `scanSources` reads in
+  // concurrent batches — summing concurrent durations measures OCCUPANCY, not time.
+  // Parsing is synchronous, so on one thread those durations cannot overlap and their
+  // sum is real elapsed time.
+  //
+  // So reads are measured as the union of the intervals during which at least one was
+  // in flight, which is the wall-clock window the process spent waiting on I/O. The
+  // occupancy sum is kept beside it because their ratio is the effective concurrency,
+  // which is worth knowing when a pool is being sized.
+  //
+  // ⚠️ **read-wall and parse are NOT additive.** A parse can run while another file's
+  // read is outstanding, so they overlap and must never be added together or presented
+  // as a partition of `scan`.
+  let readOccupancyMs = 0;
+  let readsInFlight = 0;
+  let windowStarted = 0;
+
+  const timedRead = async (path: string): Promise<string> => {
+    const started = performance.now();
+    if (readsInFlight === 0) windowStarted = started;
+    readsInFlight++;
+    try {
+      return await readFile(path, 'utf8');
+    } finally {
+      const now = performance.now();
+      readOccupancyMs += now - started;
+      readsInFlight--;
+      if (readsInFlight === 0) readMs += now - windowStarted;
+    }
+  };
+
+  const timedAdapters: readonly Adapter[] = ADAPTERS.map((adapter) => ({
+    ...adapter,
+    findReferences(input) {
+      const extension = extname(input.file).toLowerCase();
+      const started = performance.now();
+      try {
+        return adapter.findReferences(input);
+      } catch (error) {
+        adapterThrows++;
+        throw error;
+      } finally {
+        const spent = performance.now() - started;
+        parseMs += spent;
+        parseByExtension.set(extension, (parseByExtension.get(extension) ?? 0) + spent);
+      }
+    },
+  }));
+
+  const t0 = performance.now();
+  const found = await discover({ root, adapters: timedAdapters });
+  const discoverMs = performance.now() - t0;
+
+  const t1 = performance.now();
+  const parsed = await scanSources({
+    sourceFiles: found.sourceFiles,
+    adapters: timedAdapters,
+    readFile: timedRead,
+    assetBasenames: basenamesOf(found.assets),
+  });
+  const scanMs = performance.now() - t1;
+
+  const t2 = performance.now();
+  const links = resolveReferences(parsed.references, {
+    root: found.root,
+    assets: found.assets,
+    servingRoots: { dirs: ['public'], declared: true },
+    excludedRoots: found.excludedRoots,
+    exists: (path) => existsSync(path),
+  });
+  const resolveMs = performance.now() - t2;
+
+  const t3 = performance.now();
+  buildGraph({
+    root: found.root,
+    assets: found.assets,
+    references: links,
+    unscannedFiles: [...found.unscannedFiles, ...parsed.unscanned],
+  });
+  const graphMs = performance.now() - t3;
+
+  return {
+    discoverMs,
+    scanMs,
+    resolveMs,
+    graphMs,
+    readMs,
+    readOccupancyMs,
+    parseMs,
+    parseByExtension,
+    adapterThrows,
+    files: found.sourceFiles.length,
+    references: parsed.references.length,
+  };
+}
+
+function renderBreakdown(breakdown: Breakdown): string {
+  const total = breakdown.discoverMs + breakdown.scanMs + breakdown.resolveMs + breakdown.graphMs;
+  const share = (ms: number) => `${((ms / Math.max(1, total)) * 100).toFixed(1)}%`;
+  const row = (label: string, ms: number) =>
+    `    ${label.padEnd(14)} ${String(Math.round(ms)).padStart(7)} ms   ${share(ms).padStart(6)}`;
+
+  const top = [...breakdown.parseByExtension.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([extension, ms]) => `${extension} ${Math.round(ms)}ms`)
+    .join(' · ');
+
+  return [
+    '',
+    '  Where the time goes — ONE instrumented pass, not the gate number',
+    '',
+    row('discover', breakdown.discoverMs),
+    row('scan', breakdown.scanMs),
+    row('  read (wall)', breakdown.readMs),
+    row('  parse', breakdown.parseMs),
+    row('resolve', breakdown.resolveMs),
+    row('graph', breakdown.graphMs),
+    '',
+    `    read occupancy ${Math.round(breakdown.readOccupancyMs)} ms over ${Math.round(breakdown.readMs)} ms wall = ${(breakdown.readOccupancyMs / Math.max(1, breakdown.readMs)).toFixed(1)}x concurrency`,
+    '    ⚠️ read-wall and parse OVERLAP and are not a partition of scan. Do not add them.',
+    '',
+    `    parse by extension: ${top}`,
+    `    adapters that threw (R86): ${breakdown.adapterThrows}`,
+    `    ${breakdown.files} source files, ${breakdown.references} references`,
+    '',
+    '  ⚠️ One pass, with timing wrappers on the reader and every adapter. It attributes',
+    '     a change to a step; it is NOT a number to quote or gate against.',
+    '',
+  ].join('\n');
+}
+
 async function main(): Promise<void> {
   const fresh = argv.includes('--fresh');
 
@@ -285,12 +472,22 @@ async function main(): Promise<void> {
     argv.find((a) => a.startsWith('--invocations='))?.slice('--invocations='.length) ?? 0,
   );
   if (invocations > 0) {
-    await generateTree({ fresh });
+    const generated = await generateTree({ fresh });
     const runsEach = Number(
       argv.find((a) => a.startsWith('--runs='))?.slice('--runs='.length) ?? 5,
     );
     const across = await sampleAcrossInvocations(invocations, runsEach);
     stdout.write(renderInvocations(across, invocations, runsEach));
+
+    // 🔴 R134 step 1. The gate number is above and is unchanged; this is one extra
+    // instrumented pass so a CI run says WHICH STEP moved. R132 lands in `resolve`, the
+    // markdown skip and the parse pool both land in `parse`, and without this each of
+    // them costs its own CI round-trip to attribute — on the only instrument that
+    // returns a usable number (R133: 1% spread, against a laptop's 29–85%).
+    //
+    // ⚠️ It runs AFTER the sampling, never interleaved with it, so the wrappers cannot
+    // touch the figure the build gates on.
+    stdout.write(renderBreakdown(await measureBreakdown(generated.root)));
 
     // `--measure-only` is what CI runs until a gate number exists that CI itself
     // produced. Reporting a number is useful; failing a build against a number

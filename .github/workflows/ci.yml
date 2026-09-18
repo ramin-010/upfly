@@ -159,6 +159,14 @@ jobs:
         # above, which is the variation this job structurally cannot see.
         env:
           UPFLY_BENCH_BUDGET_MS: ${{ matrix.budget }}
+        #
+        # R134 step 1: the run also prints a per-step breakdown from ONE extra
+        # instrumented pass — discover / scan / resolve / graph, with read against parse
+        # inside scan. The gate number above it is untouched and still sampled.
+        #
+        # It exists so three queued changes can be attributed without three round-trips:
+        # R132 lands in `resolve`, the markdown skip and the parse pool both land in
+        # `parse`. Read the breakdown to say WHICH step moved; never quote it as a figure.
         run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3
 
   build:
