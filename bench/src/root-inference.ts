@@ -52,13 +52,18 @@ import { argv, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import {
   type Adapter,
-  IMAGE_EXTENSIONS,
   type RawReference,
   defaultAdapters,
   discover,
   scanSources,
 } from 'upfly-core';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
+// 🔴 ONE copy of the denominator. This instrument's first version counted every
+// root-relative reference, not only the ones that could name an asset, and made
+// astro-docs' `public` score 0.1% — the ranking stayed right and the rates were nonsense.
+// The filter it grew afterwards is now shared with the wiring in `serving-root-decision.ts`,
+// because a second implementation of a denominator is how the two silently disagree.
+import { isRootRelative, looksLikeAsset } from './serving-root-decision.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
@@ -124,40 +129,6 @@ function ancestors(dir: string): string[] {
     current = dirOf(current);
   }
   return out;
-}
-
-/**
- * Is this the kind of path a serving root would resolve?
- *
- * Root-relative only: `/img/a.png`. A protocol-relative `//host/a.png` is somebody
- * else's host wearing the same first character.
- */
-function isRootRelative(raw: string): boolean {
-  return raw.startsWith('/') && !raw.startsWith('//');
-}
-
-const IMAGE_SUFFIXES = new Set(IMAGE_EXTENSIONS);
-
-/**
- * Does this path even claim to be an image?
- *
- * 🔴 **The first run of this instrument did not ask, and it produced two impossible
- * rows: astro-docs' `public` scoring 0.1% and eleventy-docs' `src` scoring 2.7%, on
- * repositories where those directories ARE the serving root.** The cause was the
- * denominator. Markdown's `[label](/en/guides/deploy/)` is a reference the adapter emits
- * and the resolver later drops on the ladder's extension rung, so counting it here
- * measured *"what share of all links are images"* and called it a resolution rate.
- * astro-docs is 11,267 root-relative references of which almost none are images.
- *
- * ⚠️ **It did not look like an error, because it depressed every candidate equally** —
- * the ranking stayed right and only the rates were nonsense. A wrong denominator that
- * preserves the ordering is exactly the kind that survives a glance.
- */
-function looksLikeAsset(raw: string): boolean {
-  const withoutQuery = raw.split('?')[0]?.split('#')[0] ?? raw;
-  const cut = withoutQuery.lastIndexOf('.');
-  if (cut === -1) return false;
-  return IMAGE_SUFFIXES.has(withoutQuery.slice(cut).toLowerCase());
 }
 
 /** The path a candidate root would serve this reference from. */

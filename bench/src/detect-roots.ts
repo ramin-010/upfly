@@ -34,6 +34,7 @@ import {
   scanSources,
 } from 'upfly-core';
 import { REPOS, type RepoSpec, VALIDATION_ROOT } from './repos.js';
+import { decideServingRoots } from './serving-root-decision.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
@@ -110,6 +111,23 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
   const configured = resolveWith({ dirs: repo.publicDirs, declared: true });
   const auto = resolveWith(detectServingRoots(discovery.directories, names));
 
+  // 🔴 R132's third column: detection UNIONED with what the references actually resolve.
+  // The question `detected` cannot answer is `eleventy-docs`, which serves from `src/` —
+  // a root no name-based rule reaches, because `src` is a source directory by convention.
+  // ⚠️ The comparison that matters is `inferred` against `configured`, not against
+  // `detected`: the hand-tuned column is the answer, and the only reason to add a root is
+  // to move a run closer to it. A root that resolves references the configured run also
+  // resolves is a gain; one that relinks a reference the configured run resolved elsewhere
+  // is the expensive failure R132's floors are sized against, and `changed` names it.
+  const decision = decideServingRoots({
+    root: discovery.root,
+    directories: discovery.directories,
+    assets: discovery.assets,
+    references: scanned.references,
+    ...(names === undefined ? {} : { names }),
+  });
+  const inferred = resolveWith(decision.servingRoots);
+
   // Both counts, because they are different numbers and only one of them is the
   // denominator of this table: the resolver returns a reference per path it was
   // asked about, and the scan raises many more strings than it ends up asking about.
@@ -128,12 +146,34 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     return `${linked}/${checkable} root-relative linked (${share})${servingRootUnknown ? '  SERVING ROOT UNKNOWN' : ''}`;
   };
 
+  // `''` is the project root and is a real answer, not an absent one. Printed as a blank
+  // it reads as nothing happening, which is the one rendering this table must not do.
+  const name = (dir: string) => (dir === '' ? '(project root)' : dir);
+  const added = decision.added.length === 0 ? 'none' : decision.added.map(name).join(', ');
+  const ties =
+    decision.inferred.ties.length === 0
+      ? ''
+      : `  ties refused (R132): ${decision.inferred.ties
+          .map((tie) => `${name(tie.dir)} -> ${tie.candidates.map(name).join(' | ')}`)
+          .join(' · ')}
+`;
+
   return [
     `${repo.name}: ${scanned.references.length} scanned, ${configured.length} resolved against`,
     `  configured: ${health(configured)}`,
     `  detected:   ${health(auto)}`,
-    ...table(configured, auto),
+    `  inferred:   ${health(inferred)}`,
+    // 🔴 Printed even when it is zero. An inference that added nothing and an inference
+    // that was never given a denominator produce the same empty answer, and only this
+    // line tells them apart.
+    `  R132 added: ${added}   (from ${decision.assetReferences} root-relative asset references)`,
+    ties,
+    '  DETECTED against configured:',
+    ...table(configured, auto, 'detected'),
     ...changed(configured, auto),
+    '  INFERRED against configured:',
+    ...table(configured, inferred, 'inferred'),
+    ...changed(configured, inferred),
   ];
 }
 
@@ -145,12 +185,16 @@ function countByResolution(references: readonly Reference[]): Map<string, number
   return counts;
 }
 
-function table(configured: readonly Reference[], auto: readonly Reference[]): string[] {
+function table(
+  configured: readonly Reference[],
+  auto: readonly Reference[],
+  rightLabel: string,
+): string[] {
   const left = countByResolution(configured);
   const right = countByResolution(auto);
   const kinds = [...new Set([...left.keys(), ...right.keys()])].sort();
 
-  const lines = ['  resolution            configured   detected   delta'];
+  const lines = [`  resolution            configured   ${rightLabel.padEnd(8)}   delta`];
   for (const kind of kinds) {
     const before = left.get(kind) ?? 0;
     const after = right.get(kind) ?? 0;

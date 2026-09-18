@@ -25,7 +25,6 @@ import {
   commit,
   createNodeFileStore,
   createSharpProbe,
-  detectServingRoots,
   newRunId,
   optimize,
   planRelocation,
@@ -33,6 +32,7 @@ import {
 } from 'upfly-core';
 import { runPipeline } from './pipeline.js';
 import { refuseValidationCorpus } from './repos.js';
+import { decideServingRoots } from './serving-root-decision.js';
 
 export interface EngineRun {
   readonly graph: Graph;
@@ -55,9 +55,9 @@ export interface EngineRun {
 /**
  * Everything up to the plan: graph, measurements, findings.
  *
- * Serving roots come from detection rather than from a hand-written list, which is the
- * point: this is the path a first-time user takes, and until R50 the corpus had never
- * measured it.
+ * Serving roots come from detection AND R132's inference rather than from a hand-written
+ * list, which is the point: this is the path a first-time user takes, and until R50 the
+ * corpus had never measured it.
  *
  * No encode cap, and pattern targets exempted from one anyway. A cap that limits what
  * we report is a convenience; a cap that limits what we can prove makes a pattern
@@ -86,7 +86,17 @@ export async function runEngine(
 ): Promise<EngineRun> {
   const output = await runPipeline({
     root,
-    servingRoots: (discovery) => declared ?? detectServingRoots(discovery.directories),
+    // 🔴 R132, wired. Detection alone asks what a directory is CALLED and cannot reach
+    // `eleventy-docs`, which serves from `src/`. `decideServingRoots` unions detection
+    // with what the references actually RESOLVE, at R132's measured floors.
+    servingRoots: (discovery, scanned) =>
+      declared ??
+      decideServingRoots({
+        root: discovery.root,
+        directories: discovery.directories,
+        assets: discovery.assets,
+        references: scanned.references,
+      }).servingRoots,
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: probe ? { formats: ['webp'] } : null,
   });

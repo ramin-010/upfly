@@ -50,13 +50,23 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
 export interface PipelineInput {
   readonly root: string;
   /**
-   * Where root-relative paths are served from, decided from the completed walk.
+   * Where root-relative paths are served from, decided from the completed walk AND the
+   * completed scan.
    *
    * A function rather than a value because one caller detects and the other reads a
    * hand-tuned list, and detection needs `discovery.directories` which does not exist
    * until the walk has run.
+   *
+   * 🔴 **`scanned` is here for R132.** `detectServingRoots` asks what a directory is
+   * CALLED and needs only the walk; `inferServingRoots` asks what a directory can
+   * RESOLVE and needs references, which do not exist until the scan has finished. This
+   * call already sat after `scanSources` — it was simply never handed the output — so
+   * the "pipeline reorder" R132 was waiting on is this parameter.
    */
-  readonly servingRoots: (discovery: DiscoveryResult) => ServingRoots;
+  readonly servingRoots: (
+    discovery: DiscoveryResult,
+    scanned: Awaited<ReturnType<typeof scanSources>>,
+  ) => ServingRoots;
   /**
    * The directories the sweep and the audit treat as served.
    *
@@ -150,7 +160,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     readFile: readFileText,
     exists: (path) => existsSync(path),
   });
-  const servingRoots = input.servingRoots(discovery);
+  const servingRoots = input.servingRoots(discovery, scanned);
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
