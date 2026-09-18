@@ -139,6 +139,14 @@ export type {
 export { expandAlias, loadAliases } from './aliases.js';
 export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './aliases.js';
 export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
+export {
+  type InferServingRootsInput,
+  type InferredServingRoots,
+  MIN_ROOT_REFERENCES,
+  MIN_ROOT_RESOLUTION_RATE,
+  type RootCandidateScore,
+  inferServingRoots,
+} from './infer-serving-roots.js';
 export { CONVENTIONAL_SERVING_ROOT_NAMES, detectServingRoots } from './serving-roots.js';
 export {
   MINIMUM_ROOT_RELATIVE,
