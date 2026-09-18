@@ -48,6 +48,21 @@ function rng(seed: number): () => number {
 }
 
 const IMAGES = ['public/img/a.png', 'public/img/b.jpg', 'public/img/c.webp'];
+
+/**
+ * 🔴 **vitest's default timeout is 5 s and these tests were measured at 4,708 ms.**
+ *
+ * They build and parse thousands of documents on purpose — the refuting class is ~1% of
+ * markdown, so a sample of 100 would pass or fail on a single draw. That sample size is
+ * the point and is not being reduced. What has to go is the silence: at 94% of the default
+ * budget these pass on an idle machine and fail on a busy one, and a gate that fails
+ * without explanation trains `[wip]`, which kills it while the suite still looks
+ * protected. Twice tonight a run failed here and passed on a re-run minutes later.
+ *
+ * So the budget is explicit and generous, and says out loud that these are measurements
+ * rather than unit tests.
+ */
+const BUDGET_MS = 60_000;
 const ANY_TAG = /<[a-zA-Z][^>]*>/;
 
 interface Sample {
@@ -92,78 +107,102 @@ function sampleMarkdown(extension: string, count: number, seed: number): Sample 
 }
 
 describe('the generated tree can refute a markdown optimisation', () => {
-  it('🔴 contains documents where skipping the parse5 pass LOSES a reference', () => {
-    // 1,200 of each, because the real rate is ~1% and a sample of 100 would be
-    // expected to contain one — a test that passes or fails on a single draw is a
-    // coin flip wearing an assertion's clothes.
-    const md = sampleMarkdown('.md', 1_200, 0xbeef_0001);
-    const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0002);
+  it(
+    '🔴 contains documents where skipping the parse5 pass LOSES a reference',
+    () => {
+      // 1,200 of each, because the real rate is ~1% and a sample of 100 would be
+      // expected to contain one — a test that passes or fails on a single draw is a
+      // coin flip wearing an assertion's clothes.
+      const md = sampleMarkdown('.md', 1_200, 0xbeef_0001);
+      const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0002);
 
-    expect(md.refuting).toBeGreaterThan(0);
-    expect(mdx.refuting).toBeGreaterThan(0);
-    expect(md.lostReferences).toBeGreaterThan(0);
-    expect(mdx.lostReferences).toBeGreaterThan(0);
-  });
+      expect(md.refuting).toBeGreaterThan(0);
+      expect(mdx.refuting).toBeGreaterThan(0);
+      expect(md.lostReferences).toBeGreaterThan(0);
+      expect(mdx.lostReferences).toBeGreaterThan(0);
+    },
+    BUDGET_MS,
+  );
 
-  it('puts the refuting class near the measured 0.9%, not at a convenient rate', () => {
-    const md = sampleMarkdown('.md', 1_200, 0xbeef_0003);
-    const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0004);
-    const rate = (md.refuting + mdx.refuting) / (md.documents + mdx.documents);
+  it(
+    'puts the refuting class near the measured 0.9%, not at a convenient rate',
+    () => {
+      const md = sampleMarkdown('.md', 1_200, 0xbeef_0003);
+      const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0004);
+      const rate = (md.refuting + mdx.refuting) / (md.documents + mdx.documents);
 
-    // 🔴 The band matters in BOTH directions. Too low and the tree cannot refute;
-    // too high and the tree overstates what a skip would cost, which would argue
-    // against an optimisation on evidence the corpus invented.
-    expect(rate).toBeGreaterThan(0.003);
-    expect(rate).toBeLessThan(0.03);
-  });
+      // 🔴 The band matters in BOTH directions. Too low and the tree cannot refute;
+      // too high and the tree overstates what a skip would cost, which would argue
+      // against an optimisation on evidence the corpus invented.
+      expect(rate).toBeGreaterThan(0.003);
+      expect(rate).toBeLessThan(0.03);
+    },
+    BUDGET_MS,
+  );
 
-  it('carries markup in roughly the 71.5% of documents the real corpus does', () => {
-    const md = sampleMarkdown('.md', 800, 0xbeef_0005);
-    const mdx = sampleMarkdown('.mdx', 800, 0xbeef_0006);
-    const rate = (md.withTag + mdx.withTag) / (md.documents + mdx.documents);
+  it(
+    'carries markup in roughly the 71.5% of documents the real corpus does',
+    () => {
+      const md = sampleMarkdown('.md', 800, 0xbeef_0005);
+      const mdx = sampleMarkdown('.mdx', 800, 0xbeef_0006);
+      const rate = (md.withTag + mdx.withTag) / (md.documents + mdx.documents);
 
-    expect(rate).toBeGreaterThan(0.6);
-    expect(rate).toBeLessThan(0.85);
-  });
+      expect(rate).toBeGreaterThan(0.6);
+      expect(rate).toBeLessThan(0.85);
+    },
+    BUDGET_MS,
+  );
 
-  it('no markdown document fails to parse', () => {
-    const md = sampleMarkdown('.md', 400, 0xbeef_0007);
-    const mdx = sampleMarkdown('.mdx', 400, 0xbeef_0008);
+  it(
+    'no markdown document fails to parse',
+    () => {
+      const md = sampleMarkdown('.md', 400, 0xbeef_0007);
+      const mdx = sampleMarkdown('.mdx', 400, 0xbeef_0008);
 
-    expect(md.threw).toBe(0);
-    expect(mdx.threw).toBe(0);
-  });
+      expect(md.threw).toBe(0);
+      expect(mdx.threw).toBe(0);
+    },
+    BUDGET_MS,
+  );
 });
 
 describe('the generated tree is written in the language its extension claims', () => {
-  it('🔴 emits `.js` that parses as JavaScript', () => {
-    // 128 of the tree's 160 `.js` files were TypeScript and Babel rejected every one,
-    // so their measured parse cost was the cost of FAILING (R124). The engine was
-    // right about them; the measurement was not.
-    const javascript = defaultAdapters.find((adapter) => adapter.id === 'javascript');
-    if (javascript === undefined) throw new Error('javascript adapter missing');
+  it(
+    '🔴 emits `.js` that parses as JavaScript',
+    () => {
+      // 128 of the tree's 160 `.js` files were TypeScript and Babel rejected every one,
+      // so their measured parse cost was the cost of FAILING (R124). The engine was
+      // right about them; the measurement was not.
+      const javascript = defaultAdapters.find((adapter) => adapter.id === 'javascript');
+      if (javascript === undefined) throw new Error('javascript adapter missing');
 
-    const random = rng(0xbeef_0009);
-    let threw = 0;
+      const random = rng(0xbeef_0009);
+      let threw = 0;
 
-    for (let index = 0; index < 120; index++) {
-      const text = buildFileText('.js', 'src/a/b/c/d', IMAGES, random);
-      try {
-        javascript.findReferences({ file: `src/a/b/c/d/file-${index}.js`, text });
-      } catch {
-        threw++;
+      for (let index = 0; index < 120; index++) {
+        const text = buildFileText('.js', 'src/a/b/c/d', IMAGES, random);
+        try {
+          javascript.findReferences({ file: `src/a/b/c/d/file-${index}.js`, text });
+        } catch {
+          threw++;
+        }
       }
-    }
 
-    expect(threw).toBe(0);
-  });
+      expect(threw).toBe(0);
+    },
+    BUDGET_MS,
+  );
 
-  it('still emits `.ts` that carries type annotations, so the swap did not widen', () => {
-    const random = rng(0xbeef_000a);
-    const text = buildFileText('.ts', 'src/a/b/c/d', IMAGES, random);
+  it(
+    'still emits `.ts` that carries type annotations, so the swap did not widen',
+    () => {
+      const random = rng(0xbeef_000a);
+      const text = buildFileText('.ts', 'src/a/b/c/d', IMAGES, random);
 
-    // The guard against fixing `.js` by making every file annotation-free, which
-    // would quietly cut the tree's TypeScript parse cost and look like a win.
-    expect(text).toMatch(/: number/);
-  });
+      // The guard against fixing `.js` by making every file annotation-free, which
+      // would quietly cut the tree's TypeScript parse cost and look like a win.
+      expect(text).toMatch(/: number/);
+    },
+    BUDGET_MS,
+  );
 });
