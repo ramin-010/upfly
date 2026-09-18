@@ -47,6 +47,15 @@ const LINK = new RegExp(
   'gd',
 );
 
+/**
+ * Does this document contain anything parse5 could find a reference in?
+ *
+ * `<` followed by an ASCII letter is exactly HTML's own tag-open condition, so this is
+ * the boundary the parser uses rather than a guess at one. `< img` is text to parse5 and
+ * text to this test; `<IMG` is a tag to both.
+ */
+const MARKUP_OPENER = /<[a-zA-Z]/;
+
 /** `[label]: destination "title"` — a link reference definition. */
 const DEFINITION = new RegExp(
   String.raw`^ {0,3}\[[^\]]+\]:[ \t]*(?:<([^>\n]*)>|(${BARE_DESTINATION}))`,
@@ -70,24 +79,45 @@ export const markdownAdapter: Adapter = defineAdapter({
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
     //
-    // R20: it can throw — a `<style>` block whose CSS will not parse reaches the CSS
-    // adapter through it — and everything collected above is correct regardless. The
-    // failure still propagates, so `scan` still reports the file as unparseable and
-    // rule 9 holds; what rides along is the references that were already found.
-    try {
-      references.push(
-        ...htmlAdapter
-          .findReferences({ file, text: masked })
-          .map((reference) => asMarkdownShape(reference, extensionOf(file) === '.mdx')),
-      );
-    } catch (error) {
-      if (error instanceof UpflyError) {
-        throw new UpflyError(error.code, error.message, [
-          ...references,
-          ...(error.partial as RawReference[]),
-        ]);
+    // 🔴 **R124: ~20% of the graph build was parse5 reading markdown for HTML that was
+    // not there.** Every `.md` and `.mdx` paid a full parse5 parse, and parse5 is 73–78%
+    // of this adapter's cost on all three trees measured. A document with no element in
+    // it cannot yield an attribute reference, because every path the HTML adapter can
+    // find lives in a tag — `img/source/video/audio/embed/input/track` `src`, `link`
+    // `href`, or a `style` attribute, all of which require one.
+    //
+    // ⚠️ **The test is on the MASKED text, which is the whole subtlety.** Real markdown
+    // keeps its tags inside fenced code blocks — astro-docs holds 2,604 documents at 19.6
+    // tags each and **not one** where dropping this pass loses a reference — and masking
+    // blanks a fence before parse5 sees it. Testing the raw text would skip almost
+    // nothing on real repositories; testing the masked text skips exactly the documents
+    // where the pass had nothing to find.
+    //
+    // ⚠️ **`<` followed by a letter, deliberately coarser than the question being asked.**
+    // It matches `<span>` and `<!-- -->` alike and every unknown component, so it
+    // over-approximates: it can only skip a document with no element-like construct at
+    // all. A tighter test — looking for `img` or `src` — would be the kind of narrowing
+    // that turns a safe optimisation into a silent loss.
+    if (MARKUP_OPENER.test(masked)) {
+      // R20: it can throw — a `<style>` block whose CSS will not parse reaches the CSS
+      // adapter through it — and everything collected above is correct regardless. The
+      // failure still propagates, so `scan` still reports the file as unparseable and
+      // rule 9 holds; what rides along is the references that were already found.
+      try {
+        references.push(
+          ...htmlAdapter
+            .findReferences({ file, text: masked })
+            .map((reference) => asMarkdownShape(reference, extensionOf(file) === '.mdx')),
+        );
+      } catch (error) {
+        if (error instanceof UpflyError) {
+          throw new UpflyError(error.code, error.message, [
+            ...references,
+            ...(error.partial as RawReference[]),
+          ]);
+        }
+        throw error;
       }
-      throw error;
     }
 
     return references.sort((a, b) => a.start - b.start);

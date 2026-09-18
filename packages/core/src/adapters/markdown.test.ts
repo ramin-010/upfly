@@ -457,3 +457,70 @@ describe('maskInactiveRegions, now that it is exported (R34)', () => {
     expect(masked).not.toContain('./gone.png');
   });
 });
+
+/**
+ * 🔴 **R124's skip: the parse5 pass runs only when the masked document has markup.**
+ *
+ * ~20% of the graph build was parse5 reading markdown for HTML that was not there, and
+ * on the old bench tree it searched 2,640 documents containing **zero** angle brackets —
+ * a corpus that could confirm the skip was safe and could never refute it (R117). The
+ * tree holds 17 refuting documents now; **these tests own their own**, because a fixture
+ * somebody else maintains is one somebody else can take away.
+ *
+ * ⚠️ **The whole risk of this change is a document whose reference only parse5 can see.**
+ * Every assertion below is built around one.
+ */
+describe('the parse5 pass is skipped only when there is nothing for it to find (R124)', () => {
+  it('🔴 still finds a reference that ONLY the HTML pass can see', () => {
+    const text = '# Title\n\n<img src="/only-html.png" alt="">\n';
+    const found = markdownAdapter.findReferences({ file: 'doc.md', text });
+
+    // The Markdown regexes match `![alt](path)` and `[label]: path`. Neither can match
+    // this, so if the skip fired wrongly the reference simply disappears.
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/only-html.png']);
+    expect(found[0]?.shape).toBe('md.raw-html');
+  });
+
+  it('🔴 still finds one inside a style attribute, which is the subtlest shape', () => {
+    const text = '# Title\n\n<div style="background-image: url(\'/bg.png\')"></div>\n';
+    const found = markdownAdapter.findReferences({ file: 'doc.md', text });
+
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/bg.png']);
+  });
+
+  it('finds markdown references in a document with no markup at all', () => {
+    const text = '# Title\n\n![alt](/a.png)\n\n[link](/b.png)\n';
+    const found = markdownAdapter.findReferences({ file: 'doc.md', text });
+
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/a.png', '/b.png']);
+  });
+
+  /**
+   * 🔴 **The case the skip exists for, and the one the old bench tree could not hold.**
+   *
+   * astro-docs keeps 19.6 tags per document and refutes nothing, because its markup sits
+   * inside fenced code blocks that masking blanks before parse5 sees them. So the skip
+   * must be decided on the MASKED text: a document whose only `<img>` is fenced has
+   * nothing for the HTML pass to find, and the reference inside the fence must NOT be
+   * reported — it is documentation, not a reference.
+   */
+  it('🔴 skips a document whose only markup is inside a fence, and reports nothing from it', () => {
+    const text = '# Title\n\n```html\n<img src="/inside-a-fence.png">\n```\n\n![real](/real.png)\n';
+    const found = markdownAdapter.findReferences({ file: 'doc.md', text });
+
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/real.png']);
+  });
+
+  /**
+   * ⚠️ The guard is `<` followed by a letter — HTML's own tag-open condition — so a
+   * stray angle bracket in prose must not be mistaken for markup, and must not cost a
+   * parse5 parse either. Asserting the OUTPUT rather than whether the pass ran, because
+   * the output is what a user sees and the timing is what `bench/` measures.
+   */
+  it('treats a bare `<` in prose as text, exactly as parse5 would', () => {
+    const text = '# Title\n\n5 < 6 and 7 > 3\n\n![alt](/a.png)\n';
+    const found = markdownAdapter.findReferences({ file: 'doc.md', text });
+
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/a.png']);
+  });
+});
