@@ -160,14 +160,29 @@ jobs:
         env:
           UPFLY_BENCH_BUDGET_MS: ${{ matrix.budget }}
         #
-        # R134 step 1: the run also prints a per-step breakdown from ONE extra
-        # instrumented pass — discover / scan / resolve / graph, with read against parse
-        # inside scan. The gate number above it is untouched and still sampled.
+        # R134 step 1, as R142 re-ruled it: the run also prints a per-step breakdown —
+        # discover / scan / resolve / graph, with read against parse inside scan. The gate
+        # number above it is untouched and still sampled separately.
         #
-        # It exists so three queued changes can be attributed without three round-trips:
-        # R132 lands in `resolve`, the markdown skip and the parse pool both land in
-        # `parse`. Read the breakdown to say WHICH step moved; never quote it as a figure.
-        run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3
+        # It exists so queued changes can be attributed without a round-trip each: R132
+        # lands in `resolve`, the markdown skip and the parse pool both land in `parse`.
+        # Read it to say WHICH step moved; never quote it as a figure.
+        #
+        # 🔴 **R142: it is now SAMPLED — three passes in three processes, with a per-step
+        # median, a per-step spread and `UNUSABLE` beside any step whose own samples
+        # disagree.** One pass could not attribute anything: over a commit touching no
+        # parse code, `parse` moved −2.5% on ubuntu and +12.5% on windows.
+        #
+        # ⚠️ **R143: three passes inside ONE run cannot see what R142 measured.** That
+        # 15-point control was BETWEEN runs, and between-run drift is invisible from
+        # inside a single run by construction (`invocations.ts`). The breakdown prints
+        # that warning itself on every run.
+        #
+        # ✅ `--experiments` is what does survive drift: R141's variants, interleaved and
+        # rotated inside this one job, so the A/B is immune to the drift between jobs.
+        # It answers experiment 1 — stub the parse, measure `scan` — and it stays until
+        # §5.1(g) closes, because experiments 2 and 3 use the same harness.
+        run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3 --experiments
 
   build:
     name: build packages
