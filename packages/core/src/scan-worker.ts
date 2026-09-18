@@ -72,6 +72,17 @@ export interface ScanTaskResult {
    */
   readonly parseMs: number;
   /**
+   * Milliseconds inside the ADAPTER alone, excluding the mention pass.
+   *
+   * 🔴 **Because the figure it gets compared against measures only the adapter.** The
+   * bench times the unpooled side by wrapping `findReferences`, so an unpooled *"ms per
+   * file"* is adapter-only; `parseMs` here is the whole of `parseOne`, which also walks
+   * the text for asset basenames. **Comparing those two would overstate the pooled side by
+   * the mention pass** — 485 ms of `scan` in CI — and R154's warm-up ratio is exactly the
+   * comparison that must not be inflated. This is the like-for-like half.
+   */
+  readonly adapterMs: number;
+  /**
    * Milliseconds for the whole handler: the parse plus building the reply.
    *
    * `handlerMs - parseMs` is what the worker itself spends on transport — mostly
@@ -115,6 +126,7 @@ if (!isMainThread && parentPort !== null) {
     id: WORKER_READY_ID,
     scanned: null,
     parseMs: 0,
+    adapterMs: 0,
     handlerMs: 0,
     workerError: null,
   } satisfies ScanTaskResult);
@@ -128,6 +140,7 @@ if (!isMainThread && parentPort !== null) {
         id: message.id,
         scanned: null,
         parseMs: 0,
+        adapterMs: 0,
         handlerMs: performance.now() - handlerStarted,
         workerError: null,
       } satisfies ScanTaskResult);
@@ -144,16 +157,33 @@ if (!isMainThread && parentPort !== null) {
           id: message.id,
           scanned: null,
           parseMs: 0,
+          adapterMs: 0,
           handlerMs: performance.now() - handlerStarted,
           workerError: `adapter '${message.file.adapterId}' is not a default adapter`,
         } satisfies ScanTaskResult);
         return;
       }
 
+      // Wrapped exactly the way `bench/src/breakdown.ts` wraps it on the unpooled side, so
+      // the two "ms per file" figures are the same quantity measured the same way. A throw
+      // still spent the time, so it is taken in a `finally` and re-thrown untouched (R86).
+      let adapterMs = 0;
+      const timed: Adapter = {
+        ...adapter,
+        findReferences(input) {
+          const at = performance.now();
+          try {
+            return adapter.findReferences(input);
+          } finally {
+            adapterMs += performance.now() - at;
+          }
+        },
+      };
+
       const parseStarted = performance.now();
       const scanned = parseOne(
         message.file,
-        adapter,
+        timed,
         message.text,
         assetBasenames.size === 0 ? undefined : assetBasenames,
       );
@@ -163,6 +193,7 @@ if (!isMainThread && parentPort !== null) {
         id: message.id,
         scanned,
         parseMs,
+        adapterMs,
         handlerMs: performance.now() - handlerStarted,
         workerError: null,
       } satisfies ScanTaskResult);
@@ -174,6 +205,7 @@ if (!isMainThread && parentPort !== null) {
         id: message.id,
         scanned: null,
         parseMs: 0,
+        adapterMs: 0,
         handlerMs: performance.now() - handlerStarted,
         workerError: error instanceof Error ? error.message : String(error),
       } satisfies ScanTaskResult);

@@ -167,6 +167,15 @@ export interface ScanPoolAnatomy {
   readonly roundTripMs: number;
   /** Summed time inside `parseOne`, reported by the workers. The work that moved. */
   readonly workerParseMs: number;
+  /**
+   * Summed time inside the ADAPTER alone, excluding the mention pass.
+   *
+   * 🔴 **The like-for-like half of R154's comparison.** The unpooled side is timed by
+   * wrapping `findReferences`, so an unpooled *"ms per file"* is adapter-only. Comparing it
+   * against `workerParseMs` would add the mention pass to the pooled side and overstate the
+   * warm-up ratio — on the one number the pool's future turns on.
+   */
+  readonly workerAdapterMs: number;
   /** Summed whole-handler time. `handler - parse` is the workers' own serialisation. */
   readonly workerHandlerMs: number;
   /** Per worker, so an idle or overloaded one is visible rather than averaged away. */
@@ -257,6 +266,7 @@ export function createScanPool(
   let lastResultAt = 0;
   let roundTripMs = 0;
   let workerParseMs = 0;
+  let workerAdapterMs = 0;
   let workerHandlerMs = 0;
   const perWorkerHandlerMs = workers.map(() => 0);
   const perWorkerTasks = workers.map(() => 0);
@@ -312,6 +322,7 @@ export function createScanPool(
         lastResultAt = now;
       }
       workerParseMs += result.parseMs;
+      workerAdapterMs += result.adapterMs;
       workerHandlerMs += result.handlerMs;
       const at = index.get(worker);
       if (at !== undefined) {
@@ -400,6 +411,7 @@ export function createScanPool(
         poolActiveMs: lastResultAt === 0 ? 0 : lastResultAt - firstDispatchAt,
         roundTripMs,
         workerParseMs,
+        workerAdapterMs,
         workerHandlerMs,
         perWorkerHandlerMs: [...perWorkerHandlerMs],
         perWorkerTasks: [...perWorkerTasks],

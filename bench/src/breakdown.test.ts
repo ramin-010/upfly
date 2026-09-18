@@ -27,6 +27,7 @@ import {
   renderBreakdown,
   renderExperiment,
   renderPool,
+  renderStep1,
   rotate,
   summariseBreakdowns,
 } from './breakdown.js';
@@ -64,6 +65,7 @@ function pass(overrides: Partial<Breakdown> = {}): Breakdown {
     poolSpinUpMs: 0,
     poolActiveMs: 0,
     poolParseMs: 0,
+    poolAdapterMs: 0,
     poolHandlerMs: 0,
     poolTasks: 0,
     ...overrides,
@@ -339,5 +341,101 @@ describe('R134’s parse pool, as the harness reads it', () => {
     expect(rendered).toContain('-40.0%');
     expect(rendered).toContain('the ceiling');
     expect(rendered).toContain('-69.9%');
+  });
+});
+
+describe('R155 step 1’s bar, which is fixed before the run', () => {
+  /** Both paths at both concurrencies, everything but `scan` held still. */
+  function step1(scans: Partial<Record<Variant, readonly number[]>>) {
+    return VARIANTS.filter((variant) => scans[variant] !== undefined).map((variant) =>
+      summariseBreakdowns((scans[variant] ?? []).map((scanMs) => pass({ variant, scanMs }))),
+    );
+  }
+
+  it('passes only on a SIGN CHANGE outside the spread, not on being less slow', () => {
+    const rendered = renderStep1(
+      step1({
+        baseline: [10_000, 10_010, 10_020],
+        pooled: [8_000, 8_010, 8_020],
+        wide: [9_000, 9_010, 9_020],
+        'pooled-wide': [6_000, 6_010, 6_020],
+      }),
+    );
+    expect(rendered).toContain('PASSES the bar');
+    expect(rendered).toContain('VERDICT: PASSES');
+  });
+
+  it('fails while the pool is still slower, however much less slow it has become', () => {
+    // 🔴 R155 wrote this bar down in advance precisely so "+101.8% became +4%" could not be
+    // argued into a success later. Four per cent slower is slower.
+    const rendered = renderStep1(
+      step1({
+        baseline: [10_000, 10_010, 10_020],
+        pooled: [10_400, 10_410, 10_420],
+        wide: [9_000, 9_010, 9_020],
+        'pooled-wide': [9_360, 9_370, 9_380],
+      }),
+    );
+    expect(rendered).toContain('still slower');
+    expect(rendered).toContain('VERDICT: FAILS');
+    expect(rendered).not.toContain('PASSES');
+  });
+
+  it('fails a win that sits inside the spread, because that is not a win', () => {
+    const rendered = renderStep1(
+      step1({
+        baseline: [9_000, 10_000, 11_000],
+        pooled: [8_900, 9_900, 10_900],
+        wide: [9_000, 10_000, 11_000],
+        'pooled-wide': [8_900, 9_900, 10_900],
+      }),
+    );
+    expect(rendered).toContain('inside the');
+    expect(rendered).toContain('VERDICT: FAILS');
+  });
+
+  it('refuses to judge at all when a row ran one pass', () => {
+    // 🔴 The defect this was written for: a single pass has no spread, so the bar cannot be
+    // passed OR failed against it — and the first version of this renderer reported FAILS,
+    // which would have closed §5.1(g) as failed on a run that measured nothing.
+    const rendered = renderStep1(
+      step1({ baseline: [10_000], pooled: [8_000], wide: [9_000], 'pooled-wide': [6_000] }),
+    );
+    expect(rendered).toContain('NOT JUDGED');
+    expect(rendered).not.toContain('VERDICT: FAILS');
+    expect(rendered).not.toContain('VERDICT: PASSES');
+  });
+
+  it('prints nothing when the wide variants were not run', () => {
+    expect(renderStep1(step1({ baseline: [10_000, 10_010, 10_020] }))).not.toContain(
+      'concurrency 256',
+    );
+  });
+});
+
+describe('the parse-per-file comparison R154 asked to be printed', () => {
+  it('shows both sides and their ratio, so the deciding number is not computed by the reader', () => {
+    const samples = [
+      summariseBreakdowns([
+        pass({ variant: 'baseline', scanMs: 10_000, parseMs: 8_000, files: 8_000 }),
+      ]),
+      summariseBreakdowns([
+        pass({
+          variant: 'pooled',
+          scanMs: 8_000,
+          poolReason: 'engaged',
+          poolWorkers: 4,
+          poolTasks: 8_000,
+          // 1.50 ms per file against the unpooled 1.00, i.e. the pool made parsing dearer.
+          poolAdapterMs: 12_000,
+          poolActiveMs: 8_000,
+          poolHandlerMs: 12_000,
+        }),
+      ]),
+    ];
+    const rendered = renderPool(samples);
+    expect(rendered).toContain('unpooled 1.000 ms');
+    expect(rendered).toContain('pooled 1.500 ms');
+    expect(rendered).toContain('1.50x');
   });
 });
