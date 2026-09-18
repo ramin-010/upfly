@@ -180,8 +180,16 @@ jobs:
         #
         # ✅ `--experiments` is what does survive drift: R141's variants, interleaved and
         # rotated inside this one job, so the A/B is immune to the drift between jobs.
-        # It answers experiment 1 — stub the parse, measure `scan` — and it stays until
-        # §5.1(g) closes, because experiments 2 and 3 use the same harness.
+        # It answers experiment 1 — stub the parse, measure `scan` — and experiment 2,
+        # UV_THREADPOOL_SIZE against its own paired control. It stays until §5.1(g)
+        # closes, because experiment 3 uses the same harness.
+        #
+        # ⚠️ **IT COSTS CI TIME AND THE NUMBER IS WRITTEN HERE SO NOBODY REVERTS IT BLIND.**
+        # 33 graph builds against the 12 this job used to do: 12 for the headline
+        # (3 invocations x 1 discarded warm-up + 3 runs), 12 for the default-pool variants
+        # and 9 for the raised-pool ones. On windows that is roughly three extra minutes.
+        # It buys the one measurement that decides whether the parse pool — the largest
+        # piece of engineering left in Phase 2 — is aimed at anything (R141).
         run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3 --experiments
 
   build:
