@@ -106,6 +106,8 @@ interface VariantSpec {
   readonly pool?: boolean;
   /** Override `scanSources`' batch size. Absent means the shipped default of 16. */
   readonly concurrency?: number;
+  /** Override the worker count. Absent means `DEFAULT_POOL_WORKERS`. */
+  readonly workers?: number;
 }
 
 export const VARIANTS = [
@@ -115,6 +117,7 @@ export const VARIANTS = [
   'pooled',
   'wide',
   'pooled-wide',
+  'pooled-wide-2w',
 ] as const;
 
 /**
@@ -175,6 +178,27 @@ export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
     withMentions: true,
     env: {},
     pool: true,
+    concurrency: WIDE_CONCURRENCY,
+  },
+  // 🔴 R155 step 2(b), measured before it is built and with ONE variable changed against
+  // the row above it: two workers instead of four, same concurrency.
+  //
+  // ⚠️ **The motivation is CI's machine, not a preference.** The runner has **4 cores**, and
+  // the pool spawns 4 workers *plus* a main thread that reads and dispatches — five threads
+  // on four cores. And the arithmetic says contention, not warm-up, is most of the cost: the
+  // laptop's warm-up curve predicts only **1.49×** inflation for a 1,920-file-per-worker
+  // split, while CI measured **3.22×**. **Warm-up explains about a fifth of it.**
+  //
+  // ✅ Two workers halves the oversubscription and doubles the files each isolate sees, so it
+  // attacks both terms at once — at the cost of half the parallelism. **Which way that nets
+  // out is exactly what cannot be reasoned to**, and it is one variant.
+  'pooled-wide-2w': {
+    label: `pooled, concurrency ${WIDE_CONCURRENCY}, 2 workers`,
+    stubParse: false,
+    withMentions: true,
+    env: {},
+    pool: true,
+    workers: 2,
     concurrency: WIDE_CONCURRENCY,
   },
 };
@@ -253,7 +277,7 @@ export interface Breakdown {
  * every boundary it crosses.
  */
 export async function measureBreakdown(root: string, variant: Variant): Promise<Breakdown> {
-  const { stubParse, withMentions, pool, concurrency } = VARIANT_SPEC[variant];
+  const { stubParse, withMentions, pool, concurrency, workers } = VARIANT_SPEC[variant];
 
   let readMs = 0;
   let parseMs = 0;
@@ -334,7 +358,9 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     // 🔴 R134. `minFiles: 1` because the engagement floor is a separate question with its
     // own instrument (`pool-floor.ts`); here the pool is being measured at full size and a
     // floor that declined to engage would silently make this variant the baseline again.
-    ...(pool === true ? { pool: { minFiles: 1 } } : {}),
+    ...(pool === true
+      ? { pool: { minFiles: 1, ...(workers === undefined ? {} : { workers }) } }
+      : {}),
     ...(concurrency === undefined ? {} : { concurrency }),
   });
   const scanMs = performance.now() - t1;
@@ -775,6 +801,9 @@ export function renderStep1(samples: readonly BreakdownSample[]): string {
   const rows: readonly (readonly [string, Variant, Variant])[] = [
     ['concurrency 16 (shipped)', 'baseline', 'pooled'],
     [`concurrency ${WIDE_CONCURRENCY}`, 'wide', 'pooled-wide'],
+    // R155 step 2(b) judged against the SAME bar and the same unpooled row, so it cannot
+    // pass on a technicality the other two would have failed.
+    [`concurrency ${WIDE_CONCURRENCY}, 2 workers`, 'wide', 'pooled-wide-2w'],
   ];
 
   const lines: string[] = [];
