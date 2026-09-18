@@ -59,14 +59,14 @@ function lineAdapter(id: string, extensions: readonly string[]): Adapter {
   };
 }
 
-const html = lineAdapter('html', ['.html']);
-const css = lineAdapter('css', ['.css']);
+const html = lineAdapter('test-html', ['.html']);
+const css = lineAdapter('test-css', ['.css']);
 const adapters = [html, css];
 
 describe('scanSources', () => {
   it('reads each file and returns what its adapter found', async () => {
     const result = await scanSources({
-      sourceFiles: [sourceFile('index.html', 'html'), sourceFile('app.css', 'css')],
+      sourceFiles: [sourceFile('index.html', 'test-html'), sourceFile('app.css', 'test-css')],
       adapters,
       readFile: filesystem({
         '/repo/index.html': 'ref:hero.png',
@@ -93,7 +93,7 @@ describe('scanSources', () => {
     };
 
     await scanSources({
-      sourceFiles: [sourceFile('index.html', 'html'), sourceFile('app.css', 'css')],
+      sourceFiles: [sourceFile('index.html', 'test-html'), sourceFile('app.css', 'test-css')],
       adapters: [html, recording],
       readFile: filesystem({ '/repo/index.html': '', '/repo/app.css': '' }),
     });
@@ -110,7 +110,7 @@ describe('scanSources', () => {
     };
 
     const result = await scanSources({
-      sourceFiles: [sourceFile('a.html', 'html'), sourceFile('b.html', 'html')],
+      sourceFiles: [sourceFile('a.html', 'test-html'), sourceFile('b.html', 'test-html')],
       adapters,
       readFile,
     });
@@ -126,7 +126,7 @@ describe('scanSources', () => {
       Array.from({ length: 40 }, (_, index) => [`/repo/f${index}.html`, `ref:img${index}.png`]),
     );
     const sourceFiles = Array.from({ length: 40 }, (_, index) =>
-      sourceFile(`f${index}.html`, 'html'),
+      sourceFile(`f${index}.html`, 'test-html'),
     );
 
     const one = await scanSources({ sourceFiles, adapters, readFile: filesystem(files) });
@@ -152,7 +152,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('broken.css', 'css'), sourceFile('fine.html', 'html')],
+        sourceFiles: [sourceFile('broken.css', 'test-css'), sourceFile('fine.html', 'test-html')],
         adapters: [html, throwing],
         readFile: filesystem({ '/repo/broken.css': 'a {', '/repo/fine.html': 'ref:hero.png' }),
       });
@@ -187,7 +187,7 @@ describe('scanSources', () => {
         onDiagnostic?: Parameters<typeof scanSources>[0]['onDiagnostic'],
       ) {
         return scanSources({
-          sourceFiles: [sourceFile('styles/site.css', 'css')],
+          sourceFiles: [sourceFile('styles/site.css', 'test-css')],
           adapters: [real],
           readFile: filesystem({ '/repo/styles/site.css': 'a {' }),
           ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
@@ -222,7 +222,7 @@ describe('scanSources', () => {
         expect(seen).toEqual([
           {
             relative: 'styles/site.css',
-            adapterId: 'css',
+            adapterId: 'test-css',
             detail: '<css input>:144:13: Unknown word /',
           },
         ]);
@@ -256,7 +256,7 @@ describe('scanSources', () => {
         const seen: unknown[] = [];
 
         await scanSources({
-          sourceFiles: [sourceFile('styles/site.css', 'css')],
+          sourceFiles: [sourceFile('styles/site.css', 'test-css')],
           adapters: [ours],
           readFile: filesystem({ '/repo/styles/site.css': 'a {' }),
           onDiagnostic: (diagnostic) => seen.push(diagnostic),
@@ -283,7 +283,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('deep/nested/broken.css', 'css')],
+        sourceFiles: [sourceFile('deep/nested/broken.css', 'test-css')],
         adapters: [throwing],
         readFile: filesystem({ '/repo/deep/nested/broken.css': 'a {' }),
       });
@@ -303,7 +303,7 @@ describe('scanSources', () => {
         path,
         relative: 'deep/broken.css',
         extension: '.css',
-        adapterId: 'css',
+        adapterId: 'test-css',
       };
       const throwing: Adapter = {
         ...css,
@@ -350,7 +350,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('guide.css', 'css')],
+        sourceFiles: [sourceFile('guide.css', 'test-css')],
         adapters: [partial],
         readFile: filesystem({ '/repo/guide.css': 'anything' }),
       });
@@ -373,7 +373,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.css', 'css')],
+        sourceFiles: [sourceFile('a.css', 'test-css')],
         adapters: [throwing],
         readFile: filesystem({ '/repo/a.css': 'a {' }),
       });
@@ -394,7 +394,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('app.css', 'css')],
+        sourceFiles: [sourceFile('app.css', 'test-css')],
         adapters: [buggy],
         readFile: filesystem({ '/repo/app.css': 'body {}' }),
       });
@@ -406,7 +406,7 @@ describe('scanSources', () => {
     it('reports a file that vanished between the walk and the read', async () => {
       // §5.1(e): a file that disappears mid-run degrades, it does not crash.
       const result = await scanSources({
-        sourceFiles: [sourceFile('gone.html', 'html'), sourceFile('here.html', 'html')],
+        sourceFiles: [sourceFile('gone.html', 'test-html'), sourceFile('here.html', 'test-html')],
         adapters,
         readFile: filesystem({ '/repo/here.html': 'ref:hero.png' }),
       });
@@ -425,7 +425,7 @@ describe('scanSources', () => {
 
     it('describes a rejection that carries no errno', async () => {
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.html', 'html')],
+        sourceFiles: [sourceFile('a.html', 'test-html')],
         adapters,
         readFile: async () => {
           throw new Error('the port is misconfigured');
@@ -437,7 +437,7 @@ describe('scanSources', () => {
 
     it('describes a rejection that is not an Error at all', async () => {
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.html', 'html')],
+        sourceFiles: [sourceFile('a.html', 'test-html')],
         adapters,
         readFile: async () => {
           // Deliberately hostile: a port that throws a bare string.
@@ -454,7 +454,7 @@ describe('scanSources', () => {
       // The audit's third haystack. Collected here rather than by re-reading the
       // tree later, which measured 12 s against a fraction of a second.
       const result = await scanSources({
-        sourceFiles: [sourceFile('config.html', 'html')],
+        sourceFiles: [sourceFile('config.html', 'test-html')],
         adapters,
         readFile: filesystem({
           '/repo/config.html': ['a', 'b `/img/hero.png`', 'c'].join('\n'),
@@ -469,7 +469,7 @@ describe('scanSources', () => {
 
     it('records nothing when no basenames were supplied', async () => {
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.html', 'html')],
+        sourceFiles: [sourceFile('a.html', 'test-html')],
         adapters,
         readFile: filesystem({ '/repo/a.html': 'hero.png' }),
       });
@@ -481,7 +481,7 @@ describe('scanSources', () => {
       // A hundred repeats of a name are one piece of evidence, and the report cites
       // a place rather than a count.
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.html', 'html')],
+        sourceFiles: [sourceFile('a.html', 'test-html')],
         adapters,
         readFile: filesystem({ '/repo/a.html': 'hero.png hero.png hero.png' }),
         assetBasenames: new Set(['hero.png']),
@@ -501,7 +501,7 @@ describe('scanSources', () => {
       };
 
       const result = await scanSources({
-        sourceFiles: [sourceFile('broken.css', 'css')],
+        sourceFiles: [sourceFile('broken.css', 'test-css')],
         adapters: [throwing],
         readFile: filesystem({ '/repo/broken.css': 'a { background: url(hero.png) ' }),
         assetBasenames: new Set(['hero.png']),
@@ -513,7 +513,7 @@ describe('scanSources', () => {
 
     it('ignores a filename that is not an asset', async () => {
       const result = await scanSources({
-        sourceFiles: [sourceFile('a.html', 'html')],
+        sourceFiles: [sourceFile('a.html', 'test-html')],
         adapters,
         readFile: filesystem({ '/repo/a.html': 'other.png' }),
         assetBasenames: new Set(['hero.png']),
@@ -552,7 +552,7 @@ describe('scanSources', () => {
 
   it('reports the pool reason on an ordinary scan that never asked for one', async () => {
     const result = await scanSources({
-      sourceFiles: [sourceFile('a.css', 'css')],
+      sourceFiles: [sourceFile('a.css', 'test-css')],
       adapters,
       readFile: filesystem({ '/repo/a.css': 'a { background: url(hero.png) }' }),
     });

@@ -26,6 +26,7 @@
 
 import { DEFAULT_ADAPTER_IDS } from './adapters/default-adapter-ids.js';
 import { lineOf } from './citation.js';
+import { couldHoldReference } from './could-hold-reference.js';
 import { UpflyError } from './errors.js';
 import { imageFilenameCandidates } from './paths.js';
 import {
@@ -161,6 +162,19 @@ export interface ScanResult {
 /** How many files are read at once. IO-bound, so higher than the core count. */
 const DEFAULT_CONCURRENCY = 16;
 
+/** `DEFAULT_ADAPTER_IDS` as a set, for the pool's custom-adapter guard. */
+const DEFAULT_ADAPTER_ID_SET = new Set(DEFAULT_ADAPTER_IDS);
+
+/**
+ * The default adapters proven never to throw for a reason unrelated to
+ * `couldHoldReference`'s tokens — see the comment at its call site in `parseOne`.
+ * `css`, `javascript` and `astro` (frontmatter is `javascript`) are deliberately absent:
+ * postcss and Babel both reject syntactically invalid input on its own terms, and that
+ * failure has to keep reaching `unscanned` regardless of whether the input could ever
+ * have held a reference (§5.1(e)).
+ */
+const SKIPPABLE_ADAPTER_ID_SET = new Set(['html', 'json', 'markdown']);
+
 /**
  * Read and parse every source file.
  *
@@ -271,8 +285,7 @@ function startPool(
   // CANNOT be pooled — and the wrong response to that is to pool the files whose adapter
   // happens to be a default one, because then two files in the same scan would be read by
   // adapters chosen on different grounds. Refuse the pool for the whole scan and say so.
-  const defaults = new Set(DEFAULT_ADAPTER_IDS);
-  if (options.adapters.some((adapter) => !defaults.has(adapter.id))) {
+  if (options.adapters.some((adapter) => !DEFAULT_ADAPTER_ID_SET.has(adapter.id))) {
     return { pool: null, reason: 'custom-adapter' };
   }
 
@@ -366,6 +379,26 @@ export function parseOne(
   // file which fails to parse still contributes its mentions — that file is exactly
   // the one whose references we do not know.
   const mentions = collectMentions(file, text, assetBasenames);
+
+  // R162: a substring test thousands of times cheaper than a parse. `couldHoldReference`'s
+  // token list only speaks for what a reference needs to exist — it says nothing about
+  // whether the underlying TEXT is syntactically valid for its language, and `html.ts`'s own
+  // doc comment settles that half for HTML ("no such thing as an unparseable document"),
+  // `markdown.ts` and `json.ts`'s adapters are both regex/string-walk and never throw either
+  // (confirmed: neither has an `UpflyError` throw site). `css.ts`, `javascript.ts` and
+  // `astro.ts` (whose frontmatter IS `javascript.ts`) all wrap a real parser — postcss,
+  // Babel — that DOES reject syntactically invalid input independent of whether a reference
+  // is anywhere in it, and §5.1(e)'s hostile-input gate requires that failure to still reach
+  // `unscanned` as `parse-failed` (`hostile.test.ts`'s `broken.scss` caught exactly this:
+  // `a { color: ; ;; }} unclosed` holds none of the tokens and still has to be reported). So
+  // the skip is scoped to the three adapters proven not to throw on syntax alone, never to
+  // the three that can. If none of the tokens are present on one of those three, no
+  // reference — certain or dynamic — could come out of this text, so the parse is skipped
+  // rather than run for an empty result. Not a decline: an adapter run here would report
+  // nothing either, so rule 9 has nothing to say about a file with zero references in it.
+  if (SKIPPABLE_ADAPTER_ID_SET.has(adapter.id) && !couldHoldReference(text)) {
+    return { references: [], failure: null, mentions, diagnostic: null };
+  }
 
   try {
     return {
