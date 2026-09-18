@@ -67,6 +67,15 @@ interface CoreModule {
 
 let core: CoreModule;
 
+// 🔴 The budget belongs on the HOOK too, and its absence here is what actually flaked
+// (R163). Every `it` below already carried `WORKER_TIMEOUT_MS`; this hook was left on
+// vitest's 10,000 ms `hookTimeout` default, and it is the one place in the file that does
+// the single most expensive thing — a dynamic `import()` of the whole built bundle, which
+// compiles and links `packages/core/dist` from cold. Alone that is ~4 s; inside the full
+// 1,591-test run on a machine R124 measured at 39–63% background load it crosses 10 s and
+// the suite reports a bare `Hook timed out`, naming no test. A hook has no name in that
+// message, which is why this read as environmental noise for four runs rather than as the
+// one-argument omission it was.
 beforeAll(async () => {
   if (!existsSync(BUILT_ENTRY)) {
     throw new Error(
@@ -74,7 +83,7 @@ beforeAll(async () => {
     );
   }
   core = (await import(BUILT_ENTRY)) as unknown as CoreModule;
-});
+}, WORKER_TIMEOUT_MS);
 
 /**
  * A markdown document that finds a reference and THEN meets CSS it cannot parse.
