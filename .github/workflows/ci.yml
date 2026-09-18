@@ -191,10 +191,11 @@ jobs:
         # closes, because experiment 3 uses the same harness.
         #
         # ⚠️ **IT COSTS CI TIME AND THE NUMBER IS WRITTEN HERE SO NOBODY REVERTS IT BLIND.**
-        # 39 graph builds against the 12 this job used to do: 12 for the headline
+        # 42 graph builds against the 12 this job used to do: 12 for the headline
         # (3 invocations x 1 discarded warm-up + 3 runs) and 24 for the six variants —
         # baseline, two stubbed ones, pooled, both paths at concurrency 256, and a two-worker
-        # pool (R155 step 2b). On windows that is roughly three extra minutes.
+        # pool (R155 step 2b) and a ONE-worker control (R159, which decides whether there
+        # is an hour left to spend). On windows that is roughly four extra minutes.
         # It buys the one measurement that decides whether the parse pool — the largest
         # piece of engineering left in Phase 2 — is aimed at anything (R141).
         run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3 --experiments

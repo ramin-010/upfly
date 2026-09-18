@@ -27,6 +27,7 @@ import {
   renderBreakdown,
   renderExperiment,
   renderPool,
+  renderRatios,
   renderStep1,
   rotate,
   summariseBreakdowns,
@@ -413,7 +414,7 @@ describe('R155 step 1’s bar, which is fixed before the run', () => {
   });
 });
 
-describe('the parse-per-file comparison R154 asked to be printed', () => {
+describe('the parse-per-file comparison R154 asked for, now in R159’s block', () => {
   it('shows both sides and their ratio, so the deciding number is not computed by the reader', () => {
     const samples = [
       summariseBreakdowns([
@@ -433,9 +434,92 @@ describe('the parse-per-file comparison R154 asked to be printed', () => {
         }),
       ]),
     ];
-    const rendered = renderPool(samples);
-    expect(rendered).toContain('unpooled 1.000 ms');
-    expect(rendered).toContain('pooled 1.500 ms');
+    // R159 moved the governing number out of `renderPool` into its own block, so that
+    // EVERY pooled variant carries it rather than only the shipped one. One place for it,
+    // because two places is two numbers that can disagree.
+    const rendered = renderRatios(samples);
+    expect(rendered).toContain('unpooled parse: 1.000 ms/file');
+    expect(rendered).toContain('1.500 ms');
     expect(rendered).toContain('1.50x');
+  });
+});
+
+describe('R159’s ratio block, which every pooled variant must carry', () => {
+  function ratioCase(workers: number, adapterMs: number) {
+    return summariseBreakdowns([
+      pass({
+        variant: workers === 1 ? 'pooled-wide-1w' : workers === 2 ? 'pooled-wide-2w' : 'pooled',
+        poolReason: 'engaged',
+        poolWorkers: workers,
+        poolTasks: 1_000,
+        poolAdapterMs: adapterMs,
+        poolActiveMs: 1_000,
+        poolHandlerMs: adapterMs,
+        poolSpinUpMs: 100,
+      }),
+    ]);
+  }
+
+  const unpooled = summariseBreakdowns([pass({ variant: 'baseline', parseMs: 400, files: 1_000 })]);
+
+  it('prints a row for EVERY pooled variant, not only the shipped one', () => {
+    // 🔴 The defect this exists for: the governing number was printed for the 4-worker
+    // variant alone, and the 2-worker row — the only one that nearly passed — did not
+    // carry it. A governing number missing from the row under discussion governs nothing.
+    const rendered = renderRatios([unpooled, ratioCase(4, 1_600), ratioCase(2, 800)]);
+    expect(rendered).toContain('1.600 ms');
+    expect(rendered).toContain('0.800 ms');
+    expect(rendered).toContain('4.00x');
+    expect(rendered).toContain('2.00x');
+  });
+
+  it('prints net = workers ÷ ratio, which is what the parallelism is actually worth', () => {
+    // 4 workers against a 4.00x ratio is a net of 1.00x: the pool bought nothing.
+    const rendered = renderRatios([unpooled, ratioCase(4, 1_600)]);
+    expect(rendered).toContain('1.00x');
+  });
+
+  it('carries the ratio’s own spread, because it drifts on unchanged code', () => {
+    const drifting = summariseBreakdowns([
+      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 1_200 }),
+      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 1_600 }),
+      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 2_000 }),
+    ]);
+    // 3.22x and 3.01x were measured on unchanged code between two CI runs, so a move
+    // smaller than the spread beside it is not a finding.
+    expect(drifting.poolPerFileUs.spreadPercent).toBeGreaterThan(0);
+    expect(renderRatios([unpooled, drifting])).toContain(
+      `${drifting.poolPerFileUs.spreadPercent}%`,
+    );
+  });
+
+  it('prints nothing when no pooled variant ran', () => {
+    expect(renderRatios([unpooled])).toBe('');
+  });
+});
+
+describe('step 1’s verdict names the BEST passing row', () => {
+  function step1b(scans: Partial<Record<Variant, readonly number[]>>) {
+    return VARIANTS.filter((variant) => scans[variant] !== undefined).map((variant) =>
+      summariseBreakdowns((scans[variant] ?? []).map((scanMs) => pass({ variant, scanMs }))),
+    );
+  }
+
+  it('reports the largest improvement, not whichever row happened to be last', () => {
+    // 🔴 Rows print in configuration order, so a later row passing by LESS was being
+    // reported as the verdict. Understating what the pool achieved is still a wrong
+    // answer, and the verdict line is what a decision gets taken from.
+    const rendered = renderStep1(
+      step1b({
+        baseline: [10_000, 10_010, 10_020],
+        pooled: [9_500, 9_510, 9_520],
+        wide: [10_000, 10_010, 10_020],
+        // -25% here, and -5% in the row printed after it.
+        'pooled-wide': [7_500, 7_510, 7_520],
+        'pooled-wide-2w': [9_500, 9_510, 9_520],
+      }),
+    );
+    expect(rendered).toContain('VERDICT: PASSES at concurrency 256 (-25.0%)');
+    expect(rendered).not.toContain('VERDICT: PASSES at concurrency 256, 2 workers');
   });
 });

@@ -46,6 +46,7 @@ import {
   renderBreakdown,
   renderExperiment,
   renderPool,
+  renderRatios,
   renderStep1,
   sampleBreakdowns,
 } from './breakdown.js';
@@ -347,6 +348,7 @@ async function main(): Promise<void> {
     if (variants.length > 1) {
       stdout.write(renderExperiment(samples));
       stdout.write(renderPool(samples));
+      stdout.write(renderRatios(samples));
       stdout.write(renderStep1(samples));
     }
 
