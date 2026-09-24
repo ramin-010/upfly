@@ -69,33 +69,43 @@ describe('css.url.nested means the value walker RECURSED to reach it', () => {
   });
 });
 
-describe('a ${} inside CSS-in-JS stays on the host, and it is not the bug it looks like', () => {
+describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 group B)', () => {
   const styled = (value: string) =>
     javascriptAdapter.findReferences({
       file: '/project/src/styled.ts',
       text: `const A = styled.div\`\n  background-image: url('${value}');\n\`;\n`,
     });
 
-  it('🔴 keeps js.cssinjs, because the CSS adapter never sees the ${}', () => {
-    // Recorded as a misassignment (`js.template.pattern -> js.cssinjs`) and MEASURED to
-    // be correct. `collectFromTaggedTemplate` flattens the template before handing it
-    // over, substituting each interpolation with a same-length comment placeholder so the
-    // offsets keep pointing into the real file — so `shapeOf` is given
-    // `/theme-/*---*/.png`. A `${` rung in that ladder is unreachable code; one was
-    // added, changed nothing, and was removed.
+  it('🔴 globs one unknown segment in the name, exactly as a template literal elsewhere does', () => {
+    // This block used to assert the opposite — `js.cssinjs`, `unsafe`, and the
+    // PLACEHOLDER `/theme-/*---*/.png` as the path — and called the key's
+    // `resolved-pattern` the key's error. R167 ruled the key right: three real files
+    // match, and `assembledPathIsGlobbable` had simply never been asked on this path.
     const [reference] = styled('/theme-${mode}.png');
 
-    expect(reference?.shape).toBe('js.cssinjs');
-    expect(reference?.rawPath).toBe('/theme-/*---*/.png');
+    expect(reference?.shape).toBe('js.template.pattern');
+    expect(reference?.ceiling).toBe('medium');
   });
 
-  it('and the shape is RIGHT, because the pattern machinery never runs on it', () => {
-    // `unsafe` is what makes `js.cssinjs` the only independently-failing thing here:
-    // `resolveOne` refuses an unsafe reference outright, so no glob, no pattern row.
-    // ⚠️ The coverage key expects `resolved-pattern` for this entry, which the engine
-    // does not produce. That is a real divergence and it is the KEY's — raised with its
-    // measured scope rather than patched from a probe of six entries.
-    expect(styled('/theme-${mode}.png')[0]?.ceiling).toBe('unsafe');
+  it('🔴 carries the SOURCE text as its path, so the range invariant holds again', () => {
+    // The placeholder is the CSS pass's device, not the file's text. As a path it broke
+    // `source.slice(start, end) === rawPath` — and the resolver's pattern matcher reads
+    // `${…}`, never `/*---*/`.
+    const text = "const A = styled.div`\n  background-image: url('/theme-${mode}.png');\n`;\n";
+    const [reference] = javascriptAdapter.findReferences({ file: '/project/src/styled.ts', text });
+
+    expect(reference?.rawPath).toBe('/theme-${mode}.png');
+    expect(text.slice(reference?.start, reference?.end)).toBe(reference?.rawPath);
+  });
+
+  it('🔴 does NOT glob a leading interpolation — the directory varies (R78 Q3)', () => {
+    // The refuting control: a pass that globbed every interpolated url would sweep
+    // `*/theme-light.png` across every app in a monorepo.
+    const [reference] = styled('${base}/theme-light.png');
+
+    expect(reference?.shape).toBe('js.cssinjs');
+    expect(reference?.ceiling).toBe('unsafe');
+    expect(reference?.rawPath).toBe('${base}/theme-light.png');
   });
 
   it('leaves a literal url() inside CSS-in-JS on the host too — the control', () => {

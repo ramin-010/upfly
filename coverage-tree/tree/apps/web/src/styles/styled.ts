@@ -36,7 +36,7 @@ export const Remote = css`
   background-image: url('https://cdn.example.com/remote/styled.png');
 `;
 
-/** An interpolated value inside the CSS, which nothing can resolve statically. */
+/** An interpolated value inside the CSS: one unknown in the name, so a pattern (R167). */
 export function themed(mode: string): string {
   return css`
     background-image: url('/theme-${mode}.png');

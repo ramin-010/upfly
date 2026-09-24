@@ -33,6 +33,7 @@ import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
   assembledPathIsGlobbable,
+  interpolationChunks,
   isExternalUrl,
   parseSrcset,
   plausiblePathShape,
@@ -674,7 +675,7 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
         // the template flattening, not SCSS parsing. A real .scss file's rows are
         // measured by .scss files.
         hostShape: 'js.cssinjs',
-      }),
+      }).map((reference) => withInterpolationRestored(reference, context.text)),
     );
   } catch {
     // A template whose CSS does not parse is usually one built from fragments.
@@ -691,6 +692,41 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
       note: 'CSS-in-JS template could not be parsed as CSS, so it was left alone',
     });
   }
+}
+
+/**
+ * Give a CSS-in-JS `url()` back the path the FILE holds, and let the shared glob rule
+ * decide what an interpolated one is.
+ *
+ * 🔴 **R167 group B, and R106's shape one adapter over.** The CSS pass reads the flattened
+ * template, where every `${…}` is a same-length comment, so it saw
+ * `url('/theme-/*---*\/.png')`, called any `/*` "not a literal path", and emitted it
+ * `unsafe`. `assembledPathIsGlobbable` — ruled (R80(b)), shared, and already governing
+ * every JS template literal and every SCSS/Less interpolation — was never asked. So
+ * `/theme-${mode}.png` resolved as a pattern in a `.ts` string and not in a `css` block
+ * in the same file.
+ *
+ * ⚠️ **And the reference carried the PLACEHOLDER as its path**, while its range covers
+ * `${mode}` in the source — the range invariant (`source.slice(start, end) === rawPath`)
+ * broken, harmless only because an `unsafe` reference is never rewritten. The source text
+ * goes back in whether or not it globs, which is also what lets the resolver's pattern
+ * matcher read the `${…}` at all.
+ */
+function withInterpolationRestored(reference: RawReference, text: string): RawReference {
+  const source = text.slice(reference.start, reference.end);
+  if (source === reference.rawPath) return reference;
+
+  const restored = { ...reference, rawPath: source };
+  const chunks = interpolationChunks(source);
+  if (chunks.length < 2 || !assembledPathIsGlobbable(chunks)) return restored;
+  return {
+    ...restored,
+    // The pattern rule is now the narrowest thing that can fail here, as it is for a
+    // template literal anywhere else in the file.
+    shape: 'js.template.pattern',
+    ceiling: 'medium',
+    note: 'CSS-in-JS url() with a static prefix; the resolver decides whether it names exactly one asset',
+  };
 }
 
 /** Walk down `styled.div.attrs({})` and friends to the identifier at the root. */

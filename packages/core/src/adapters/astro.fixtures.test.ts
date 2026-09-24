@@ -44,11 +44,14 @@ describe('astroAdapter fixtures', () => {
       'gallery/two.png',
       // --- the body, read as HTML ---
       '/favicon.png',
-      '{Houston}',
-      '{local}',
+      // `{Houston}` and `{local}` are no longer here, and nothing is lost: a braced
+      // value is JavaScript now (R167 group B), and an identifier is a value, not a
+      // path — the resolver used to drop them at rung 3 for having no extension.
       '/banner.png',
       './relative.png',
-      '{`/gallery/${gallery[0]}.png`}',
+      // Read by the JavaScript adapter, so the path is the template's own text rather
+      // than the whole `{…}` with its braces and backticks.
+      '/gallery/${gallery[0]}.png',
       '/nested/icon.png',
       // The <style> block, reached through the CSS adapter.
       '/texture.png',
@@ -81,9 +84,12 @@ describe('astroAdapter fixtures', () => {
     const { references } = referencesIn('Page.astro');
     const templated = references.find((reference) => reference.rawPath.includes('${'));
 
-    // `unsafe` sends it to `dynamic` rather than to `broken`. Reporting a templated
-    // path as a broken reference is the false positive the exit criterion forbids.
-    expect(templated?.ceiling).toBe('unsafe');
+    // Reporting a templated path as a broken reference is the false positive the exit
+    // criterion forbids. Since R167 this one globs — one unknown segment in the name —
+    // and `medium` is the pattern tier, which the resolver never lets fall through to
+    // `broken` either: it links every match or says `dynamic`.
+    expect(templated?.ceiling).toBe('medium');
+    expect(templated?.shape).toBe('js.template.pattern');
   });
 
   it('finds nothing in a commented-out path', () => {

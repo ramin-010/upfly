@@ -31,11 +31,12 @@
  * and re-adding a base offset would work too, and it is the version that gets an
  * off-by-one wrong at two in the morning.
  *
- * **What the body does with `src={Houston}`.** The HTML adapter emits it with the
- * braces intact, it has no image extension, and rung 3 of the resolver drops it
- * without a report line. That is correct rather than lossy: the *import* in the fence
- * is the reference to that asset, and this expression only names the binding. It is
- * listed here because it looks like a gap and is not.
+ * **What the body does with `src={Houston}`.** A braced value is JavaScript, so it
+ * goes to the JavaScript adapter (`readExpression`, R167), which reads an identifier as
+ * a value rather than a path and emits nothing. That is correct rather than lossy: the
+ * *import* in the fence is the reference to that asset, and this expression only names
+ * the binding. It is listed here because it looks like a gap and is not. (Before R167
+ * the HTML adapter emitted it with the braces intact and rung 3 dropped it — same end.)
  */
 
 import type { RawReference } from '../types.js';
@@ -91,11 +92,72 @@ export const astroAdapter = defineAdapter({
     const fromScript = findJavaScriptReferences({ file, text: scriptOnly, extension: '.ts' }).map(
       asFenceShape,
     );
-    const fromBody = htmlAdapter.findReferences({ file, text: bodyOnly }).map(asBodyShape);
+    const fromBody = readBody(file, bodyOnly);
 
     return [...fromScript, ...fromBody].sort((a, b) => a.start - b.start);
   },
 });
+
+/**
+ * The template body: HTML, except that an attribute value in braces is JavaScript.
+ *
+ * 🔴 **R167 group B.** `<img src={`/theme-${mode}.png`} />` reached the report as one
+ * `unsafe` reference whose text was the whole `{…}` — braces, backticks and all — two
+ * characters before the path, and never globbed. The same template literal in the fence,
+ * or in any `.tsx` file, is a pattern that resolves to every file it can name. An Astro
+ * expression is JavaScript, so it is read by the JavaScript adapter — the same device as
+ * the fence, applied to one attribute at a time.
+ */
+function readBody(file: string, body: string): RawReference[] {
+  return htmlAdapter
+    .findReferences({ file, text: body })
+    .flatMap((reference) => readExpression(file, body, reference) ?? [asBodyShape(reference)]);
+}
+
+/**
+ * Re-read a `{…}` attribute value as a JSX attribute, or `null` to keep what HTML found.
+ *
+ * The JavaScript adapter is handed `<x src={…}/>` — the expression exactly where it sits,
+ * with a synthetic element written into the blanked text around it — so every offset it
+ * returns is already an offset into the `.astro` file. `srcset` keeps its own name so a
+ * candidate list is still split.
+ *
+ * ⚠️ **`null` whenever there is doubt, and the doubt keeps today's reading, never a
+ * worse one:** a value parse5 cut short (an expression with spaces in it arrives as
+ * `{cond` and is not braced at both ends), no room to write the element, or an expression
+ * Babel rejects.
+ */
+function readExpression(
+  file: string,
+  body: string,
+  reference: RawReference,
+): RawReference[] | null {
+  const { start, end, rawPath } = reference;
+  if (!rawPath.startsWith('{') || !rawPath.endsWith('}') || rawPath.length < 3) return null;
+
+  const opener = reference.shape.includes('srcset') ? '<x srcSet=' : '<x src=';
+  if (start < opener.length || end + 2 > body.length) return null;
+  const synthetic = `${blank(body.slice(0, start - opener.length))}${opener}${body.slice(start, end)}/>`;
+
+  try {
+    return findJavaScriptReferences({ file, text: synthetic, extension: '.tsx' }).map(
+      asExpressionShape,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-stamp what an expression yielded. A literal path is a body literal, as it is when
+ * HTML finds it; a template keeps the pattern row, because the glob rule is what can fail
+ * there and it fails identically wherever it runs.
+ */
+function asExpressionShape(reference: RawReference): RawReference {
+  return reference.shape === 'js.jsx.attribute' || reference.shape === 'js.jsx.srcset'
+    ? { ...reference, shape: 'astro.template.literal' }
+    : reference;
+}
 
 /**
  * Re-stamp what the JavaScript adapter found in the frontmatter fence.

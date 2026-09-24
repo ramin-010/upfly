@@ -442,11 +442,11 @@ function shapeOf(input: {
   //    interpolation with a same-length comment placeholder so the offsets still point
   //    into the real file — so what arrives here is `/theme-/*---*/.png`. A rung testing
   //    for `${` is unreachable code, and adding one changed nothing at all (R89).
-  //    🔴 And the shape the engine gives it is RIGHT: the reference comes out `unsafe`,
-  //    so the resolver's pattern machinery never runs and `js.cssinjs` is the only thing
-  //    that can independently fail here. What is actually wrong is the KEY, which
-  //    expects `resolved-pattern` for an outcome the engine reports as `dynamic` —
-  //    raised with its measured scope rather than patched from a six-entry probe.
+  //    ✅ R167 group B settled what this comment used to argue: the KEY was right —
+  //    `/theme-${mode}.png` names three real files — and the engine was missing the glob
+  //    rule, not this rung. The JavaScript adapter now restores the source text and asks
+  //    `assembledPathIsGlobbable` after this pass returns (`withInterpolationRestored`),
+  //    because only it knows which comments are its own placeholders.
   if (rawPath.startsWith('$')) return 'scss.variable';
   if (rawPath.startsWith('@')) return 'less.variable';
 

@@ -2230,6 +2230,21 @@
       ]
     },
     {
+      "path": "apps/docs/src/components/ThemeDensity.astro",
+      "entries": [
+        {
+          "raw": "/theme-${mode}${density}.png",
+          "occurrence": 1,
+          "shape": "js.template.dynamic",
+          "expect": "dynamic",
+          "why": "R167 group B's refuting input for the Astro half: a braced body value is read as JavaScript now, and two unknowns in one name are not globbable (R80(b)). A reader that globbed every expression would match all three real theme files and claim a resolved-pattern.",
+          "offset": 59,
+          "line": 5,
+          "column": 12
+        }
+      ]
+    },
+    {
       "path": "apps/web/entity.html",
       "entries": [
         {
@@ -4432,8 +4447,23 @@
             "apps/web/public/theme-dark.png",
             "apps/web/public/theme-sepia.png"
           ],
-          "offset": 1250,
+          "offset": 1258,
           "line": 42,
+          "column": 28
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/styles/styled-density.ts",
+      "entries": [
+        {
+          "raw": "/theme-${mode}${density}.png",
+          "occurrence": 1,
+          "shape": "js.cssinjs",
+          "expect": "dynamic",
+          "why": "R167 group B's refuting input for the CSS-in-JS half: two unknowns side by side in the NAME (a theme and a density suffix). R80(b): one unknown in the name is a pattern, two is a guess, so assembledPathIsGlobbable says no and it stays dynamic. A pass that globbed every interpolated url() would read /theme-**.png, match all three real theme files, and claim a resolved-pattern. (A LEADING interpolation cannot refute that pass: the resolver refuses a pattern that opens with a hole on its own -- measured, which is why this input is not one.)",
+          "offset": 449,
+          "line": 9,
           "column": 28
         }
       ]
