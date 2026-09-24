@@ -1329,7 +1329,6 @@
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
           "why": "@img/* maps to shared/assets/img/*.",
-          "knownGap": "R99 / markdown.ts: the markdown adapter CLAIMS .mdx and reads it, but it reads only markdown image syntax and JSX attributes — an ESM import line is never examined, so this lands nowhere rather than in unresolved-alias. MEASURED 2026-09-15: the adapter emits 4 references from this file and none is an import. The previous text here blamed tsconfig paths resolution, which had already landed; it was copied from four sibling entries where that WAS the cause. Same reader gap as the three mdx.import misses.",
           "target": "shared/assets/img/thumb.png",
           "offset": 319,
           "line": 11,
@@ -1397,6 +1396,52 @@
           "why": "Inside a jsx fence. An example, not a reference.",
           "offset": 816,
           "line": 31,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/blog/fenced-import.mdx",
+      "entries": [
+        {
+          "raw": "../../../public/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "R167 group A's refuting input for WHERE an ESM opener is looked for. An import inside a fence, followed by a blank line so it would parse on its own: a reader that looked for openers in the source rather than the masked text would claim it as a resolved mdx.import. The fence makes it an example, exactly as a fenced <img> is.",
+          "offset": 270,
+          "line": 11,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/blog/prose-import.mdx",
+      "entries": [
+        {
+          "raw": "../../../public/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "R167 group A's refuting input for the paragraph rule, and the direction R109 calls box D. The SECOND line of a paragraph, which happens to be valid JavaScript. MDX's ESM construct cannot interrupt a paragraph (micromark-extension-mdxjs-esm: `return self.interrupt ? nok : start`), so this is prose. A blank line follows on purpose: a reader that ignored the paragraph would parse this line cleanly and claim it, rather than failing loudly on the next one.",
+          "offset": 187,
+          "line": 8,
+          "column": 19
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/blog/multiline-export.mdx",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "why": "R167 group A: an `export const` whose object spans a blank line. MDX ends an ESM block at a blank line UNLESS the code so far is unfinished, and then carries on (micromark-extension-mdxjs-esm `atEnd`: `result.swallow`). A reader that always stopped at the blank line would report this document as a parse failure and lose the path.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 189,
+          "line": 10,
           "column": 11
         }
       ]
@@ -1854,6 +1899,21 @@
           "offset": 2595,
           "line": 89,
           "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/import-in-markdown.md",
+      "entries": [
+        {
+          "raw": "../../../public/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.prose-mention",
+          "expect": "discarded",
+          "why": "R167 group A: the same line MDX would read as an import, in a plain .md file, where it is a paragraph. A reader that applied MDX's ESM rule to every markdown extension would claim it.",
+          "offset": 45,
+          "line": 3,
+          "column": 19
         }
       ]
     },

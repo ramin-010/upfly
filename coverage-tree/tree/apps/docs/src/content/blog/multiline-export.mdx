@@ -1,0 +1,13 @@
+---
+title: Metadata that spans a blank line
+---
+
+import Figure from '../../components/Figure.astro';
+
+export const meta = {
+  title: 'A post whose metadata has room to breathe',
+
+  image: '/img/diagram.png',
+};
+
+<Figure src={meta.image} alt="The diagram" />

@@ -13,6 +13,10 @@
  * offset still points at the real file. The raw HTML is then handed to the HTML
  * adapter rather than matched with more regular expressions: Markdown allows any
  * HTML, and `<picture>` blocks with `srcset` turn up in real READMEs.
+ *
+ * An MDX document's top-level `import`/`export` blocks are JavaScript, and they go to
+ * the JavaScript adapter the same way (R167) — see `readMdxEsm` for how MDX itself
+ * decides where one starts and ends.
  */
 
 import { UpflyError } from '../errors.js';
@@ -21,6 +25,7 @@ import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
+import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
 import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './reference-path.js';
 
 /**
@@ -67,8 +72,17 @@ export const markdownAdapter: Adapter = defineAdapter({
   extensions: ['.md', '.mdx', '.markdown'],
 
   findReferences({ file, text }): RawReference[] {
-    const masked = maskInactiveRegions(text);
-    const references: RawReference[] = [];
+    const isMdx = extensionOf(file) === '.mdx';
+    const inactive = maskInactiveRegions(text);
+
+    // 🔴 R167 group A: MDX's top-level `import`/`export` lines are JavaScript, and until
+    // this they were read by nothing — `import hero from './hero.png'` in a post named an
+    // asset the graph never saw, so the asset looked unreferenced. They go to the
+    // JavaScript adapter exactly as an Astro fence does, and are then blanked out of what
+    // the Markdown and HTML readers see, so one line is never read by two languages.
+    const esm = isMdx ? readMdxEsm(file, text, inactive) : null;
+    const masked = esm === null ? inactive : blankRanges(inactive, esm.blocks);
+    const references: RawReference[] = [...(esm?.references ?? [])];
 
     // A use site and a definition are different rows: `![alt](x.png)` carries the path
     // where it is used, `[label]: x.png` carries it somewhere else entirely, and the
@@ -107,22 +121,218 @@ export const markdownAdapter: Adapter = defineAdapter({
         references.push(
           ...htmlAdapter
             .findReferences({ file, text: masked })
-            .map((reference) => asMarkdownShape(reference, extensionOf(file) === '.mdx')),
+            .map((reference) => asMarkdownShape(reference, isMdx)),
         );
       } catch (error) {
-        if (error instanceof UpflyError) {
-          throw new UpflyError(error.code, error.message, [
-            ...references,
-            ...(error.partial as RawReference[]),
-          ]);
-        }
-        throw error;
+        throw withPartial(error, references);
       }
     }
+
+    // An ESM block MDX itself would refuse is reported only now, so every reference the
+    // rest of the document holds rides along with it (R20) rather than being lost to it.
+    if (esm?.failure) throw withPartial(esm.failure, references);
 
     return references.sort((a, b) => a.start - b.start);
   },
 });
+
+/**
+ * Re-throw an adapter failure carrying everything already found beside it (R20).
+ *
+ * ⚠️ **The diagnostic is carried too.** The version of this inlined above dropped it, so
+ * PostCSS's own text for a `<style>` block inside Markdown never reached the diagnostic
+ * channel that R60 built for exactly that text.
+ */
+function withPartial(error: unknown, references: readonly RawReference[]): unknown {
+  if (!(error instanceof UpflyError)) return error;
+  return new UpflyError(
+    error.code,
+    error.message,
+    [...references, ...(error.partial as RawReference[])],
+    error.diagnostic,
+  );
+}
+
+/**
+ * YAML frontmatter at the very start of the document, which is not Markdown and not ESM.
+ *
+ * The same shape `astro.ts` anchors its fence with: offset 0, and a closing `---` alone
+ * on its line. Kept separate rather than shared because the two formats agree on it by
+ * convention, not by specification, and one changing should not silently move the other.
+ */
+const FRONTMATTER = /^---[^\S\n]*\r?\n[\s\S]*?\r?\n---[^\S\n]*(?:\r?\n|$)/;
+
+/** MDX's own opener: `import` or `export` at column 1, followed by exactly one space. */
+const ESM_OPENER = /^(?:import|export) /;
+const ESM_ANYWHERE = /^(?:import|export) /m;
+
+/** A blank line as MDX means it: nothing but spaces and tabs before the line ending. */
+const BLANK_LINE = /^[ \t]*\r?$/;
+
+interface Line {
+  readonly start: number;
+  /** Exclusive, and before the `\n`. */
+  readonly end: number;
+}
+
+interface MdxEsm {
+  /** Where each block sits, so the Markdown and HTML readers can be kept out of it. */
+  readonly blocks: readonly Line[];
+  readonly references: readonly RawReference[];
+  /** The first block MDX itself could not parse, deferred so it cannot take the rest. */
+  readonly failure: unknown;
+}
+
+/**
+ * Every top-level `import`/`export` block of an MDX document, read as JavaScript.
+ *
+ * 🔴 **THE BLOCK BOUNDARIES ARE MDX's, READ FROM ITS SOURCE — NOT GUESSED.** From
+ * `micromark-extension-mdxjs-esm`:
+ *
+ * - **`return self.interrupt ? nok : start`** — ESM can never interrupt a paragraph. A
+ *   prose line that happens to begin *"export and option."* is paragraph text, and
+ *   shadcn-ui's docs hold three exactly like that; reading them as code made all three
+ *   parse failures on the first measurement. So an opener counts only at the start of
+ *   the body or straight after a blank line — which, on 2,905 real MDX files, is every
+ *   one of the 1,665 blocks that parse (1,193 directly under the frontmatter).
+ * - **`if (self.now().column > 1) return nok`** — column 1 only, so never inside a list
+ *   or a block quote.
+ * - **the keyword is followed by exactly one space.**
+ * - **a block ends at a blank line, unless the code so far is an unfinished prefix**,
+ *   in which case MDX swallows the blank line and continues. `javaScriptParseOutcome`
+ *   is that test.
+ *
+ * ⚠️ **The opener is found in the MASKED text and the block is read from the SOURCE.**
+ * Masked, because an `import` inside a code fence is an example and must stay inert —
+ * the fence is blank there, so it can never open a block. Source, because the mask also
+ * blanks backtick spans, and a template literal inside an `export` is code, not a span.
+ *
+ * ⚠️ **Opening straight after a heading or a JSX line is not recognised**, although MDX
+ * would accept it: telling those from a paragraph line needs a block parser. It was
+ * measured before it was accepted — **zero** such blocks in the 2,905 files — and the
+ * cost of the gap is today's behaviour, not a new one.
+ */
+function readMdxEsm(file: string, text: string, masked: string): MdxEsm | null {
+  // One regex over the document before any per-line work: most `.mdx` in the bench tree,
+  // and plenty in real repositories, have no ESM at all and should pay nothing for it.
+  if (!ESM_ANYWHERE.test(masked)) return null;
+  const lines = linesOf(text);
+  const bodyStart = FRONTMATTER.exec(text)?.[0].length ?? 0;
+  const isBlank = (source: string, line: Line | undefined) =>
+    line !== undefined && BLANK_LINE.test(source.slice(line.start, line.end));
+
+  const blocks: Line[] = [];
+  const references: RawReference[] = [];
+  let failure: unknown = null;
+
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] as Line;
+    const opens =
+      line.start >= bodyStart &&
+      ESM_OPENER.test(masked.slice(line.start, line.end)) &&
+      (line.start === bodyStart || isBlank(masked, lines[index - 1]));
+    if (!opens) {
+      index += 1;
+      continue;
+    }
+
+    const read = readEsmBlock(file, text, lines, index, isBlank);
+    blocks.push({ start: line.start, end: (lines[read.last] as Line).end });
+    references.push(...read.references);
+    if (read.failure !== null && failure === null) failure = read.failure;
+    index = read.last + 1;
+  }
+
+  return blocks.length === 0 ? null : { blocks, references, failure };
+}
+
+/**
+ * One ESM block, from its opener to its end as MDX would find it.
+ *
+ * Handed to the JavaScript adapter as a full-length copy with everything before the
+ * block blanked — the Astro adapter's device — so every offset it returns is already an
+ * offset into the `.mdx` file, and a parse error names the file's own line.
+ */
+function readEsmBlock(
+  file: string,
+  text: string,
+  lines: readonly Line[],
+  first: number,
+  isBlank: (source: string, line: Line | undefined) => boolean,
+): { last: number; references: RawReference[]; failure: unknown } {
+  const start = (lines[first] as Line).start;
+  const chunkEnd = (from: number) => {
+    let last = from;
+    while (last + 1 < lines.length && !isBlank(text, lines[last + 1])) last += 1;
+    return last;
+  };
+
+  const firstChunk = chunkEnd(first);
+  let last = firstChunk;
+  for (;;) {
+    const end = (lines[last] as Line).end;
+    try {
+      const found = findJavaScriptReferences({
+        file,
+        text: blank(text.slice(0, start)) + text.slice(start, end),
+        // MDX parses its ESM with acorn and acorn-jsx: JavaScript with JSX, never TypeScript.
+        extension: '.jsx',
+      });
+      return { last, references: found.map(asEsmShape), failure: null };
+    } catch (error) {
+      // Swallow the blank line only where MDX would: the code stopped early.
+      let next = last + 1;
+      while (next < lines.length && isBlank(text, lines[next])) next += 1;
+      const unfinished = javaScriptParseOutcome(text.slice(start, end), '.jsx') === 'incomplete';
+      if (!unfinished || next >= lines.length) {
+        // MDX would refuse this document here. The block is still kept away from the
+        // Markdown readers — it is code, however broken — and the failure is reported.
+        return { last: firstChunk, references: [], failure: error };
+      }
+      last = chunkEnd(next);
+    }
+  }
+}
+
+/**
+ * Re-stamp what the JavaScript adapter found in an ESM block.
+ *
+ * The same selection the Astro fence makes, for the same reason: what would take an
+ * `import` here out is MDX's block extraction, which no `.js` file exercises, so it is
+ * MDX's row. A path-shaped string in an `export const` stays `js.string.literal` — the
+ * speculative-string rule finds it, and that rule fails identically wherever it runs.
+ */
+function asEsmShape(reference: RawReference): RawReference {
+  return reference.shape.startsWith('js.import.')
+    ? { ...reference, shape: 'mdx.import' }
+    : reference;
+}
+
+function linesOf(text: string): Line[] {
+  const lines: Line[] = [];
+  let start = 0;
+  for (;;) {
+    const newline = text.indexOf('\n', start);
+    if (newline === -1) {
+      lines.push({ start, end: text.length });
+      return lines;
+    }
+    lines.push({ start, end: newline });
+    start = newline + 1;
+  }
+}
+
+/** Blank each range, keeping every offset and every newline exactly where it was. */
+function blankRanges(text: string, ranges: readonly Line[]): string {
+  let out = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    out += text.slice(cursor, range.start) + blank(text.slice(range.start, range.end));
+    cursor = range.end;
+  }
+  return out + text.slice(cursor);
+}
 
 /**
  * Re-stamp a reference the HTML adapter found inside Markdown.

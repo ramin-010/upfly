@@ -372,7 +372,12 @@ export const SHAPES = [
     label: 'import through a tsconfig paths alias',
     spec: '4c',
     emission: 'engine',
-    adapterEmitsAs: ['js.import.static', 'astro.import.frontmatter', 'js.string.literal'],
+    adapterEmitsAs: [
+      'js.import.static',
+      'astro.import.frontmatter',
+      'mdx.import',
+      'js.string.literal',
+    ],
     needsToSee: 'the tsconfig/vite paths table, which arrives long after the adapter has run',
     why:
       '⚠️ MAPPED and UNMAPPED are the same six characters of source. `~/img/hero.png` resolves or ' +
@@ -385,7 +390,12 @@ export const SHAPES = [
     label: 'import through an alias that maps nowhere',
     spec: '4c',
     emission: 'engine',
-    adapterEmitsAs: ['js.import.static', 'astro.import.frontmatter', 'js.string.literal'],
+    adapterEmitsAs: [
+      'js.import.static',
+      'astro.import.frontmatter',
+      'mdx.import',
+      'js.string.literal',
+    ],
     needsToSee: 'the tsconfig/vite paths table, which arrives long after the adapter has run',
   },
   { id: 'js.require', label: 'require() of an image', spec: '4c', emission: 'engine' },

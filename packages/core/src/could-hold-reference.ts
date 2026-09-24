@@ -59,6 +59,11 @@
  * English and common code (`import './x.css'`, `className`, comments) and would gut
  * the skippable share for very little safety gained — this gap is narrower than any
  * case the coverage tree currently exercises.
+ * ⚠️ **Since R167 it is reachable, where before it was not:** the three skippable
+ * adapters read no CSS-in-JS at all until `.mdx` ESM started going to the JavaScript
+ * adapter, so the gap needs a bare-`css` block inside an MDX `export`. Still accepted,
+ * for the same reason. The other markdown exception R167 introduced — a token-free
+ * `.mdx` whose ESM will not parse — is stated at `scan.ts`'s `SKIPPABLE_ADAPTER_ID_SET`.
  */
 
 import { TEMPLATE_EXPRESSIONS } from './adapters/reference-path.js';

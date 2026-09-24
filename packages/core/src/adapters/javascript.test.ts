@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
-import { javascriptAdapter } from './javascript.js';
+import { javaScriptParseOutcome, javascriptAdapter } from './javascript.js';
 
 /**
  * Table-driven, per the adapter contract.
@@ -835,5 +835,41 @@ body`,
       expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
       expect(find('<a href="/a/hero.png">x</a>')).toEqual([]);
     });
+  });
+});
+
+/**
+ * MDX ends an ESM block at a blank line unless the code so far is UNFINISHED (R167
+ * group A). Babel and acorn disagree about where an unfinished construct is reported, so
+ * the three answers are pinned here against both of Babel's signals.
+ */
+describe('javaScriptParseOutcome', () => {
+  it('says `parses` for code that parses', () => {
+    expect(javaScriptParseOutcome("import a from './a.png';", '.jsx')).toBe('parses');
+  });
+
+  it.each([
+    ['an open object, failing at the very end', ['export const a = {', '  b: 1,']],
+    ['an import with no source yet', ['import x']],
+    ['an open template, which Babel reports at its START', ['export const a = `x', '']],
+    ['an open block comment, likewise', ['export const a = 1 /* note', '']],
+    ['an open JSX body, likewise', ['export const X = <div>', '  text']],
+  ])('says `incomplete` for %s', (_name, lines) => {
+    expect(javaScriptParseOutcome(lines.join('\n'), '.jsx')).toBe('incomplete');
+  });
+
+  it.each([
+    ['prose that begins with the keyword', ['export and option.']],
+    ['a malformed declaration', ['export const = broken;']],
+    // A string cannot cross a line, so more text never finishes it — and acorn does not
+    // swallow it either.
+    ['an unterminated string', ["export const a = 'x", '']],
+  ])('says `invalid` for %s', (_name, lines) => {
+    const text = lines.join('\n');
+    expect(javaScriptParseOutcome(text, '.jsx')).toBe('invalid');
+  });
+
+  it('says `invalid` for a dialect it has no grammar for, rather than guessing one', () => {
+    expect(javaScriptParseOutcome('const a = 1;', '.coffee')).toBe('invalid');
   });
 });

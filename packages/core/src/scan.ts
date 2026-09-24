@@ -172,6 +172,16 @@ const DEFAULT_ADAPTER_ID_SET = new Set(DEFAULT_ADAPTER_IDS);
  * postcss and Babel both reject syntactically invalid input on its own terms, and that
  * failure has to keep reaching `unscanned` regardless of whether the input could ever
  * have held a reference (§5.1(e)).
+ *
+ * ⚠️ **`markdown` has ONE exception since R167, kept in on purpose and stated here so
+ * nobody has to rediscover it.** An `.mdx` document's top-level `import`/`export` blocks
+ * now go through Babel, so a token-free `.mdx` whose ESM will not parse is skipped rather
+ * than reported `parse-failed`. Accepted because (a) no reference can be lost — with no
+ * token there is nothing to find, which is this list's whole premise; (b) MDX itself
+ * refuses to compile that document, so its author already knows; and (c) the price of
+ * the alternative was measured: 1,637 of 2,905 real `.mdx` files carry ESM, almost all
+ * of it component imports, and taking `.mdx` out would parse every one of them to find
+ * nothing.
  */
 const SKIPPABLE_ADAPTER_ID_SET = new Set(['html', 'json', 'markdown']);
 
@@ -385,7 +395,9 @@ export function parseOne(
   // whether the underlying TEXT is syntactically valid for its language, and `html.ts`'s own
   // doc comment settles that half for HTML ("no such thing as an unparseable document"),
   // `markdown.ts` and `json.ts`'s adapters are both regex/string-walk and never throw either
-  // (confirmed: neither has an `UpflyError` throw site). `css.ts`, `javascript.ts` and
+  // (`markdown.ts` re-throws only what the HTML pass throws, which needs a `style` token —
+  // and, since R167, an `.mdx` ESM block Babel rejects, the one exception, stated at
+  // `SKIPPABLE_ADAPTER_ID_SET`). `css.ts`, `javascript.ts` and
   // `astro.ts` (whose frontmatter IS `javascript.ts`) all wrap a real parser — postcss,
   // Babel — that DOES reject syntactically invalid input independent of whether a reference
   // is anywhere in it, and §5.1(e)'s hostile-input gate requires that failure to still reach

@@ -136,13 +136,7 @@ export function findJavaScriptReferences(input: {
 
     let ast: BabelNode;
     try {
-      ast = parse(text, {
-        sourceType: 'unambiguous',
-        // `unambiguous` lets one adapter read both ESM and CommonJS without being
-        // told which a file is, which no build config reliably tells us anyway.
-        allowReturnOutsideFunction: true,
-        plugins: [...plugins] as never,
-      });
+      ast = parseWith(text, plugins);
     } catch (error) {
       // Returning [] would report a file we could not read as having no references,
       // which is a silent skip and a P0 bug under rule 9.
@@ -186,6 +180,68 @@ export function findJavaScriptReferences(input: {
     return [...context.references, ...guesses].sort((a, b) => a.start - b.start);
   }
 }
+
+/**
+ * The one Babel call. `findJavaScriptReferences` and `javaScriptParseOutcome` both go
+ * through it, so the question "does this parse?" can never be asked with different
+ * options from the parse that then reads the references.
+ */
+function parseWith(text: string, plugins: readonly string[]): BabelNode {
+  return parse(text, {
+    sourceType: 'unambiguous',
+    // `unambiguous` lets one adapter read both ESM and CommonJS without being
+    // told which a file is, which no build config reliably tells us anyway.
+    allowReturnOutsideFunction: true,
+    plugins: [...plugins] as never,
+  });
+}
+
+/**
+ * Whether `text` parses, and when it does not, whether it failed because it STOPPED
+ * EARLY rather than because it is wrong.
+ *
+ * 🔴 **Exists for MDX's top-level ESM (R167 group A), whose extent is not a syntax
+ * fact.** MDX ends an `import`/`export` block at the first blank line — unless the code
+ * up to that line is an unfinished prefix, in which case it swallows the blank line and
+ * carries on (`micromark-extension-mdxjs-esm`, `atEnd`: *if the parse failed and
+ * `result.swallow`, continue*). A caller that ended every block at a blank line would
+ * report `export const meta = {` + blank line + `title: 'x' }` as a parse failure in a
+ * document MDX compiles without complaint.
+ *
+ * ⚠️ **Babel does not say "incomplete" the way acorn does, and the difference was
+ * measured, not assumed.** acorn raises an unfinished template, comment or JSX body at
+ * the END of the input (`raisedAt`), which is what MDX tests. Babel positions the same
+ * three errors at the construct's START and says what it was instead — `pos` 18 of 20
+ * for `` export const a = `x `` — so "the error is at the end" alone would miss them.
+ * Both signals are therefore read: a plain unexpected token at the very end, or one of
+ * those three `reasonCode`s. **An unterminated STRING is deliberately not among them:**
+ * a string cannot cross a line, so no amount of further text completes it, and acorn
+ * does not swallow it either.
+ */
+export function javaScriptParseOutcome(
+  text: string,
+  extension: string,
+): 'parses' | 'incomplete' | 'invalid' {
+  const plugins = PLUGINS_BY_EXTENSION.get(extension);
+  if (plugins === undefined) return 'invalid';
+  try {
+    parseWith(text, plugins);
+    return 'parses';
+  } catch (error) {
+    const { pos, reasonCode } = error as { pos?: unknown; reasonCode?: unknown };
+    if (typeof reasonCode === 'string' && UNFINISHED_REASON_CODES.has(reasonCode)) {
+      return 'incomplete';
+    }
+    return typeof pos === 'number' && pos >= text.trimEnd().length ? 'incomplete' : 'invalid';
+  }
+}
+
+/** Babel's names for a construct the input ended inside of. See `javaScriptParseOutcome`. */
+const UNFINISHED_REASON_CODES: ReadonlySet<string> = new Set([
+  'UnterminatedTemplate',
+  'UnterminatedComment',
+  'UnterminatedJsxContent',
+]);
 
 /**
  * Whether a file that will not parse is a **template** wearing a code extension.

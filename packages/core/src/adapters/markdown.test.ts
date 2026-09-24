@@ -524,3 +524,125 @@ describe('the parse5 pass is skipped only when there is nothing for it to find (
     expect(found.map((reference) => reference.rawPath)).toEqual(['/a.png']);
   });
 });
+
+/**
+ * R167 group A. MDX's top-level `import`/`export` lines are JavaScript, and until this
+ * nothing read them: `import hero from './hero.png'` named an asset the graph never saw.
+ * The block rules are MDX's own (`micromark-extension-mdxjs-esm`), so every case below
+ * that says "not ESM" is a case MDX itself reads as prose.
+ */
+describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
+  const mdx = (text: string) => markdownAdapter.findReferences({ file: '/site/post.mdx', text });
+  const summary = (text: string) =>
+    mdx(text).map((reference) => ({
+      raw: reference.rawPath,
+      shape: reference.shape,
+      exact: text.slice(reference.start, reference.end) === reference.rawPath,
+    }));
+
+  it('finds image imports, stamped `mdx.import`, at exact offsets', () => {
+    const text = [
+      '---',
+      'title: A post',
+      '---',
+      "import hero from '../public/hero.png';",
+      "import thumb from '@img/thumb.png';",
+      '',
+      '# A post',
+    ].join('\n');
+
+    expect(summary(text)).toEqual([
+      { raw: '../public/hero.png', shape: 'mdx.import', exact: true },
+      // Alias-shaped: WHICH alias row it is needs the paths table, so the construct is
+      // named and the resolver decides (R87 — `mdx.import` is in both alias rows'
+      // `adapterEmitsAs`).
+      { raw: '@img/thumb.png', shape: 'mdx.import', exact: true },
+    ]);
+  });
+
+  it('finds a path-shaped string in an `export const`, as a guess — the speculative rule', () => {
+    const text = "# A post\n\nexport const banner = '/img/hero.jpg';\n";
+    const [found] = mdx(text);
+
+    expect(found?.rawPath).toBe('/img/hero.jpg');
+    expect(found?.shape).toBe('js.string.literal');
+    expect(found?.asserted).toBe(false);
+  });
+
+  it('🔴 leaves an `import` inside a code fence inert — it is an example, not code', () => {
+    const text = ['# Usage', '', '```mdx', "import hero from './hero.png';", '```', ''].join('\n');
+    expect(mdx(text)).toEqual([]);
+  });
+
+  it('🔴 does not read a PARAGRAPH line that begins with the keyword — MDX cannot interrupt one', () => {
+    // shadcn-ui's docs hold three of these ("...lists every public\nexport and option.").
+    // Read as code they are parse failures. This one is worse: it is VALID JavaScript, so
+    // a rule that ignored the paragraph would emit a phantom import (R109's box D).
+    const phantom = 'The build step will\nimport hero from "./hero.png";\n';
+    expect(mdx(phantom)).toEqual([]);
+
+    const prose = 'This reference lists every public\nexport and option.\n\n![a](/a.png)\n';
+    expect(summary(prose)).toEqual([{ raw: '/a.png', shape: 'md.image', exact: true }]);
+  });
+
+  it('opens only at column 1 and only on the keyword followed by one space', () => {
+    const indented = "Some prose.\n\n  import hero from './hero.png';\n";
+    const listed = "- import hero from './hero.png';\n";
+    const glued = "Some prose.\n\nimport{hero}from'./hero.png';\n";
+    expect(mdx(indented)).toEqual([]);
+    expect(mdx(listed)).toEqual([]);
+    expect(mdx(glued)).toEqual([]);
+  });
+
+  it('never reads ESM in a `.md` file, which has none', () => {
+    const text = "import hero from './hero.png';\n";
+    expect(markdownAdapter.findReferences({ file: '/site/post.md', text })).toEqual([]);
+  });
+
+  it('continues past a blank line only where MDX does: the code so far is unfinished', () => {
+    const object = ['export const meta = {', '', "  image: '/img/a.png',", '};', ''].join('\n');
+    expect(summary(object)).toEqual([
+      { raw: '/img/a.png', shape: 'js.string.literal', exact: true },
+    ]);
+
+    // Babel positions an unfinished JSX body at its START, not at the end of the input,
+    // so the test for "unfinished" has to read its reason code too.
+    const jsx = [
+      'export const Hero = () => (',
+      '  <div>',
+      '',
+      '    <img src="/img/b.png" />',
+      '  </div>',
+      ');',
+    ].join('\n');
+    expect(summary(jsx)).toEqual([{ raw: '/img/b.png', shape: 'js.jsx.attribute', exact: true }]);
+  });
+
+  it('reads JSX inside an ESM block ONCE — as JavaScript, never also as markup', () => {
+    const text = 'export const Hero = () => <img src="/img/c.png" />;\n';
+    expect(summary(text)).toEqual([{ raw: '/img/c.png', shape: 'js.jsx.attribute', exact: true }]);
+  });
+
+  it('🔴 reports a block MDX would refuse, and keeps everything else the document holds (R20)', () => {
+    const text = [
+      '![before](/before.png)',
+      '',
+      'export const = broken;',
+      '',
+      '![after](/after.png)',
+    ].join('\n');
+
+    let caught: unknown;
+    try {
+      mdx(text);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(UpflyError);
+    const failure = caught as UpflyError;
+    expect(failure.code).toBe('ADAPTER_PARSE_FAILED');
+    expect(
+      (failure.partial as RawReference[]).map((reference) => reference.rawPath).sort(),
+    ).toEqual(['/after.png', '/before.png']);
+  });
+});

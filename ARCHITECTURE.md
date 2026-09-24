@@ -516,7 +516,7 @@ produce exactly the silent corruption this design exists to prevent.
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, icon and preloaded-image `<link>`, `<style>`, `style=""` | `parse5` |
 | `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster`, CSS-in-JS | `@babel/parser` |
-| `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML | regex over masked text |
+| `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | regex over masked text; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json` | every path-shaped string **value**, as a speculative candidate | regex |
 
 The JavaScript adapter also emits **path-shaped string literals as speculative**, the same standing
@@ -533,7 +533,10 @@ Three things they share, and each was a bug before it was a rule:
 
 - **CSS is read in one place.** An HTML `<style>` element, a `style=""` attribute and a
   `styled.div` template all go through the CSS adapter's scanner rather than a second, weaker
-  implementation. Markdown hands its raw HTML to the HTML adapter for the same reason.
+  implementation. Markdown hands its raw HTML to the HTML adapter for the same reason, and an
+  MDX document's top-level `import`/`export` blocks to the JavaScript adapter (R167) — delimited
+  by MDX's own rules, so a paragraph line that merely begins with the word `import` stays prose,
+  and each line is read by exactly one of the three.
 - **Mask before you match.** The Markdown adapter blanks fenced blocks, code spans and HTML
   comments with spaces *of identical length* before running any pattern, so a `![](old.png)` in a
   documentation example is invisible while every offset after it stays exact. The JavaScript

@@ -1,0 +1,14 @@
+---
+title: An import shown, not run
+---
+
+import Figure from '../../components/Figure.astro';
+
+This post explains how a figure gets its image. The example below is a fence,
+so the import inside it is text on the page, not code the page runs:
+
+```mdx
+import diagram from '../../../public/img/diagram.png';
+
+<Figure src={diagram} alt="An example" />
+```
