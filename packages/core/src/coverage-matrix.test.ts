@@ -411,6 +411,62 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
       ),
     ).toThrow(/no knownGap/);
   });
+
+  /**
+   * R167 group E: `measure.mjs` now RUNS detection, as a second resolution beside the
+   * declared one, and hands it over as `observedUnder`. These pin that an entry naming the
+   * mechanism is judged on that run — and never on the declared run that happens to agree.
+   */
+  it("🔴 judges a gap on the mechanism's OWN run, so the declared run's agreement retires nothing", () => {
+    // The exact trap: declared roots say `broken` (agrees), detection says `resolved`.
+    // Judged on the declared run this would read "stale" — R96's original bug, re-armed by
+    // merely listing the mechanism as exercised.
+    const result = buildMatrix(
+      gapped('serving-root-detection'),
+      observed([{ start: 10, resolution: 'broken' }]),
+      {
+        exercises: new Set(['serving-root-detection']),
+        observedUnder: {
+          'serving-root-detection': observed([{ start: 10, resolution: 'resolved' }]),
+        },
+      },
+    );
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({
+      knownGap: 1,
+      staleGap: 0,
+      notExercised: 0,
+    });
+  });
+
+  it("retires the gap when the mechanism's own run agrees — the other direction", () => {
+    const result = buildMatrix(
+      gapped('serving-root-detection'),
+      observed([{ start: 10, resolution: 'resolved' }]),
+      {
+        exercises: new Set(['serving-root-detection']),
+        observedUnder: {
+          'serving-root-detection': observed([{ start: 10, resolution: 'broken' }]),
+        },
+      },
+    );
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, knownGap: 0 });
+  });
+
+  it('🔴 THROWS when a run is supplied for a mechanism the caller does not claim', () => {
+    expect(() =>
+      buildMatrix(
+        gapped('serving-root-detection'),
+        observed([{ start: 10, resolution: 'broken' }]),
+        {
+          observedUnder: {
+            'serving-root-detection': observed([{ start: 10, resolution: 'broken' }]),
+          },
+        },
+      ),
+    ).toThrow(/does not claim to exercise/);
+  });
 });
 
 describe('it joins in BOTH directions', () => {

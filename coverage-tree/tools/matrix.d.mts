@@ -136,6 +136,12 @@ export function buildMatrix(
      * EMPTY — the safe direction, because the alternative deletes a debt nobody tested.
      */
     readonly exercises?: ReadonlySet<string>;
+    /**
+     * A separate run per exercised mechanism, which an entry naming that mechanism is
+     * judged on instead of `observed`. Supplying one for a mechanism not in `exercises`
+     * throws.
+     */
+    readonly observedUnder?: Readonly<Record<string, ReadonlyMap<string, Observation>>>;
   },
 ): MatrixResult;
 

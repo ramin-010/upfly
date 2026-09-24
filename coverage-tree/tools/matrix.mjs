@@ -148,11 +148,18 @@ export const GAP_MECHANISMS = Object.freeze([
  *   by the run, and lands in `notExercised` rather than being read as closed. The default
  *   is EMPTY, which is the safe direction: a gap stays on the books until a caller states
  *   that it ran the thing the gap is about.
+ * @param observedUnder `{ [mechanism]: Map }` — a SEPARATE run, made with that mechanism
+ *   switched on, which is what an entry naming it is judged against. 🔴 **Without it, an
+ *   entry naming an exercised mechanism is judged on `observed` — which is only honest if
+ *   `observed` itself ran the mechanism.** `measure.mjs`'s main run feeds declared roots, so
+ *   claiming `serving-root-detection` there and judging on the main run would read the
+ *   declared run's `broken` as "the gap is closed": R96 exactly. It supplies the detection
+ *   run here instead.
  */
 export function buildMatrix(
   key,
   observed,
-  { declarationOf = () => undefined, exercises = new Set() } = {},
+  { declarationOf = () => undefined, exercises = new Set(), observedUnder = {} } = {},
 ) {
   const rows = new Map();
   const findings = [];
@@ -166,14 +173,14 @@ export function buildMatrix(
     return row;
   };
 
-  assertMechanismsAreDeclared(key, exercises);
+  assertMechanismsAreDeclared(key, exercises, observedUnder);
 
   for (const group of key.files) {
-    const observation = observed.get(group.path);
     for (const entry of group.entries) {
       const row = rowOf(entry.shape);
       row.expected += 1;
-      const verdict = classify(entry, observation, exercises);
+      const run = runFor(entry, exercises, observedUnder) ?? observed;
+      const verdict = classify(entry, run.get(group.path), exercises);
       row[verdict.bucket] += 1;
       if (verdict.kind !== null) {
         findings.push(finding(group, entry, verdict.kind, verdict.detail, verdict.note));
@@ -202,7 +209,22 @@ export function buildMatrix(
  * first rule is that a matrix built on a broken instrument reads exactly like one that is
  * not. `measure.mjs` already refuses to run on a key/tree disagreement for the same reason.
  */
-function assertMechanismsAreDeclared(key, exercises) {
+/** The separate run an entry is judged on, when its gap names a mechanism that has one. */
+function runFor(entry, exercises, observedUnder) {
+  if (entry.gapMechanism === undefined || !exercises.has(entry.gapMechanism)) return undefined;
+  return observedUnder[entry.gapMechanism];
+}
+
+function assertMechanismsAreDeclared(key, exercises, observedUnder = {}) {
+  // A run supplied for a mechanism the caller does not claim to exercise would sit there
+  // looking like evidence and judge nothing — the same slip as a misspelled claim.
+  for (const mechanism of Object.keys(observedUnder)) {
+    if (!exercises.has(mechanism)) {
+      throw new Error(
+        `a run is supplied for "${mechanism}", which the caller does not claim to exercise`,
+      );
+    }
+  }
   const known = new Set(GAP_MECHANISMS);
   const unknown = new Set();
   for (const group of key.files) {

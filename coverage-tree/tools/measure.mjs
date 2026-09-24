@@ -74,7 +74,15 @@ if (!existsSync(DIST)) {
   process.exit(1);
 }
 const core = await import(`file:///${DIST.replace(/\\/g, '/')}`);
-const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, shapeById } = core;
+const {
+  defaultAdapters,
+  detectServingRoots,
+  discover,
+  loadAliases,
+  resolveReferences,
+  scanSources,
+  shapeById,
+} = core;
 
 const readFileText = (path) => readFile(path, 'utf8');
 const key = JSON.parse(readFileSync(keyPath, 'utf8'));
@@ -113,14 +121,33 @@ const declaredRoots = {
   dirs: key.servingRoots.map((entry) => entry.path),
   declared: true,
 };
-const references = resolveReferences(scanned.references, {
-  root: discovery.root,
-  assets: discovery.assets,
-  servingRoots: declaredRoots,
-  excludedRoots: discovery.excludedRoots,
-  aliases,
-  exists: (path) => existsSync(path),
-});
+const resolveUnder = (servingRoots) =>
+  resolveReferences(scanned.references, {
+    root: discovery.root,
+    assets: discovery.assets,
+    servingRoots,
+    excludedRoots: discovery.excludedRoots,
+    aliases,
+    exists: (path) => existsSync(path),
+  });
+const references = resolveUnder(declaredRoots);
+
+/**
+ * 🔴 R96, EXERCISED (R167 group E): the same scan resolved a second time, under what
+ * `detectServingRoots` claims on its own — every directory NAMED `public` or `static`, and
+ * nothing declared. Only entries whose `knownGap` names `serving-root-detection` are judged
+ * on it (`observedUnder` in `matrix.mjs`); every other entry keeps the declared run, which
+ * is still the right instrument for RESOLUTION.
+ *
+ * ⚠️ **Detection alone, not the product's default of detection ∪ inference — and that is
+ * sufficient, not a shortcut.** `decideServingRoots` (bench) documents that inference only
+ * ever ADDS roots and never removes a detected one, so any directory detection claims, the
+ * default path claims too. For a gap whose text is "detection claims a directory it should
+ * not", the detection run is the exact instrument. (The inference half lives in `bench/`,
+ * and copying its denominator here is the drift its own header warns against.)
+ */
+const detectedRoots = detectServingRoots(discovery.directories);
+const referencesUnderDetection = resolveUnder(detectedRoots);
 
 // ---- one observation per keyed file --------------------------------------------
 //
@@ -139,26 +166,32 @@ for (const file of [...discovery.unscannedFiles, ...scanned.unscanned]) {
   threwBy.set(posix(file.relative), `${file.reason}: ${file.detail || '(no detail)'}`);
 }
 
-const byFile = new Map();
-for (const reference of references) {
-  const relative = posix(relativeTo(root, reference.file));
-  let list = byFile.get(relative);
-  if (list === undefined) {
-    list = [];
-    byFile.set(relative, list);
+function groupByFile(resolved) {
+  const byFile = new Map();
+  for (const reference of resolved) {
+    const relative = posix(relativeTo(root, reference.file));
+    let list = byFile.get(relative);
+    if (list === undefined) {
+      list = [];
+      byFile.set(relative, list);
+    }
+    list.push({
+      start: reference.start,
+      shape: reference.shape,
+      resolution: reference.resolution,
+      rawPath: reference.rawPath,
+      // The engine's own words about its decision. R90: a divergence is a question until
+      // both sides have stated their case, and this is the engine's half.
+      note: reference.note ?? '',
+    });
   }
-  list.push({
-    start: reference.start,
-    shape: reference.shape,
-    resolution: reference.resolution,
-    rawPath: reference.rawPath,
-    // The engine's own words about its decision. R90: a divergence is a question until
-    // both sides have stated their case, and this is the engine's half.
-    note: reference.note ?? '',
-  });
+  return byFile;
 }
+const byFile = groupByFile(references);
+const byFileUnderDetection = groupByFile(referencesUnderDetection);
 
 const observed = new Map();
+const observedUnderDetection = new Map();
 for (const group of key.files) {
   // R84. The key counts BYTES and the engine counts UTF-16 CODE UNITS. They agree on
   // ASCII and diverge silently otherwise — one em dash shifts every later offset by 2 —
@@ -166,34 +199,36 @@ for (const group of key.files) {
   const bytes = readFileSync(join(root, group.path));
   for (const entry of group.entries) entry.offset = toCodeUnits(bytes, entry.offset);
 
-  observed.set(group.path, {
+  const threw = threwBy.get(group.path) ?? null;
+  observed.set(group.path, { path: group.path, threw, references: byFile.get(group.path) ?? [] });
+  observedUnderDetection.set(group.path, {
     path: group.path,
-    threw: threwBy.get(group.path) ?? null,
-    references: byFile.get(group.path) ?? [],
+    threw,
+    references: byFileUnderDetection.get(group.path) ?? [],
   });
 }
 
 /**
- * 🔴 R96 — WHICH MECHANISMS THIS RUN ACTUALLY EXERCISES, DECLARED, AND IT IS EMPTY.
+ * 🔴 R96 — WHICH MECHANISMS THIS RUN ACTUALLY EXERCISES, AND THE RUN THAT EXERCISES THEM.
  *
  * `declaredRoots` above bypasses `detectServingRoots` deliberately and correctly: measuring
- * RESOLUTION against auto-detection would blame the reader for a detection gap (the comment
- * on `declaredRoots` is the argument). But the same switch disqualifies this run from
- * retiring any gap whose text names that detection — and two entries in
- * `docs-examples/public/example.html` name exactly it. They came out `broken`, matched
+ * RESOLUTION against auto-detection would blame the reader for a detection gap. But the
+ * same switch disqualified the run from retiring any gap whose text names detection — and
+ * before R96 two entries in `docs-examples/public/example.html` came out `broken`, matched
  * their `expect`, and the matrix printed **"the gap is closed"** about a defect that fires
- * on every real invocation: `detectServingRoots` claims `docs-examples/public` and resolves
- * both references against it.
+ * on every unconfigured run.
  *
- * ⚠️ **An empty set is the correct default and not a placeholder.** A mechanism belongs in
- * here only once this file actually runs it, and the safe direction for a mistake is a gap
- * that stays on the books, never one retired by a run that never touched it.
+ * ✅ **R167 group E: the mechanism is exercised now — by the SECOND run above, not by
+ * relabelling the first.** Listing `serving-root-detection` here while judging those entries
+ * on the declared run would be R96 exactly; `observedUnder` is what makes the claim true.
+ * ⚠️ A mechanism belongs in this set only with a run of its own beside it.
  */
-const EXERCISED_MECHANISMS = new Set();
+const EXERCISED_MECHANISMS = new Set(['serving-root-detection']);
 
 const result = buildMatrix(key, observed, {
   declarationOf: (id) => shapeById(id),
   exercises: EXERCISED_MECHANISMS,
+  observedUnder: { 'serving-root-detection': observedUnderDetection },
 });
 process.stdout.write(`${renderMatrix(result, { emissionOf: (id) => shapeById(id)?.emission })}\n`);
 
