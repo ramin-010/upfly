@@ -5000,6 +5000,36 @@
       ]
     },
     {
+      "path": "apps/web/src/lib/api-route.ts",
+      "entries": [
+        {
+          "raw": "/api/users/",
+          "occurrence": 1,
+          "shape": "js.concat.dynamic",
+          "expect": "discarded",
+          "why": "R167 group C's REFUTING INPUT, added before any group C code exists, as the brief orders. A '+' concatenation whose static prefix names an API route, not a directory of assets, with no image extension anywhere -- the same standing as a plain-code template with no static extension, which is not collected. The tree held no concatenation into a non-asset path, so it could confirm a concatenation rule and never refute one (R117). A rule loose enough to reach paths.ts:78 by shape alone emits this, and R99's phantom population with it.",
+          "offset": 150,
+          "line": 3,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/root-join.ts",
+      "entries": [
+        {
+          "raw": "/",
+          "occurrence": 1,
+          "shape": "js.concat.dynamic",
+          "expect": "discarded",
+          "why": "R167 group C's second REFUTING INPUT, and the one the five repositories actually hold. B14's census (notes/validation/probes/b14-concat-census.mjs) found 48 root-relative '+' chains across the five repositories: 0 carry an image extension, and the candidate property 'the static prefix names a directory that holds image assets under a serving root' fires on 22 of them -- EVERY ONE a bare '/' + x, because the serving root itself holds images. Twenty-two phantoms. Joining onto the root names no directory of assets; a rule that emits here is R99 again.",
+          "offset": 57,
+          "line": 2,
+          "column": 11
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/lib/preload.mjs",
       "entries": [
         {
