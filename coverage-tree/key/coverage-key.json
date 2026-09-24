@@ -4955,8 +4955,8 @@
           "raw": "some-ui-kit/dist/emblem.png",
           "occurrence": 1,
           "shape": "path.bare-specifier",
-          "expect": "out-of-scope",
-          "why": "A package specifier as a plain string rather than an import.",
+          "expect": "discarded",
+          "why": "A bare-specifier SPELLING in a plain string. KEYED discarded BY R172 (was out-of-scope), on evidence about the reference, not the engine: (1) a plain string is not module syntax, so nothing makes it a package reference -- inside import/require the same text IS one (Header.tsx:8, manifest.cjs:12 stay out-of-scope); (2) this tree installs no package at all -- there is no node_modules -- so \"names a file inside an npm package\" would be a claim about a file nobody looked for, which R97 forbids; (3) the only strings of this shape the five repositories hold are REAL relative paths (img/logo.png, img/favicon.png, dist/lunaria/summary.svg), so a rule that called this one a package would call those packages too. Unresolvable guess: discarded.",
           "offset": 2992,
           "line": 83,
           "column": 26
