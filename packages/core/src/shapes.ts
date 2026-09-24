@@ -478,15 +478,14 @@ export const SHAPES = [
     spec: '4d',
     emission: 'declined',
     why:
-      '🔴 DECLINED IS THE IDEAL, AND TODAY THE ENGINE OVER-CLAIMS HERE — measured, 2 of 3 are ' +
-      'emitted as raw HTML. `maskInactiveRegions` deliberately does NOT mask four-space blocks: ' +
-      'telling one from a continuation line inside a list needs a real block parser, and guessing ' +
-      'wrong would blank a REAL reference, which is the worse failure. So the row reads zero only ' +
-      'for a correct engine, and the key carries a knownGap saying so. ⚠️ I first documented this ' +
-      'as "masked with the fenced form", which was simply false; the shape audit caught the claim, ' +
-      'no test did. ⚠️ It deliberately carries NO `adapterEmitsAs`: this is a GAP the engine could ' +
-      'close by masking the block, not a distinction it is structurally unable to see. Declaring it ' +
-      'there would excuse the over-claim instead of recording it.',
+      '`maskInactiveRegions` blanks an indented block in `.md` and `.markdown` (R167) — but only ' +
+      'where it is provably code: never inside an open list item, never on a paragraph line carrying ' +
+      'on, never inside `<pre>`/`<script>`/`<style>`/`<textarea>`, and never in `.mdx`, which has no ' +
+      'indented code at all. Each of those has a tree entry that stays live. ⚠️ Until R167 this row ' +
+      'over-claimed — 2 of 3 emitted as raw HTML — because the masking had been judged too risky to ' +
+      'write; the risk was real, and the first build did blank live table rows on eleventy-docs by ' +
+      'reading blank lines from the mask instead of the source. ⚠️ Still NO `adapterEmitsAs`: the ' +
+      'adapter can see this distinction, so a claim here is a defect, never arithmetic.',
   },
   {
     id: 'md.inline-code',

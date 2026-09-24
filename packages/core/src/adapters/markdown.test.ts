@@ -646,3 +646,119 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
     ).toEqual(['/after.png', '/before.png']);
   });
 });
+
+/**
+ * R167: an indented code block is code shown, not run — like a fence — and it was left
+ * live, so the `<img>` inside one was claimed as raw HTML (R109's box D). Masking it is
+ * easy; masking ONLY it is the work, because four spaces also mean a list item's own
+ * content, a paragraph carrying on, and the inside of a `<pre>`. Every "stays live"
+ * case below is one where a looser rule would blank a real reference.
+ */
+describe('indented code blocks are masked, and only they are (R167)', () => {
+  const md = (text: string) =>
+    markdownAdapter.findReferences({ file: '/site/guide.md', text }).map((r) => r.rawPath);
+
+  it('masks an indented block after a blank line — the case that was claimed', () => {
+    const text = [
+      'An example:',
+      '',
+      '    <img src="/in-code.png" alt="shown, not run">',
+      '    ![also](/in-code-too.png)',
+      '',
+      '![real](/real.png)',
+    ].join('\n');
+    expect(md(text)).toEqual(['/real.png']);
+  });
+
+  it('masks every chunk of a block that a blank line interrupts', () => {
+    const text = ['    <img src="/a.png">', '', '    <img src="/b.png">', ''].join('\n');
+    expect(md(text)).toEqual([]);
+  });
+
+  it('masks a block that follows a heading directly — a heading is a whole block', () => {
+    expect(md('# Example\n    <img src="/in-code.png">\n')).toEqual([]);
+  });
+
+  it('counts a tab as reaching the next multiple of four', () => {
+    expect(md('Text.\n\n\t<img src="/tabbed.png">\n')).toEqual([]);
+    expect(md('Text.\n\n  \t<img src="/tabbed.png">\n')).toEqual([]);
+  });
+
+  it("🔴 keeps a LIST ITEM's indented continuation live — it is the item, not code", () => {
+    const text = [
+      '- A list item whose picture sits in its own paragraph:',
+      '',
+      '    <img src="/in-list.png" alt="a real reference">',
+      '',
+      '- A second item.',
+      '',
+      '        <img src="/deeper-in-list.png" alt="left live: nested code is not guessed at">',
+    ].join('\n');
+    expect(md(text)).toEqual(['/in-list.png', '/deeper-in-list.png']);
+  });
+
+  it('🔴 masks again once the list has ended', () => {
+    const text = [
+      '1. An ordered item.',
+      '',
+      'A paragraph at the margin, which ends the list.',
+      '',
+      '    <img src="/in-code.png">',
+    ].join('\n');
+    expect(md(text)).toEqual([]);
+  });
+
+  it("🔴 keeps a PARAGRAPH's indented next line live — indented code cannot interrupt one", () => {
+    const text = 'A sentence that goes on\n    <img src="/lazy.png" alt="to the next line">\n';
+    expect(md(text)).toEqual(['/lazy.png']);
+  });
+
+  it('🔴 keeps indented table rows live across a commented-out row (eleventy-docs cjs-esm.md)', () => {
+    // The mask turns the comment into spaces. Reading the MASK for blank lines ended the
+    // HTML block there and blanked the live rows after it — on a real repository.
+    const text = [
+      '<table>',
+      '\t<tbody>',
+      '\t\t<!-- <tr>',
+      '\t\t\t<td>retired</td>',
+      '\t\t</tr> -->',
+      '\t\t<tr>',
+      '\t\t\t<td><img src="/in-table.png" alt="live"></td>',
+      '\t\t</tr>',
+      '\t</tbody>',
+      '</table>',
+    ].join('\n');
+    expect(md(text)).toEqual(['/in-table.png']);
+  });
+
+  it('🔴 keeps the inside of a <pre> live across a blank line — that HTML block does not end there', () => {
+    const text = [
+      '<pre>',
+      'Output:',
+      '',
+      '    <img src="/in-pre.png" alt="rendered">',
+      '</pre>',
+    ].join('\n');
+    expect(md(text)).toEqual(['/in-pre.png']);
+  });
+
+  it('does not treat a fence as a blank line, and does treat its end as the end of a block', () => {
+    const text = ['```text', 'fenced', '```', '    <img src="/after-fence.png">'].join('\n');
+    expect(md(text)).toEqual([]);
+  });
+
+  it('🔴 never masks anything in MDX, which has no indented code — JSX is indented', () => {
+    const text = ['<div>', '', '    <img src="/in-jsx.png" alt="live" />', '', '</div>'].join('\n');
+    const found = markdownAdapter.findReferences({ file: '/site/post.mdx', text });
+    expect(found.map((reference) => reference.rawPath)).toEqual(['/in-jsx.png']);
+  });
+
+  it('leaves `maskInactiveRegions` exactly as it was unless asked, and exact in length when asked', () => {
+    const text = 'Text.\n\n    <img src="/in-code.png">\n';
+    expect(maskInactiveRegions(text)).toBe(text);
+    const masked = maskInactiveRegions(text, { indentedCode: true });
+    expect(masked).toHaveLength(text.length);
+    expect(masked).not.toContain('in-code');
+    expect(masked.split('\n')).toHaveLength(text.split('\n').length);
+  });
+});

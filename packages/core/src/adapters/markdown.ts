@@ -73,7 +73,7 @@ export const markdownAdapter: Adapter = defineAdapter({
 
   findReferences({ file, text }): RawReference[] {
     const isMdx = extensionOf(file) === '.mdx';
-    const inactive = maskInactiveRegions(text);
+    const inactive = maskInactiveRegions(text, { indentedCode: !isMdx });
 
     // 🔴 R167 group A: MDX's top-level `import`/`export` lines are JavaScript, and until
     // this they were read by nothing — `import hero from './hero.png'` in a post named an
@@ -429,10 +429,11 @@ function addReference(
  * one indexes the other — which is what makes it safe to search the masked text and
  * report positions in the original.
  *
- * Indented (four-space) code blocks are deliberately *not* masked: telling one apart
- * from a continuation line inside a list needs a real block parser, and guessing
- * wrong would blank out a real reference — a false negative, which is the worse
- * failure of the two.
+ * Indented (four-space) code blocks are masked only when asked, and only where the
+ * masking is CERTAIN — see `maskIndentedCodeBlocks`. They are a CommonMark construct
+ * and MDX has none (MDX 2 turned indented code off, because JSX is indented), so the
+ * caller says which dialect it holds; the default is the old behaviour, which leaves
+ * them alone.
  *
  * ⚠️ **Exported because a masker nobody can reach is a bug generator (R34).** Anything
  * that searches Markdown for a token has to mask first: an `import` or an `<img src>`
@@ -444,12 +445,174 @@ function addReference(
  * naming files that do not exist in the repository. **Call this instead of writing the
  * test again.**
  */
-export function maskInactiveRegions(text: string): string {
-  let masked = maskFencedBlocks(text);
-  masked = maskPattern(masked, /<!--[\s\S]*?-->/g);
+export function maskInactiveRegions(
+  text: string,
+  options: {
+    /** `true` for CommonMark (`.md`, `.markdown`); MDX has no indented code blocks. */
+    readonly indentedCode?: boolean;
+  } = {},
+): string {
+  const fenced = maskFencedBlocks(text);
+  let masked = maskPattern(fenced, /<!--[\s\S]*?-->/g);
+  // Before the code-span pass, not after it: a backtick inside an indented block is a
+  // literal character, and left in place it can pair with one in the prose below and
+  // blank a real reference between them.
+  if (options.indentedCode === true) masked = maskIndentedCodeBlocks(masked, text, fenced);
   masked = maskPattern(masked, /(`+)[\s\S]*?\1/g);
   masked = maskUnclosedRawText(masked);
   return masked;
+}
+
+/** A list item's marker, wherever it sits: bullet or ordered, and what follows it. */
+const LIST_MARKER = /^([ \t]*)([-+*]|\d{1,9}[.)])([ \t]+|$)/;
+
+/** `***`, `- - -`, `___` — a thematic break, which is never a list item. */
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/** An ATX heading: a whole block on one line. */
+const ATX_HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
+
+/**
+ * CommonMark's HTML block type 1 — the one that does NOT end at a blank line. Its
+ * content is HTML until the closing tag, however it is indented.
+ */
+const RAW_HTML_BLOCK = /^ {0,3}<(script|pre|style|textarea)(?=[\s>]|$)/i;
+
+/**
+ * Blank every indented code block, and nothing that only looks like one.
+ *
+ * 🔴 **THE DANGEROUS DIRECTION IS WHY THIS EXISTS (R167).** An indented block is
+ * code shown, not run — exactly like a fence — and it was left live: two `<img>` inside
+ * one in the coverage tree were claimed as raw HTML. A claim where the text proves
+ * there is no reference is R109's box D, and it sat where no headline could see it.
+ *
+ * 🔴 **AND THE OPPOSITE DIRECTION IS WHY IT WAS LEFT LIVE UNTIL NOW.** Four spaces do
+ * not make code on their own. Masking every indented line would blank real references
+ * in three places, and each is handled by declining to mask — never by guessing:
+ *
+ * - **Inside a list item**, an indented line is the item's own content. From a list
+ *   marker until a line after a blank that is indented less than the outermost item's
+ *   content column, NOTHING is masked — not even code nested inside an item, which is
+ *   left exactly as it was, because the column arithmetic that would separate the two
+ *   is where a guess would blank a real image.
+ * - **Directly after a paragraph line**, an indented line is that paragraph continuing
+ *   (CommonMark: indented code cannot interrupt a paragraph). Only a blank line, an ATX
+ *   heading, a thematic break (which includes a `---` setext underline), or more code
+ *   may come before a code line. A `===` underline is not recognised, so an indented
+ *   line straight after one stays live, as it always was.
+ * - **Inside `<pre>`, `<script>`, `<style>` or `<textarea>`**, blank lines do not end
+ *   the HTML block, so what follows them is still HTML.
+ *
+ * Everything not provably code stays live, which is the behaviour it had before.
+ *
+ * 🔴 **THE BLOCK STRUCTURE IS READ FROM THE SOURCE, NEVER FROM THE MASK — AND THE FIRST
+ * BUILD GOT THIS WRONG ON REAL CODE.** `eleventy-docs/src/docs/cjs-esm.md` keeps a
+ * `<table>` whose rows are tab-indented and some of which are commented out. The mask
+ * turns a commented row into spaces, a pass reading the mask saw a blank line there, and
+ * a blank line ends CommonMark's HTML block — so the live rows after it were blanked as
+ * code. A masked comment is not a blank line; only a blank line is. So blankness and
+ * indentation come from `source`, a fence is recognised by comparing `fenced` with it,
+ * and the mask is only ever written to.
+ */
+function maskIndentedCodeBlocks(masked: string, source: string, fenced: string): string {
+  const sourceLines = source.split('\n');
+  const fencedLines = fenced.split('\n');
+  const state: BlockState = { listContent: null, rawHtmlEnd: null, previous: 'blank' };
+
+  return masked
+    .split('\n')
+    .map((line, index) =>
+      isIndentedCode(state, sourceLines[index] ?? '', fencedLines[index] ?? '')
+        ? blank(line)
+        : line,
+    )
+    .join('\n');
+}
+
+/** What the lines so far leave open, as far as indented code is concerned. */
+interface BlockState {
+  /** The outermost open list item's content column, or null when no list is open. */
+  listContent: number | null;
+  /** The closing tag of an open `<pre>`-type HTML block, which a blank line does not end. */
+  rawHtmlEnd: RegExp | null;
+  previous: 'blank' | 'code' | 'block' | 'text';
+}
+
+/** Advance `state` past one source line, and say whether that line is indented code. */
+function isIndentedCode(state: BlockState, original: string, fenced: string): boolean {
+  const isBlank = BLANK_LINE.test(original);
+  // A fence's own lines are blank already, and the block they form is complete once it
+  // closes, so what follows the closing fence starts afresh.
+  if (!isBlank && BLANK_LINE.test(fenced)) {
+    state.previous = 'block';
+    return false;
+  }
+  if (state.rawHtmlEnd !== null) {
+    if (state.rawHtmlEnd.test(original)) state.rawHtmlEnd = null;
+    state.previous = 'text';
+    return false;
+  }
+  if (isBlank) {
+    state.previous = 'blank';
+    return false;
+  }
+
+  const indent = columnsOf(original);
+  trackList(state, original, indent);
+  if (state.listContent === null && indent >= 4 && state.previous !== 'text') {
+    state.previous = 'code';
+    return true;
+  }
+
+  state.rawHtmlEnd = rawHtmlBlockEnd(original);
+  state.previous = ATX_HEADING.test(original) || THEMATIC_BREAK.test(original) ? 'block' : 'text';
+  return false;
+}
+
+/**
+ * Open a list at a marker, and close it at the first line after a blank that is indented
+ * less than its outermost item's content — never at a line carrying a paragraph on.
+ */
+function trackList(state: BlockState, original: string, indent: number): void {
+  const marker = THEMATIC_BREAK.test(original) ? null : LIST_MARKER.exec(original);
+  const open = state.listContent;
+  if (open !== null && marker === null && state.previous === 'blank' && indent < open) {
+    state.listContent = null;
+  }
+  if (marker !== null && (open === null ? indent <= 3 : indent < open)) {
+    state.listContent = contentColumnOf(marker);
+  }
+}
+
+/** The closing tag a `<pre>`-type HTML block waits for, when this line opens one. */
+function rawHtmlBlockEnd(original: string): RegExp | null {
+  const opener = RAW_HTML_BLOCK.exec(original);
+  if (opener === null) return null;
+  const close = new RegExp(`</${opener[1]}\\s*>`, 'i');
+  return close.test(original) ? null : close;
+}
+
+/** Leading whitespace in columns, a tab advancing to the next multiple of four. */
+function columnsOf(line: string): number {
+  let column = 0;
+  for (const character of line) {
+    if (character === ' ') column += 1;
+    else if (character === '\t') column += 4 - (column % 4);
+    else break;
+  }
+  return column;
+}
+
+/**
+ * Where a list item's content starts. One to four columns of space after the marker
+ * are part of it; five or more mean the item opens with indented code, and then — as
+ * for an empty item — the content column is one past the marker.
+ */
+function contentColumnOf(marker: RegExpExecArray): number {
+  const [, leading = '', symbol = '', spacing = ''] = marker;
+  const markerEnd = columnsOf(leading) + symbol.length;
+  const gap = columnsOf(`${' '.repeat(markerEnd)}${spacing}`) - markerEnd;
+  return gap >= 1 && gap <= 4 ? markerEnd + gap : markerEnd + 1;
 }
 
 /**

@@ -1447,6 +1447,22 @@
       ]
     },
     {
+      "path": "apps/docs/src/content/blog/indented-jsx.mdx",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "resolved",
+          "why": "R167: indented JSX after a blank line, inside a JSX block. MDX 2 turned indented code OFF, because JSX is indented -- so in .mdx this is live, and a pass that applied CommonMark's rule to MDX would blank it. It must stay live: the indented-code pass may only blank what is provably code.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 69,
+          "line": 7,
+          "column": 15
+        }
+      ]
+    },
+    {
       "path": "apps/docs/src/content/guide/deep/nested/further/advanced.markdown",
       "entries": [
         {
@@ -1824,8 +1840,7 @@
           "why": "A four-space indented code block, which is a code block too.",
           "offset": 2254,
           "line": 81,
-          "column": 15,
-          "knownGap": "R85 / markdown.ts maskInactiveRegions: four-space code blocks are deliberately NOT masked, because telling one from a continuation line inside a list needs a real block parser and guessing wrong would blank a real reference. So today the engine collects these; discarded is the IDEAL, not the current behaviour."
+          "column": 15
         },
         {
           "raw": "/img/spacer.png",
@@ -1835,8 +1850,7 @@
           "why": "A second line of that block.",
           "offset": 2318,
           "line": 82,
-          "column": 15,
-          "knownGap": "R85 / markdown.ts maskInactiveRegions: four-space code blocks are deliberately NOT masked, because telling one from a continuation line inside a list needs a real block parser and guessing wrong would blank a real reference. So today the engine collects these; discarded is the IDEAL, not the current behaviour."
+          "column": 15
         },
         {
           "raw": "/gallery/Banner.PNG",
@@ -1914,6 +1928,95 @@
           "offset": 45,
           "line": 3,
           "column": 19
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/indented-list.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "R167: indented four spaces under a list item, after a blank line -- the item's own content, not code (CommonMark list items). The refuting input the brief named: a pass that masked every indented line would blind the adapter to images in lists. It must stay live: the indented-code pass may only blank what is provably code.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 113,
+          "line": 5,
+          "column": 15
+        },
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "md.indented-code",
+          "expect": "discarded",
+          "why": "R167: the same indentation after the list has ENDED (a paragraph at the margin, after a blank line). Code, shown not run. A pass that never closed a list would leave this claimed.",
+          "offset": 288,
+          "line": 11,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/indented-lazy.md",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "R167: indented, but straight after a paragraph line with no blank between -- the paragraph continuing. CommonMark: an indented code block cannot interrupt a paragraph. It must stay live: the indented-code pass may only blank what is provably code.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 133,
+          "line": 4,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/indented-table.md",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "R167, found on a REAL repository while this was being built (eleventy-docs src/docs/cjs-esm.md): an HTML table whose rows are indented and one of which is commented out. The mask turns the comment into spaces; a pass that read blank lines from the mask ended the HTML block there and blanked this live row. Only a blank line of the SOURCE ends it. It must stay live: the indented-code pass may only blank what is provably code.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 177,
+          "line": 9,
+          "column": 27
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/indented-pre.md",
+      "entries": [
+        {
+          "raw": "/logo.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "R167: inside <pre>, after a blank line. A <pre> HTML block (CommonMark type 1) ends at </pre>, not at a blank line, so this is still HTML and <img> inside <pre> renders. It must stay live: the indented-code pass may only blank what is provably code.",
+          "target": "apps/docs/public/logo.png",
+          "offset": 100,
+          "line": 6,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/indented-after-heading.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.indented-code",
+          "expect": "discarded",
+          "why": "R167: indented straight under an ATX heading. A heading is a whole block, so the next line starts a new one, and four spaces there are code -- no blank line is needed.",
+          "offset": 54,
+          "line": 2,
+          "column": 15
         }
       ]
     },
