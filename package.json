@@ -23,7 +23,7 @@
     "validate": "pnpm --filter upfly-bench run validate",
     "coverage-tree:check": "node coverage-tree/tools/check-key.mjs --strict",
     "coverage-tree:prove": "node coverage-tree/tools/prove-can-fail.mjs",
-    "coverage-tree:measure": "pnpm build && pnpm --filter upfly-bench run build && node coverage-tree/tools/measure.mjs",
+    "coverage-tree:measure": "pnpm build && node coverage-tree/tools/measure.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"

@@ -24,6 +24,7 @@ import {
   type DiscoveryResult,
   type Graph,
   IMAGE_EXTENSIONS,
+  type PipelineOutput,
   type ProbeDiagnostic,
   type RawReference,
   type Reference,
@@ -31,13 +32,13 @@ import {
   type ScanDiagnostic,
   type ServingRoots,
   buildReport,
+  decideServingRoots,
   defaultAdapters,
+  runPipeline as enginePipeline,
   linkedPaths,
   renderReport,
 } from 'upfly-core';
-import { type PipelineOutput, runPipeline as enginePipeline } from './pipeline.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
-import { decideServingRoots } from './serving-root-decision.js';
 import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 

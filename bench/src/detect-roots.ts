@@ -26,6 +26,7 @@ import {
   type Reference,
   type ServingRoots,
   buildGraph,
+  decideServingRoots,
   defaultAdapters,
   detectServingRoots,
   discover,
@@ -35,7 +36,6 @@ import {
   scanSources,
 } from 'upfly-core';
 import { REPOS, type RepoSpec, VALIDATION_ROOT } from './repos.js';
-import { decideServingRoots } from './serving-root-decision.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 

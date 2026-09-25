@@ -109,12 +109,6 @@
     "bench/src/optimize-twice.test.ts": {
       "long-comment": 1
     },
-    "bench/src/pipeline.ts": {
-      "internal-reference": 8,
-      "em-dash": 5,
-      "emphasis": 3,
-      "emoji": 3
-    },
     "bench/src/repos.ts": {
       "internal-reference": 7,
       "em-dash": 3,
@@ -146,20 +140,6 @@
       "em-dash": 1,
       "emphasis": 3,
       "emoji": 1
-    },
-    "bench/src/serving-root-decision.test.ts": {
-      "internal-reference": 7,
-      "em-dash": 2,
-      "emphasis": 5,
-      "emoji": 6,
-      "long-comment": 5
-    },
-    "bench/src/serving-root-decision.ts": {
-      "internal-reference": 10,
-      "em-dash": 11,
-      "emphasis": 10,
-      "emoji": 10,
-      "long-comment": 27
     },
     "bench/src/transferability.ts": {
       "internal-reference": 12,
@@ -221,11 +201,11 @@
       "long-comment": 33
     },
     "coverage-tree/tools/measure.mjs": {
-      "internal-reference": 19,
-      "em-dash": 15,
+      "internal-reference": 16,
+      "em-dash": 13,
       "emphasis": 4,
-      "emoji": 12,
-      "long-comment": 18
+      "emoji": 11,
+      "long-comment": 17
     },
     "coverage-tree/tools/prove-can-fail.mjs": {
       "internal-reference": 2,

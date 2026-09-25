@@ -25,14 +25,14 @@ import {
   commit,
   createNodeFileStore,
   createSharpProbe,
+  decideServingRoots,
   newRunId,
   optimize,
   planRelocation,
   prepare,
+  runPipeline,
 } from 'upfly-core';
-import { runPipeline } from './pipeline.js';
 import { refuseValidationCorpus } from './repos.js';
-import { decideServingRoots } from './serving-root-decision.js';
 
 export interface EngineRun {
   readonly graph: Graph;

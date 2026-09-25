@@ -50,20 +50,21 @@
 import { readFile } from 'node:fs/promises';
 import { argv, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
-import {
-  type Adapter,
-  type RawReference,
-  defaultAdapters,
-  discover,
-  scanSources,
-} from 'upfly-core';
-import { REPOS, VALIDATION_ROOT } from './repos.js';
 // 🔴 ONE copy of the denominator. This instrument's first version counted every
 // root-relative reference, not only the ones that could name an asset, and made
 // astro-docs' `public` score 0.1% — the ranking stayed right and the rates were nonsense.
 // The filter it grew afterwards is now shared with the wiring in `serving-root-decision.ts`,
 // because a second implementation of a denominator is how the two silently disagree.
-import { isRootRelative, looksLikeAsset } from './serving-root-decision.js';
+import {
+  type Adapter,
+  type RawReference,
+  defaultAdapters,
+  discover,
+  isRootRelative,
+  looksLikeAsset,
+  scanSources,
+} from 'upfly-core';
+import { REPOS, VALIDATION_ROOT } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 

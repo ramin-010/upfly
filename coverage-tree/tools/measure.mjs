@@ -30,15 +30,14 @@
  * Usage:  node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
  *         --skip-strict is for debugging the harness itself and prints a loud warning.
  *         It must never be used to produce a number anybody quotes.
- *         Needs `pnpm build` AND `pnpm --filter upfly-bench run build` — run 2 imports
- *         `decideServingRoots` from bench's build; `pnpm coverage-tree:measure` does both.
+ *         Needs `pnpm build`, which `pnpm coverage-tree:measure` runs first.
  */
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import {
   NON_DEFECT_KINDS,
   blindSpots,
@@ -93,21 +92,25 @@ if (!existsSync(DIST)) {
 const core = await import(`file:///${DIST.replace(/\\/g, '/')}`);
 const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, shapeById } = core;
 
-/**
- * 🔴 R179's run 2 exercises the PRODUCTION decision, imported, never copied (6a-septies: a
- * guard must run the code path it guards). It lives in `bench/` until Phase 3 moves it into
- * the engine, so this reads bench's build — and refuses a build older than its source,
- * because a stale copy of the decision is a copy, whatever the import line says.
- */
-const DECISION = join(HERE, '..', '..', 'bench', 'dist', 'serving-root-decision.js');
-const DECISION_SOURCE = join(HERE, '..', '..', 'bench', 'src', 'serving-root-decision.ts');
+// Run 2 calls the production decision, never a copy of it. A build older than the
+// decision's source is a copy all the same, so it is refused.
+const DECISION = join(HERE, '..', '..', 'packages', 'core', 'dist', 'serving-root-decision.js');
+const DECISION_SOURCE = join(
+  HERE,
+  '..',
+  '..',
+  'packages',
+  'core',
+  'src',
+  'serving-root-decision.ts',
+);
 if (!existsSync(DECISION) || statSync(DECISION).mtimeMs < statSync(DECISION_SOURCE).mtimeMs) {
   process.stderr.write(
-    `🔴 ${DECISION} is missing or older than its source. Run \`pnpm --filter upfly-bench run build\` first.\n`,
+    `${DECISION} is missing or older than its source. Run \`pnpm build\` first.\n`,
   );
   process.exit(1);
 }
-const { decideServingRoots } = await import(pathToFileURL(DECISION).href);
+const { decideServingRoots } = core;
 
 const readFileText = (path) => readFile(path, 'utf8');
 const key = JSON.parse(readFileSync(keyPath, 'utf8'));

@@ -19,10 +19,15 @@ references safely — or refuse, loudly.**
 
 ## The pipeline
 
-Everything is a pure function over data except three modules — `discover`, the `ImageProbe`
-implementation, and `execute` — which are the only places that touch the filesystem. Even
-`audit` is pure: it takes the graph and an injected probe and returns findings. That is what
-lets the whole engine be tested without a disk.
+Everything is a pure function over data except the modules that meet the disk: `discover`
+walks it, the `ImageProbe` implementation reads images, the transaction's file store writes,
+and `runPipeline` (`pipeline.ts`) hands the other stages their ports on the real filesystem.
+Even `audit` is pure: it takes the graph and an injected probe and returns findings. That is
+what lets the whole engine be tested without a disk.
+
+`runPipeline` is the one wiring of these stages: `bench/`'s validation and its fixture builds
+both call it, so their numbers describe one engine. The accuracy suite resolves its scan under
+the same `decideServingRoots` for its unconfigured run.
 
 Two stages need one filesystem fact each without being filesystem modules, and both take it as
 an **injected port**: `scan` takes `readFile`, and `resolve` takes `exists`. The probe stage takes
@@ -317,7 +322,8 @@ those four. It finds nothing on `eleventy-docs`, which serves from `src` via `ad
 Rails, Django and WordPress are equally unresolvable out of the box. Special-casing the one
 framework that happens to be in the corpus is letting the corpus decide the product, and the first
 per-framework parser is a door the second and third requests come through. What eleventy gets
-instead is what every unparsed framework gets: told plainly that the serving root could not be
+instead is inference, below, which finds `src/` from what its references resolve against. A
+project whose references do not settle it is told plainly that the serving root could not be
 determined, so one line of configuration fixes it.
 
 **A missed root is survivable and a wrong one is not.** Detection finding nothing degrades to the
@@ -335,6 +341,35 @@ from its root. A measurement that cannot see a failure is not evidence that ther
 the project stating anything. The planner's root-link policy already branches on that flag; the
 report discloses it in `coverage.servingRoots` and in a line of the human headline, because a guess
 nobody is told about is precisely the defect above.
+
+### Inference: what the references resolve against
+
+Detection asks what a directory is called. Some sites serve from a directory no naming rule can
+reach: Eleventy copies `src/` to the site root, and `src` is a source directory everywhere else.
+So a run nobody configured also asks which directories its references actually resolve against,
+and adds those. `decideServingRoots` (`serving-root-decision.ts`) makes that decision for every
+caller; `inferServingRoots` does the scoring.
+
+- **It runs after the scan**, because it needs references. Detection needs only the walk.
+- **It only adds.** A detected root is never removed: the case inference exists for is a root
+  detection cannot see, not one detection got wrong.
+- **It scores only root-relative references that could name an image.** A documentation site's
+  page links (`/en/guides/deploy/`) are references too, and counting them dragged real serving
+  roots under 3%. Every candidate fell alike, so the ranking survived while the rates became
+  meaningless, which is the kind of wrong number that passes a glance.
+- **Volume first, then rate.** A candidate needs at least three such references
+  (`MIN_ROOT_REFERENCES`) and must resolve at least 40% of them (`MIN_ROOT_RESOLUTION_RATE`). A
+  folder named `public` that serves nothing can resolve one reference out of one, so a rate alone
+  would take it. Measured over 201 directories in the five validation repositories and the
+  coverage tree, true roots scored at least 45.8% once the volume floor applied, and wrong ones
+  at most 0%.
+- **A tie refuses.** A rejected root leaves every affected reference where it already was,
+  `broken` or `discarded`, so a false reject costs nothing new. A false accept links a reference
+  to the wrong file, and a rewrite would then act on that link.
+- **The union is sorted for byte-identical output only.** The resolver orders roots by ancestor
+  depth itself, so the order handed in cannot change what resolves.
+- **The result is always `declared: false`.** Nobody stated these roots; the report says they
+  were worked out.
 
 ### When the serving root cannot be found at all
 

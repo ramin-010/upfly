@@ -1,41 +1,30 @@
 /**
- * The wiring R132 was waiting on, and the two ways it can be wrong without throwing.
+ * `inferServingRoots` has its own tests for its thresholds. These cover what the decision
+ * does to inference's input, because both ways this has gone wrong were in the caller: a
+ * denominator that counted page links, and a union that could replace a detected root.
  *
- * `inferServingRoots` has its own tests and they cover the bar. What is asserted here is
- * what the CALLER does to its input, because both known failures of this measurement were
- * caller failures rather than algorithm failures:
- *
- * 1. 🔴 **The denominator.** Counting every root-relative reference rather than only the
- *    ones that could name an asset made astro-docs' `public` score **0.1%** and
- *    eleventy-docs' `src` **2.7%**, on repositories where those directories ARE the
- *    serving root. ⚠️ It depressed every candidate equally, so the ranking survived and
- *    only the rates were nonsense.
- * 2. 🔴 **The union.** Inference must ADD to detection and never replace it, and an
- *    accepted root must never be one the volume floor was supposed to reject.
- *
- * ⚠️ **Every case here is synthetic and that is deliberate.** The corpus measurement lives
- * in `detect-roots --delta`, where all five repositories are resolved twice; a unit test
- * that walked a real tree would be slower and would still only show the cases that tree
- * happens to contain (R117).
+ * Every case is synthetic on purpose. The measurement over real repositories is
+ * `detect-roots --delta` in `bench/`, and a unit test over one real tree would show only the
+ * cases that tree happens to hold.
  */
 
-import type { Asset, RawReference, SourceFile, UnscannedFile } from 'upfly-core';
 import { describe, expect, it } from 'vitest';
 import { decideServingRoots, looksLikeAsset } from './serving-root-decision.js';
+import type { Asset, RawReference, SourceFile, UnscannedFile } from './types.js';
 
-/** An absolute root that looks the same on both platforms, since the code posix-ifies. */
+/** An absolute root that looks the same on both platforms, since the code makes it POSIX. */
 const ROOT = '/repo';
 
 function asset(relative: string): Asset {
   return { path: `${ROOT}/${relative}`, relative, extension: '.png', bytes: 1 };
 }
 
-/** A file an adapter claims — how a `package.json` reaches the walk. */
+/** A file an adapter claims, which is how a `package.json` reaches the walk. */
 function source(relative: string): SourceFile {
   return { path: `${ROOT}/${relative}`, relative, extension: '.json', adapterId: 'json' };
 }
 
-/** A file no adapter claims — how a `Gemfile` reaches the walk. */
+/** A file no adapter claims, which is how a `Gemfile` reaches the walk. */
 function unscanned(relative: string): UnscannedFile {
   return {
     path: `${ROOT}/${relative}`,
@@ -47,8 +36,8 @@ function unscanned(relative: string): UnscannedFile {
 }
 
 /**
- * A walk with no files in it. R179's rule reads the files beside a `public/`, so a case
- * that is not about that rule still has to say what the walk held.
+ * A walk with no files in it. Detection reads the files beside a `public/`, so a case that
+ * is not about that still has to say what the walk held.
  */
 const NO_FILES = { sourceFiles: [], unscannedFiles: [] } as const;
 
@@ -71,17 +60,16 @@ describe('the denominator', () => {
     expect(looksLikeAsset('/img/hero.PNG')).toBe(true);
     expect(looksLikeAsset('/img/hero.png?v=2')).toBe(true);
     expect(looksLikeAsset('/img/hero.png#top')).toBe(true);
-    // 🔴 The one that caused the 0.1%. A page link is a reference the adapter emits and
-    // the resolver drops on the extension rung; counted here it is a miss forever.
+    // A page link is a reference the adapter emits and the resolver later drops, so
+    // counting it would make it a miss for every candidate.
     expect(looksLikeAsset('/en/guides/deploy/')).toBe(false);
     expect(looksLikeAsset('/about')).toBe(false);
     expect(looksLikeAsset('/styles/site.css')).toBe(false);
   });
 
   it('finds the serving root a wall of page links would have buried', () => {
-    // Three asset references that `src` resolves, drowned in ninety-seven page links.
-    // Without the filter `src` scores 3/100 = 3% and R132's 40% floor rejects it; with
-    // it, 3/3. This is eleventy-docs, which really is 11 images among thousands of links.
+    // Three image references `src` resolves among ninety-seven page links. Counting the
+    // links, `src` would score 3% and fall under the 40% floor; without them it scores 3/3.
     const references = [
       reference('docs/a.md', '/img/one.png'),
       reference('docs/a.md', '/img/two.png'),
@@ -102,7 +90,7 @@ describe('the denominator', () => {
     expect(decision.servingRoots.dirs).toContain('src');
   });
 
-  it('reports the surviving count, because zero looks exactly like nothing to infer', () => {
+  it('reports how many references it scored, because zero looks like nothing to infer', () => {
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
@@ -121,7 +109,7 @@ describe('the union', () => {
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
-      // R179: a `public/` counts only beside a project file, as every real one does.
+      // A `public/` counts only beside a project file, as every real one has.
       sourceFiles: [source('package.json')],
       directories: ['public', 'src', 'src/img'],
       assets: [
@@ -137,14 +125,12 @@ describe('the union', () => {
       ],
     });
 
-    // `public` came from the name, `src` from the references. Inference adds; it never
-    // takes a detected root away, because the case it exists for is a root detection
-    // cannot see, not a root detection got wrong.
+    // `public` came from its name and `src` from the references.
     expect(decision.detected).toEqual(['public']);
     expect(decision.servingRoots.dirs).toEqual(['public', 'src']);
   });
 
-  it('sorts the union, because rule 11 promises a byte-identical report', () => {
+  it('sorts the union, so the report is the same on every run', () => {
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
@@ -165,9 +151,8 @@ describe('the union', () => {
     expect([...decision.servingRoots.dirs]).toEqual([...decision.servingRoots.dirs].sort());
   });
 
-  it('never claims the project declared what we worked out', () => {
-    // A run that inferred `src` has been told nothing. `declared: true` would make the
-    // report present a guess as a statement, and the report words the two differently.
+  it('never claims the project declared what was worked out', () => {
+    // The report words a declared root and an inferred one differently.
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
@@ -180,10 +165,9 @@ describe('the union', () => {
     expect(decision.servingRoots.declared).toBe(false);
   });
 
-  it('🔴 hands detection the WHOLE walk, so a project file no adapter claims still counts', () => {
-    // R179. A Rails app's project file is its `Gemfile`, which no adapter claims: it is in
-    // `unscannedFiles`, not `sourceFiles`. A decision that passed only the source files
-    // would reject every Rails `public/` without a sound.
+  it('hands detection the whole walk, so a project file no adapter claims still counts', () => {
+    // A Rails app's project file is its `Gemfile`, which lands in `unscannedFiles`. Passing
+    // only the source files would reject every Rails `public/` without a word.
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
@@ -198,10 +182,9 @@ describe('the union', () => {
 
 describe('what it refuses', () => {
   it('rejects a thin directory that resolves everything it has', () => {
-    // 🔴 `docs-examples/public` in the coverage tree: a directory named `public` that
-    // serves nothing and resolves one reference out of one. A rate-only bar takes it and
-    // rejects every genuine root, which is R132's finding. Two references is still under
-    // MIN_ROOT_REFERENCES, so it never gets a rate at all.
+    // A folder named `public` that serves nothing and resolves one reference out of one.
+    // A rate-only bar would take it; it has fewer references than the volume floor, so it
+    // never gets a rate at all.
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
@@ -213,8 +196,8 @@ describe('what it refuses', () => {
   });
 
   it('drops a reference from outside the walked tree instead of slicing a wrong path', () => {
-    // A negative offset would not throw; it would produce a path starting mid-directory
-    // and score a candidate against a filename that does not exist anywhere.
+    // A negative offset would not throw; it would score a candidate against a filename that
+    // exists nowhere.
     const decision = decideServingRoots({
       root: ROOT,
       ...NO_FILES,
