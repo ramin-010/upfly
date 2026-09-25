@@ -67,7 +67,14 @@ function pattern(file: string, rawPath: string, targets: readonly string[]): Ref
   } as Reference;
 }
 
-function input(over: Partial<PlanInput> & { assets: Asset[]; references: Reference[] }): PlanInput {
+function input(
+  over: Partial<PlanInput> & {
+    assets: Asset[];
+    references: Reference[];
+    /** Shorthand for undeclared serving roots. */
+    served?: readonly string[];
+  },
+): PlanInput {
   return {
     graph: buildGraph({
       root: ROOT,
@@ -77,10 +84,9 @@ function input(over: Partial<PlanInput> & { assets: Asset[]; references: Referen
     }),
     probes: over.probes ?? over.assets.map((a) => probe(a.relative)),
     format: 'webp',
-    publicDir: over.publicDir === undefined ? 'public' : over.publicDir,
     publicPolicy: over.publicPolicy ?? 'keep-original',
     hedged: over.hedged ?? new Set(),
-    servingRoots: over.servingRoots ?? { dirs: ['public'], declared: false },
+    servingRoots: over.servingRoots ?? { dirs: over.served ?? ['public'], declared: false },
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
   };
 }
@@ -1018,7 +1024,7 @@ describe('two assets that would convert to one name', () => {
   ];
 
   it('converts neither, and tells each one which file it collided with', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: 'static' }));
+    const plan = planOptimization(input({ assets, references, served: ['static'] }));
 
     expect(plan.conversions).toEqual([]);
     expect(plan.declined).toEqual([
@@ -1038,7 +1044,7 @@ describe('two assets that would convert to one name', () => {
   });
 
   it('leaves the references to both of them exactly as they were', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: 'static' }));
+    const plan = planOptimization(input({ assets, references, served: ['static'] }));
 
     expect(plan.rewrites).toEqual([]);
   });
@@ -1049,7 +1055,7 @@ describe('two assets that would convert to one name', () => {
       input({
         assets: three,
         references: three.map((a) => resolved('index.html', a.relative, a.relative)),
-        publicDir: 'img',
+        served: ['img'],
       }),
     );
 
@@ -1070,7 +1076,7 @@ describe('two assets that would convert to one name', () => {
       input({
         assets,
         references,
-        publicDir: 'static',
+        served: ['static'],
         probes: [probe('static/distance.gif', 40_000), probe('static/distance.png', 4_000)],
       }),
     );
@@ -1113,7 +1119,7 @@ describe('an asset whose converted name is already taken', () => {
   const references = [resolved('index.html', 'img/possum.png', 'img/possum.png')];
 
   it('declines rather than writing over the file that is there', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: 'img' }));
+    const plan = planOptimization(input({ assets, references, served: ['img'] }));
 
     expect(plan.conversions).toEqual([]);
     expect(plan.declined).toEqual([
@@ -1134,7 +1140,7 @@ describe('an asset whose converted name is already taken', () => {
           resolved('index.html', 'img/possum.jpg', 'img/possum.jpg'),
           resolved('index.html', 'img/possum.png', 'img/possum.png'),
         ],
-        publicDir: 'img',
+        served: ['img'],
       }),
     );
 
@@ -1161,14 +1167,14 @@ describe('two assets whose converted names differ only in case', () => {
   ];
 
   it('declines both rather than silently writing one image over the other', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: 'images' }));
+    const plan = planOptimization(input({ assets, references, served: ['images'] }));
 
     expect(plan.conversions).toEqual([]);
     expect(plan.rewrites).toEqual([]);
   });
 
   it('says why two different names are one file, so the report does not look broken', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: 'images' }));
+    const plan = planOptimization(input({ assets, references, served: ['images'] }));
 
     expect(plan.declined.map((d) => d.reason)).toEqual([
       'images/reaktor.png would convert to images/reaktor.webp, which is the same file as images/Reaktor.webp on Windows and macOS, so converting it would replace a file rather than add one. Rename one of them and run again.',
@@ -1181,7 +1187,7 @@ describe('two assets whose converted names differ only in case', () => {
       input({
         assets: [asset('img/Logo.png'), asset('img/logo.webp')],
         references: [resolved('index.html', 'img/Logo.png', 'img/Logo.png')],
-        publicDir: 'img',
+        served: ['img'],
       }),
     );
 
@@ -1202,7 +1208,7 @@ describe('a project that serves from its own project root', () => {
   const references = [resolved('index.html', '/images/hero.png', 'images/hero.png')];
 
   it('converts an unlinked asset, because outside the repository may still load it', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: '' }));
+    const plan = planOptimization(input({ assets, references, served: [''] }));
 
     // With '' misread as "nothing is public", orphan.png declined for having no
     // references. On a site that uploads its own repository that is wrong: nothing
@@ -1212,7 +1218,7 @@ describe('a project that serves from its own project root', () => {
 
   it('removes the original under replace, because the whole tree is the public dir', () => {
     const plan = planOptimization(
-      input({ assets, references, publicDir: '', publicPolicy: 'replace' }),
+      input({ assets, references, served: [''], publicPolicy: 'replace' }),
     );
 
     // `hero.png` is what shows `''` is read as public: a linked asset whose reference is
@@ -1224,12 +1230,94 @@ describe('a project that serves from its own project root', () => {
     expect(reasonsByPath(plan)['images/orphan.png']).toContain('nothing Upfly can see links to it');
   });
 
-  it('still treats null as serving nothing publicly, which is the opposite', () => {
-    const plan = planOptimization(input({ assets, references, publicDir: null }));
+  it('treats a project that declares no served directory as serving nothing, the opposite', () => {
+    const plan = planOptimization(
+      input({ assets, references, servingRoots: { dirs: [], declared: true } }),
+    );
 
     // An unlinked asset outside any public directory gains only bytes, so it is
     // declined. The empty string and the absent directory must not collapse together.
     expect(plan.conversions.map((c) => c.asset)).toEqual(['images/hero.png']);
-    expect(plan.declined.map((d) => d.path)).toContain('images/orphan.png');
+    expect(reasonsByPath(plan)['images/orphan.png']).toBe(
+      'nothing links to it, so converting it would rewrite no reference and gain only bytes',
+    );
+  });
+});
+
+describe('which assets are served, when the run decided several roots or none', () => {
+  const roots = { dirs: ['apps/a/public', 'apps/b/public'], declared: false };
+  const twoRoots = [asset('apps/a/public/a.png'), asset('apps/b/public/b.png')];
+  const twoReferences = [
+    resolved('apps/a/index.html', '/a.png', 'apps/a/public/a.png'),
+    resolved('apps/b/index.html', '/b.png', 'apps/b/public/b.png'),
+  ];
+
+  it('removes the original of an image in the second root once its references move', () => {
+    const plan = planOptimization(
+      input({
+        assets: twoRoots,
+        references: twoReferences,
+        servingRoots: roots,
+        publicPolicy: 'replace',
+      }),
+    );
+
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['apps/a/public/a.png', true],
+      ['apps/b/public/b.png', true],
+    ]);
+    expect(plan.rewrites.map((r) => r.file)).toEqual(['apps/a/index.html', 'apps/b/index.html']);
+    expect(plan.keptOriginals).toEqual([]);
+  });
+
+  it('converts an unlinked image in the second root, as it would in the first', () => {
+    const plan = planOptimization(
+      input({
+        assets: [...twoRoots, asset('apps/b/public/unlinked.png')],
+        references: twoReferences,
+        servingRoots: roots,
+      }),
+    );
+
+    expect(plan.conversions.map((c) => c.asset)).toContain('apps/b/public/unlinked.png');
+  });
+
+  it('finds no served image when no root was found, and says how to name one', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('images/hero.png'), asset('images/orphan.png')],
+        references: [resolved('index.html', 'images/hero.png', 'images/hero.png')],
+        servingRoots: { dirs: [], declared: false },
+        publicPolicy: 'replace',
+      }),
+    );
+
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['images/hero.png', false],
+    ]);
+    expect(plan.keptOriginals).toEqual([
+      {
+        asset: 'images/hero.png',
+        reason:
+          'converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and `--replace` removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.',
+      },
+    ]);
+    expect(reasonsByPath(plan)['images/orphan.png']).toBe(
+      'nothing links to it, and no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL; converting it would gain only bytes. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site',
+    );
+  });
+
+  it('keeps the served-directory sentence for a project that found a root elsewhere', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/logo.png')],
+        references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
+        publicPolicy: 'replace',
+      }),
+    );
+
+    expect(plan.keptOriginals.map((kept) => kept.reason)).toEqual([
+      expect.stringContaining('it is outside a directory this project serves'),
+    ]);
   });
 });

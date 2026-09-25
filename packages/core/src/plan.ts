@@ -75,8 +75,6 @@ export interface PlanInput {
   /** Measurements. An asset with no entry here was never measured. */
   readonly probes: readonly AssetProbe[];
   readonly format: EncodeFormat;
-  /** POSIX-relative, or null when the project serves nothing from a public directory. */
-  readonly publicDir: string | null;
   readonly publicPolicy: PublicPolicy;
   /**
    * Assets with zero links that something unreadable nevertheless mentions.
@@ -108,7 +106,8 @@ export interface PlanInput {
    *
    * The same value the resolver was given, not a boolean derived beside it, so the
    * planner cannot be told the project declared a serving root while the resolver
-   * resolved against a guess.
+   * resolved against a guess. It is also the planner's only notion of which assets are
+   * served: an asset under any of these directories is.
    */
   readonly servingRoots: ServingRoots;
   readonly rootLinkPolicy?: RootLinkPolicy;
@@ -396,7 +395,7 @@ function convertDecision(
   const target = withExtension(relative, input.format);
   if (target === relative) return { convert: false, reason: null };
 
-  const inPublic = isUnderPublicDir(relative, input.publicDir);
+  const inPublic = servingRootOf(relative, input.servingRoots) !== null;
 
   // An asset nothing links to gains nothing from being converted: there is no
   // reference to repoint, so the only change is a new file on disk. Under `keep-original`
@@ -408,7 +407,9 @@ function convertDecision(
   if (node.references.length === 0 && !inPublic) {
     const why = input.hedged.has(relative)
       ? 'nothing links to it and something we could not read mentions it, so converting would change a file whose references we cannot see'
-      : 'nothing links to it, so converting it would rewrite no reference and gain only bytes';
+      : noServingRootFound(input.servingRoots)
+        ? `nothing links to it, and ${NO_WEBSITE_FOLDER}; converting it would gain only bytes. ${NAME_THE_WEBSITE_FOLDER}`
+        : 'nothing links to it, so converting it would rewrite no reference and gain only bytes';
     return { convert: false, reason: why };
   }
 
@@ -869,18 +870,52 @@ function keptOriginals(
 ): KeptOriginal[] {
   if (input.publicPolicy !== 'replace') return [];
 
+  const outside = noServingRootFound(input.servingRoots)
+    ? `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and \`--replace\` removes ` +
+      `an original only inside one. ${NAME_THE_WEBSITE_FOLDER}.`
+    : 'converted, but the original was kept: it is outside a directory this project serves, ' +
+      'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
+      'failed to rewrite would break the build instead of showing a missing image. ' +
+      '`--replace` governs assets in a served directory.';
   return conversions
     .filter((conversion) => !conversion.replacesOriginal)
     .map((conversion) => ({
       asset: conversion.asset,
-      reason:
-        stillNeeded.get(conversion.asset) ??
-        'converted, but the original was kept: it is outside a directory this project serves, ' +
-          'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
-          'failed to rewrite would break the build instead of showing a missing image. ' +
-          '`--replace` governs assets in a served directory.',
+      reason: stillNeeded.get(conversion.asset) ?? outside,
     }))
     .sort((a, b) => compareStrings(a.asset, b.asset));
+}
+
+/** Said wherever no root was found, so served and bundled images cannot be told apart. */
+const NO_WEBSITE_FOLDER =
+  'no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL';
+const NAME_THE_WEBSITE_FOLDER =
+  'Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site';
+
+/**
+ * The serving root an asset is under: the deepest root that contains it, or `null` when
+ * none does. Every root counts, so an image in a monorepo's second website folder is as
+ * served as one in its first.
+ *
+ * @param relative the asset's POSIX path, relative to the project root
+ * @param servingRoots the roots the resolver used
+ */
+export function servingRootOf(relative: string, servingRoots: ServingRoots): string | null {
+  let found: string | null = null;
+  for (const dir of servingRoots.dirs) {
+    if (!isUnderPublicDir(relative, dir)) continue;
+    if (found === null || dir.length > found.length) found = dir;
+  }
+  return found;
+}
+
+/**
+ * Whether the run has no serving root at all and the project did not declare that. Every
+ * image then counts as not served, which keeps every original under `replace`, and the
+ * report says how to name the folder rather than guessing the project root.
+ */
+export function noServingRootFound(servingRoots: ServingRoots): boolean {
+  return servingRoots.dirs.length === 0 && !servingRoots.declared;
 }
 
 /**

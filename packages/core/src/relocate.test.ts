@@ -54,7 +54,6 @@ async function relocateFixture(moves: Move[]) {
     graph: await fixtureGraph(),
     moves,
     servingRoots: SERVING,
-    publicDir: 'public',
     aliases: NO_ALIASES,
   });
 }
@@ -207,7 +206,6 @@ describe('relocate, and how a path is re-spelled', () => {
       graph,
       moves: [move],
       servingRoots: over.servingRoots ?? SERVING,
-      publicDir: 'public',
       aliases: over.aliases ?? NO_ALIASES,
     });
     return { plan, text: plan.rewrites[0]?.edits[0]?.replacement };
@@ -421,7 +419,6 @@ describe('relocate, and how a path is re-spelled', () => {
         { from: 'src/a.png', to: 'src/two/a.png' },
       ],
       servingRoots: SERVING,
-      publicDir: 'public',
       aliases: NO_ALIASES,
     });
 
@@ -438,7 +435,6 @@ describe('relocate, and how a path is re-spelled', () => {
         { from: 'src/b.png', to: 'src/img/x.png' },
       ],
       servingRoots: SERVING,
-      publicDir: 'public',
       aliases: NO_ALIASES,
     });
 
@@ -468,11 +464,53 @@ describe('relocate, and how a path is re-spelled', () => {
       graph,
       moves: [{ from: 'images/logo.png', to: 'assets/logo.png' }],
       servingRoots: { declared: true, dirs: [''] },
-      publicDir: '',
       aliases: NO_ALIASES,
     });
 
     expect(plan.refused).toEqual([]);
     expect(plan.rewrites[0]?.edits[0]?.replacement).toBe('/assets/logo.png');
+  });
+
+  describe('a project with two website folders', () => {
+    const TWO_ROOTS = { declared: false, dirs: ['apps/a/public', 'apps/b/public'] };
+    const graph = graphFor({
+      assets: ['apps/b/public/logo.png'],
+      references: [
+        {
+          file: 'apps/b/index.html',
+          rawPath: '/logo.png',
+          target: 'apps/b/public/logo.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+
+    it('refuses a move from one to the other, because the URL would stop finding it', () => {
+      const plan = planRelocation({
+        graph,
+        moves: [{ from: 'apps/b/public/logo.png', to: 'apps/a/public/logo.png' }],
+        servingRoots: TWO_ROOTS,
+        aliases: NO_ALIASES,
+      });
+
+      expect(plan.refused.map((refusal) => [refusal.code, refusal.reason])).toEqual([
+        [
+          'crosses-serving-boundary',
+          'apps/b/public/logo.png is served from apps/b/public/ and apps/a/public/logo.png would be served from apps/a/public/, so a URL that finds it today would not find it there. Move it within apps/b/public/, or change the references by hand first.',
+        ],
+      ]);
+    });
+
+    it('moves an image within the second folder, which is as served as the first', () => {
+      const plan = planRelocation({
+        graph,
+        moves: [{ from: 'apps/b/public/logo.png', to: 'apps/b/public/img/logo.png' }],
+        servingRoots: TWO_ROOTS,
+        aliases: NO_ALIASES,
+      });
+
+      expect(plan.refused).toEqual([]);
+      expect(plan.rewrites[0]?.edits[0]?.replacement).toBe('/img/logo.png');
+    });
   });
 });

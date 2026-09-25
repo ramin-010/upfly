@@ -646,9 +646,9 @@
       "emoji": 8
     },
     "packages/core/src/relocate.ts": {
-      "internal-reference": 16,
-      "em-dash": 25,
-      "emphasis": 21,
+      "internal-reference": 15,
+      "em-dash": 23,
+      "emphasis": 20,
       "emoji": 10,
       "long-comment": 18
     },

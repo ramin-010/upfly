@@ -895,6 +895,15 @@ What `replace` never produces is a converted copy nothing asks for beside an ori
 stay, which is the pair of files the policy exists to avoid. `keep-original` is untouched by the
 first half, because two files are what its users asked for.
 
+**Served means under any serving root the resolver used**, and `replace` removes originals only
+there. The planner is handed the same `ServingRoots` value the resolver was, not a folder derived
+beside it, so an image in a monorepo's second website folder is as served as one in its first.
+Moving a file between two website folders is refused by `relocate`, because a URL that finds it in
+one will not find it in the other. When the run found no serving root and the project declared
+none, nothing counts as served: every original is kept, and the report says so and how to name the
+folder. Guessing the project root instead would remove that protection from every project that
+has no website folder at all.
+
 The conversion half is decided per asset before collisions and before any reference is repointed,
 so every sentence the plan writes afterwards is about assets that really convert. Asking that early
 gives the finished plan's answer because whether a reference moves depends only on the reference

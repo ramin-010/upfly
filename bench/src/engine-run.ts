@@ -148,7 +148,6 @@ export async function optimizeTree(
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
     servingRoots,
     format: 'webp',
-    publicDir: servingRoots.dirs[0] ?? 'public',
     publicPolicy,
     apply: true,
     runId: newRunId(new Date()),
@@ -187,7 +186,6 @@ export async function relocateTree(
     graph,
     moves,
     servingRoots,
-    publicDir: servingRoots.dirs[0] ?? null,
     aliases,
   });
 

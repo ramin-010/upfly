@@ -80,7 +80,6 @@ export interface OptimizeInput {
   readonly files: readonly string[];
   readonly servingRoots: ServingRoots;
   readonly format: EncodeFormat;
-  readonly publicDir: string;
   readonly publicPolicy: PublicPolicy;
   readonly rootLinkPolicy?: RootLinkPolicy;
   /** Nothing outside the run directory is written unless this is true (rule 8). */
@@ -253,7 +252,6 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
       graph: input.graph,
       probes: input.probes,
       format: input.format,
-      publicDir: input.publicDir,
       publicPolicy: input.publicPolicy,
       hedged: hedgedAssets(input.audit),
       servingRoots: input.servingRoots,

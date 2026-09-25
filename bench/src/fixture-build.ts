@@ -795,7 +795,15 @@ async function runExitCriterion(
 
 async function main(): Promise<void> {
   const only = argv.find((argument) => argument.startsWith('--fixture='))?.split('=')[1];
-  const selected = only ? FIXTURES.filter((f) => f.name === only) : FIXTURES;
+  // `--public=<dir>`, repeatable, declares the serving roots the way a user would after
+  // reading the report's sentence, with "." for the project root. It replaces the
+  // fixture's own declaration, so a run with it tests the user's fix, not the fixture.
+  const declared = argv
+    .filter((argument) => argument.startsWith('--public='))
+    .map((argument) => argument.slice('--public='.length).replace(/^\.\/?$/, ''));
+  const selected = (only ? FIXTURES.filter((f) => f.name === only) : FIXTURES).map((fixture) =>
+    declared.length === 0 ? fixture : { ...fixture, publicDirs: declared },
+  );
 
   if (selected.length === 0) {
     stdout.write(`No fixture named ${only}.\n`);

@@ -40,7 +40,7 @@ import type { AliasMap, AliasRule } from './aliases.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, relativePath, toPosix } from './paths.js';
-import { isUnderPublicDir } from './plan.js';
+import { servingRootOf } from './plan.js';
 import type { PlannedRewrite, RootLinkPolicy } from './plan.js';
 import { isLinked, linkedPaths } from './reference.js';
 import type { ServingRoots } from './resolve.js';
@@ -125,9 +125,8 @@ export interface RelocateInput {
   readonly graph: Graph;
   /** What the user asked for. Order does not matter; output is sorted. */
   readonly moves: readonly Move[];
+  /** The serving roots the resolver used. An asset under any of them is served. */
   readonly servingRoots: ServingRoots;
-  /** POSIX-relative, or null when the project serves nothing publicly. */
-  readonly publicDir: string | null;
   /**
    * The aliases the resolver used, so an aliased reference can be re-expressed.
    *
@@ -140,9 +139,6 @@ export interface RelocateInput {
   readonly aliases: AliasMap;
   readonly rootLinkPolicy?: RootLinkPolicy;
 }
-
-/** Which half of the world an asset lives in. The distinction R70 turns on. */
-type World = 'served' | 'bundled';
 
 /**
  * Plan a set of moves. Pure; refuses rather than guessing.
@@ -246,10 +242,10 @@ function refuse(
   }
 
   // 🔴 R70(a) and (b), which are one test because they are one event.
-  const from = worldOf(move.from, input.publicDir);
-  const into = worldOf(to, input.publicDir);
+  const from = servingRootOf(move.from, input.servingRoots);
+  const into = servingRootOf(to, input.servingRoots);
   if (from !== into) {
-    return say('crosses-serving-boundary', crossingReason(move, from));
+    return say('crosses-serving-boundary', crossingReason(move, from, into));
   }
 
   const bound = patternSiblings(move.from, input.graph);
@@ -268,24 +264,24 @@ function refuse(
 }
 
 /**
- * Which world an asset lives in.
- *
- * Reuses the audit's own predicate rather than restating it, because the `''` case —
- * a project that serves from its own root, so **every** asset is served — has been got
- * backwards twice already in two different modules. A third copy would be a third
- * chance.
+ * Why a move that changes where the file is served from is refused. `null` is the bundled
+ * world: code imports the file and the build emits it.
  */
-function worldOf(relative: string, publicDir: string | null): World {
-  return isUnderPublicDir(relative, publicDir) ? 'served' : 'bundled';
-}
-
-function crossingReason(move: Move, from: World): string {
+function crossingReason(move: Move, from: string | null, into: string | null): string {
+  if (from !== null && into !== null) {
+    return `${move.from} is served from ${rootName(from)} and ${move.to} would be served from ${rootName(into)}, so a URL that finds it today would not find it there. Move it within ${rootName(from)}, or change the references by hand first.`;
+  }
   const detail =
-    from === 'bundled'
+    from === null
       ? `${move.from} is bundler-managed: code imports it and the build emits it. ${move.to} is served directly, where a browser asks for it by URL.`
       : `${move.from} is served directly, where a browser asks for it by URL. ${move.to} is bundler-managed: code would have to import it and the build would emit it.`;
 
-  return `${detail} Moving it changes how the file is referenced, not just where it lives, so an import would have to become a URL or the reverse. Upfly rewrites paths, not code. Move it within ${from === 'bundled' ? 'the source tree' : 'the served directory'}, or change the references by hand first.`;
+  return `${detail} Moving it changes how the file is referenced, not just where it lives, so an import would have to become a URL or the reverse. Upfly rewrites paths, not code. Move it within ${from === null ? 'the source tree' : 'the served directory'}, or change the references by hand first.`;
+}
+
+/** A serving root as a sentence names it. */
+function rootName(root: string): string {
+  return root === '' ? 'the project root' : `${root}/`;
 }
 
 /**

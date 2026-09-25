@@ -145,7 +145,6 @@ function inputFor(
     files: ['src/App.jsx'],
     servingRoots: { dirs: ['public'], declared: true },
     format: 'webp',
-    publicDir: 'public',
     publicPolicy: 'keep-original',
     apply: true,
     runId: RUN_ID,
@@ -404,7 +403,7 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
   /**
    * A served asset, one reference the engine found, and whatever else is on disk.
    *
-   * `publicDir: 'public'` with `publicPolicy: 'replace'` is what makes the original a
+   * A `public` serving root with `publicPolicy: 'replace'` is what makes the original a
    * deletion candidate; outside a served directory nothing is deleted and R77 does not
    * apply.
    */
@@ -422,7 +421,6 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
         graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
         probes: [probeOf('public/logo.png')],
         publicPolicy: 'replace' as const,
-        publicDir: 'public',
         servingRoots: { dirs: ['public'], declared: true },
         apply: false,
       }),
@@ -653,7 +651,6 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
         probes: PUBLIC.map((path) => probeOf(path)),
         files: ['about.html', 'index.html', 'src/icon.js', 'src/theme.js'],
         publicPolicy,
-        publicDir: 'public',
         servingRoots: { dirs: ['public'], declared: true },
         apply: true,
       }),
