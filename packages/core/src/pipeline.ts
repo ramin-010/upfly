@@ -25,6 +25,7 @@ import { createSharpProbe } from './probe-sharp.js';
 import { type AssetProbe, type ProbeDiagnostic, type ProbeOptions, probeAssets } from './probe.js';
 import { type ServingRoots, resolveReferences } from './resolve.js';
 import { type ScanDiagnostic, scanSources } from './scan.js';
+import { decideServingRoots } from './serving-root-decision.js';
 import { type SweepResult, sweepForMentions } from './sweep.js';
 import type { Adapter, Asset, DiscoveryResult, Reference } from './types.js';
 
@@ -55,6 +56,40 @@ export interface PipelineInput {
    * presence of probes as "was probed".
    */
   readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure' | 'onDiagnostic'> | null;
+  /** More paths to leave out, in `.gitignore` syntax, on top of the project's `.upflyignore`. */
+  readonly extraIgnores?: readonly string[];
+  /** Called as each stage finishes, with what it counted, so a caller can show progress. */
+  readonly onProgress?: (event: PipelineProgress) => void;
+}
+
+/** One stage of the run finished. The numbers say what that stage counted. */
+export type PipelineProgress =
+  | { readonly stage: 'discovered'; readonly images: number; readonly files: number }
+  | { readonly stage: 'scanned'; readonly references: number }
+  | { readonly stage: 'resolved'; readonly linked: number }
+  | { readonly stage: 'measured'; readonly images: number }
+  | { readonly stage: 'audited'; readonly findings: number };
+
+/**
+ * The serving roots a run uses: the folders the project declared, or, when it declared none,
+ * what `decideServingRoots` works out from the walk and the references.
+ *
+ * Every caller that runs the engine on a real project decides its roots through this, so a
+ * command and the measurements behind it cannot decide them differently.
+ *
+ * @param declared the project's own serving roots, when it states them
+ */
+export function servingRootsFor(declared?: ServingRoots): PipelineInput['servingRoots'] {
+  return (discovery, scanned) =>
+    declared ??
+    decideServingRoots({
+      root: discovery.root,
+      directories: discovery.directories,
+      assets: discovery.assets,
+      sourceFiles: discovery.sourceFiles,
+      unscannedFiles: discovery.unscannedFiles,
+      references: scanned.references,
+    }).servingRoots;
 }
 
 export interface PipelineOutput {
@@ -102,7 +137,17 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
   const readFileText = (path: string) => readFile(path, 'utf8');
 
   const started = performance.now();
-  const discovery = await discover({ root: input.root, adapters: ADAPTERS });
+  const progress = input.onProgress ?? (() => {});
+  const discovery = await discover({
+    root: input.root,
+    adapters: ADAPTERS,
+    ...(input.extraIgnores === undefined ? {} : { extraIgnores: input.extraIgnores }),
+  });
+  progress({
+    stage: 'discovered',
+    images: discovery.assets.length,
+    files: discovery.sourceFiles.length + discovery.unscannedFiles.length,
+  });
   const scanDiagnostics: ScanDiagnostic[] = [];
   const scanned = await scanSources({
     sourceFiles: discovery.sourceFiles,
@@ -111,6 +156,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     assetBasenames: basenamesOf(discovery.assets),
     onDiagnostic: (entry) => scanDiagnostics.push(entry),
   });
+  progress({ stage: 'scanned', references: scanned.references.length });
   // Alias configs are ordinary discovered files, so reading them needs no second walk.
   const aliases = await loadAliases({
     root: discovery.root,
@@ -134,6 +180,10 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     unscannedFiles: [...discovery.unscannedFiles, ...scanned.unscanned],
   });
   const graphMs = Math.round(performance.now() - started);
+  progress({
+    stage: 'resolved',
+    linked: graph.assets.filter((node) => node.references.length > 0).length,
+  });
 
   const publicDirs = input.publicDirs(servingRoots);
   const sweep = await sweepForMentions({
@@ -159,6 +209,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
             onDiagnostic: (entry) => diagnostics.push(entry),
           },
         );
+  if (probes !== undefined) progress({ stage: 'measured', images: probes.length });
   // Directories whose framework reads certain filenames without being told to, taken from
   // the file list `discover` produced so that `audit` stays off the disk.
   const conventionRoots = detectConventionRoots([
@@ -188,6 +239,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     publicDirs,
     ...(probes === undefined ? {} : { probes }),
   });
+  progress({ stage: 'audited', findings: auditResult.findings.length });
 
   return {
     discovery,

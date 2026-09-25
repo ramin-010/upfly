@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { EXIT_CODES } from './index.js';
+import { main } from './main.js';
 
-// Placeholder entry point. The real commands (audit, optimize, check, undo, init)
-// are implemented in Phase 3; this keeps `bin` wired and buildable meanwhile.
-process.stdout.write('upfly: not implemented yet\n');
-process.exit(EXIT_CODES.OK);
+// `exitCode` rather than `process.exit()`, so output still queued for a pipe is written.
+process.exitCode = await main(process.argv.slice(2), {
+  stdout: process.stdout,
+  stderr: process.stderr,
+  env: process.env,
+});

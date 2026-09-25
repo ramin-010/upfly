@@ -1034,6 +1034,13 @@ unreferenced beside a broken `hero.png`), the pair lands in `staleConversions` a
 `findings` — there *is* an action, which is to fix the reference. It is phrased as two facts and an
 inference the reader judges, never as a conclusion.
 
+**An original kept beside its converted file leaves `findings` too** (schema 6). After an `optimize`
+that keeps originals, the references point at `logo.webp` and nothing links to `logo.png`, so the
+audit calls it `dead`. That is true, and it is the user's own choice, not an unused image to clean
+up. So a `dead` raster whose converted twin (the same path with `.webp` or `.avif`) exists and is
+linked moves to `keptOriginals`: listed in full in the JSON, and counted with its size in the human
+headline. A twin that nothing links to either proves nothing, and both stay findings.
+
 ### The human renderer prints the skipped list before the findings
 
 That ordering is deliberate and slightly uncomfortable: it puts what the tool could *not* do above
@@ -1047,6 +1054,36 @@ and `NO_COLOR`.
 
 Caveats carry their own count and a `detail` list. "No adapter reads these file types" is a shrug;
 `.astro — 1 file` is how someone finds out which adapter they want.
+
+## The CLI
+
+`upfly` is a thin layer over `runPipeline`: it reads the command line and the configuration, runs
+the engine, and prints. It decides serving roots with the engine's own `servingRootsFor`, so a
+command cannot decide them differently from the measurements behind it.
+
+**The configuration file is `upfly.config.ts` (or `.js` and their module forms), or
+`upfly.config.json`, in the directory the command runs on.** The code forms load through c12 with
+everything a user did not ask for turned off: `extends` layers, which c12 would download from a
+`github:` or `https:` source, rc files, `.env`, a `package.json` key and `NODE_ENV` sections. Rule
+10 is why the first is off, and the rest would each change a run without the config file saying
+so. The JSON form is read as JSONC with syntax errors collected, so a truncated file is an error
+rather than a partial config.
+
+**The v2 VS Code extension reads a file with the same name,** holding `enabled`, `watchTargets` and
+similar settings. A JSON config with any of those and nothing that only this CLI uses (`publicDirs`,
+`publicPolicy`, `exclude`, or its `$schema`) is the extension's, and every command refuses it with
+exit 3 and leaves it untouched. `format` is not evidence either way, because both products use the
+name. A code config beside the extension's file is read and the file is left alone.
+
+**Output.** With `--json`, stdout carries only JSON lines: progress events as each stage finishes,
+the libraries' own messages as `diagnostic` lines, and one final `result` or `error` object. That
+is why the libraries' wording can appear there and never in the report. Without it, the report goes
+to stdout, and errors and progress go to stderr, progress only on a terminal. Colour appears only on
+a terminal, and never under `--no-color` or a non-empty `NO_COLOR`.
+
+**Exit codes** are a contract: 0 the command ran, 1 `check` found findings over its thresholds, 2 the
+command line or configuration was wrong, 3 Upfly refused to act for safety, 4 something it did not
+anticipate went wrong. A crash is its own code, because it is neither a finding nor a refusal.
 
 ## Package layout
 

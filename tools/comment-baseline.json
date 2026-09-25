@@ -225,13 +225,6 @@
       "emoji": 2,
       "long-comment": 3
     },
-    "packages/cli/src/bin.ts": {
-      "internal-reference": 1
-    },
-    "packages/cli/src/index.ts": {
-      "internal-reference": 1,
-      "em-dash": 1
-    },
     "packages/core/src/adapters/assembled-path.test.ts": {
       "internal-reference": 11,
       "em-dash": 13,

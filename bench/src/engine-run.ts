@@ -25,12 +25,12 @@ import {
   commit,
   createNodeFileStore,
   createSharpProbe,
-  decideServingRoots,
   newRunId,
   optimize,
   planRelocation,
   prepare,
   runPipeline,
+  servingRootsFor,
 } from 'upfly-core';
 import { refuseValidationCorpus } from './repos.js';
 
@@ -89,16 +89,7 @@ export async function runEngine(
     // 🔴 R132, wired. Detection alone asks what a directory is CALLED and cannot reach
     // `eleventy-docs`, which serves from `src/`. `decideServingRoots` unions detection
     // with what the references actually RESOLVE, at R132's measured floors.
-    servingRoots: (discovery, scanned) =>
-      declared ??
-      decideServingRoots({
-        root: discovery.root,
-        directories: discovery.directories,
-        assets: discovery.assets,
-        sourceFiles: discovery.sourceFiles,
-        unscannedFiles: discovery.unscannedFiles,
-        references: scanned.references,
-      }).servingRoots,
+    servingRoots: servingRootsFor(declared),
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: probe ? { formats: ['webp'] } : null,
   });

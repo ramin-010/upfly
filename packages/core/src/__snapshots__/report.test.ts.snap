@@ -62,6 +62,11 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "kind": "dead",
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 0,
@@ -123,7 +128,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 
@@ -289,6 +294,11 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       "kind": "possibly-dead",
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 1,
@@ -366,7 +376,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 
@@ -500,6 +510,11 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
       "kind": "dead",
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 0,
@@ -561,7 +576,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 
@@ -679,6 +694,11 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
       "wouldBe": 10632,
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 0,
@@ -756,7 +776,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
     "bytes": 0,
     "count": 0,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 
@@ -830,6 +850,11 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
       "kind": "dead",
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 0,
@@ -891,7 +916,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 
@@ -996,6 +1021,11 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "kind": "dead",
     },
   ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
   "references": {
     "byClassification": {
       "correctly-refused": 0,
@@ -1057,7 +1087,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 307,
     "count": 1,
   },
-  "version": 5,
+  "version": 6,
 }
 `;
 

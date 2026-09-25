@@ -535,6 +535,7 @@ describe('buildReport', () => {
       capped?: number;
       assets?: number;
       alsoAvif?: boolean;
+      alsoLossless?: boolean;
     }) {
       const assetCount = over.assets ?? 10;
       const assets = Array.from({ length: assetCount }, (_, index) => ({
@@ -589,6 +590,21 @@ describe('buildReport', () => {
                         },
                       ]
                     : []),
+                  ...(over.alsoLossless
+                    ? [
+                        {
+                          kind: 'format-opportunity' as const,
+                          quality: 'lossless' as const,
+                          asset: 'img1.png',
+                          from: 'png',
+                          to: 'webp' as const,
+                          bytes: 1_000_000,
+                          wouldBe: 1_000_000 - over.saving,
+                          savedBytes: over.saving,
+                          savedPercent: 50,
+                        },
+                      ]
+                    : []),
                 ],
           publicDirDeadCount: 0,
           conventionLinked: [],
@@ -623,12 +639,19 @@ describe('buildReport', () => {
       // quality 50 and 44% at quality 90. The report used to open with a headline
       // like "166.3 MB of savings found so far" and name no quality anywhere in the
       // file, so a reader could not tell which product they were being offered.
-      expect(headlineOf({ saving: 4_200_000 })).toContain('of savings at webp quality 80,');
+      expect(headlineOf({ saving: 4_200_000 })).toContain('of savings as webp at quality 80,');
+    });
+
+    it('says in words that some images were measured lossless', () => {
+      // Printed as `webp quality 80,lossless` once lossless encodes joined the report.
+      expect(headlineOf({ saving: 4_200_000, alsoLossless: true })).toContain(
+        'of savings as webp at quality 80, or lossless where that came out smaller, measured',
+      );
     });
 
     it('names every format when more than one was measured', () => {
       expect(headlineOf({ saving: 4_200_000, alsoAvif: true })).toContain(
-        'at avif quality 75 and webp quality 80,',
+        'as avif at quality 75 and webp at quality 80,',
       );
     });
 
@@ -1018,6 +1041,164 @@ describe('buildReport', () => {
       expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
         'alias-shaped, and no alias the project declares maps it',
       ]);
+    });
+  });
+
+  describe('originals kept beside their converted files', () => {
+    const ROOT = '/repo';
+    const png = (relative: string) => ({
+      path: `${ROOT}/${relative}`,
+      relative,
+      extension: '.png',
+      bytes: 3_000,
+    });
+    const webp = (relative: string) => ({ ...png(relative), extension: '.webp', bytes: 1_000 });
+    const linkTo = (relative: string) => ({
+      file: `${ROOT}/index.html`,
+      start: 10,
+      end: 10 + relative.length,
+      rawPath: relative,
+      kind: 'attr' as const,
+      shape: 'html.img.src' as const,
+      ceiling: 'high' as const,
+      asserted: true,
+      resolution: 'resolved' as const,
+      confidence: 'high' as const,
+      resolvedPath: `${ROOT}/${relative}`,
+      resolvedVia: 'file' as const,
+    });
+    const dead = (asset: string) => ({
+      kind: 'dead' as const,
+      asset,
+      bytes: 3_000,
+      inPublicDir: true,
+    });
+
+    function reportFrom(assets: ReturnType<typeof png>[], linked: string[], deadAssets: string[]) {
+      return buildReport({
+        graph: buildGraph({
+          root: ROOT,
+          assets,
+          references: linked.map(linkTo),
+          unscannedFiles: [],
+        }),
+        audit: {
+          findings: deadAssets.map(dead),
+          publicDirDeadCount: deadAssets.length,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+          duplicatesChecked: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets,
+          sourceFiles: [],
+          directories: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
+      });
+    }
+
+    it('lists an unreferenced original whose converted file is linked apart from the findings', () => {
+      const report = reportFrom(
+        [png('public/logo.png'), webp('public/logo.webp')],
+        ['public/logo.webp'],
+        ['public/logo.png'],
+      );
+
+      expect(report.findings).toEqual([]);
+      expect(report.summary.findings.dead).toBe(0);
+      expect(report.keptOriginals).toEqual({
+        count: 1,
+        bytes: 3_000,
+        assets: [{ asset: 'public/logo.png', bytes: 3_000, convertedTo: 'public/logo.webp' }],
+      });
+      // The caveat about public images counts what the findings list, so it is silent here.
+      expect(report.caveats.map((caveat) => caveat.code)).not.toContain('public-dir-dead');
+
+      const text = renderReport(report);
+      expect(text).toContain(
+        'including originals kept beside the converted file their references moved to: 1, 3 KB.',
+      );
+      expect(text).toContain('No findings, apart from 1 kept original counted above.');
+    });
+
+    it('keeps it a finding when the converted file is not linked either', () => {
+      const report = reportFrom(
+        [png('public/logo.png'), webp('public/logo.webp')],
+        [],
+        ['public/logo.png', 'public/logo.webp'],
+      );
+
+      expect(
+        report.findings.filter((finding) => finding.kind === 'dead').map((f) => f.asset),
+      ).toEqual(['public/logo.png', 'public/logo.webp']);
+      expect(report.keptOriginals.count).toBe(0);
+    });
+
+    it('keeps it a finding when there is no converted file beside it', () => {
+      const report = reportFrom(
+        [png('public/logo.png'), webp('public/other.webp')],
+        ['public/other.webp'],
+        ['public/logo.png'],
+      );
+
+      expect(
+        report.findings.filter((finding) => finding.kind === 'dead').map((f) => f.asset),
+      ).toEqual(['public/logo.png']);
+      expect(report.keptOriginals.count).toBe(0);
+    });
+  });
+
+  describe('a file that could not be parsed', () => {
+    it('reads as the reason alone, while the JSON keeps the codes', () => {
+      const ROOT = '/repo';
+      const reason = 'parse-failed';
+      const detail =
+        'ADAPTER_PARSE_FAILED: Could not parse: invalid css syntax at line 2, column 17';
+      const report = buildReport({
+        graph: buildGraph({
+          root: ROOT,
+          assets: [],
+          references: [],
+          unscannedFiles: [
+            { path: `${ROOT}/site.css`, relative: 'site.css', extension: '.css', reason, detail },
+          ],
+        }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+          duplicatesChecked: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets: [],
+          sourceFiles: [],
+          directories: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
+      });
+
+      expect(report.skipped).toEqual([
+        { what: 'site.css', stage: 'scan', reason: `${reason}: ${detail}` },
+      ]);
+      expect(renderReport(report)).toContain(
+        '  could not be parsed:\n    site.css — invalid css syntax at line 2, column 17\n',
+      );
     });
   });
 

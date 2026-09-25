@@ -19,7 +19,14 @@ import { cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { OptimizeResult, PublicPolicy, ServingRoots } from 'upfly-core';
+import {
+  type OptimizeResult,
+  type PublicPolicy,
+  type ServingRoots,
+  buildReport,
+  runPipeline,
+  servingRootsFor,
+} from 'upfly-core';
 import { afterAll, describe, expect, it } from 'vitest';
 import { optimizeTree } from './engine-run.js';
 
@@ -114,6 +121,48 @@ describe('optimize, run a second time', () => {
       expect(
         Object.values(deletedByReplace).reduce((sum, count) => sum + count, 0),
       ).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the audit after a keep-original run', () => {
+  it('lists each original kept beside its converted file apart from the unused images', async () => {
+    const root = await copyOf('vite-react');
+    try {
+      const run = await optimizeTree(root, undefined, 'keep-original');
+      const converted = new Set(run.plan.conversions.map((conversion) => conversion.asset));
+
+      // What `upfly audit` runs.
+      const output = await runPipeline({
+        root,
+        servingRoots: servingRootsFor(undefined),
+        publicDirs: (servingRoots) => servingRoots.dirs,
+        probeOptions: null,
+      });
+      const report = buildReport({
+        graph: output.graph,
+        audit: output.audit,
+        discovery: output.discovery,
+        sweep: output.sweep,
+        servingRoots: output.servingRoots,
+      });
+
+      const unlinkedOriginals = output.graph.assets
+        .filter((node) => converted.has(node.asset.relative) && node.references.length === 0)
+        .map((node) => node.asset.relative)
+        .sort();
+      // The case itself must be here: originals the references moved away from.
+      expect(unlinkedOriginals.length).toBeGreaterThan(0);
+
+      expect(report.keptOriginals.assets.map((entry) => entry.asset).sort()).toEqual(
+        unlinkedOriginals,
+      );
+      const dead = new Set(
+        report.findings.filter((finding) => finding.kind === 'dead').map((f) => f.asset),
+      );
+      expect(unlinkedOriginals.filter((asset) => dead.has(asset))).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

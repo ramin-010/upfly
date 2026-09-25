@@ -80,7 +80,7 @@ import { groupUnscanned } from './unscanned.js';
  * Checked rather than assumed: the fixtures cannot show it, because not one of them has
  * an asset that fails to decode.
  */
-export const REPORT_SCHEMA_VERSION = 5;
+export const REPORT_SCHEMA_VERSION = 6;
 
 /** The numbers people screenshot. */
 export interface ReportSummary {
@@ -553,6 +553,25 @@ export interface DeclinedEntry {
   readonly reason: string;
 }
 
+/**
+ * An original that `optimize` kept beside its converted file. The references moved to the
+ * converted file, so nothing links to the original and the audit found it `dead`; but it
+ * is there because the run was asked to keep originals, so it is not listed as unused.
+ */
+export interface KeptOriginalEntry {
+  /** POSIX-relative path of the original. */
+  readonly asset: string;
+  readonly bytes: number;
+  /** The converted file beside it, which the references link to. */
+  readonly convertedTo: string;
+}
+
+export interface KeptOriginalReport {
+  readonly count: number;
+  readonly bytes: number;
+  readonly assets: readonly KeptOriginalEntry[];
+}
+
 export interface UnusedVectorReport {
   readonly count: number;
   /** Their total size, which is the fact that makes the count actionable. */
@@ -643,6 +662,8 @@ export interface Report {
   readonly findings: readonly Finding[];
   /** R22: the unreferenced vectors this report declines to itemise, and their size. */
   readonly unusedVectors: UnusedVectorReport;
+  /** Originals kept beside the converted file their references now use. */
+  readonly keptOriginals: KeptOriginalReport;
   /** R54: the assets a plan examined and offered no action on. */
   readonly declined: DeclinedReport;
   /** R23: unreferenced vectors beside a broken reference to their raster twin. */
@@ -728,18 +749,24 @@ export interface ReportInput {
 /** Build the report. Pure, and the only place that decides what the public shape is. */
 export function buildReport(input: ReportInput): Report {
   const vectors = partitionUnusedVectors(input.audit.findings);
+  const originals = partitionKeptOriginals(vectors.itemised, input.graph);
 
   return {
     version: REPORT_SCHEMA_VERSION,
     // The itemised set, not `audit.findings`: the summary counts what the report
     // shows, so a reader can never add up the findings and get a different number
     // from the one in the headline.
-    summary: summarise(input, vectors.itemised),
-    findings: vectors.itemised,
+    summary: summarise(input, originals.itemised),
+    findings: originals.itemised,
     unusedVectors: {
       count: vectors.demoted.length,
       bytes: vectors.demoted.reduce((total, entry) => total + entry.bytes, 0),
       assets: input.includeUnusedVectors ? vectors.demoted : null,
+    },
+    keptOriginals: {
+      count: originals.kept.length,
+      bytes: originals.kept.reduce((total, entry) => total + entry.bytes, 0),
+      assets: originals.kept,
     },
     staleConversions: vectors.staleConversions,
     declined: declinedReport(input),
@@ -747,7 +774,7 @@ export function buildReport(input: ReportInput): Report {
     coverage: coverageReport(input),
     skipped: collectSkips(input),
     diagnosticsFile: input.diagnosticsFile ?? null,
-    caveats: caveats(input, vectors),
+    caveats: caveats(input, vectors, originals.kept),
   };
 }
 
@@ -878,6 +905,38 @@ function partitionUnusedVectors(findings: readonly Finding[]): {
   }
 
   return { itemised, demoted, staleConversions };
+}
+
+/**
+ * Separates the `dead` rasters whose converted file sits beside them and is linked: the
+ * same path with `.webp` or `.avif`. Those are originals `optimize` kept on purpose.
+ */
+function partitionKeptOriginals(
+  findings: readonly Finding[],
+  graph: Graph,
+): { itemised: readonly Finding[]; kept: readonly KeptOriginalEntry[] } {
+  const linked = new Set(
+    graph.assets.filter((node) => node.references.length > 0).map((node) => node.asset.relative),
+  );
+  const itemised: Finding[] = [];
+  const kept: KeptOriginalEntry[] = [];
+  for (const finding of findings) {
+    const convertedTo = finding.kind === 'dead' ? linkedConversionOf(finding.asset, linked) : null;
+    if (convertedTo === null || finding.kind !== 'dead') itemised.push(finding);
+    else kept.push({ asset: finding.asset, bytes: finding.bytes, convertedTo });
+  }
+  return { itemised, kept };
+}
+
+function linkedConversionOf(asset: string, linked: ReadonlySet<string>): string | null {
+  const dot = asset.lastIndexOf('.');
+  if (dot <= asset.lastIndexOf('/')) return null;
+  const extension = asset.slice(dot).toLowerCase();
+  for (const converted of ['.webp', '.avif']) {
+    const target = `${asset.slice(0, dot)}${converted}`;
+    if (converted !== extension && linked.has(target)) return target;
+  }
+  return null;
 }
 
 function summarise(input: ReportInput, findings: readonly Finding[]): ReportSummary {
@@ -1212,7 +1271,11 @@ function countDeterminations(input: ReportInput): { total: number; detail: strin
 }
 
 /** The limitations that apply to the whole run rather than to one finding. */
-function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEntry[] }): Caveat[] {
+function caveats(
+  input: ReportInput,
+  vectors: { demoted: readonly UnusedVectorEntry[] },
+  kept: readonly KeptOriginalEntry[],
+): Caveat[] {
   const list: Caveat[] = [];
 
   // R22. Rule 9 lives here: the demoted vectors are declined, so they reach the
@@ -1243,7 +1306,7 @@ function caveats(input: ReportInput, vectors: { demoted: readonly UnusedVectorEn
   // second caveat saying 61 SVGs were not listed, and no arithmetic a reader can do
   // that reconciles the three. This project has already shipped that exact shape once,
   // as a suppressed count of 116 against 115 checkable references.
-  const demotedAssets = new Set(vectors.demoted.map((entry) => entry.asset));
+  const demotedAssets = new Set([...vectors.demoted, ...kept].map((entry) => entry.asset));
   const deadInPublic = input.audit.findings.filter(
     (finding) =>
       finding.kind === 'dead' && finding.inPublicDir && !demotedAssets.has(finding.asset),

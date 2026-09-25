@@ -84,6 +84,7 @@ function headline(report: Report): string[] {
     // with, so the fix is structural rather than another reminder to remember.
     `  ${count(unreferenced, 'image')} with no reference Upfly could follow`,
     ...vectorLine(report),
+    ...keptOriginalLine(report),
     ...servingRootLine(report),
     '',
   ];
@@ -164,6 +165,18 @@ function vectorLine(report: Report): string[] {
 }
 
 /**
+ * The originals kept beside their converted files, counted with their size and not listed
+ * as unused. The count sits after a colon, so no noun or verb has to agree with it.
+ */
+function keptOriginalLine(report: Report): string[] {
+  const { count: kept, bytes: keptBytes } = report.keptOriginals;
+  if (kept === 0) return [];
+  return [
+    `  including originals kept beside the converted file their references moved to: ${kept}, ${bytes(keptBytes)}. optimize keeps originals unless run with --replace, so these are not unused images`,
+  ];
+}
+
+/**
  * What a reader can act on, in one sentence including its own caveat.
  *
  * Four cases, and the third is the one that matters: a capped run has measured *some*
@@ -197,9 +210,23 @@ function savingsLine(summary: Report['summary'], capped: number): string {
  * describes the run that produced the bytes beside it.
  */
 function atQuality(summary: Report['summary']): string {
-  const entries = Object.entries(summary.savingQuality).sort(([a], [b]) => a.localeCompare(b));
+  const entries = Object.entries(summary.savingQuality).sort(([a], [b]) => compareStrings(a, b));
   if (entries.length === 0) return '';
-  return ` at ${entries.map(([format, quality]) => `${format} quality ${quality}`).join(' and ')}`;
+  return ` as ${entries.map(([format, settings]) => `${format} ${settingsPhrase(settings ?? [])}`).join(' and ')}`;
+}
+
+/**
+ * The encode settings a format was measured at, as words: `at quality 80`, `lossless`, or
+ * `at quality 80, or lossless where that came out smaller`.
+ */
+function settingsPhrase(settings: readonly (number | 'lossless')[]): string {
+  const qualities = settings.filter((setting): setting is number => setting !== 'lossless');
+  const quality =
+    qualities.length === 0
+      ? ''
+      : `at quality ${qualities.length === 1 ? qualities[0] : `${qualities.slice(0, -1).join(', ')} or ${qualities.at(-1)}`}`;
+  if (!settings.includes('lossless')) return quality;
+  return quality === '' ? 'lossless' : `${quality}, or lossless where that came out smaller`;
 }
 
 /**
@@ -248,7 +275,11 @@ function skippedSection(report: Report): string[] {
     lines.push(`Skipped — ${count(skipped.length, 'thing')}, each with its reason`, '');
     for (const [stage, items] of groupByStage(skipped)) {
       lines.push(`  ${STAGE_LABEL[stage]}:`);
-      lines.push(...collapseByReason(items));
+      const readable =
+        stage === 'scan'
+          ? items.map((item) => ({ ...item, reason: plainParseReason(item.reason) }))
+          : items;
+      lines.push(...collapseByReason(readable));
       lines.push('');
     }
 
@@ -455,11 +486,12 @@ function findingsSection(report: Report): string[] {
   // branch — all of them have other findings — which is exactly the condition that
   // makes fixtures unable to test it, so it has a hand-built case in report.test.ts.
   if (report.findings.length === 0) {
-    if (report.unusedVectors.count === 0) return ['No findings.', ''];
-    return [
-      `No findings, apart from ${count(report.unusedVectors.count, 'unreferenced SVG')} counted above.`,
-      '',
-    ];
+    const counted = [
+      report.unusedVectors.count > 0 && count(report.unusedVectors.count, 'unreferenced SVG'),
+      report.keptOriginals.count > 0 && count(report.keptOriginals.count, 'kept original'),
+    ].filter((phrase): phrase is string => typeof phrase === 'string');
+    if (counted.length === 0) return ['No findings.', ''];
+    return [`No findings, apart from ${counted.join(' and ')} counted above.`, ''];
   }
 
   const lines = [`Findings — ${count(report.findings.length, 'item')}`, ''];
@@ -810,6 +842,16 @@ const REPEAT_LIMIT = 3;
  * of eighty long identical ones, and nothing is lost from either the page or the
  * JSON.
  */
+/**
+ * A parse failure's reason without the codes the JSON keeps for machines. The heading above
+ * it already says the file could not be parsed.
+ */
+function plainParseReason(reason: string): string {
+  const prefix = /^parse-failed: (?:[A-Z][A-Z0-9_]*: )?(?:Could not parse: )?/.exec(reason);
+  const rest = prefix === null ? '' : reason.slice(prefix[0].length);
+  return rest === '' ? reason : rest;
+}
+
 function collapseByReason(items: readonly SkippedItem[]): string[] {
   const byReason = new Map<string, SkippedItem[]>();
   for (const item of items) {

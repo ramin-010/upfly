@@ -155,8 +155,8 @@ export {
 export type { WalkedTree } from './serving-roots.js';
 export { decideServingRoots, isRootRelative, looksLikeAsset } from './serving-root-decision.js';
 export type { ServingRootDecision, ServingRootDecisionInput } from './serving-root-decision.js';
-export { runPipeline } from './pipeline.js';
-export type { PipelineInput, PipelineOutput } from './pipeline.js';
+export { runPipeline, servingRootsFor } from './pipeline.js';
+export type { PipelineInput, PipelineOutput, PipelineProgress } from './pipeline.js';
 export {
   MINIMUM_ROOT_RELATIVE,
   RESOLUTION_FLOOR,
