@@ -163,11 +163,11 @@ describe('an asset nothing links to', () => {
     expect(plan.declined).toEqual([]);
   });
 
-  it('🔴 keeps that original under replace too, because nothing has moved to the replacement (R180)', () => {
-    // The vacuous member. "Every reference points at the replacement" is TRUE of an
-    // asset nothing links to, so under `replace` this used to delete the original of
-    // the very file the comment above converts BECAUSE something outside may load it.
-    // Hedged or not: something unreadable naming it is one more reason, not the only one.
+  it('is not converted under replace, because the new file would be used by nobody', () => {
+    // Under `replace` the original has to stay, since nothing moved away from it, and no
+    // reference would ask for the new file: converting would leave exactly the pair of
+    // files `replace` exists to avoid. Before this rule both were converted and kept.
+    // Hedged or not: something unreadable still names the original, not the new file.
     const plan = planOptimization(
       input({
         assets: [asset('public/hero.png'), asset('public/maybe.png')],
@@ -177,17 +177,20 @@ describe('an asset nothing links to', () => {
       }),
     );
 
-    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
-      ['public/hero.png', false],
-      ['public/maybe.png', false],
-    ]);
-    expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual([
-      'public/hero.png',
-      'public/maybe.png',
-    ]);
-    for (const kept of plan.keptOriginals) {
-      expect(kept.reason).toContain('nothing Upfly can see links to it');
-    }
+    expect(plan.conversions).toEqual([]);
+    expect(plan.keptOriginals).toEqual([]);
+    expect(reasonsByPath(plan)).toEqual({
+      'public/hero.png': expect.stringContaining(
+        'nothing Upfly can see links to it, so a new file would be used by nobody',
+      ),
+      'public/maybe.png': expect.stringContaining(
+        'something it could not read mentions it by its current name',
+      ),
+    });
+    // What would unblock it, so the sentence is something a reader can act on.
+    expect(reasonsByPath(plan)['public/hero.png']).toContain(
+      'without `--replace` it can be converted',
+    );
   });
 });
 
@@ -314,45 +317,49 @@ describe('a template reference standing for many assets', () => {
     expect(plan.declined.some((d) => d.reason.includes('would break the reference'))).toBe(true);
   });
 
-  it('converts the ones that convert under replace too, and keeps their originals (R181)', () => {
-    // 🔴 This test asserted the opposite until R181 — every conversion withdrawn —
-    // because a pattern was taken to be rewritten once all its targets convert, which
-    // would have deleted the originals. No pattern is ever rewritten, and R180 keeps any
-    // original a pattern still names, so a withdrawal would protect nothing.
+  it('converts none of them under replace, because no reference would move to a new file', () => {
+    // The template still asks for `.png` whatever converts, so a converted copy would sit
+    // beside an original that has to stay. Declining is what the withdrawal once did for a
+    // partial pattern, now for the right reason and for every pattern.
     const plan = planOptimization(input({ assets, references, probes, publicPolicy: 'replace' }));
 
-    expect(plan.conversions).toEqual([
-      expect.objectContaining({ asset: 'public/a-light.png', replacesOriginal: false }),
-    ]);
-    expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual(['public/a-light.png']);
+    expect(plan.conversions).toEqual([]);
+    expect(plan.keptOriginals).toEqual([]);
+    expect(reasonsByPath(plan)['public/a-light.png']).toContain(
+      '`src/App.jsx` reaches it only through `./a-${mode}.png`, a path assembled at runtime',
+    );
   });
 
   it('says the reference stayed once, and truthfully, when only some targets convert', () => {
-    // 🔴 Found reading `collectRewrite` for R180. A partial pattern was declined twice
-    // for one reference: once as "1 of them do not convert" — true — and once as
-    // "assembled at runtime … even though every asset it matches converted", which is
-    // false when one of them did not. Under R181 `replace` reaches the same code, so the
-    // contradiction would have doubled.
+    // A partial pattern was once declined twice for one reference: as "1 of them do not
+    // convert", which is true, and as "assembled at runtime ... even though every asset it
+    // matches converted", which is false when one did not. Under `replace` neither target
+    // converts, and the one sentence counts both.
+    const expected = {
+      'keep-original': 'matches 2 assets and 1 of them',
+      replace: 'matches 2 assets and 2 of them',
+    } as const;
     for (const publicPolicy of ['keep-original', 'replace'] as const) {
       const plan = planOptimization(input({ assets, references, probes, publicPolicy }));
       const reasons = plan.declined
         .filter((entry) => entry.path === 'src/App.jsx')
         .map((entry) => entry.reason);
 
-      expect(reasons).toEqual([expect.stringContaining('matches 2 assets and 1 of them')]);
+      expect(reasons).toEqual([expect.stringContaining(expected[publicPolicy])]);
     }
   });
 
-  describe('R65 → R181: a partial pattern under replace, where nothing is withdrawn any more', () => {
+  describe('a partial pattern under replace, where a target only the pattern reaches is not converted', () => {
     /**
-     * R65 made a WITHDRAWAL reported: under `replace`, the targets that converted were
-     * taken back because their originals were about to go, and until R65 they vanished
-     * from the plan with nothing said about them. **R181 retires the withdrawal itself.**
-     * No pattern is rewritten, and R180 keeps every original a pattern names — so the
-     * targets that convert now stand, originals and all, exactly as under `keep-original`.
+     * Under `replace` the targets that converted used to be withdrawn because their
+     * originals were thought to be about to go, and at first they vanished from the plan
+     * with nothing said. The withdrawal was retired once no pattern target could lose its
+     * original. Now they are declined for the reason that was true all along: the pattern
+     * still asks for the original, so no reference would ever ask for a converted copy.
      *
-     * What R65 protected is kept and asserted here: every asset the pattern matched is
-     * accounted for, nothing is reported twice, and the plan is the same on every run.
+     * What the old fix protected is kept and asserted here: every asset the pattern
+     * matched is accounted for, nothing is reported twice, and the plan is the same on
+     * every run.
      */
     const three = [
       asset('public/a-light.png'),
@@ -384,34 +391,33 @@ describe('a template reference standing for many assets', () => {
     }
 
     it('accounts for every asset the pattern matched, with nothing left over', () => {
-      // The whole claim, stated as arithmetic rather than as a spot check: three
-      // assets went in, two converted and one is declined. An asset in neither list is
-      // the defect R65 fixed, and this fails the moment one reappears there.
+      // The whole claim, stated as arithmetic rather than as a spot check: three assets
+      // went in and all three are declined, one for its own reason and two because only
+      // the pattern reaches them. An asset in neither list would be a silent skip, and
+      // this fails the moment one appears.
       const plan = replacePlan();
       const declinedAssets = plan.declined
         .map((entry) => entry.path)
         .filter((path) => path.startsWith('public/'));
 
-      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
+      expect(plan.conversions).toEqual([]);
+      expect(declinedAssets).toEqual([
+        'public/a-dark.png',
         'public/a-light.png',
         'public/a-mid.png',
       ]);
-      expect(declinedAssets).toEqual(['public/a-dark.png']);
     });
 
-    it('keeps the original of every target that converted, naming the reference that needs it', () => {
-      // The actionable part now: WHERE the reference is and what it says, so a reader
-      // who wants the originals gone knows which line to change.
+    it('declines every target only the pattern reaches, naming the reference that holds it', () => {
+      // The actionable part: where the reference is and what it says, so a reader who
+      // wants these converted under `replace` knows which line would have to change.
       const plan = replacePlan();
+      const reasons = reasonsByPath(plan);
 
-      expect(plan.conversions.every((conversion) => !conversion.replacesOriginal)).toBe(true);
-      expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual([
-        'public/a-light.png',
-        'public/a-mid.png',
-      ]);
-      for (const kept of plan.keptOriginals) {
-        expect(kept.reason).toContain('`src/App.jsx` reaches it through `./a-${mode}.png`');
-        expect(kept.reason).toContain('assembled at runtime');
+      expect(plan.keptOriginals).toEqual([]);
+      for (const path of ['public/a-light.png', 'public/a-mid.png']) {
+        expect(reasons[path]).toContain('`src/App.jsx` reaches it only through `./a-${mode}.png`');
+        expect(reasons[path]).toContain('used by nobody');
       }
     });
 
@@ -424,10 +430,9 @@ describe('a template reference standing for many assets', () => {
       expect(entries[0]?.reason).not.toContain('shares a pattern reference');
     });
 
-    it('converts exactly what keep-original converts — the two policies now agree on a pattern', () => {
-      // The originals survive under both, so the conversions stand and only the rewrite
-      // is declined. A withdrawal under one policy and not the other was the tell that
-      // the withdrawal rested on a deletion that R180 no longer makes.
+    it('still converts them under keep-original, whose users asked for both files', () => {
+      // The scope of the rule. Under `keep-original` two files are the point, so the
+      // targets that convert stand and only the rewrite is declined.
       const keep = planOptimization(
         input({ assets: three, references: threeReferences, probes: threeProbes }),
       );
@@ -436,9 +441,7 @@ describe('a template reference standing for many assets', () => {
         'public/a-light.png',
         'public/a-mid.png',
       ]);
-      expect(replacePlan().conversions.map((conversion) => conversion.asset)).toEqual(
-        keep.conversions.map((conversion) => conversion.asset),
-      );
+      expect(replacePlan().conversions).toEqual([]);
     });
 
     it('decides the same on every run, whatever order the graph listed the targets in', () => {
@@ -486,15 +489,15 @@ describe('a template reference standing for many assets', () => {
 
       // Stated as well as compared: an implementation that reversed both would satisfy
       // the equality without deciding anything stable.
-      expect(forwards.keptOriginals.map((kept) => kept.asset)).toEqual(['public/a-light.png']);
-      expect(backwards.keptOriginals).toEqual(forwards.keptOriginals);
+      expect(reasonsByPath(forwards)['public/a-light.png']).toContain('reaches it only through');
+      expect(backwards.conversions).toEqual(forwards.conversions);
       expect(reasonsByPath(backwards)).toEqual(reasonsByPath(forwards));
     });
 
-    it('reports a kept original once when two patterns both name it, and counts the second', () => {
-      // One asset, two references that need it: one entry naming the first and counting
-      // the rest, as R77's reason does. Two entries for one asset would inflate every
-      // count built from `keptOriginals`.
+    it('declines an asset once when two patterns both hold it, and counts the second', () => {
+      // One asset, two references holding it: one entry naming the first and counting
+      // the rest, as the kept-original sentences do. Two entries for one asset would
+      // inflate every count built from `declined`.
       const twoPatterns = [
         pattern('src/App.jsx', './a-${mode}.png', ['public/a-light.png', 'public/a-dark.png']),
         pattern('src/Other.jsx', './a-${theme}.png', ['public/a-light.png', 'public/a-dark.png']),
@@ -507,13 +510,13 @@ describe('a template reference standing for many assets', () => {
           publicPolicy: 'replace',
         }),
       );
-      const kept = plan.keptOriginals.filter((entry) => entry.asset === 'public/a-light.png');
+      const entries = plan.declined.filter((entry) => entry.path === 'public/a-light.png');
 
-      expect(kept).toHaveLength(1);
-      expect(kept[0]?.reason).toContain(
-        '`src/App.jsx` reaches it through `./a-${mode}.png` (and 1 more)',
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.reason).toContain(
+        '`src/App.jsx` reaches it only through `./a-${mode}.png` (and 1 more)',
       );
-      expect(plan.declined.filter((entry) => entry.path === 'public/a-light.png')).toEqual([]);
+      expect(plan.keptOriginals).toEqual([]);
     });
   });
 
@@ -649,14 +652,18 @@ describe('the public policy', () => {
     });
   });
 
-  describe('🔴 R180: an original goes only when a reference links it and this plan rewrites every one', () => {
+  describe('🔴 under replace: an asset converts only if a reference moves to it, and its original goes only if all do', () => {
     /**
-     * The property, not the case that exposed it. Under `replace`, four pieces that were
-     * each right alone deleted every original behind a pattern whose targets all
-     * converted — `/theme-${mode}.png` went on asking for `.png` — and the original of
-     * every public asset nothing links to. Each member below goes red when its part of
-     * `originalsStillNeeded` is removed. The first two are the positive controls: a fix
-     * that simply switched `replace` off passes every other test here, and fails those.
+     * Both halves of one property, stated for every member rather than for the case that
+     * exposed each. The deletion half came first: four pieces that were each right alone
+     * deleted every original behind a pattern whose targets all converted, while
+     * `/theme-${mode}.png` went on asking for `.png`. The conversion half followed: once
+     * those originals were kept, their converted copies sat beside them used by nothing.
+     *
+     * So each member appears twice. Alone, nothing moves to its asset, and the asset is
+     * not converted. Beside a literal that does move, the asset converts and the member
+     * keeps its original. The first two tests are the positive controls: a fix that simply
+     * switched `replace` off passes every other test here, and fails those.
      */
     const theme = [asset('public/theme-light.png'), asset('public/theme-dark.png')];
     const template = pattern('src/Theme.jsx', '/theme-${mode}.png', [
@@ -693,25 +700,21 @@ describe('the public policy', () => {
       expect(plan.keptOriginals).toEqual([]);
     });
 
-    it('keeps every original behind a template whose targets ALL convert — the defect itself', () => {
+    it('converts nothing a template alone reaches, so it deletes nothing and writes no unused copy', () => {
+      // The deletion defect cannot recur here, and neither can the pair of files that
+      // keeping those originals used to leave.
       const plan = replacing(theme, [template]);
 
-      expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
-        ['public/theme-dark.png', false],
-        ['public/theme-light.png', false],
-      ]);
-      expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual([
-        'public/theme-dark.png',
-        'public/theme-light.png',
-      ]);
-      for (const kept of plan.keptOriginals) {
-        expect(kept.reason).toContain(
-          '`src/Theme.jsx` reaches it through `/theme-${mode}.png`, a path assembled at runtime',
+      expect(plan.conversions).toEqual([]);
+      expect(plan.keptOriginals).toEqual([]);
+      for (const path of ['public/theme-dark.png', 'public/theme-light.png']) {
+        expect(reasonsByPath(plan)[path]).toContain(
+          '`src/Theme.jsx` reaches it only through `/theme-${mode}.png`, a path assembled at runtime that no run can rewrite',
         );
       }
     });
 
-    it('keeps them behind a + chain resolved as a pattern, as it does behind its template twin (R175)', () => {
+    it('converts nothing a + chain alone reaches, as for its template twin', () => {
       const chain = {
         ...pattern('src/theme.ts', "/theme-' + mode + '.png", [
           'public/theme-light.png',
@@ -724,10 +727,9 @@ describe('the public policy', () => {
       } as Reference;
       const plan = replacing(theme, [chain]);
 
-      expect(plan.conversions.map((c) => c.replacesOriginal)).toEqual([false, false]);
-      expect(plan.keptOriginals).toHaveLength(2);
-      expect(plan.keptOriginals[0]?.reason).toContain(
-        "reaches it through `/theme-' + mode + '.png`",
+      expect(plan.conversions).toEqual([]);
+      expect(reasonsByPath(plan)['public/theme-light.png']).toContain(
+        "reaches it only through `/theme-' + mode + '.png`",
       );
     });
 
@@ -738,57 +740,151 @@ describe('the public policy', () => {
       ]);
       const light = plan.conversions.find((c) => c.asset === 'public/theme-light.png');
 
-      // The literal moves — that edit is still worth making — and the original stays.
+      // The literal moves, which is what makes the new file worth writing, and the
+      // original stays for the template. `theme-dark` has only the template, so it is
+      // not converted at all.
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['index.html']);
       expect(light?.replacesOriginal).toBe(false);
+      expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual(['public/theme-light.png']);
+      expect(plan.keptOriginals[0]?.reason).toContain(
+        '`src/Theme.jsx` reaches it through `/theme-${mode}.png`, a path assembled at runtime',
+      );
+      expect(plan.conversions.map((c) => c.asset)).toEqual(['public/theme-light.png']);
     });
 
-    it('keeps it when the literal naming it is refused, without R77 having to find the text', () => {
-      // Member (b), made DIRECT. The rewrite is refused — a root-relative path that
-      // missed the declared root — and until R180 only R77's text search stood between
-      // this and a deleted original. That search looks for the path as written, and
-      // `h%65ro.png` holds none of its spellings. `blockedByMention` is deliberately
-      // absent: the planner alone has to decide.
+    /** A root-relative path that missed the declared root, so its rewrite is refused. */
+    const refused = resolved('index.html', '/public/h%65ro.png', 'public/hero.png', {
+      resolvedVia: 'project-root',
+    });
+    const declared = { servingRoots: { dirs: ['public'], declared: true } };
+
+    it('declines it when the only literal naming it is refused, saying why that literal stays', () => {
+      const plan = replacing([asset('public/hero.png')], [refused], declared);
+
+      expect(plan.conversions).toEqual([]);
+      expect(reasonsByPath(plan)['public/hero.png']).toContain(
+        '`index.html` names it as `/public/h%65ro.png`, and this run does not rewrite that reference: the path is root-relative and missed the configured serving root',
+      );
+    });
+
+    it('keeps it when a refused literal still needs it beside one that moves, without R77 finding the text', () => {
+      // The refused literal made direct. Until the planner kept this itself, only the
+      // text search stood between it and a deleted original, and that search looks for the
+      // path as written: `h%65ro.png` holds none of its spellings. `blockedByMention` is
+      // deliberately absent, so the planner alone has to decide.
       const plan = replacing(
         [asset('public/hero.png')],
-        [
-          resolved('index.html', '/public/h%65ro.png', 'public/hero.png', {
-            resolvedVia: 'project-root',
-          }),
-        ],
-        { servingRoots: { dirs: ['public'], declared: true } },
+        [resolved('about.html', '/hero.png', 'public/hero.png'), refused],
+        declared,
       );
 
-      expect(plan.rewrites).toEqual([]);
+      expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['about.html']);
       expect(plan.conversions[0]?.replacesOriginal).toBe(false);
       expect(plan.keptOriginals[0]?.reason).toContain(
         '`index.html` names it as `/public/h%65ro.png`, and this run does not rewrite that reference',
       );
     });
 
-    it('keeps it when a rewrite would change nothing, because nothing moved', () => {
-      // `./logo` has no extension to swap, so no edit is recorded. "Rewritten" means an
-      // edit this plan holds — not a reference it looked at.
-      const plan = replacing(
-        [asset('public/logo.png')],
-        [resolved('src/App.jsx', './logo', 'public/logo.png')],
-      );
+    /** `./logo` has no extension to swap, so no edit is recorded for it. */
+    const unchanged = resolved('src/App.jsx', './logo', 'public/logo.png');
 
-      expect(plan.rewrites).toEqual([]);
-      expect(plan.conversions[0]?.replacesOriginal).toBe(false);
+    it('declines it when the only reference has no extension to change', () => {
+      // "Moves" means an edit this plan holds, not a reference it looked at.
+      const plan = replacing([asset('public/logo.png')], [unchanged]);
+
+      expect(plan.conversions).toEqual([]);
+      expect(reasonsByPath(plan)['public/logo.png']).toContain(
+        '`src/App.jsx` names it as `./logo`, which has no extension to change',
+      );
     });
 
-    it('gives R66 its own reason beside R180, each asset under the one that applies', () => {
+    it('keeps it when a reference with no extension to change sits beside one that moves', () => {
+      const plan = replacing(
+        [asset('public/logo.png')],
+        [resolved('index.html', '/logo.png', 'public/logo.png'), unchanged],
+      );
+
+      expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['index.html']);
+      expect(plan.conversions[0]?.replacesOriginal).toBe(false);
+      expect(plan.keptOriginals[0]?.reason).toContain('`src/App.jsx` names it as `./logo`');
+    });
+
+    it('converts an asset when any one of its references moves, not only when all of them do', () => {
+      // The conversion half asks for one moving reference, the deletion half for all of
+      // them. Requiring all of them to convert would decline both assets here, though each
+      // has a literal moving to its new file and a template still asking for its original.
+      const plan = replacing(theme, [
+        template,
+        resolved('about.html', '/theme-dark.png', 'public/theme-dark.png'),
+        resolved('index.html', '/theme-light.png', 'public/theme-light.png'),
+      ]);
+
+      expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+        ['public/theme-dark.png', false],
+        ['public/theme-light.png', false],
+      ]);
+    });
+
+    it('gives the outside-a-served-directory reason its own entry, beside the pattern one', () => {
       const plan = replacing(
         [asset('src/logo.png'), ...theme],
-        [resolved('src/App.jsx', './logo.png', 'src/logo.png'), template],
+        [
+          resolved('src/App.jsx', './logo.png', 'src/logo.png'),
+          resolved('index.html', '/theme-light.png', 'public/theme-light.png'),
+          template,
+        ],
       );
 
       expect(Object.fromEntries(plan.keptOriginals.map((k) => [k.asset, k.reason]))).toEqual({
-        'public/theme-dark.png': expect.stringContaining('assembled at runtime'),
         'public/theme-light.png': expect.stringContaining('assembled at runtime'),
         'src/logo.png': expect.stringContaining('outside a directory this project serves'),
       });
+    });
+
+    it('declines an asset outside a served directory that only a pattern reaches, rather than keep a copy nobody uses', () => {
+      // Outside a served directory `replace` never deletes, so before this rule the asset
+      // converted and was reported as kept for the build's sake. But no reference would
+      // move to the new file there either: the same unused pair, under a misleading reason.
+      const icons = [asset('src/icons/a.png'), asset('src/icons/b.png')];
+      const byPattern = pattern('src/Icon.jsx', './icons/${name}.png', [
+        'src/icons/a.png',
+        'src/icons/b.png',
+      ]);
+
+      const plan = replacing(icons, [byPattern]);
+      const keep = planOptimization(input({ assets: icons, references: [byPattern] }));
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.keptOriginals).toEqual([]);
+      expect(reasonsByPath(plan)['src/icons/a.png']).toContain('reaches it only through');
+      expect(keep.conversions.map((c) => c.asset)).toEqual(['src/icons/a.png', 'src/icons/b.png']);
+    });
+
+    it('leaves keep-original exactly as it was for every member', () => {
+      // The rule's scope. The same project under `keep-original` converts the lot: its
+      // users chose two files, and nothing here is about them.
+      const everyMember = {
+        assets: [
+          asset('public/orphan.png'),
+          asset('public/hero.png'),
+          asset('public/logo.png'),
+          ...theme,
+        ],
+        references: [refused, unchanged, template],
+        ...declared,
+      };
+
+      const keep = planOptimization(input(everyMember));
+      const replace = planOptimization(input({ ...everyMember, publicPolicy: 'replace' }));
+
+      expect(keep.conversions.map((c) => c.asset)).toEqual([
+        'public/hero.png',
+        'public/logo.png',
+        'public/orphan.png',
+        'public/theme-dark.png',
+        'public/theme-light.png',
+      ]);
+      expect(replace.conversions).toEqual([]);
     });
   });
 });
@@ -1119,13 +1215,13 @@ describe('a project that serves from its own project root', () => {
       input({ assets, references, publicDir: '', publicPolicy: 'replace' }),
     );
 
-    // ⚠️ Until R180 this asserted EVERY original went — `orphan.png`'s included, the
-    // vacuous case, whose original nothing had moved away from. `hero.png` is what shows
-    // `''` is read as public: a linked asset whose reference is rewritten loses it.
+    // `hero.png` is what shows `''` is read as public: a linked asset whose reference is
+    // rewritten loses its original. `orphan.png` once lost its original too, though nothing
+    // had moved away from it; now nothing would use its new file, so it is not converted.
     expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
       ['images/hero.png', true],
-      ['images/orphan.png', false],
     ]);
+    expect(reasonsByPath(plan)['images/orphan.png']).toContain('nothing Upfly can see links to it');
   });
 
   it('still treats null as serving nothing publicly, which is the opposite', () => {

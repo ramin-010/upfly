@@ -158,30 +158,32 @@ describe('R67: a partial-failure state, built by hand because no real repository
     });
   });
 
-  describe('R65 → R181: the partial pattern on a real tree, where nothing is withdrawn any more', () => {
-    it('keeps every converting sibling’s original and says why for each', async () => {
-      // 🔴 **Until R181 this asserted a WITHDRAWAL**: under `replace` the three siblings
-      // that convert were taken back, on the belief that a pattern is rewritten once all
-      // its targets convert and its originals then go. No pattern is ever rewritten, and
-      // R180 keeps every original a pattern still names — so the siblings convert and
-      // keep their originals, as under `keep-original`, and each says which reference
-      // needs it. What R65 fixed — a sibling vanishing with nothing said — stays fixed.
+  describe('the partial pattern on a real tree under replace, where only the template reaches the siblings', () => {
+    it('converts none of the siblings the template alone reaches, and says why for each', async () => {
+      // The template still asks for `.png`, so no reference would ever ask for a converted
+      // sibling: under `replace` each would be a new file beside an original that has to
+      // stay. This once asserted a withdrawal, then a conversion with every original
+      // kept; both kept a sibling from vanishing silently, and so does this.
       //
-      // ⚠️ `theme-dark` converts losslessly (R138), at 36 bytes against a 70-byte source.
+      // `theme-dark` would convert losslessly, at 36 bytes against a 70-byte source, and
+      // is declined like the others: the rule is about who uses the file, not its size.
       const { plan } = await planFor('replace');
-      const byPattern = plan.keptOriginals.filter((kept) =>
-        kept.reason.includes('assembled at runtime'),
+      const byTemplate = plan.declined.filter((entry) =>
+        entry.reason.includes('reaches it only through'),
       );
 
-      expect(byPattern.map((kept) => kept.asset)).toEqual([
+      expect(byTemplate.map((entry) => entry.path)).toEqual([
         'public/theme-dark.png',
         'public/theme-light.png',
         'public/theme-sepia.png',
       ]);
-      for (const kept of byPattern) {
-        // Where the reference is and what it says: the line to change to be rid of them.
-        expect(kept.reason).toContain('`src/App.jsx` reaches it through `/theme-${mode}.png`');
+      for (const entry of byTemplate) {
+        // Where the reference is and what it says: the line that holds them.
+        expect(entry.reason).toContain(
+          '`src/App.jsx` reaches it only through `/theme-${mode}.png`',
+        );
       }
+      expect(plan.keptOriginals.some((kept) => kept.asset.includes('theme-'))).toBe(false);
       expect(plan.declined.some((entry) => entry.reason.includes('shares a pattern'))).toBe(false);
     });
 
@@ -216,7 +218,7 @@ describe('R67: a partial-failure state, built by hand because no real repository
           `${asset} is in no list at all — not converted, not declined, not skipped`,
         ).toContain(asset);
       }
-      expect(converted).toContain('public/theme-light.png');
+      expect(declined).toContain('public/theme-light.png');
     });
 
     it('leaves the ordinary reference beside it untouched', async () => {
@@ -228,16 +230,18 @@ describe('R67: a partial-failure state, built by hand because no real repository
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['src/App.jsx']);
     });
 
-    it('converts every convertible sibling under keep-original, the same set replace converts', async () => {
-      // The same tree, the same measurements, the opposite policy. The originals
-      // survive under both, so the pattern keeps resolving and only the rewrite is
-      // declined — and since R181 the two policies convert exactly the same assets.
+    it('converts every convertible sibling under keep-original, which replace declines', async () => {
+      // The same tree, the same measurements, the opposite policy. Under `keep-original`
+      // two files are what the user asked for, so the siblings convert and only the
+      // rewrite is declined. Under `replace` only what a moved reference uses converts.
       const { plan } = await planFor('keep-original');
       const replaced = (await planFor('replace')).plan;
 
-      expect(replaced.conversions.map((conversion) => conversion.asset)).toEqual(
-        plan.conversions.map((conversion) => conversion.asset),
-      );
+      expect(replaced.conversions.map((conversion) => conversion.asset)).toEqual([
+        'public/banner.png',
+        'public/screenshot.png',
+        'src/inline-logo.jpg',
+      ]);
 
       expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
         'public/banner.png',

@@ -12,7 +12,7 @@
  * indistinguishable from a decision nobody made.
  */
 
-import type { Graph } from './graph.js';
+import type { AssetNode, Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
@@ -26,13 +26,19 @@ export type PublicPolicy =
   /** Write the converted file alongside and leave the original in place. */
   | 'keep-original'
   /**
-   * Remove the original when at least one reference links to it AND this run rewrites
-   * every reference that does (R180).
+   * Convert an asset only when this run moves at least one reference to the new file,
+   * and remove the original only when it moves every reference that links to it.
    *
-   * Both halves are load-bearing. An asset nothing links to satisfies "every reference
-   * points at the replacement" only vacuously, and a pattern is never rewritten however
-   * many of its targets convert, so each of those keeps its original — reported in
-   * `keptOriginals`, never silently.
+   * The first half stops `replace` writing a file nobody uses. An asset nothing links to,
+   * or one reached only through references no run can rewrite, would otherwise get a
+   * converted copy beside an original that still has to stay, which is the pair of
+   * files this policy exists to avoid. Each is declined with the reference that holds it.
+   *
+   * The second half keeps pages working. A pattern is never rewritten however many of
+   * its targets convert, so an asset some other reference moves to still converts and
+   * keeps its original while the pattern needs it, reported in `keptOriginals`. The
+   * deletion half does not lean on the conversion half: it also keeps the original of an
+   * asset nothing links to, which it would otherwise meet only vacuously.
    */
   | 'replace';
 
@@ -163,8 +169,10 @@ export interface PlanRefusal {
  *
  * Under `replace` there are two reasons, and the `reason` says which. The asset sits
  * outside a served directory, where the build rather than a browser resolves it (R66); or
- * a reference Upfly knows about still needs the original — a pattern, which no run can
- * rewrite, a reference this run declined to rewrite, or no reference at all (R180).
+ * this run moved some references to the new file while another still needs the original,
+ * such as a pattern, which no run can rewrite, or a reference this run declined to rewrite.
+ * An asset no reference moves to is not converted under `replace` at all, so it is never
+ * here.
  *
  * ⚠️ **Its own list, and not `declined`, because `declined` would make a heading
  * false.** The report renders that list under *"Examined and not converted"*, and
@@ -256,7 +264,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
 
   const converting = new Map<string, PlannedConversion>();
   for (const node of input.graph.assets) {
-    const decision = convertDecision(node.asset.relative, node.references.length, input, savings);
+    const decision = convertDecision(node, input, savings);
     if (decision.convert) converting.set(node.asset.relative, decision.conversion);
     else if (decision.reason !== null) {
       declined.push({ path: node.asset.relative, line: null, reason: decision.reason });
@@ -370,11 +378,11 @@ type ConvertDecision =
  * silent skip is a P0 (rule 9), so the measured case now carries a reason.
  */
 function convertDecision(
-  relative: string,
-  linkCount: number,
+  node: AssetNode,
   input: PlanInput,
   savings: ReadonlyMap<string, Saving>,
 ): ConvertDecision {
+  const relative = node.asset.relative;
   const saving = savings.get(relative);
   if (saving === undefined) {
     return wasMeasured(relative, input)
@@ -391,19 +399,29 @@ function convertDecision(
   const inPublic = isUnderPublicDir(relative, input.publicDir);
 
   // An asset nothing links to gains nothing from being converted: there is no
-  // reference to repoint, so the only change is a new file on disk. Inside a public
-  // directory that is still worth doing, because a public asset may be loaded by
-  // something outside the repository that we cannot see — and the original stays where
-  // it is under EITHER policy. `keep-original` never removes it; `replace` removes an
-  // original only once every reference to it has moved, and an asset nothing links to
-  // meets that only vacuously, so R180 keeps it and says why. Outside a public directory
+  // reference to repoint, so the only change is a new file on disk. Under `keep-original`
+  // that is still worth doing inside a public directory, because something outside the
+  // repository that we cannot see may load the asset, the original stays where it is,
+  // and that caller can be pointed at the smaller file later. Outside a public directory
   // it buys bytes and nothing else, and bytes do not justify touching a file whose
-  // liveness we could not establish.
-  if (linkCount === 0 && !inPublic) {
+  // liveness we could not establish. Under `replace` the next check declines it too.
+  if (node.references.length === 0 && !inPublic) {
     const why = input.hedged.has(relative)
       ? 'nothing links to it and something we could not read mentions it, so converting would change a file whose references we cannot see'
       : 'nothing links to it, so converting it would rewrite no reference and gain only bytes';
     return { convert: false, reason: why };
+  }
+
+  // Under `replace` a new file has to be one some reference is moved to. Otherwise it
+  // sits beside an original that must stay, used by nothing. Decided here, before
+  // collisions and before any reference is repointed, so every sentence the plan writes
+  // afterwards is about assets that really convert. Asking it this early gives the same
+  // answer the finished plan would, because whether a reference moves depends only on
+  // the reference once its one asset converts; a pattern, the only reference that links
+  // several assets, never moves.
+  if (input.publicPolicy === 'replace') {
+    const unused = unusedUnderReplace(node, input);
+    if (unused !== null) return { convert: false, reason: unused };
   }
 
   // R77. Checked last, so the reason a reader sees is this one rather than a cheaper
@@ -550,14 +568,14 @@ function vetoCollisions(
  * assets and M of them do not convert*, which is where a reader looks to find out why a
  * pattern still names the old format.
  *
- * 🔴 **Under `replace` it used to WITHDRAW the targets that did convert (R65), and that
- * is gone (R181).** The withdrawal rested on a pattern whose targets all convert being
- * rewritten and its originals deleted, so a partial one had to take every conversion
- * with it. The first half was never true: no pattern is rewritten. Under R180 no pattern
- * target loses its original either, because the pattern still names it. So a partial
- * pattern under `replace` converts what converts and keeps every original, exactly as
- * under `keep-original`, and each kept original says in `keptOriginals` which reference
- * still needs it.
+ * Under `replace` it used to withdraw the targets that did convert, on the belief that a
+ * pattern whose targets all convert is rewritten and their originals deleted. No pattern
+ * is rewritten and no pattern target loses its original, so that withdrawal protected
+ * nothing and is gone. What decides a target under `replace` is whether some other
+ * reference moves to it: a target reached only through patterns is not converted and is
+ * declined naming the pattern, and one a literal also names converts and keeps its
+ * original while the pattern needs it. The count of targets that do not convert takes in
+ * the first kind as well as any target that failed for its own reason.
  */
 function declinePartialPatterns(
   input: PlanInput,
@@ -605,12 +623,12 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
   const converted = targets.filter((target) => context.converting.has(target));
   if (converted.length === 0) return false;
 
-  const refusal = rewriteRefusal(reference, context.input);
-  if (refusal !== null) {
+  const obstacle = obstacleTo(reference, context.input);
+  if (obstacle?.kind === 'refused') {
     context.declined.push({
       path: relativePath(context.root, reference.file),
       line: null,
-      reason: `${refusal}, so ${converted.join(', ')} was converted without this reference moving`,
+      reason: `${obstacle.why}, so ${converted.join(', ')} was converted without this reference moving`,
     });
     return false;
   }
@@ -623,7 +641,7 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
   // every one did: a partial pattern was already reported, accurately, by
   // `declinePartialPatterns`, and this sentence beside it was the report contradicting
   // itself about one reference.
-  if (reference.resolution === 'resolved-pattern') {
+  if (obstacle?.kind === 'pattern') {
     if (converted.length === targets.length) {
       context.declined.push({
         path: relativePath(context.root, reference.file),
@@ -635,14 +653,95 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
     return false;
   }
 
-  const replacement = withExtension(reference.rawPath, context.input.format);
-  if (replacement === reference.rawPath) return false;
+  if (obstacle !== null) return false;
 
   const file = relativePath(context.root, reference.file);
   const list = context.edits.get(file) ?? [];
-  list.push({ start: reference.start, end: reference.end, replacement });
+  list.push({
+    start: reference.start,
+    end: reference.end,
+    replacement: withExtension(reference.rawPath, context.input.format),
+  });
   context.edits.set(file, list);
   return true;
+}
+
+/** A reference that links at least one asset: the only kind a plan could move. */
+type LinkedReference = Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>;
+
+/** Why a plan leaves a linked reference where it is, even when its asset converts. */
+type Obstacle =
+  /** A rule forbids editing this text; `why` is the sentence saying which. */
+  | { readonly kind: 'refused'; readonly why: string }
+  /** The text is a template standing for several files, not a path with a range to edit. */
+  | { readonly kind: 'pattern' }
+  /** The path has no extension, so swapping it would change nothing. */
+  | { readonly kind: 'unchanged' };
+
+/**
+ * What stops this plan moving a linked reference to the converted file, or null when
+ * nothing does.
+ *
+ * One function answers two questions: whether `collectRewrite` records an edit, and,
+ * under `replace`, whether an asset is worth converting at all. Answered in two places,
+ * the answers would drift, and the first sign would be a converted file nothing points
+ * at. Nothing here depends on which other assets convert, which is what lets the second
+ * question be asked before the plan exists.
+ */
+function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | null {
+  const refusal = rewriteRefusal(reference, input);
+  if (refusal !== null) return { kind: 'refused', why: refusal };
+  if (reference.resolution === 'resolved-pattern') return { kind: 'pattern' };
+  if (withExtension(reference.rawPath, input.format) === reference.rawPath) {
+    return { kind: 'unchanged' };
+  }
+  return null;
+}
+
+/** The end of every sentence `unusedUnderReplace` writes: the rule, and the way round it. */
+const REPLACE_CONVERTS_ONLY_WHAT_MOVES =
+  '`--replace` converts an image only when a reference moves to the new file; without `--replace` it can be converted with the original kept';
+
+/**
+ * Under `replace`, why converting this asset would give it a new file nobody uses, or
+ * null when at least one reference moves to it.
+ *
+ * The conversion half of the rule the deletion check at the end of the plan enforces:
+ * a new file is written only when some reference moves to it, and the original goes only
+ * when every reference does. So under `replace` an asset ends one of three ways: replaced,
+ * converted with its original kept because something still needs both, or left alone.
+ * Never a converted copy nothing asks for beside an original that has to stay.
+ *
+ * The sentence names the first reference holding the asset and counts the rest, in the
+ * form the kept-original sentences use, so a reader can find the line to change.
+ */
+function unusedUnderReplace(node: AssetNode, input: PlanInput): string | null {
+  const blocked: { reference: LinkedReference; obstacle: Obstacle }[] = [];
+  for (const reference of node.references) {
+    if (!isLinked(reference)) continue;
+    const obstacle = obstacleTo(reference, input);
+    if (obstacle === null) return null;
+    blocked.push({ reference, obstacle });
+  }
+
+  const [first] = blocked;
+  if (first === undefined) {
+    const held = input.hedged.has(node.asset.relative)
+      ? 'nothing Upfly can see links to it, and something it could not read mentions it by its current name'
+      : 'nothing Upfly can see links to it';
+    return `${held}, so a new file would be used by nobody. ${REPLACE_CONVERTS_ONLY_WHAT_MOVES}`;
+  }
+
+  const where = `\`${relativePath(input.graph.root, first.reference.file)}\``;
+  const more = blocked.length === 1 ? '' : ` (and ${blocked.length - 1} more)`;
+  const text = `\`${first.reference.rawPath}\`${more}`;
+  const held =
+    first.obstacle.kind === 'pattern'
+      ? `${where} reaches it only through ${text}, a path assembled at runtime that no run can rewrite`
+      : first.obstacle.kind === 'refused'
+        ? `${where} names it as ${text}, and this run does not rewrite that reference: ${first.obstacle.why}`
+        : `${where} names it as ${text}, which has no extension to change`;
+  return `${held}. No reference would move to a new file, so it would be used by nobody. ${REPLACE_CONVERTS_ONLY_WHAT_MOVES}`;
 }
 
 /**
@@ -654,10 +753,7 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
  * nothing more, because the code may join that string to a different directory
  * entirely.
  */
-function rewriteRefusal(
-  reference: Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>,
-  input: PlanInput,
-): string | null {
+function rewriteRefusal(reference: LinkedReference, input: PlanInput): string | null {
   if (reference.confidence === 'unsafe') {
     return 'the reference has no static path to replace';
   }
@@ -693,6 +789,11 @@ function rewriteRefusal(
  * an encoded spelling; a reference whose rewrite would change nothing; and an asset
  * nothing links to, which meets "every reference has moved" only vacuously.
  *
+ * Under `replace` the conversion rule in `unusedUnderReplace` declines, before it
+ * converts, any asset no reference moves to, so today no asset reaches this check with
+ * nothing linking it. That member stays anyway: this rule is the one that protects a
+ * page, and it must not depend on the conversion rule never being loosened.
+ *
  * ⚠️ **What it cannot see, stated so it is not read as a guarantee:** a reference the
  * graph never found. R77's search covers one written down literally. A path assembled at
  * runtime that the graph did not collect either is covered only when nothing else links
@@ -718,6 +819,8 @@ function whyStillNeeded(
   rewritten: ReadonlySet<Reference>,
   root: string,
 ): string | null {
+  // Unreachable while `unusedUnderReplace` declines every unlinked asset first. Kept so
+  // this rule never depends on that one: see `originalsStillNeeded`.
   if (references.length === 0) {
     return (
       'converted, but the original was kept: nothing Upfly can see links to it, so no ' +

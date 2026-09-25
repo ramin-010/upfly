@@ -845,12 +845,33 @@ and nothing in the diff says an invariant died.
 only once nothing points at them any more. A move is committed as a copy in step 2 and a
 removal in step 4 for exactly this reason: between the two, both paths exist.
 
-**Which originals `replace` removes is the planner's decision, and it is one property (R180):** an
-original is deleted only when at least one reference links to it AND the plan rewrites every
-reference that does. So a pattern — which is never rewritten — keeps every original it matches, a
-reference whose rewrite is refused keeps its original, and an asset nothing links to keeps its own
-(the vacuous case); each is reported in `keptOriginals` with its reason. R77's text search then
-guards the references the graph never found, for the literal case only.
+**What `replace` converts, and which originals it removes, are the planner's decisions, and they
+are two halves of one property.** An asset converts only when the plan moves at least one
+reference to the new file, and its original is deleted only when the plan moves every reference
+that links to it. So under `replace` an asset ends one of three ways:
+
+| the asset | outcome |
+|---|---|
+| every reference to it moves | converted, original deleted |
+| some move, and one the plan cannot move still needs the old file (a pattern, a refused literal, a path with no extension to change) | converted, original kept, and `keptOriginals` says which reference needs it |
+| no reference would move: nothing links to it, or only references the plan cannot move | not converted, and `declined` names what holds it |
+
+What `replace` never produces is a converted copy nothing asks for beside an original that has to
+stay, which is the pair of files the policy exists to avoid. `keep-original` is untouched by the
+first half, because two files are what its users asked for.
+
+The conversion half is decided per asset before collisions and before any reference is repointed,
+so every sentence the plan writes afterwards is about assets that really convert. Asking that early
+gives the finished plan's answer because whether a reference moves depends only on the reference
+once its one asset converts; a pattern, the only reference that links several assets, never moves.
+The deletion half runs last and does not rely on the first: it keeps the original of an asset
+nothing links to on its own account, so loosening the conversion half can never delete a file.
+
+R77's text search then guards the references the graph never found, for a path written down
+literally. **The bound that remains:** a path assembled at runtime that the graph did not find,
+pointing at an asset some other reference links and this run moves. The text search cannot see it,
+because it is not written down, and the planner cannot, because it is not a reference it knows, so
+that original goes. It is the one way `replace` can still remove a file a page asks for.
 
 **Recovery is a pure function of the manifest and the current disk.** Every operation records
 the content hash on both sides, so hashing a file says whether that operation ran. Nothing
