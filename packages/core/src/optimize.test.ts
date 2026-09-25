@@ -531,11 +531,11 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
   });
 });
 
-describe('🔴 replace, AT THE SEAM: a new file only where a reference moves to it, a delete only where all do', () => {
+describe('replace at the seam: a new file only where a reference moves to it, a delete only where all do', () => {
   /**
    * The operations `optimize` emits, not only the plan: `stage` turns a conversion into a
    * `create` and `replacesOriginal` into a `delete`, and the manifest records every
-   * operation a run committed. So each test runs an APPLIED `replace` over one in-memory
+   * operation a run committed. So each test runs an applied `replace` over one in-memory
    * project holding every row of the rule, and reads the manifest and the disk afterwards.
    *
    * | row | asset | expected |

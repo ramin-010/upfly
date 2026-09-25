@@ -652,7 +652,7 @@ describe('the public policy', () => {
     });
   });
 
-  describe('🔴 under replace: an asset converts only if a reference moves to it, and its original goes only if all do', () => {
+  describe('under replace: an asset converts only if a reference moves to it, and its original goes only if all do', () => {
     /**
      * Both halves of one property, stated for every member rather than for the case that
      * exposed each. The deletion half came first: four pieces that were each right alone
