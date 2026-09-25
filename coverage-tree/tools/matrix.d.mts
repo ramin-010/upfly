@@ -91,12 +91,40 @@ export interface Arithmetic {
   readonly entries: number;
 }
 
+/**
+ * R179: an entry whose gap names a mechanism the run's configuration does not use, and
+ * the bucket its outcome under that configuration put it in. Never a retired gap.
+ */
+export interface JudgedOnOutcome {
+  readonly file: string;
+  readonly line: number;
+  readonly raw: string;
+  readonly gapMechanism: string;
+  readonly bucket: Bucket['key'];
+}
+
+/**
+ * R179: every key entry and the bucket it landed in. The findings list cannot name every
+ * miss — an entry in `knownGap` is unmet and deliberately produces no finding.
+ */
+export interface Verdict {
+  readonly file: string;
+  readonly line: number;
+  readonly raw: string;
+  readonly shape: string;
+  readonly bucket: Bucket['key'];
+  readonly detail: string;
+  readonly keyGap: string;
+}
+
 export interface MatrixResult {
   readonly rows: readonly MatrixRow[];
   readonly findings: readonly MatrixFinding[];
   readonly unkeyed: readonly UnkeyedEmission[];
   readonly shapeDisagreements: readonly ShapeDisagreement[];
   readonly arithmetic: Arithmetic;
+  readonly outOfConfiguration: readonly JudgedOnOutcome[];
+  readonly verdicts: readonly Verdict[];
 }
 
 /** One reference as the engine produced it, at a UTF-16 code-unit offset. */
@@ -142,6 +170,13 @@ export function buildMatrix(
      * throws.
      */
     readonly observedUnder?: Readonly<Record<string, ReadonlyMap<string, Observation>>>;
+    /**
+     * R179: mechanisms this run's CONFIGURATION does not use — detection, when the key
+     * states its serving roots. An entry whose gap names one is judged `met` or `missed` on
+     * its outcome and its gap is never retired. Naming a mechanism here AND in `exercises`
+     * throws.
+     */
+    readonly outOfConfiguration?: ReadonlySet<string>;
   },
 ): MatrixResult;
 
@@ -149,6 +184,24 @@ export function renderMatrix(
   result: MatrixResult,
   options?: { readonly emissionOf?: (id: string) => string | undefined },
 ): string;
+
+/**
+ * R179: everything but the per-shape table — arithmetic, populations, notes, findings,
+ * unkeyed emissions. For a second run over the same key, where the misses are the answer.
+ */
+export function renderSummary(
+  result: MatrixResult,
+  options?: { readonly emissionOf?: (id: string) => string | undefined },
+): string;
+
+/**
+ * The `claimed` population's `met` of `expected`, from the tally the table prints, and
+ * every claimed entry it did not meet — each a named line in a published result (R179).
+ */
+export function claimedPopulation(
+  result: MatrixResult,
+  options?: { readonly emissionOf?: (id: string) => string | undefined },
+): { readonly met: number; readonly expected: number; readonly misses: readonly Verdict[] };
 
 /** Does every key entry land in exactly one bucket? Exported so its proofs can damage it. */
 export function reconcile(

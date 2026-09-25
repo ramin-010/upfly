@@ -20,17 +20,34 @@
  * entries. Reading the pipeline's own bookkeeping is not a workaround for that bug; it is
  * the reason the pipeline has the bookkeeping.
  *
+ * 🔴 **R179 — TWO RUNS, TWO NUMBERS, NEVER ADDED TOGETHER.** The same scan is resolved
+ * twice and every claimed entry is judged on each: under the key's stated serving roots
+ * (run 1), and under no configuration at all — `decideServingRoots`, detection ∪
+ * inference, the path a stranger's first run takes (run 2). Until R179 one matrix judged
+ * 328 entries on the first setup and 2 on a detection-only run, a blend R174 ruled
+ * unquotable. Each number now measures ONE configuration.
+ *
  * Usage:  node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
  *         --skip-strict is for debugging the harness itself and prints a loud warning.
  *         It must never be used to produce a number anybody quotes.
+ *         Needs `pnpm build` AND `pnpm --filter upfly-bench run build` — run 2 imports
+ *         `decideServingRoots` from bench's build; `pnpm coverage-tree:measure` does both.
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { NON_DEFECT_KINDS, blindSpots, buildMatrix, renderMatrix, toCodeUnits } from './matrix.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  NON_DEFECT_KINDS,
+  blindSpots,
+  buildMatrix,
+  claimedPopulation,
+  renderMatrix,
+  renderSummary,
+  toCodeUnits,
+} from './matrix.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TREE_ROOT = join(HERE, '..');
@@ -74,15 +91,23 @@ if (!existsSync(DIST)) {
   process.exit(1);
 }
 const core = await import(`file:///${DIST.replace(/\\/g, '/')}`);
-const {
-  defaultAdapters,
-  detectServingRoots,
-  discover,
-  loadAliases,
-  resolveReferences,
-  scanSources,
-  shapeById,
-} = core;
+const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, shapeById } = core;
+
+/**
+ * 🔴 R179's run 2 exercises the PRODUCTION decision, imported, never copied (6a-septies: a
+ * guard must run the code path it guards). It lives in `bench/` until Phase 3 moves it into
+ * the engine, so this reads bench's build — and refuses a build older than its source,
+ * because a stale copy of the decision is a copy, whatever the import line says.
+ */
+const DECISION = join(HERE, '..', '..', 'bench', 'dist', 'serving-root-decision.js');
+const DECISION_SOURCE = join(HERE, '..', '..', 'bench', 'src', 'serving-root-decision.ts');
+if (!existsSync(DECISION) || statSync(DECISION).mtimeMs < statSync(DECISION_SOURCE).mtimeMs) {
+  process.stderr.write(
+    `🔴 ${DECISION} is missing or older than its source. Run \`pnpm --filter upfly-bench run build\` first.\n`,
+  );
+  process.exit(1);
+}
+const { decideServingRoots } = await import(pathToFileURL(DECISION).href);
 
 const readFileText = (path) => readFile(path, 'utf8');
 const key = JSON.parse(readFileSync(keyPath, 'utf8'));
@@ -102,25 +127,6 @@ const aliases = await loadAliases({
   readFile: readFileText,
   exists: (path) => existsSync(path),
 });
-// 🔴 THE KEY'S OWN `servingRoots`, DECLARED — NOT `detectServingRoots`, AND THIS WAS A
-// REAL BUG IN THE FIRST RUN OF THIS HARNESS. Auto-detection matches directories NAMED
-// `public` or `static`, and the key declares four roots of which `sites/root-served` is
-// R63's shape: a site whose OWN directory is the serving root. No name-based detector can
-// find it, so four references came out `broken` and the matrix reported them as engine
-// defects. **The engine was misconfigured by the instrument measuring it** — which is
-// R49's cost, arriving inside the thing built to measure correctness, and the reason the
-// key states its configuration in the first place.
-//
-// ⚠️ `declared: true` deliberately: the key IS the project stating this. Whether the
-// engine can INFER these roots is R71's question and a different instrument's job; a
-// matrix that conflated the two would blame detection for a reader's gap and vice versa.
-// ⚠️ And `notServingRoots` is honoured by omission: `docs-examples/public` is named
-// `public` and serves nothing, so auto-detection would claim it and the key says it must
-// not be claimed.
-const declaredRoots = {
-  dirs: key.servingRoots.map((entry) => entry.path),
-  declared: true,
-};
 const resolveUnder = (servingRoots) =>
   resolveReferences(scanned.references, {
     root: discovery.root,
@@ -130,26 +136,38 @@ const resolveUnder = (servingRoots) =>
     aliases,
     exists: (path) => existsSync(path),
   });
-const references = resolveUnder(declaredRoots);
 
-/**
- * 🔴 R96, EXERCISED (R167 group E): the same scan resolved a second time, under what
- * `detectServingRoots` claims on its own — every directory NAMED `public` or `static`, and
- * nothing declared. Only entries whose `knownGap` names `serving-root-detection` are judged
- * on it (`observedUnder` in `matrix.mjs`); every other entry keeps the declared run, which
- * is still the right instrument for RESOLUTION.
- *
- * ⚠️ **Detection alone, not the product's default of detection ∪ inference — and that is
- * sufficient, not a shortcut.** `decideServingRoots` (bench) documents that inference only
- * ever ADDS roots and never removes a detected one, so any directory detection claims, the
- * default path claims too. For a gap whose text is "detection claims a directory it should
- * not", the detection run is the exact instrument. (The inference half lives in `bench/`,
- * and copying its denominator here is the drift its own header warns against.)
- */
-const detectedRoots = detectServingRoots(discovery.directories);
-const referencesUnderDetection = resolveUnder(detectedRoots);
+// RUN 1 — THE KEY'S OWN `servingRoots`, DECLARED. 🔴 And this was a real bug in the first
+// run of this harness: auto-detection matches directories NAMED `public` or `static`, and
+// the key declares four roots of which `sites/root-served` is R63's shape — a site whose OWN
+// directory is the serving root. No name-based detector can find it, so four references
+// came out `broken` and the matrix reported them as engine defects. **The engine was
+// misconfigured by the instrument measuring it** — R49's cost, arriving inside the thing
+// built to measure correctness, and the reason the key states its configuration at all.
+// ⚠️ `declared: true` deliberately: the key IS the project stating this. And
+// `notServingRoots` is honoured by omission: `docs-examples/public` is named `public` and
+// serves nothing, so detection would claim it and the key says it must not be claimed.
+const declaredRoots = {
+  dirs: key.servingRoots.map((entry) => entry.path),
+  declared: true,
+};
+const referencesDeclared = resolveUnder(declaredRoots);
 
-// ---- one observation per keyed file --------------------------------------------
+// RUN 2 — NO CONFIGURATION: exactly what `engine-run.ts` hands the resolver when nobody has
+// declared anything, which is what a stranger's first run gets. Detection ∪ inference, NOT
+// detection alone: inference is what reaches R63's shape, and a run that left it out would
+// report a miss the product does not have.
+const decision = decideServingRoots({
+  root: discovery.root,
+  directories: discovery.directories,
+  assets: discovery.assets,
+  sourceFiles: discovery.sourceFiles,
+  unscannedFiles: discovery.unscannedFiles,
+  references: scanned.references,
+});
+const referencesUnconfigured = resolveUnder(decision.servingRoots);
+
+// ---- one observation per keyed file, per run -----------------------------------
 //
 // 🔴 The THREW set comes from the pipeline, not from a try/catch of our own. `unscanned`
 // carries `parse-failed` (an adapter threw) and `unreadable` (the file could not be
@@ -187,11 +205,11 @@ function groupByFile(resolved) {
   }
   return byFile;
 }
-const byFile = groupByFile(references);
-const byFileUnderDetection = groupByFile(referencesUnderDetection);
+const byFileDeclared = groupByFile(referencesDeclared);
+const byFileUnconfigured = groupByFile(referencesUnconfigured);
 
-const observed = new Map();
-const observedUnderDetection = new Map();
+const observedDeclared = new Map();
+const observedUnconfigured = new Map();
 for (const group of key.files) {
   // R84. The key counts BYTES and the engine counts UTF-16 CODE UNITS. They agree on
   // ASCII and diverge silently otherwise — one em dash shifts every later offset by 2 —
@@ -200,50 +218,104 @@ for (const group of key.files) {
   for (const entry of group.entries) entry.offset = toCodeUnits(bytes, entry.offset);
 
   const threw = threwBy.get(group.path) ?? null;
-  observed.set(group.path, { path: group.path, threw, references: byFile.get(group.path) ?? [] });
-  observedUnderDetection.set(group.path, {
+  observedDeclared.set(group.path, {
     path: group.path,
     threw,
-    references: byFileUnderDetection.get(group.path) ?? [],
+    references: byFileDeclared.get(group.path) ?? [],
+  });
+  observedUnconfigured.set(group.path, {
+    path: group.path,
+    threw,
+    references: byFileUnconfigured.get(group.path) ?? [],
   });
 }
 
 /**
- * 🔴 R96 — WHICH MECHANISMS THIS RUN ACTUALLY EXERCISES, AND THE RUN THAT EXERCISES THEM.
+ * 🔴 R96 — WHICH MECHANISMS EACH RUN USES, STATED PER RUN.
  *
- * `declaredRoots` above bypasses `detectServingRoots` deliberately and correctly: measuring
- * RESOLUTION against auto-detection would blame the reader for a detection gap. But the
- * same switch disqualified the run from retiring any gap whose text names detection — and
- * before R96 two entries in `docs-examples/public/example.html` came out `broken`, matched
- * their `expect`, and the matrix printed **"the gap is closed"** about a defect that fires
- * on every unconfigured run.
- *
- * ✅ **R167 group E: the mechanism is exercised now — by the SECOND run above, not by
- * relabelling the first.** Listing `serving-root-detection` here while judging those entries
- * on the declared run would be R96 exactly; `observedUnder` is what makes the claim true.
- * ⚠️ A mechanism belongs in this set only with a run of its own beside it.
+ * Run 1 states its roots, so `serving-root-detection` is not part of its setup at all. A
+ * gap naming detection is judged there on its OUTCOME (R179's `outOfConfiguration`) and is
+ * never retired by it: before R96, two `docs-examples/public/example.html` entries came
+ * out `broken` on this run, matched their `expect`, and the matrix printed "the gap is
+ * closed" about a defect that fires on every unconfigured run.
+ * Run 2 IS detection (∪ inference), so it exercises the mechanism on its own observations:
+ * it is the run that confirms such a gap, or retires it.
  */
-const EXERCISED_MECHANISMS = new Set(['serving-root-detection']);
+const DETECTION = 'serving-root-detection';
+const emissionOf = (id) => shapeById(id)?.emission;
 
-const result = buildMatrix(key, observed, {
+const run1 = buildMatrix(key, observedDeclared, {
   declarationOf: (id) => shapeById(id),
-  exercises: EXERCISED_MECHANISMS,
-  observedUnder: { 'serving-root-detection': observedUnderDetection },
+  outOfConfiguration: new Set([DETECTION]),
 });
-process.stdout.write(`${renderMatrix(result, { emissionOf: (id) => shapeById(id)?.emission })}\n`);
+const run2 = buildMatrix(key, observedUnconfigured, {
+  declarationOf: (id) => shapeById(id),
+  exercises: new Set([DETECTION]),
+});
 
-// Exit non-zero on anything the tree says is a defect, so this can gate as well as
-// report. A knownGap is not a defect; a STALE one is, because the debt was settled and
-// the record still claims it.
+const RULE = '='.repeat(90);
+process.stdout.write(
+  `RUN 1 — THE SUITE'S STATED CONFIGURATION: the key's servingRoots, declared\n   roots: ${declaredRoots.dirs.join(', ')}\n\n`,
+);
+process.stdout.write(`${renderMatrix(run1, { emissionOf })}\n`);
+
+process.stdout.write(
+  [
+    '',
+    '',
+    RULE,
+    'RUN 2 — NO CONFIGURATION: decideServingRoots (detection ∪ inference), the path a stranger runs',
+    `   roots: ${decision.servingRoots.dirs.join(', ') || '(none)'}`,
+    `   detected by name: ${decision.detected.join(', ') || '(none)'}`,
+    `   added by inference: ${decision.added.join(', ') || '(none)'}`,
+    "   The per-shape table is run 1's; what differs is below, every miss with its entry.",
+    '',
+  ].join('\n'),
+);
+process.stdout.write(`${renderSummary(run2, { emissionOf })}\n`);
+
+const one = claimedPopulation(run1, { emissionOf });
+const two = claimedPopulation(run2, { emissionOf });
+process.stdout.write(
+  [
+    '',
+    RULE,
+    'TWO NUMBERS, EACH OVER EVERY CLAIMED ENTRY, NEVER ADDED TOGETHER (R179):',
+    `  run 1 — the suite's stated configuration:  claimed ${one.met} of ${one.expected}`,
+    ...missLines(one.misses),
+    `  run 2 — no configuration:                  claimed ${two.met} of ${two.expected}`,
+    ...missLines(two.misses),
+    '',
+  ].join('\n'),
+);
+
+/**
+ * Every claimed entry a run did not meet, by name, with why. 🔴 Not the findings list: an
+ * entry in `knownGap` is unmet and deliberately produces no finding, so a result that
+ * pointed at the findings would drop exactly the misses that have a ruling behind them.
+ */
+function missLines(misses) {
+  return misses.map((miss) => {
+    const why = miss.bucket === 'knownGap' ? `knownGap: ${miss.keyGap}` : miss.detail;
+    return `      miss  ${miss.file}:${miss.line} ${JSON.stringify(miss.raw)} [${miss.bucket}] — ${why}`;
+  });
+}
+
+// Exit non-zero on anything RUN 1 says is a defect, so this can gate as well as report. A
+// knownGap is not a defect; a STALE one is, because the debt was settled and the record
+// still claims it. ⚠️ Run 2's misses do not fail this command: each is a named line in the
+// published result (R179), and a gate that is red by design is a gate people route around.
+// A stale gap on run 2 DOES, because it is the one run that can retire a detection gap.
 const defects =
-  result.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length +
-  result.unkeyed.length;
+  run1.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length +
+  run1.unkeyed.length +
+  run2.findings.filter((item) => item.kind === 'stale-known-gap').length;
 if (defects > 0) {
   process.stdout.write(`\n🔴 ${defects} finding(s) above. Read them; they are not a score.\n`);
   process.exit(1);
 }
 process.stdout.write(
-  '\n✅ Every keyed entry matched its expected outcome, or carries a knownGap.\n',
+  '\n✅ Run 1: every keyed entry matched its expected outcome, or carries a knownGap.\n',
 );
 for (const spot of blindSpots()) void spot; // rendered above; kept reachable for the linter
 

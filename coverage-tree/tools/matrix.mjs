@@ -155,11 +155,24 @@ export const GAP_MECHANISMS = Object.freeze([
  *   claiming `serving-root-detection` there and judging on the main run would read the
  *   declared run's `broken` as "the gap is closed": R96 exactly. It supplies the detection
  *   run here instead.
+ * @param outOfConfiguration R179: mechanisms this run's CONFIGURATION does not use at all —
+ *   not "switched off by the harness", but absent from the setup being measured, as
+ *   detection is when the key states its serving roots. An entry whose gap names one is
+ *   judged on its outcome under this configuration, `met` or `missed`, because the gap
+ *   describes a setup this run is not. 🔴 **It never RETIRES the gap** — R96's hazard is
+ *   agreement read as closure, and this reads agreement as agreement under a stated
+ *   setup and nothing more; the run that uses the mechanism judges the gap. Listed in
+ *   `result.outOfConfiguration` so the page can say so.
  */
 export function buildMatrix(
   key,
   observed,
-  { declarationOf = () => undefined, exercises = new Set(), observedUnder = {} } = {},
+  {
+    declarationOf = () => undefined,
+    exercises = new Set(),
+    observedUnder = {},
+    outOfConfiguration = new Set(),
+  } = {},
 ) {
   const rows = new Map();
   const findings = [];
@@ -173,17 +186,40 @@ export function buildMatrix(
     return row;
   };
 
-  assertMechanismsAreDeclared(key, exercises, observedUnder);
+  assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration);
+  assertMechanismsAreDeclared(key, exercises, outOfConfiguration);
 
+  const judgedOnOutcome = [];
+  const verdicts = [];
   for (const group of key.files) {
     for (const entry of group.entries) {
       const row = rowOf(entry.shape);
       row.expected += 1;
       const run = runFor(entry, exercises, observedUnder) ?? observed;
-      const verdict = classify(entry, run.get(group.path), exercises);
+      const verdict = classify(entry, run.get(group.path), exercises, outOfConfiguration);
       row[verdict.bucket] += 1;
+      // Every entry's bucket, so a run can NAME what it did not meet (R179). The findings
+      // list cannot: a `knownGap` entry is unmet and deliberately produces no finding.
+      verdicts.push({
+        file: group.path,
+        line: entry.line,
+        raw: entry.raw,
+        shape: entry.shape,
+        bucket: verdict.bucket,
+        detail: verdict.detail,
+        keyGap: entry.knownGap ?? '',
+      });
       if (verdict.kind !== null) {
         findings.push(finding(group, entry, verdict.kind, verdict.detail, verdict.note));
+      }
+      if (entry.gapMechanism !== undefined && outOfConfiguration.has(entry.gapMechanism)) {
+        judgedOnOutcome.push({
+          file: group.path,
+          line: entry.line,
+          raw: entry.raw,
+          gapMechanism: entry.gapMechanism,
+          bucket: verdict.bucket,
+        });
       }
     }
   }
@@ -194,6 +230,8 @@ export function buildMatrix(
     unkeyed: unkeyedEmissions(key, observed),
     shapeDisagreements: shapeDisagreements(key, observed, declarationOf),
     arithmetic: reconcile([...rows.values()], key, findings),
+    outOfConfiguration: judgedOnOutcome,
+    verdicts,
   };
 }
 
@@ -215,7 +253,12 @@ function runFor(entry, exercises, observedUnder) {
   return observedUnder[entry.gapMechanism];
 }
 
-function assertMechanismsAreDeclared(key, exercises, observedUnder = {}) {
+/**
+ * What a caller says about its runs must hang together before any entry is read (R96, R179).
+ * Split from the vocabulary check below when the complexity rule fired on the two together
+ * — answered, not silenced (R81's precedent).
+ */
+function assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration) {
   // A run supplied for a mechanism the caller does not claim to exercise would sit there
   // looking like evidence and judge nothing — the same slip as a misspelled claim.
   for (const mechanism of Object.keys(observedUnder)) {
@@ -225,6 +268,18 @@ function assertMechanismsAreDeclared(key, exercises, observedUnder = {}) {
       );
     }
   }
+  // R179. A configuration either uses a mechanism or it does not. Claiming both would let
+  // one call judge a gap on its outcome AND retire it, which is R96 by another door.
+  for (const mechanism of outOfConfiguration) {
+    if (exercises.has(mechanism)) {
+      throw new Error(
+        `"${mechanism}" is claimed as exercised AND as outside this configuration — it cannot be both`,
+      );
+    }
+  }
+}
+
+function assertMechanismsAreDeclared(key, exercises, outOfConfiguration = new Set()) {
   const known = new Set(GAP_MECHANISMS);
   const unknown = new Set();
   for (const group of key.files) {
@@ -243,6 +298,9 @@ function assertMechanismsAreDeclared(key, exercises, observedUnder = {}) {
   }
   for (const mechanism of exercises) {
     if (!known.has(mechanism)) unknown.add(`caller claims to exercise "${mechanism}"`);
+  }
+  for (const mechanism of outOfConfiguration) {
+    if (!known.has(mechanism)) unknown.add(`caller puts "${mechanism}" outside its configuration`);
   }
   if (unknown.size > 0) {
     const vocabulary = GAP_MECHANISMS.join(', ');
@@ -351,7 +409,7 @@ export const NON_DEFECT_KINDS = ['threw-expected-silence', 'gap-not-exercised'];
  * never silence it) — and the four outcomes read as a ladder here, which the inlined
  * version did not.
  */
-function classify(entry, observation, exercises = new Set()) {
+function classify(entry, observation, exercises = new Set(), outOfConfiguration = new Set()) {
   // A file we never observed is not evidence of anything. Reported per entry, so the
   // row's `expected` still counts it rather than the group vanishing.
   if (observation === undefined) {
@@ -394,34 +452,7 @@ function classify(entry, observation, exercises = new Set()) {
   const note = found?.note ?? '';
 
   if (entry.knownGap !== undefined) {
-    // 🔴 R96, AND IT IS CHECKED BEFORE `agrees` RATHER THAN AFTER. A gap naming a mechanism
-    // this run does not exercise cannot be retired by this run, and — this is the whole
-    // point — it is *agreement* that would retire it. The two
-    // `docs-examples/public/example.html` entries expect `broken`, the engine under
-    // declared roots says `broken`, they agreed, and the matrix printed "the gap is
-    // closed" about a defect that fires on every real invocation. Reading the agreement
-    // first and the mechanism second is the version of this that shipped.
-    if (entry.gapMechanism !== undefined && !exercises.has(entry.gapMechanism)) {
-      return {
-        bucket: 'notExercised',
-        kind: 'gap-not-exercised',
-        detail:
-          `this run does not exercise \`${entry.gapMechanism}\`, so the gap can be neither ` +
-          `confirmed nor retired here — the engine said ${actual}, which is not evidence`,
-        note,
-      };
-    }
-    // A knownGap that has been closed must be REMOVED, not left standing. Same hazard as
-    // a growth-list shape that quietly gained coverage: a debt nobody settles the record
-    // of goes on being printed as a debt, and a reader learns to discount the column.
-    return agrees
-      ? {
-          bucket: 'staleGap',
-          kind: 'stale-known-gap',
-          detail: `engine now produces ${actual}; the gap is closed`,
-          note,
-        }
-      : { bucket: 'knownGap', kind: null, detail: '', note };
+    return gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfiguration);
   }
 
   return agrees
@@ -432,6 +463,57 @@ function classify(entry, observation, exercises = new Set()) {
         detail: `expected ${entry.expect}, engine said ${actual}`,
         note,
       };
+}
+
+/**
+ * The verdict on an entry that carries a `knownGap`: judged on its outcome where the run's
+ * configuration does not use the gap's mechanism (R179), `not exercised` where the run
+ * switched it off (R96), and otherwise confirmed or stale. Split from `classify` when the
+ * complexity rule fired — answered, not silenced (R81's precedent).
+ */
+function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfiguration) {
+  // R179: the gap describes a setup this run is not — detection, under a configuration
+  // that states its serving roots — so the entry is judged on what this setup produced.
+  // `met` here says "right under the stated configuration" and nothing about the gap,
+  // which stays on the books for the run that uses the mechanism.
+  if (entry.gapMechanism !== undefined && outOfConfiguration.has(entry.gapMechanism)) {
+    return agrees
+      ? { bucket: 'met', kind: null, detail: '', note }
+      : {
+          bucket: 'missed',
+          kind: 'wrong-outcome',
+          detail: `expected ${entry.expect}, engine said ${actual} — under a configuration that does not use \`${entry.gapMechanism}\`, so the gap does not explain it`,
+          note,
+        };
+  }
+  // 🔴 R96, AND IT IS CHECKED BEFORE `agrees` RATHER THAN AFTER. A gap naming a mechanism
+  // this run does not exercise cannot be retired by this run, and — this is the whole
+  // point — it is *agreement* that would retire it. The two
+  // `docs-examples/public/example.html` entries expect `broken`, the engine under
+  // declared roots says `broken`, they agreed, and the matrix printed "the gap is
+  // closed" about a defect that fires on every real invocation. Reading the agreement
+  // first and the mechanism second is the version of this that shipped.
+  if (entry.gapMechanism !== undefined && !exercises.has(entry.gapMechanism)) {
+    return {
+      bucket: 'notExercised',
+      kind: 'gap-not-exercised',
+      detail:
+        `this run does not exercise \`${entry.gapMechanism}\`, so the gap can be neither ` +
+        `confirmed nor retired here — the engine said ${actual}, which is not evidence`,
+      note,
+    };
+  }
+  // A knownGap that has been closed must be REMOVED, not left standing. Same hazard as
+  // a growth-list shape that quietly gained coverage: a debt nobody settles the record
+  // of goes on being printed as a debt, and a reader learns to discount the column.
+  return agrees
+    ? {
+        bucket: 'staleGap',
+        kind: 'stale-known-gap',
+        detail: `engine now produces ${actual}; the gap is closed`,
+        note,
+      }
+    : { bucket: 'knownGap', kind: null, detail: '', note };
 }
 
 /**
@@ -543,6 +625,7 @@ export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
     ...arithmeticLine(result),
     ...populations(result, emissionOf),
     ...notExercisedNote(result),
+    ...outOfConfigurationNote(result),
     ...rowTable(result, emissionOf, width),
     ...findingList(result),
     ...unkeyedList(result),
@@ -588,14 +671,61 @@ function arithmeticLine(result) {
  * of this table is that there is nothing to quote out of context.
  */
 function populations(result, emissionOf) {
+  const buckets = tally(result, emissionOf);
+  const lines = ['', 'populations — read separately, never added together:'];
+  for (const [direction, bucket] of [...buckets].sort()) {
+    const count = String(bucket.rows).padStart(3);
+    lines.push(`  ${direction.padEnd(11)} ${count} rows  ${reading(direction, bucket)}`);
+  }
+  return lines;
+}
+
+/**
+ * The `claimed` population's `met` of `expected` — the one figure R167 publishes, per run.
+ *
+ * Exported so `measure.mjs` states each run's number from the SAME tally the table prints,
+ * rather than re-deriving which rows are `claimed`: two derivations of one population are
+ * how a headline and its table come to disagree.
+ */
+export function claimedPopulation(result, { emissionOf = () => undefined } = {}) {
+  const bucket = tally(result, emissionOf).get('claimed');
+  const misses = result.verdicts.filter(
+    (verdict) => populationOf(verdict.shape, emissionOf) === 'claimed' && verdict.bucket !== 'met',
+  );
+  return { met: bucket?.met ?? 0, expected: bucket?.expected ?? 0, misses };
+}
+
+/** Which population a shape's row belongs to — one rule, for the table and the headline. */
+function populationOf(shape, emissionOf) {
+  const emission = emissionOf(shape) ?? 'engine';
+  return emission === 'engine' ? 'claimed' : emission;
+}
+
+/**
+ * Everything but the per-shape table: the arithmetic, the populations, the notes, and every
+ * finding with both sides' reasoning. For a SECOND run over the same key (R179), where the
+ * question is which entries it misses and why, and a second full table would bury the
+ * answer under three hundred rows that match the first.
+ */
+export function renderSummary(result, { emissionOf = () => undefined } = {}) {
+  return [
+    ...arithmeticLine(result),
+    ...populations(result, emissionOf),
+    ...notExercisedNote(result),
+    ...outOfConfigurationNote(result),
+    ...findingList(result),
+    ...unkeyedList(result),
+  ].join('\n');
+}
+
+function tally(result, emissionOf) {
   const buckets = new Map();
   for (const row of result.rows) {
-    const emission = emissionOf(row.shape) ?? 'engine';
     // ⚠️ `gap` is its OWN population and is deliberately not folded into `claimed`. A gap
     // is an acknowledged debt with a ruling behind it, so counting its 47 entries against
     // the claimed figure would drag that number down for a reason that is not a defect —
     // and `claimed` has to mean exactly "a miss here is a bug" or it means nothing at all.
-    const direction = emission === 'engine' ? 'claimed' : emission;
+    const direction = populationOf(row.shape, emissionOf);
     const bucket = buckets.get(direction) ?? { rows: 0, expected: 0, met: 0, missed: 0 };
     bucket.rows += 1;
     bucket.expected += row.expected;
@@ -603,13 +733,7 @@ function populations(result, emissionOf) {
     bucket.missed += row.missed;
     buckets.set(direction, bucket);
   }
-
-  const lines = ['', 'populations — read separately, never added together:'];
-  for (const [direction, bucket] of [...buckets].sort()) {
-    const count = String(bucket.rows).padStart(3);
-    lines.push(`  ${direction.padEnd(11)} ${count} rows  ${reading(direction, bucket)}`);
-  }
-  return lines;
+  return buckets;
 }
 
 /**
@@ -631,6 +755,29 @@ function notExercisedNote(result) {
     '   the key on them means nothing — the mechanism the gap names never ran. Before R96 these',
     '   printed as "the gap is closed", which retired a live defect and deleted the only record',
     '   of it. They are listed under findings as `gap-not-exercised`.',
+  ];
+}
+
+/**
+ * R179, stated on the page as R96 is: which entries carrying a gap were judged on their
+ * outcome because this configuration does not use the mechanism the gap names. Without
+ * it, a reader could take their `met` for the gap being closed.
+ */
+function outOfConfigurationNote(result) {
+  const items = result.outOfConfiguration ?? [];
+  if (items.length === 0) return [];
+  const mechanisms = [...new Set(items.map((item) => item.gapMechanism))].sort();
+  const met = items.filter((item) => item.bucket === 'met').length;
+  return [
+    '',
+    `ℹ️  ${items.length} entr${items.length === 1 ? 'y carries' : 'ies carry'} a knownGap in a mechanism ` +
+      `this configuration does not use (${mechanisms.join(', ')}), so ${items.length === 1 ? 'it is' : 'they are'} ` +
+      `judged on what this configuration produced: ${met} met.`,
+    '   Their gaps are neither confirmed nor retired here — the run that uses the mechanism',
+    '   judges them:',
+    ...items.map(
+      (item) => `     ${item.file}:${item.line} ${JSON.stringify(item.raw)}  ${item.bucket}`,
+    ),
   ];
 }
 

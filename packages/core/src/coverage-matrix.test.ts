@@ -32,6 +32,7 @@ import {
   NON_DEFECT_KINDS,
   type ShapeDisagreement,
   buildMatrix,
+  claimedPopulation,
   reconcile,
   renderMatrix,
 } from '../../../coverage-tree/tools/matrix.mjs';
@@ -466,6 +467,93 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
         },
       ),
     ).toThrow(/does not claim to exercise/);
+  });
+});
+
+/**
+ * R179 — two published numbers, each measuring ONE configuration. Under the key's stated
+ * serving roots, detection is not part of the setup at all, so a gap in detection says
+ * nothing about what that setup produced: the entry is judged on its outcome. The run that
+ * uses detection judges the gap. These pin both halves, and the one thing R96 forbids —
+ * agreement retiring a gap — staying forbidden.
+ */
+describe('R179 — a gap in a mechanism the configuration does not use', () => {
+  const gapped = keyWith({
+    expect: 'broken',
+    knownGap: 'detection claims a directory named public that serves nothing',
+    gapMechanism: 'serving-root-detection',
+  });
+  const outside = { outOfConfiguration: new Set(['serving-root-detection']) };
+
+  it('🔴 judges the entry on its outcome — agreement is MET, and never a retired gap', () => {
+    const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), outside);
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({
+      met: 1,
+      staleGap: 0,
+      notExercised: 0,
+      knownGap: 0,
+    });
+    expect(result.findings).toEqual([]);
+    expect(result.outOfConfiguration).toEqual([
+      expect.objectContaining({ gapMechanism: 'serving-root-detection', bucket: 'met' }),
+    ]);
+  });
+
+  it('reads a disagreement there as a plain miss, because the gap does not explain it', () => {
+    // Under the stated configuration the detection gap cannot fire, so a wrong outcome is
+    // a defect of that configuration — never parked as a known debt.
+    const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'resolved' }]), outside);
+
+    expect(rowOf(result, 'html.img.src')).toMatchObject({ missed: 1, knownGap: 0 });
+    expect(firstFinding(result)).toMatchObject({ kind: 'wrong-outcome' });
+    expect(firstFinding(result).detail).toContain('the gap does not explain it');
+  });
+
+  it('says on the page which entries it judged that way, so `met` is not read as closure', () => {
+    const rendered = renderMatrix(
+      buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), outside),
+    );
+
+    expect(rendered).toContain('this configuration does not use (serving-root-detection)');
+    expect(rendered).toContain('neither confirmed nor retired here');
+  });
+
+  it('🔴 THROWS when one mechanism is claimed as exercised AND outside the configuration', () => {
+    // Both at once would judge a gap on its outcome and retire it in the same call.
+    expect(() =>
+      buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), {
+        exercises: new Set(['serving-root-detection']),
+        outOfConfiguration: new Set(['serving-root-detection']),
+      }),
+    ).toThrow(/cannot be both/);
+  });
+
+  it('🔴 names every claimed entry a run did not meet — a knownGap one too, which has no finding', () => {
+    // The run that USES detection, confirming the gap. A result that pointed readers at
+    // the findings would drop exactly this miss: a `knownGap` entry is unmet and silent.
+    const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'resolved' }]), {
+      exercises: new Set(['serving-root-detection']),
+    });
+    const claimed = claimedPopulation(result);
+
+    expect(result.findings).toEqual([]);
+    expect(claimed).toMatchObject({ met: 0, expected: 1 });
+    expect(claimed.misses).toEqual([
+      expect.objectContaining({
+        file: 'a/one.html',
+        bucket: 'knownGap',
+        keyGap: expect.stringContaining('detection claims'),
+      }),
+    ]);
+  });
+
+  it('🔴 THROWS on an out-of-configuration mechanism outside the vocabulary', () => {
+    expect(() =>
+      buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), {
+        outOfConfiguration: new Set(['serving-root-detektion']),
+      }),
+    ).toThrow(/outside its configuration/);
   });
 });
 
