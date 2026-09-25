@@ -34,6 +34,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'n
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import type { PublicPolicy } from 'upfly-core';
 // The one place this file touches the engine, and it is the subject rather than an
 // instrument. The build and the link check stay engine-free on purpose: the value of
 // a framework build as an oracle is that it is somebody else's idea of a reference.
@@ -686,25 +687,36 @@ async function runMutation(fixture: FixtureSpec, mutation: Mutation): Promise<Ro
  * The instruments are the ones the baseline and the negative controls already use, on
  * trees materialised the same way, which is R44's condition. Nothing here is a
  * second, gentler check written for our own transaction to pass.
+ *
+ * Under `replace` the run also deletes originals, and a delete is the one change a build
+ * or a link check can vouch for only if it happened. So the deletes are counted from the
+ * manifest, each is checked gone from disk, and a fixture that deleted none is reported
+ * as not exercised rather than passed: an intact tree where nothing was removed says
+ * nothing about removing.
  */
-async function runOptimized(fixture: FixtureSpec): Promise<string[]> {
+async function runOptimized(fixture: FixtureSpec, policy: PublicPolicy): Promise<Outcomes> {
   const failures: string[] = [];
+  const notExercised: string[] = [];
   const root = await materialise(fixture);
 
   try {
     const result = await optimizeTree(
       root,
       fixture.publicDirs === undefined ? undefined : { dirs: fixture.publicDirs, declared: true },
+      policy,
     );
 
     if (result.refusal !== null) {
       stdout.write(`  optimize    REFUSED  ${result.refusal.code}\n`);
       failures.push(`${fixture.name}/optimize refused: ${result.refusal.reason}`);
-      return failures;
+      return { failures, notExercised };
     }
 
+    const deleted = (result.manifest?.operations ?? []).flatMap((operation) =>
+      operation.kind === 'delete' ? [operation.path] : [],
+    );
     stdout.write(
-      `  optimize    ${result.plan.conversions.length} converted, ${result.plan.rewrites.length} rewritten, ${result.plan.declined.length} declined\n`,
+      `  optimize    ${result.plan.conversions.length} converted, ${result.plan.rewrites.length} rewritten, ${result.plan.declined.length} declined, ${deleted.length} originals deleted\n`,
     );
 
     // A run that changed nothing cannot demonstrate that changing things is safe, so
@@ -712,6 +724,22 @@ async function runOptimized(fixture: FixtureSpec): Promise<string[]> {
     // the gate-that-never-ran problem R42 exists about.
     if (result.plan.conversions.length === 0) {
       failures.push(`${fixture.name}: optimize converted nothing, so this proves nothing`);
+    }
+
+    // The manifest is a statement of intent written before the work. Only the disk says a
+    // delete happened, so it is asked.
+    for (const path of deleted) {
+      if (existsSync(join(root, path))) {
+        failures.push(
+          `${fixture.name}: the manifest records ${path} as deleted and it is still on disk`,
+        );
+      }
+    }
+    if (policy === 'replace' && deleted.length === 0) {
+      stdout.write(
+        '  NOT EXERCISED: no original was deleted, so this tree says nothing about deleting\n',
+      );
+      notExercised.push(fixture.name);
     }
 
     for (const [instrument, outcome] of await check(root, fixture)) {
@@ -723,7 +751,46 @@ async function runOptimized(fixture: FixtureSpec): Promise<string[]> {
     await rm(root, { recursive: true, force: true });
   }
 
-  return failures;
+  return { failures, notExercised };
+}
+
+/** What one optimized fixture came to: what broke, and whether `replace` deleted anything. */
+interface Outcomes {
+  readonly failures: readonly string[];
+  /** Fixtures where `replace` deleted no original, so its deletes were never tested. */
+  readonly notExercised: readonly string[];
+}
+
+/**
+ * The exit criterion over the selected fixtures, under one policy, and the process exit.
+ *
+ * Three verdicts, not two. A tree that broke fails. A `replace` run where some fixture
+ * deleted nothing is not a failure of safety and not a pass either: every tree may be
+ * intact precisely because nothing was removed from it.
+ */
+async function runExitCriterion(
+  selected: readonly FixtureSpec[],
+  policy: PublicPolicy,
+): Promise<never> {
+  stdout.write(`\npolicy: ${policy}\n`);
+  const failures: string[] = [];
+  const notExercised: string[] = [];
+  for (const fixture of selected) {
+    stdout.write(`\n${fixture.name}\n`);
+    failures.push(...(await runBaseline(fixture)));
+    const outcomes = await runOptimized(fixture, policy);
+    failures.push(...outcomes.failures);
+    notExercised.push(...outcomes.notExercised);
+  }
+
+  if (failures.length > 0) stdout.write('\nEXIT CRITERION FAILED\n');
+  else if (notExercised.length > 0) {
+    stdout.write(
+      `\nEXIT CRITERION NOT DEMONSTRATED: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
+    );
+  } else stdout.write('\nEXIT CRITERION MET\n');
+  for (const failure of failures) stdout.write(`  ${failure}\n`);
+  exit(failures.length === 0 && notExercised.length === 0 ? 0 : 1);
 }
 
 async function main(): Promise<void> {
@@ -741,17 +808,9 @@ async function main(): Promise<void> {
   // The exit criterion on its own. The calibration below it, the baseline plus every
   // negative control, is what makes the criterion mean anything, but it is slow and
   // does not change between runs, so iterating on the criterion need not repeat it.
+  // `--replace` runs it under the policy that deletes originals.
   if (argv.includes('--optimize')) {
-    const failures: string[] = [];
-    for (const fixture of selected) {
-      stdout.write(`\n${fixture.name}\n`);
-      failures.push(...(await runBaseline(fixture)));
-      failures.push(...(await runOptimized(fixture)));
-    }
-
-    stdout.write(failures.length === 0 ? '\nEXIT CRITERION MET\n' : '\nEXIT CRITERION FAILED\n');
-    for (const failure of failures) stdout.write(`  ${failure}\n`);
-    exit(failures.length === 0 ? 0 : 1);
+    await runExitCriterion(selected, argv.includes('--replace') ? 'replace' : 'keep-original');
   }
 
   for (const fixture of selected) {
