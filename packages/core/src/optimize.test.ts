@@ -530,3 +530,168 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
     expect((await optimize(input)).plan.conversions).toEqual([]);
   });
 });
+
+describe('🔴 R180 — replace deletes an original only when every reference to it moves, AT THE SEAM', () => {
+  /**
+   * The operations `optimize` emits, not only the plan: `stage` turns `replacesOriginal`
+   * into a `delete`, and the manifest records every operation a run committed. So each
+   * test runs an APPLIED `replace` over one in-memory project holding every member, and
+   * reads the manifest and the disk afterwards.
+   *
+   * The literal `/logo.png` is the positive control. A fix that simply switched
+   * `replace` off would pass every other test in this block, and fails that one.
+   */
+  const INDEX = '<img src="/logo.png"><img src="/public/h%65ro.png">\n';
+  const THEME = 'const src = `/theme-${mode}.png`;\n';
+  const CHAIN = "const icon = '/icon-' + size + '.png';\n";
+  const PUBLIC = [
+    'public/hero.png',
+    'public/icon-16.png',
+    'public/icon-32.png',
+    'public/logo.png',
+    'public/orphan.png',
+    'public/theme-dark.png',
+    'public/theme-light.png',
+  ];
+
+  /** A pattern reference found in `text`, the way the resolver would hand one over. */
+  function patternIn(
+    file: string,
+    text: string,
+    rawPath: string,
+    targets: readonly string[],
+    over: Partial<RawReference> = {},
+  ): Reference {
+    const start = text.indexOf(rawPath);
+    return {
+      ...RAW,
+      file: `${ROOT}/${file}`,
+      rawPath,
+      start,
+      end: start + rawPath.length,
+      ceiling: 'medium',
+      resolution: 'resolved-pattern',
+      confidence: 'medium',
+      resolvedPaths: targets.map((target) => `${ROOT}/${target}`) as [string, ...string[]],
+      resolvedVia: 'serving-root',
+      ...over,
+    } as Reference;
+  }
+
+  async function replaceEverything() {
+    const tree: Record<string, string> = {
+      'index.html': INDEX,
+      'src/theme.js': THEME,
+      'src/icon.js': CHAIN,
+    };
+    for (const path of PUBLIC) tree[path] = `PNG ${path}`;
+    const project = harness(tree);
+
+    const references = [
+      // The positive control: an ordinary literal, rewritten, so its original may go.
+      resolved('index.html', '/logo.png', 'public/logo.png', INDEX),
+      // Member (b): a root-relative path that missed the DECLARED root, so its rewrite
+      // is refused — spelled so that R77's text search, which looks for the path as
+      // written, finds none of its spellings.
+      {
+        ...resolved('index.html', '/public/h%65ro.png', 'public/hero.png', INDEX),
+        resolvedVia: 'project-root',
+        spelling: 'percent-encoded',
+      } as Reference,
+      // Member (a), both spellings (R175): every target of each converts.
+      patternIn('src/theme.js', THEME, '/theme-${mode}.png', [
+        'public/theme-light.png',
+        'public/theme-dark.png',
+      ]),
+      patternIn(
+        'src/icon.js',
+        CHAIN,
+        "/icon-' + size + '.png",
+        ['public/icon-16.png', 'public/icon-32.png'],
+        {
+          kind: 'string',
+          shape: 'js.concat.pattern',
+          asserted: false,
+          assembledPath: '/icon-${}.png',
+        },
+      ),
+      // Member (c) is `public/orphan.png`: an asset, and no reference at all.
+    ];
+
+    const result = await optimize(
+      inputFor({
+        ...project,
+        graph: buildGraph({
+          root: ROOT,
+          assets: PUBLIC.map((path) => asset(path)),
+          references,
+          unscannedFiles: [],
+        }),
+        probes: PUBLIC.map((path) => probeOf(path)),
+        files: ['index.html', 'src/icon.js', 'src/theme.js'],
+        publicPolicy: 'replace',
+        publicDir: 'public',
+        servingRoots: { dirs: ['public'], declared: true },
+        apply: true,
+      }),
+    );
+
+    const deletes = (result.manifest?.operations ?? [])
+      .filter((operation) => operation.kind === 'delete')
+      .map((operation) => operation.path);
+    return { tree: project.tree, result, deletes };
+  }
+
+  it('still deletes the original of an ordinarily rewritten literal — the positive control', async () => {
+    const { tree, result, deletes } = await replaceEverything();
+
+    expect(result.manifest?.state).toBe('committed');
+    expect(deletes).toContain('public/logo.png');
+    expect(tree.has('public/logo.png')).toBe(false);
+    expect(tree.get('index.html')).toContain('<img src="/logo.webp">');
+  });
+
+  it('emits no delete for any target of a template whose targets all convert', async () => {
+    const { tree, deletes } = await replaceEverything();
+
+    expect(deletes).not.toContain('public/theme-light.png');
+    expect(deletes).not.toContain('public/theme-dark.png');
+    expect(tree.get('public/theme-light.png')).toBe('PNG public/theme-light.png');
+    expect(tree.get('public/theme-dark.png')).toBe('PNG public/theme-dark.png');
+  });
+
+  it('emits no delete for any target of a + chain whose targets all convert', async () => {
+    const { tree, deletes } = await replaceEverything();
+
+    expect(deletes).not.toContain('public/icon-16.png');
+    expect(deletes).not.toContain('public/icon-32.png');
+    expect(tree.has('public/icon-16.png') && tree.has('public/icon-32.png')).toBe(true);
+  });
+
+  it('emits no delete for a public asset nothing links to', async () => {
+    const { tree, deletes } = await replaceEverything();
+
+    expect(deletes).not.toContain('public/orphan.png');
+    expect(tree.get('public/orphan.png')).toBe('PNG public/orphan.png');
+  });
+
+  it('emits no delete for a refused literal, without leaning on R77 to find its text', async () => {
+    const { tree, deletes } = await replaceEverything();
+
+    expect(deletes).not.toContain('public/hero.png');
+    expect(tree.get('public/hero.png')).toBe('PNG public/hero.png');
+  });
+
+  it('deletes that one original and nothing else, and says why for every one it kept', async () => {
+    // Stated as the whole run, so a member added to the project without a test of its
+    // own still cannot lose its original quietly. Every kept original is in the
+    // manifest's `declined` too — the record that outlives the run (R66).
+    const { result, deletes } = await replaceEverything();
+
+    expect(deletes).toEqual(['public/logo.png']);
+    const kept = result.plan.keptOriginals.map((entry) => entry.asset);
+    expect(kept).toEqual(PUBLIC.filter((path) => path !== 'public/logo.png'));
+    const recorded = new Set(result.manifest?.declined.map((entry) => entry.path));
+    for (const asset of kept) expect(recorded.has(asset)).toBe(true);
+  });
+});

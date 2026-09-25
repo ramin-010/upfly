@@ -826,6 +826,13 @@ and nothing in the diff says an invariant died.
 only once nothing points at them any more. A move is committed as a copy in step 2 and a
 removal in step 4 for exactly this reason: between the two, both paths exist.
 
+**Which originals `replace` removes is the planner's decision, and it is one property (R180):** an
+original is deleted only when at least one reference links to it AND the plan rewrites every
+reference that does. So a pattern — which is never rewritten — keeps every original it matches, a
+reference whose rewrite is refused keeps its original, and an asset nothing links to keeps its own
+(the vacuous case); each is reported in `keptOriginals` with its reason. R77's text search then
+guards the references the graph never found, for the literal case only.
+
 **Recovery is a pure function of the manifest and the current disk.** Every operation records
 the content hash on both sides, so hashing a file says whether that operation ran. Nothing
 depends on how far a counter got before the process died, and commit therefore keeps no journal

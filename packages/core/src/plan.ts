@@ -25,7 +25,15 @@ import type { Edit, Reference } from './types.js';
 export type PublicPolicy =
   /** Write the converted file alongside and leave the original in place. */
   | 'keep-original'
-  /** Remove the original once every reference points at the replacement. */
+  /**
+   * Remove the original when at least one reference links to it AND this run rewrites
+   * every reference that does (R180).
+   *
+   * Both halves are load-bearing. An asset nothing links to satisfies "every reference
+   * points at the replacement" only vacuously, and a pattern is never rewritten however
+   * many of its targets convert, so each of those keeps its original — reported in
+   * `keptOriginals`, never silently.
+   */
   | 'replace';
 
 /**
@@ -117,7 +125,10 @@ export interface PlannedConversion {
    */
   readonly quality: EncodeSetting;
   readonly savedBytes: number;
-  /** True when the original is removed once the references move. */
+  /**
+   * True when the original is removed: under `replace`, a served asset at least one
+   * reference links to, every one of which this plan rewrites (R180).
+   */
   readonly replacesOriginal: boolean;
 }
 
@@ -148,7 +159,12 @@ export interface PlanRefusal {
 }
 
 /**
- * An asset that converted while its original was deliberately left in place (R66).
+ * An asset that converted while its original was deliberately left in place (R66, R180).
+ *
+ * Under `replace` there are two reasons, and the `reason` says which. The asset sits
+ * outside a served directory, where the build rather than a browser resolves it (R66); or
+ * a reference Upfly knows about still needs the original — a pattern, which no run can
+ * rewrite, a reference this run declined to rewrite, or no reference at all (R180).
  *
  * ⚠️ **Its own list, and not `declined`, because `declined` would make a heading
  * false.** The report renders that list under *"Examined and not converted"*, and
@@ -170,14 +186,15 @@ export interface OptimizationPlan {
   /** Everything the planner decided against, each with the reason it decided. */
   readonly declined: readonly Declined[];
   /**
-   * Conversions under `replace` whose original was kept anyway, and why (R66).
+   * Conversions under `replace` whose original was kept anyway, and why (R66, R180).
    *
-   * 🔴 **The behaviour is correct and the silence was not.** Measured on
-   * `scratch-www`: 374 conversions produced **373** deletes, and the one asset whose
-   * original survived said so nowhere — a user who asked for `replace` got 373
-   * originals removed and 1 kept with nothing accounting for the difference. That is
-   * the fifth silent omission of this phase, and the first where the *behaviour* under
-   * it was right all along.
+   * 🔴 **R66: the behaviour was correct and the silence was not.** R66 measured
+   * `scratch-www` (2026-09-13): 374 conversions produced **373** deletes, and the one
+   * asset whose original survived said so nowhere — a user who asked for `replace` got
+   * 373 originals removed and 1 kept with nothing accounting for the difference. That
+   * was the fifth silent omission of this phase, and the first where the *behaviour*
+   * under it was right all along. ⚠️ A dated figure from before R180, which keeps more
+   * originals than R66's rule did; R181 holds the re-measurement.
    */
   readonly keptOriginals: readonly KeptOriginal[];
   /**
@@ -246,18 +263,17 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     }
   }
 
-  // Before the pattern veto, because that veto asks whether every asset a pattern
-  // matches converts. An asset withdrawn after the question is answered leaves the
-  // reference rewritten for a conversion that never happened, which breaks it for
-  // every asset the pattern matches rather than just the withdrawn one.
+  // Before everything that asks which assets convert. A literal repointed at a
+  // conversion that is withdrawn afterwards names a file that is never written, and a
+  // pattern reported as "N of them do not convert" would be counting the wrong N.
   for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
 
-  const vetoed = vetoPatterns(input, converting, relativeOf, declined);
-  for (const asset of vetoed) converting.delete(asset);
+  declinePartialPatterns(input, converting, relativeOf, declined);
 
   const edits = new Map<string, Edit[]>();
+  const rewritten = new Set<Reference>();
   for (const reference of input.graph.references) {
-    collectRewrite(reference, {
+    const moved = collectRewrite(reference, {
       input,
       root: input.graph.root,
       converting,
@@ -265,10 +281,18 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
       edits,
       declined,
     });
+    if (moved) rewritten.add(reference);
   }
 
+  // 🔴 R180, and LAST on purpose: whether an original may go depends on which references
+  // this plan actually rewrites, and that is only known once every one has been decided.
+  const stillNeeded = originalsStillNeeded(input, converting, rewritten);
+  const conversions = [...converting.values()].map((conversion) =>
+    stillNeeded.has(conversion.asset) ? { ...conversion, replacesOriginal: false } : conversion,
+  );
+
   return {
-    conversions: [...converting.values()].sort((a, b) => a.asset.localeCompare(b.asset)),
+    conversions: conversions.sort((a, b) => a.asset.localeCompare(b.asset)),
     rewrites: [...edits.entries()]
       .map(([file, list]) => ({ file, edits: [...list].sort((a, b) => a.start - b.start) }))
       .sort((a, b) => a.file.localeCompare(b.file)),
@@ -276,10 +300,10 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
       (a, b) => a.path.localeCompare(b.path) || a.reason.localeCompare(b.reason),
     ),
     // Derived from the surviving conversions rather than collected as they were
-    // decided, so it cannot drift: an asset withdrawn later by `vetoPatterns` is no
+    // decided, so it cannot drift: an asset withdrawn later by `vetoCollisions` is no
     // longer a conversion and therefore no longer claims a kept original. Collecting
     // it earlier would have reported a kept original for a file that never converted.
-    keptOriginals: keptOriginals([...converting.values()], input),
+    keptOriginals: keptOriginals(conversions, stillNeeded, input),
     refusal: null,
   };
 }
@@ -369,9 +393,12 @@ function convertDecision(
   // An asset nothing links to gains nothing from being converted: there is no
   // reference to repoint, so the only change is a new file on disk. Inside a public
   // directory that is still worth doing, because a public asset may be loaded by
-  // something outside the repository that we cannot see and the original stays where
-  // it is. Outside one it buys bytes and nothing else, and bytes do not justify
-  // touching a file whose liveness we could not establish.
+  // something outside the repository that we cannot see — and the original stays where
+  // it is under EITHER policy. `keep-original` never removes it; `replace` removes an
+  // original only once every reference to it has moved, and an asset nothing links to
+  // meets that only vacuously, so R180 keeps it and says why. Outside a public directory
+  // it buys bytes and nothing else, and bytes do not justify touching a file whose
+  // liveness we could not establish.
   if (linkCount === 0 && !inPublic) {
     const why = input.hedged.has(relative)
       ? 'nothing links to it and something we could not read mentions it, so converting would change a file whose references we cannot see'
@@ -404,70 +431,6 @@ function convertDecision(
       replacesOriginal: inPublic && input.publicPolicy === 'replace',
     },
   };
-}
-
-/**
- * Drop the conversions that would write over each other, or over a file already there.
- *
- * Swapping an extension is not injective. `distance.png` and `distance.gif` both
- * become `distance.webp`, and a plan holding two creates at one path produces a result
- * that depends on which of them ran first. Separately, a target may already exist:
- * converting `logo.png` where `logo.webp` is already in the repository destroys a file
- * somebody made.
- *
- * Both cases decline every asset involved. Which of two files a user deliberately kept
- * under separate names should win is not a question this engine is in a position to
- * answer, and disambiguating the destination would put a filename in their repository
- * that they did not choose. Naming the other file is what lets them decide.
- *
- * Only planned conversions collide. Two assets sharing a basename where one of them
- * was never going to convert is not a collision: nothing is overwritten, the other
- * file stays where it is, and every reference to it keeps resolving. Declining it
- * would cost a real saving to avoid a hazard that is not there.
- *
- * Targets are compared case-insensitively, on every platform. `Reaktor.jpg` and
- * `reaktor.png` produce two target names that are two files on Linux and one file on
- * Windows and macOS, so an exact comparison writes one image over the other and
- * repoints a reference at the survivor, silently, on most people's machines. Comparing
- * case-folded everywhere costs a conversion on Linux that would have been safe there,
- * and buys an engine that decides the same thing wherever it runs. Reporting a
- * different plan on three operating systems for one repository is the worse trade,
- * and a wrong image is not a failure anybody would notice in time.
- */
-/**
- * The conversions under `replace` whose originals survive, and why (R66).
- *
- * 🔴 **The behaviour is correct — this reports it, it does not change it.** Inside a
- * served directory a reference we failed to rewrite is a **404**: bad, but visible, and
- * the user sees a missing image. Outside one the asset is bundler-managed, and the
- * same miss is a **build failure**. Those are different severities, so they get
- * different defaults, and the option is called `publicPolicy` precisely because it
- * governs public assets — it does not authorise deleting anything else.
- *
- * ⚠️ **What was wrong was the silence.** `scratch-www` produced 374 conversions and 373
- * deletes with nothing anywhere accounting for the difference. A user who asks for
- * `replace` and gets one original back needs the sentence, not the arithmetic.
- *
- * Empty under `keep-original`, where every original is kept and saying so 374 times
- * would bury the one case that means something.
- */
-function keptOriginals(
-  conversions: readonly PlannedConversion[],
-  input: PlanInput,
-): KeptOriginal[] {
-  if (input.publicPolicy !== 'replace') return [];
-
-  return conversions
-    .filter((conversion) => !conversion.replacesOriginal)
-    .map((conversion) => ({
-      asset: conversion.asset,
-      reason:
-        'converted, but the original was kept: it is outside a directory this project serves, ' +
-        'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
-        'failed to rewrite would break the build instead of showing a missing image. ' +
-        '`--replace` governs assets in a served directory.',
-    }))
-    .sort((a, b) => compareStrings(a.asset, b.asset));
 }
 
 /**
@@ -514,6 +477,34 @@ function collisionReason(
   return `${blockers.join(', and ')}, so converting it would replace a file rather than add one. Rename one of them and run again.`;
 }
 
+/**
+ * Drop the conversions that would write over each other, or over a file already there.
+ *
+ * Swapping an extension is not injective. `distance.png` and `distance.gif` both
+ * become `distance.webp`, and a plan holding two creates at one path produces a result
+ * that depends on which of them ran first. Separately, a target may already exist:
+ * converting `logo.png` where `logo.webp` is already in the repository destroys a file
+ * somebody made.
+ *
+ * Both cases decline every asset involved. Which of two files a user deliberately kept
+ * under separate names should win is not a question this engine is in a position to
+ * answer, and disambiguating the destination would put a filename in their repository
+ * that they did not choose. Naming the other file is what lets them decide.
+ *
+ * Only planned conversions collide. Two assets sharing a basename where one of them
+ * was never going to convert is not a collision: nothing is overwritten, the other
+ * file stays where it is, and every reference to it keeps resolving. Declining it
+ * would cost a real saving to avoid a hazard that is not there.
+ *
+ * Targets are compared case-insensitively, on every platform. `Reaktor.jpg` and
+ * `reaktor.png` produce two target names that are two files on Linux and one file on
+ * Windows and macOS, so an exact comparison writes one image over the other and
+ * repoints a reference at the survivor, silently, on most people's machines. Comparing
+ * case-folded everywhere costs a conversion on Linux that would have been safe there,
+ * and buys an engine that decides the same thing wherever it runs. Reporting a
+ * different plan on three operating systems for one repository is the worse trade,
+ * and a wrong image is not a failure anybody would notice in time.
+ */
 function vetoCollisions(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
@@ -552,26 +543,28 @@ function vetoCollisions(
 }
 
 /**
- * Drop the conversions that a pattern reference forbids.
+ * Say which pattern references match an asset that does not convert.
  *
- * A pattern is a single edit standing for N assets, so the edit is only correct if
- * every one of those N ends up at the same extension. Converting 53 of 54 and leaving
- * the reference alone is fine; converting 53 of 54 and rewriting the reference breaks
- * all 54.
+ * A pattern is never rewritten — `collectRewrite` declines every one, whatever its
+ * targets did — so this changes no decision. It reports one: *this reference matches N
+ * assets and M of them do not convert*, which is where a reader looks to find out why a
+ * pattern still names the old format.
  *
- * Under `keep-original` the originals survive, so the pattern keeps resolving and the
- * conversions may stand: what is withdrawn is the rewrite, and that is reported so
- * nobody reads "converted" as "and the reference now points at it". Under `replace`
- * the originals are removed, so the conversions themselves have to go.
+ * 🔴 **Under `replace` it used to WITHDRAW the targets that did convert (R65), and that
+ * is gone (R181).** The withdrawal rested on a pattern whose targets all convert being
+ * rewritten and its originals deleted, so a partial one had to take every conversion
+ * with it. The first half was never true: no pattern is rewritten. Under R180 no pattern
+ * target loses its original either, because the pattern still names it. So a partial
+ * pattern under `replace` converts what converts and keeps every original, exactly as
+ * under `keep-original`, and each kept original says in `keptOriginals` which reference
+ * still needs it.
  */
-function vetoPatterns(
+function declinePartialPatterns(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
   relativeOf: ReadonlyMap<string, string>,
   declined: Declined[],
-): ReadonlySet<string> {
-  const withdraw = new Set<string>();
-
+): void {
   for (const reference of input.graph.references) {
     if (reference.resolution !== 'resolved-pattern') continue;
 
@@ -583,69 +576,7 @@ function vetoPatterns(
       `a template reference matches ${targets.length} assets and ${unmeasured.length} of them ` +
       `do not convert, so rewriting it would break the reference for all ${targets.length}`;
     declined.push({ path: relativePath(input.graph.root, reference.file), line: null, reason });
-
-    if (input.publicPolicy === 'replace') {
-      // 🔴 **R65, and it is a P0 rather than a polish item.** Withdrawing every target
-      // is correct — under `replace` the originals are removed, so a pattern can only
-      // be rewritten if all N convert, and one decline takes the whole set with it.
-      // **The silence was the defect.** Measured on a pattern matching three assets
-      // where one measured no smaller: `a-dark.png` was declined for its own reason
-      // and the reference was declined for the withdrawal, while `a-light.png` and
-      // `a-mid.png` — which were going to convert and then were not — appeared in
-      // neither list and nowhere else.
-      //
-      // ⚠️ **Rule 9 has always been read as "no silent SKIP", and this is not a skip.**
-      // A skip is *we never tried*. A withdrawal is *we decided to, then un-decided*,
-      // which is more surprising to a reader and was less reported. Fourth
-      // silent-omission defect of the phase, and like the other three it was found by
-      // reading what a real run produced.
-      //
-      // Naming the sibling is what makes the entry worth having: fix one file and
-      // three assets convert, which is more actionable than anything else in the
-      // report.
-      const blockers = [...unmeasured].sort(compareStrings);
-      for (const target of targets) {
-        // Only an asset that was actually going to convert. The rest are the blockers
-        // themselves, already declined above for their own reasons, and a second entry
-        // would report one failure twice under two different explanations.
-        if (!converting.has(target)) continue;
-        // A target matched by two patterns is withdrawn once and reported once. The
-        // set is the record of what has already been accounted for, so this stays true
-        // however many patterns name the same asset.
-        if (withdraw.has(target)) continue;
-        withdraw.add(target);
-        declined.push({ path: target, line: null, reason: withdrawnReason(blockers) });
-      }
-    }
   }
-  return withdraw;
-}
-
-/**
- * Why an asset that was going to convert no longer is, naming the file to fix.
- *
- * Sorted before it gets here, so two runs over the same repository name the same
- * sibling — a reason that picked whichever blocker the graph happened to list first
- * would make the report differ between runs of an unchanged tree (rule 11).
- */
-function withdrawnReason(blockers: readonly string[]): string {
-  const [first, ...rest] = blockers;
-  const consequence =
-    ' — that reference is one edit for every asset it matches, so converting some and ' +
-    'deleting their originals would break it for all of them';
-
-  // ⚠️ **Two whole sentences rather than one with an interpolated fragment, and that
-  // is deliberate.** The shared-fragment version read `\`a-dark.png\` and 2 other
-  // assets sharing that reference, which shares a pattern reference with it, could
-  // not be converted` — a relative clause agreeing with a singular subject that had
-  // become plural. This codebase's renderer has produced that exact class of bug
-  // eight times, and the fix that finally worked each time was removing the shared
-  // fragment rather than remembering to check it.
-  if (rest.length === 0) {
-    return `not converted because \`${first}\`, which shares a pattern reference with it, could not be converted${consequence}`;
-  }
-
-  return `not converted because \`${first}\` and ${rest.length} other ${rest.length === 1 ? 'asset' : 'assets'} sharing a pattern reference with it could not be converted${consequence}`;
 }
 
 interface RewriteContext {
@@ -658,15 +589,21 @@ interface RewriteContext {
   readonly declined: Declined[];
 }
 
-/** Decide whether one reference is repointed, and record why when it is not. */
-function collectRewrite(reference: Reference, context: RewriteContext): void {
-  if (!isLinked(reference)) return;
+/**
+ * Decide whether one reference is repointed, and record why when it is not.
+ *
+ * Returns whether an edit was recorded. R180 needs exactly that: an original may go only
+ * once every reference to it has moved, and "moved" means an edit this plan holds — not
+ * what kind of reference it is.
+ */
+function collectRewrite(reference: Reference, context: RewriteContext): boolean {
+  if (!isLinked(reference)) return false;
 
   const targets = linkedPaths(reference).map(
     (path) => context.relativeOf.get(path) ?? toPosix(path),
   );
   const converted = targets.filter((target) => context.converting.has(target));
-  if (converted.length === 0) return;
+  if (converted.length === 0) return false;
 
   const refusal = rewriteRefusal(reference, context.input);
   if (refusal !== null) {
@@ -675,30 +612,37 @@ function collectRewrite(reference: Reference, context: RewriteContext): void {
       line: null,
       reason: `${refusal}, so ${converted.join(', ')} was converted without this reference moving`,
     });
-    return;
+    return false;
   }
 
-  // A pattern that survived the veto still cannot be rewritten by replacing its path
-  // text, because the text is a template rather than a path. Withdrawing the rewrite
-  // and saying so is the honest outcome: the originals remain and the reference keeps
-  // resolving to them.
+  // A pattern is never rewritten: its text is a template rather than a path, so there is
+  // no range to repoint however many of its targets converted. The originals stay under
+  // either policy — `keep-original` never removes one, and under `replace` R180 keeps any
+  // original a reference this plan does not rewrite still names — so the reference keeps
+  // resolving to them. "Even though every asset it matches converted" is only true when
+  // every one did: a partial pattern was already reported, accurately, by
+  // `declinePartialPatterns`, and this sentence beside it was the report contradicting
+  // itself about one reference.
   if (reference.resolution === 'resolved-pattern') {
-    context.declined.push({
-      path: relativePath(context.root, reference.file),
-      line: null,
-      reason:
-        'a template reference is assembled at runtime, so its text cannot be repointed even though every asset it matches converted',
-    });
-    return;
+    if (converted.length === targets.length) {
+      context.declined.push({
+        path: relativePath(context.root, reference.file),
+        line: null,
+        reason:
+          'a template reference is assembled at runtime, so its text cannot be repointed even though every asset it matches converted',
+      });
+    }
+    return false;
   }
 
   const replacement = withExtension(reference.rawPath, context.input.format);
-  if (replacement === reference.rawPath) return;
+  if (replacement === reference.rawPath) return false;
 
   const file = relativePath(context.root, reference.file);
   const list = context.edits.get(file) ?? [];
   list.push({ start: reference.start, end: reference.end, replacement });
   context.edits.set(file, list);
+  return true;
 }
 
 /**
@@ -727,6 +671,113 @@ function rewriteRefusal(
     }
   }
   return null;
+}
+
+/**
+ * 🔴 R180. Which originals `replace` must keep because a reference Upfly knows about still
+ * needs them, and why — keyed by asset.
+ *
+ * **THE PROPERTY, stated once and enforced here: an original is deleted only when AT
+ * LEAST ONE reference links to it AND this plan rewrites EVERY reference that does.**
+ *
+ * It replaces four pieces that were each right alone and wrong together: the policy's
+ * definition (*"once every reference points at the replacement"*), a `replacesOriginal`
+ * decided per asset with no regard to which rewrites were declined, a pattern veto that
+ * assumed a pattern whose targets all convert IS rewritten, and `collectRewrite`, which
+ * rewrites no pattern at all. Together they deleted all three originals behind
+ * `/theme-${mode}.png` while the page went on asking for `.png`.
+ *
+ * Stated as the property rather than as the case that exposed it, so no member has to be
+ * remembered: a pattern, template or `+` chain (R175); a literal whose rewrite is
+ * refused, which until now only R77's text search protected — and that search cannot see
+ * an encoded spelling; a reference whose rewrite would change nothing; and an asset
+ * nothing links to, which meets "every reference has moved" only vacuously.
+ *
+ * ⚠️ **What it cannot see, stated so it is not read as a guarantee:** a reference the
+ * graph never found. R77's search covers one written down literally. A path assembled at
+ * runtime that the graph did not collect either is covered only when nothing else links
+ * the asset, through the vacuous member.
+ */
+function originalsStillNeeded(
+  input: PlanInput,
+  converting: ReadonlyMap<string, PlannedConversion>,
+  rewritten: ReadonlySet<Reference>,
+): ReadonlyMap<string, string> {
+  const needed = new Map<string, string>();
+  for (const node of input.graph.assets) {
+    if (converting.get(node.asset.relative)?.replacesOriginal !== true) continue;
+    const reason = whyStillNeeded(node.references, rewritten, input.graph.root);
+    if (reason !== null) needed.set(node.asset.relative, reason);
+  }
+  return needed;
+}
+
+/** The sentence for one original R180 keeps, or null when every reference to it moves. */
+function whyStillNeeded(
+  references: readonly Reference[],
+  rewritten: ReadonlySet<Reference>,
+  root: string,
+): string | null {
+  if (references.length === 0) {
+    return (
+      'converted, but the original was kept: nothing Upfly can see links to it, so no ' +
+      'reference moved to the replacement — `--replace` removes an original only once every ' +
+      'reference to it has moved, and whatever loads this one is somewhere Upfly cannot read'
+    );
+  }
+
+  const missed = references.filter((reference) => !rewritten.has(reference));
+  const [first] = missed;
+  if (first === undefined) return null;
+
+  // One location plus a count, as R77's reason does: the sentence stays readable, and a
+  // reader who opens the named file finds the rest by searching for the same text.
+  const where = `\`${relativePath(root, first.file)}\``;
+  const text = `\`${first.rawPath}\`${missed.length === 1 ? '' : ` (and ${missed.length - 1} more)`}`;
+  return first.resolution === 'resolved-pattern'
+    ? `converted, but the original was kept: ${where} reaches it through ${text}, a path assembled at runtime that no run can rewrite — deleting the original would break it`
+    : `converted, but the original was kept: ${where} names it as ${text}, and this run does not rewrite that reference — deleting the original would break it`;
+}
+
+/**
+ * The conversions under `replace` whose originals survive, and why (R66, R180).
+ *
+ * 🔴 **R66: an asset OUTSIDE a served directory keeps its original, and this reports it
+ * rather than changing it.** Inside a served directory a reference we failed to rewrite
+ * is a **404**: bad, but visible, and the user sees a missing image. Outside one the
+ * asset is bundler-managed, and the same miss is a **build failure**. Those are different
+ * severities, so they get different defaults, and the option is called `publicPolicy`
+ * precisely because it governs public assets — it does not authorise deleting anything
+ * else.
+ *
+ * **R180: a served asset keeps its original when a reference Upfly knows about still
+ * needs it.** The sentence is `originalsStillNeeded`'s, which made the decision.
+ *
+ * ⚠️ **In R66's case what was wrong was the silence.** A user who asks for `replace` and
+ * gets originals back needs the sentence, not the arithmetic.
+ *
+ * Empty under `keep-original`, where every original is kept and saying so for each would
+ * bury the cases that mean something.
+ */
+function keptOriginals(
+  conversions: readonly PlannedConversion[],
+  stillNeeded: ReadonlyMap<string, string>,
+  input: PlanInput,
+): KeptOriginal[] {
+  if (input.publicPolicy !== 'replace') return [];
+
+  return conversions
+    .filter((conversion) => !conversion.replacesOriginal)
+    .map((conversion) => ({
+      asset: conversion.asset,
+      reason:
+        stillNeeded.get(conversion.asset) ??
+        'converted, but the original was kept: it is outside a directory this project serves, ' +
+          'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
+          'failed to rewrite would break the build instead of showing a missing image. ' +
+          '`--replace` governs assets in a served directory.',
+    }))
+    .sort((a, b) => compareStrings(a.asset, b.asset));
 }
 
 /**

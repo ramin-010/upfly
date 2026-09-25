@@ -94,6 +94,34 @@ function byReason(declined: readonly { readonly reason: string }[]): [string, nu
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
+/**
+ * R66. The absence of this line is what made 374 conversions and 373 deletes read as an
+ * arithmetic slip: the behaviour was right and nothing said so.
+ *
+ * ⚠️ Grouped by reason since R180. It used to print one fixed sentence — "outside a
+ * served directory" — for every kept original, which stopped being true the day R180
+ * began keeping served originals that a reference still needs.
+ */
+function printKeptOriginals(keptOriginals: readonly { asset: string; reason: string }[]): void {
+  if (keptOriginals.length === 0) return;
+  stdout.write(
+    `  kept      ${keptOriginals.length} original${keptOriginals.length === 1 ? '' : 's'}, by reason\n`,
+  );
+  // One line per KIND of reason: the sentence with its quoted specifics — the file, the
+  // text, the count — elided, so the kinds group without this file keeping a second copy
+  // of the planner's wording.
+  const kinds = byReason(
+    keptOriginals.map((kept) => ({
+      reason: kept.reason.replace(/`[^`]*`/g, '`…`').replace(/ \(and \d+ more\)/g, ''),
+    })),
+  );
+  for (const [reason, count] of kinds) {
+    stdout.write(`    ${String(count).padStart(4)}  ${reason}\n`);
+  }
+  for (const kept of keptOriginals.slice(0, 5)) stdout.write(`    ${kept.asset}\n`);
+  if (keptOriginals.length > 5) stdout.write(`    ... and ${keptOriginals.length - 5} more\n`);
+}
+
 async function run(name: string, keep: boolean, replace: boolean): Promise<boolean> {
   stdout.write(`\n${name}\n`);
   const root = await copyRepository(name);
@@ -131,17 +159,7 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
     }
     if (conversions.length > 5) stdout.write(`    ... and ${conversions.length - 5} more\n`);
 
-    // R66. The absence of this line is what made 374 conversions and 373 deletes read
-    // as an arithmetic slip: the behaviour was right and nothing said so.
-    if (keptOriginals.length > 0) {
-      stdout.write(
-        `  kept      ${keptOriginals.length} original${keptOriginals.length === 1 ? '' : 's'}, outside a served directory where a missed reference breaks the build\n`,
-      );
-      for (const kept of keptOriginals.slice(0, 5)) stdout.write(`    ${kept.asset}\n`);
-      if (keptOriginals.length > 5) {
-        stdout.write(`    ... and ${keptOriginals.length - 5} more\n`);
-      }
-    }
+    printKeptOriginals(keptOriginals);
 
     // R54 asked what this number actually says. Grouped, because 44 lines of the
     // same sentence tells a reader nothing that one line and a count does not.

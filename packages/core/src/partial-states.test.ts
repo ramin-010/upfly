@@ -158,30 +158,31 @@ describe('R67: a partial-failure state, built by hand because no real repository
     });
   });
 
-  describe('R65: the withdrawal fires on a real tree for the first time', () => {
-    it('withdraws every converting sibling and says why for each', async () => {
-      // Under `replace` the originals go, so a pattern can only be rewritten if all four
-      // convert. One decline takes the rest with it — and until R65 they vanished from
-      // the plan with nothing said about them anywhere.
+  describe('R65 → R181: the partial pattern on a real tree, where nothing is withdrawn any more', () => {
+    it('keeps every converting sibling’s original and says why for each', async () => {
+      // 🔴 **Until R181 this asserted a WITHDRAWAL**: under `replace` the three siblings
+      // that convert were taken back, on the belief that a pattern is rewritten once all
+      // its targets convert and its originals then go. No pattern is ever rewritten, and
+      // R180 keeps every original a pattern still names — so the siblings convert and
+      // keep their originals, as under `keep-original`, and each says which reference
+      // needs it. What R65 fixed — a sibling vanishing with nothing said — stays fixed.
       //
-      // ⚠️ **`theme-dark` is now among the withdrawn rather than the blocker (R138).** It
-      // converts — losslessly, at 36 bytes against a 70-byte source — and is withdrawn
-      // because `theme-not-an-image` cannot convert at all. That is the fixture getting
-      // stronger: the withdrawal now fires over THREE siblings instead of two.
+      // ⚠️ `theme-dark` converts losslessly (R138), at 36 bytes against a 70-byte source.
       const { plan } = await planFor('replace');
-      const withdrawn = plan.declined.filter((entry) =>
-        entry.reason.includes('shares a pattern reference with it'),
+      const byPattern = plan.keptOriginals.filter((kept) =>
+        kept.reason.includes('assembled at runtime'),
       );
 
-      expect(withdrawn.map((entry) => entry.path)).toEqual([
+      expect(byPattern.map((kept) => kept.asset)).toEqual([
         'public/theme-dark.png',
         'public/theme-light.png',
         'public/theme-sepia.png',
       ]);
-      for (const entry of withdrawn) {
-        // Naming the blocker is the actionable half: fix one file and three convert.
-        expect(entry.reason).toContain('public/theme-not-an-image.png');
+      for (const kept of byPattern) {
+        // Where the reference is and what it says: the line to change to be rid of them.
+        expect(kept.reason).toContain('`src/App.jsx` reaches it through `/theme-${mode}.png`');
       }
+      expect(plan.declined.some((entry) => entry.reason.includes('shares a pattern'))).toBe(false);
     });
 
     it('accounts for all four targets, with none left over', async () => {
@@ -215,11 +216,11 @@ describe('R67: a partial-failure state, built by hand because no real repository
           `${asset} is in no list at all — not converted, not declined, not skipped`,
         ).toContain(asset);
       }
-      expect(converted).not.toContain('public/theme-light.png');
+      expect(converted).toContain('public/theme-light.png');
     });
 
     it('leaves the ordinary reference beside it untouched', async () => {
-      // The control. A withdrawal that took the whole plan with it would satisfy every
+      // The control. A change that took the whole plan with it would satisfy every
       // assertion above and be catastrophically wrong.
       const { plan } = await planFor('replace');
 
@@ -227,12 +228,16 @@ describe('R67: a partial-failure state, built by hand because no real repository
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['src/App.jsx']);
     });
 
-    it('converts every convertible sibling under keep-original, where nothing is withdrawn', async () => {
+    it('converts every convertible sibling under keep-original, the same set replace converts', async () => {
       // The same tree, the same measurements, the opposite policy. The originals
-      // survive, so the pattern keeps resolving and only the rewrite is declined —
-      // which is what makes the withdrawal above a consequence of `replace` rather
-      // than of anything about these files.
+      // survive under both, so the pattern keeps resolving and only the rewrite is
+      // declined — and since R181 the two policies convert exactly the same assets.
       const { plan } = await planFor('keep-original');
+      const replaced = (await planFor('replace')).plan;
+
+      expect(replaced.conversions.map((conversion) => conversion.asset)).toEqual(
+        plan.conversions.map((conversion) => conversion.asset),
+      );
 
       expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
         'public/banner.png',
@@ -258,20 +263,22 @@ describe('R67: a partial-failure state, built by hand because no real repository
       // rewrite would break the build rather than show a missing image — and what was
       // wrong was that nothing said so.
       const { plan } = await planFor('replace');
+      const outside = plan.keptOriginals.filter((kept) => kept.reason.includes('break the build'));
 
-      expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual(['src/inline-logo.jpg']);
-      expect(plan.keptOriginals[0]?.reason).toContain('break the build');
+      expect(outside.map((kept) => kept.asset)).toEqual(['src/inline-logo.jpg']);
     });
 
-    it('removes the original of a served asset, which is the other half', async () => {
+    it('removes the originals of the served assets whose references all move, which is the other half', async () => {
       // Without this the fixture would pass just as well against a planner that had
-      // simply stopped replacing anything.
+      // simply stopped replacing anything — the one fix to R180 that every other
+      // assertion here would accept.
       const { plan } = await planFor('replace');
-      const banner = plan.conversions.find(
-        (conversion) => conversion.asset === 'public/banner.png',
-      );
 
-      expect(banner?.replacesOriginal).toBe(true);
+      expect(
+        plan.conversions
+          .filter((conversion) => conversion.replacesOriginal)
+          .map((conversion) => conversion.asset),
+      ).toEqual(['public/banner.png', 'public/screenshot.png']);
     });
 
     it('never files a kept original as declined, which would deny it converted', async () => {

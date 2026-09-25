@@ -133,6 +133,13 @@ export interface OptimizeResult {
  * it catches a path **written down literally**. A path a program assembles at runtime —
  * `'/images/' + name + '.png'` — is not written down anywhere and matches nothing, so
  * this makes `replace` safe for the literal case and **no wider than that**.
+ *
+ * ✅ **Since R180 it is no longer the only guard, and it is not the one for references
+ * the graph FOUND.** The planner keeps any original a found reference still needs — a
+ * pattern, a literal whose rewrite it refused, an asset nothing links to — before this
+ * runs, so those never reach the search. What this adds is the reference the graph never
+ * saw. ⚠️ What neither covers: a path assembled at runtime that the graph did not find
+ * either, to an asset that some OTHER reference links and this run rewrites.
  */
 async function mentionsThatWouldSurvive(
   plan: OptimizationPlan,
