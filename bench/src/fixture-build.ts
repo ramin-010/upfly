@@ -28,7 +28,8 @@
  * it was checking for.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
@@ -309,8 +310,8 @@ const FIXTURES: readonly FixtureSpec[] = [
  */
 const DELIBERATE = /missing-on-purpose|does-not-exist/;
 
-/** Directories never copied into a build tree: outputs, caches and dependency stores. */
-const NEVER_COPY = new Set([
+/** Dependency stores, build outputs and caches: what a project keeps out of git. */
+const BUILD_ARTEFACTS = [
   'node_modules',
   'dist',
   '_site',
@@ -319,7 +320,13 @@ const NEVER_COPY = new Set([
   'build',
   '.astro',
   '.cache',
-]);
+];
+
+/**
+ * Directories never copied into a build tree, nor walked by the link check: the above, plus
+ * git's folder and Upfly's, which the command-line runs below create.
+ */
+const NEVER_COPY = new Set([...BUILD_ARTEFACTS, '.git', '.upfly']);
 
 // ---------------------------------------------------------------------------
 // Instruments
@@ -553,6 +560,12 @@ function stripCssComments(text: string): string {
 async function materialise(fixture: FixtureSpec): Promise<string> {
   await mkdir(BUILD_ROOT, { recursive: true });
   const root = await mkdtemp(join(BUILD_ROOT, `${fixture.name}-`));
+  await copyInto(fixture, root);
+  return root;
+}
+
+/** The copy itself, into a folder that exists or is created here. */
+async function copyInto(fixture: FixtureSpec, root: string): Promise<void> {
   const source = join(FIXTURES_ROOT, fixture.name);
 
   await cp(source, root, {
@@ -564,7 +577,6 @@ async function materialise(fixture: FixtureSpec): Promise<string> {
   if (existsSync(dependencies)) {
     await symlink(dependencies, join(root, 'node_modules'), 'junction');
   }
-  return root;
 }
 
 /**
@@ -793,6 +805,336 @@ async function runExitCriterion(
   exit(failures.length === 0 && notExercised.length === 0 ? 0 : 1);
 }
 
+// ---------------------------------------------------------------------------
+// The same criterion through the built command-line tool
+// ---------------------------------------------------------------------------
+
+const CLI_BIN = resolve(FIXTURES_ROOT, '../packages/cli/dist/bin.js');
+
+/** What every copy's repository ignores, as a real project's would. */
+const GITIGNORE = `${BUILD_ARTEFACTS.map((name) => `${name}/`).join('\n')}\n`;
+
+/** Git's environment for these runs: no repository above the build folder is consulted. */
+const GIT_ENV = { ...process.env, GIT_CEILING_DIRECTORIES: BUILD_ROOT };
+
+/** Runs git with an argument array, never through a shell, and throws on failure. */
+function gitIn(cwd: string, ...args: string[]): string {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: GIT_ENV });
+  if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr.trim()}`);
+  return result.stdout;
+}
+
+/**
+ * Makes `root` a repository with everything in it committed once, line endings kept as
+ * written so a byte comparison after `git revert` means what it says.
+ */
+function commitEverything(root: string): void {
+  gitIn(root, 'init', '--quiet');
+  gitIn(root, 'config', 'user.name', 'Upfly fixture build');
+  gitIn(root, 'config', 'user.email', 'fixture-build@example.com');
+  gitIn(root, 'config', 'commit.gpgsign', 'false');
+  gitIn(root, 'config', 'core.autocrlf', 'false');
+  gitIn(root, 'add', '-A');
+  gitIn(root, 'commit', '--quiet', '-m', 'the fixture, as found');
+}
+
+interface CliRun {
+  readonly status: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  /** The last JSON line, for a run given `--json`. */
+  readonly result: Record<string, unknown>;
+}
+
+/** Runs the built binary as a user runs it. */
+function upflyCli(args: readonly string[]): CliRun {
+  const run = spawnSync(process.execPath, [CLI_BIN, ...args], { encoding: 'utf8', env: GIT_ENV });
+  const last = run.stdout.trimEnd().split('\n').at(-1) ?? '';
+  let result: Record<string, unknown> = {};
+  if (args.includes('--json') && last.startsWith('{')) result = JSON.parse(last);
+  return { status: run.status, stdout: run.stdout, stderr: run.stderr, result };
+}
+
+/** Every file in the tree with a hash of its bytes, skipping what the link check skips. */
+async function fingerprint(root: string): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  for (const file of await walk(root)) {
+    files.set(
+      file,
+      createHash('sha256')
+        .update(await readFile(join(root, file)))
+        .digest('hex'),
+    );
+  }
+  return files;
+}
+
+/** The paths that differ between two fingerprints, to name a failure. */
+function differences(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): string[] {
+  const paths = new Set([...a.keys(), ...b.keys()]);
+  return [...paths].filter((path) => a.get(path) !== b.get(path)).sort();
+}
+
+/** The command-line flags that match a fixture's declared folders and a policy. */
+function cliFlags(fixture: FixtureSpec, policy: PublicPolicy): string[] {
+  const flags = policy === 'replace' ? ['--replace'] : [];
+  for (const dir of fixture.publicDirs ?? []) flags.push('--public', dir === '' ? '.' : dir);
+  return flags;
+}
+
+/** What one applied run wrote, as `--json` reports it. */
+interface CliWritten {
+  readonly created: string[];
+  readonly changed: string[];
+  readonly removed: string[];
+}
+
+/** One copy of a fixture under test through the command line, and where its failures go. */
+interface CliCopy {
+  readonly fixture: FixtureSpec;
+  readonly policy: PublicPolicy;
+  readonly nested: boolean;
+  /** The repository's top folder. */
+  readonly top: string;
+  /** The fixture itself: `top`, or `site/` inside it. */
+  readonly project: string;
+  readonly flags: readonly string[];
+  readonly failures: string[];
+  readonly notExercised: string[];
+}
+
+function failed(copy: CliCopy, what: string): void {
+  copy.failures.push(`${copy.fixture.name}${copy.nested ? ' (nested)' : ''}: ${what}`);
+}
+
+/**
+ * `upfly optimize --apply --commit` on a copy of one fixture, as a user runs it: a dry run
+ * that writes nothing; one commit holding exactly the files the run wrote; a second run
+ * with nothing to do and not refused; the build and link check intact; and `git revert`
+ * giving back every byte. With `nested`, the fixture is the folder `site/` inside a larger
+ * repository whose own staged and untracked work must stay out of the commit.
+ */
+async function runCliCommit(
+  fixture: FixtureSpec,
+  policy: PublicPolicy,
+  nested: boolean,
+): Promise<Outcomes> {
+  await mkdir(BUILD_ROOT, { recursive: true });
+  const top = await mkdtemp(join(BUILD_ROOT, `${fixture.name}-cli-`));
+  const copy: CliCopy = {
+    fixture,
+    policy,
+    nested,
+    top,
+    project: nested ? join(top, 'site') : top,
+    flags: cliFlags(fixture, policy),
+    failures: [],
+    notExercised: [],
+  };
+
+  try {
+    await prepareCliCopy(copy);
+    const original = await fingerprint(copy.project);
+    await cliDryRun(copy, original);
+    const commits = Number(gitIn(top, 'rev-list', '--count', 'HEAD'));
+    if (await cliApply(copy, commits)) {
+      cliSecondRun(copy, commits);
+      await cliBuildAndRevert(copy, original);
+    }
+  } catch (error) {
+    failed(copy, error instanceof Error ? error.message : String(error));
+  } finally {
+    await rm(top, { recursive: true, force: true });
+  }
+  return { failures: copy.failures, notExercised: copy.notExercised };
+}
+
+/** The copy, committed, with work of the user's own outside it when it is nested. */
+async function prepareCliCopy(copy: CliCopy): Promise<void> {
+  await copyInto(copy.fixture, copy.project);
+  await writeFile(join(copy.top, '.gitignore'), GITIGNORE, 'utf8');
+  if (copy.nested) {
+    await writeFile(join(copy.top, 'notes.txt'), 'the rest of the repository\n', 'utf8');
+  }
+  commitEverything(copy.top);
+  if (copy.nested) {
+    await writeFile(join(copy.top, 'notes.txt'), 'staged by hand, outside the project\n', 'utf8');
+    gitIn(copy.top, 'add', 'notes.txt');
+    await writeFile(join(copy.top, 'draft.md'), 'untracked, outside the project\n', 'utf8');
+  }
+}
+
+async function cliDryRun(copy: CliCopy, original: ReadonlyMap<string, string>): Promise<void> {
+  const dry = upflyCli(['optimize', copy.project, ...copy.flags]);
+  const changed = differences(original, await fingerprint(copy.project));
+  if (dry.status !== 0) failed(copy, `the dry run exited ${dry.status}: ${dry.stderr.trim()}`);
+  if (changed.length > 0) failed(copy, `the dry run wrote ${changed.join(', ')}`);
+  if (copy.nested && !dry.stdout.includes(`in the git repository at ${copy.top}`)) {
+    failed(copy, 'the dry run did not name the repository around the project');
+  }
+  stdout.write(`  cli dry run     exit ${dry.status}, ${changed.length} files changed\n`);
+}
+
+/** The applied, committed run. False when it wrote nothing, so there is nothing to check. */
+async function cliApply(copy: CliCopy, commits: number): Promise<boolean> {
+  const applied = upflyCli([
+    'optimize',
+    copy.project,
+    '--apply',
+    '--commit',
+    '--json',
+    ...copy.flags,
+  ]);
+  const written = applied.result.run as CliWritten | null | undefined;
+  if (applied.status !== 0 || written === null || written === undefined) {
+    failed(copy, `--apply --commit exited ${applied.status}: ${applied.stderr.trim()}`);
+    return false;
+  }
+  if (written.created.length === 0) {
+    failed(copy, '--apply converted nothing, so this proves nothing');
+    return false;
+  }
+
+  const inRepo = (path: string) => (copy.nested ? `site/${path}` : path);
+  const expected = [...written.created, ...written.changed, ...written.removed].map(inRepo).sort();
+  const committed = gitIn(copy.top, 'show', '--name-only', '--format=', 'HEAD')
+    .trim()
+    .split('\n')
+    .sort();
+  if (Number(gitIn(copy.top, 'rev-list', '--count', 'HEAD')) !== commits + 1) {
+    failed(copy, '--commit did not make exactly one commit');
+  }
+  if (JSON.stringify(committed) !== JSON.stringify(expected)) {
+    failed(copy, `the commit holds ${committed.join(', ')}; the run wrote ${expected.join(', ')}`);
+  }
+  if (copy.nested && gitIn(copy.top, 'diff', '--cached', '--name-only').trim() !== 'notes.txt') {
+    failed(copy, 'the work staged outside the project did not stay staged and out of the commit');
+  }
+  if (copy.policy === 'replace' && written.removed.length === 0) {
+    stdout.write(
+      '  NOT EXERCISED: no original was deleted, so this tree says nothing about deleting\n',
+    );
+    copy.notExercised.push(`${copy.fixture.name}${copy.nested ? ' (nested)' : ''}`);
+  }
+  stdout.write(
+    `  cli apply       ${written.created.length} converted, ${written.changed.length} rewritten, ${written.removed.length} originals deleted, one commit of ${committed.length} files\n`,
+  );
+  return true;
+}
+
+function cliSecondRun(copy: CliCopy, commits: number): void {
+  const second = upflyCli(['optimize', copy.project, '--apply', '--json', ...copy.flags]);
+  const wrote = second.result.run !== null;
+  if (second.status !== 0) {
+    failed(copy, `the second run exited ${second.status}: ${second.stderr.trim()}`);
+  } else if (wrote) {
+    failed(copy, 'the second run wrote files');
+  }
+  if (Number(gitIn(copy.top, 'rev-list', '--count', 'HEAD')) !== commits + 1) {
+    failed(copy, 'the second run made a commit');
+  }
+  stdout.write(
+    `  cli second run  exit ${second.status}, ${wrote ? 'WROTE FILES' : 'nothing to do'}\n`,
+  );
+}
+
+async function cliBuildAndRevert(
+  copy: CliCopy,
+  original: ReadonlyMap<string, string>,
+): Promise<void> {
+  const beforeBuild = await fingerprint(copy.project);
+  for (const [instrument, outcome] of await check(copy.project, copy.fixture)) {
+    const ok = outcome.verdict === 'intact';
+    stdout.write(`  cli ${instrument.padEnd(11)} ${ok ? 'intact' : 'BROKEN'}\n`);
+    if (!ok) failed(copy, `${instrument}: ${outcome.detail}`);
+  }
+  // A build can leave files of its own, such as a generated TypeScript declaration.
+  const afterBuild = await fingerprint(copy.project);
+  const generated = [...afterBuild.keys()].filter((path) => !beforeBuild.has(path));
+
+  // Git will not revert while other work is staged, so a nested copy's user commits theirs
+  // first, and Upfly's commit is then reverted by its hash, no longer the newest.
+  const upflyCommit = gitIn(copy.top, 'rev-parse', 'HEAD').trim();
+  if (copy.nested) gitIn(copy.top, 'commit', '--quiet', '-m', 'the user commits their own work');
+  gitIn(copy.top, 'revert', '--no-edit', upflyCommit);
+  const reverted = await fingerprint(copy.project);
+  for (const path of generated) reverted.delete(path);
+  const left = differences(original, reverted);
+  if (left.length > 0) failed(copy, `git revert left ${left.join(', ')} different`);
+  stdout.write(
+    `  cli git revert  ${left.length === 0 ? 'every byte back' : `${left.length} files DIFFERENT`}\n`,
+  );
+}
+
+/** `upfly optimize --apply` and then `upfly undo` on a copy of one fixture: every byte back. */
+async function runCliUndo(fixture: FixtureSpec, policy: PublicPolicy): Promise<string[]> {
+  const failures: string[] = [];
+  await mkdir(BUILD_ROOT, { recursive: true });
+  const top = await mkdtemp(join(BUILD_ROOT, `${fixture.name}-undo-`));
+  try {
+    await copyInto(fixture, top);
+    await writeFile(join(top, '.gitignore'), GITIGNORE, 'utf8');
+    commitEverything(top);
+    const original = await fingerprint(top);
+    const flags = cliFlags(fixture, policy);
+
+    const applied = upflyCli(['optimize', top, '--apply', '--json', ...flags]);
+    const written = applied.result.run as CliWritten | null;
+    if (applied.status !== 0 || written === null) {
+      failures.push(`${fixture.name}: --apply exited ${applied.status} and wrote nothing`);
+      return failures;
+    }
+    const undo = upflyCli(['undo', top, '--json']);
+    const left = differences(original, await fingerprint(top));
+    if (undo.status !== 0)
+      failures.push(`${fixture.name}: undo exited ${undo.status}: ${undo.stderr.trim()}`);
+    if (left.length > 0) failures.push(`${fixture.name}: undo left ${left.join(', ')} different`);
+    stdout.write(
+      `  cli undo        ${written.created.length + written.changed.length + written.removed.length} files written, ${left.length === 0 ? 'every byte back' : `${left.length} files DIFFERENT`}\n`,
+    );
+  } catch (error) {
+    failures.push(`${fixture.name}: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    await rm(top, { recursive: true, force: true });
+  }
+  return failures;
+}
+
+/**
+ * The criterion through the built binary, for each fixture: in a repository of its own, as
+ * a folder inside a larger one, and undone with `upfly undo`.
+ */
+async function runCliCriterion(
+  selected: readonly FixtureSpec[],
+  policy: PublicPolicy,
+): Promise<never> {
+  if (!existsSync(CLI_BIN)) {
+    stdout.write(`${CLI_BIN} is missing; run pnpm build first.\n`);
+    exit(2);
+  }
+  stdout.write(`\nthrough the built CLI, policy: ${policy}\n`);
+  const failures: string[] = [];
+  const notExercised: string[] = [];
+  for (const fixture of selected) {
+    for (const nested of [false, true]) {
+      stdout.write(`\n${fixture.name}${nested ? ', inside a larger repository' : ''}\n`);
+      const outcomes = await runCliCommit(fixture, policy, nested);
+      failures.push(...outcomes.failures);
+      notExercised.push(...outcomes.notExercised);
+    }
+    failures.push(...(await runCliUndo(fixture, policy)));
+  }
+
+  if (failures.length > 0) stdout.write('\nCLI CRITERION FAILED\n');
+  else if (notExercised.length > 0) {
+    stdout.write(
+      `\nCLI CRITERION NOT DEMONSTRATED: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
+    );
+  } else stdout.write('\nCLI CRITERION MET\n');
+  for (const failure of failures) stdout.write(`  ${failure}\n`);
+  exit(failures.length === 0 && notExercised.length === 0 ? 0 : 1);
+}
+
 async function main(): Promise<void> {
   const only = argv.find((argument) => argument.startsWith('--fixture='))?.split('=')[1];
   // `--public=<dir>`, repeatable, declares the serving roots the way a user would after
@@ -819,6 +1161,10 @@ async function main(): Promise<void> {
   // `--replace` runs it under the policy that deletes originals.
   if (argv.includes('--optimize')) {
     await runExitCriterion(selected, argv.includes('--replace') ? 'replace' : 'keep-original');
+  }
+  // `--cli` runs the same criterion through the built binary, with git.
+  if (argv.includes('--cli')) {
+    await runCliCriterion(selected, argv.includes('--replace') ? 'replace' : 'keep-original');
   }
 
   for (const fixture of selected) {
