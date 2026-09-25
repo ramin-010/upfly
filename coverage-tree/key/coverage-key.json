@@ -30,6 +30,10 @@
     {
       "path": "legacy/public",
       "why": "A fourth root, in an app whose source is entirely in file types nothing reads."
+    },
+    {
+      "path": "sites/vitepress-docs/docs/public",
+      "why": "A VitePress site's served folder: docs/public/, served from the root, beside the config DIRECTORY docs/.vitepress/ — with the site's package.json two levels up, not beside it (R179)."
     }
   ],
   "notServingRoots": [
@@ -1140,6 +1144,14 @@
       "sha256": "4180ad624d283747",
       "source": "hand-written",
       "note": "The same file under a second name, so an SVG exists on both sides of the alias."
+    },
+    {
+      "path": "sites/vitepress-docs/docs/public/vp-mark.png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
     }
   ],
   "unreferencedOccurrences": [],
@@ -6528,6 +6540,38 @@
           "knownGap": "R72 / §4j — no adapter reads .php.",
           "offset": 499,
           "line": 20,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "sites/vitepress-docs/docs/index.md",
+      "entries": [
+        {
+          "raw": "/vp-mark.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "🔴 R179's refuting input for a config DIRECTORY. VitePress serves docs/public/ from the root, and what makes docs/ a project is docs/.vitepress/ — a directory; the package.json is two levels up. A rule that counted only FILES as project markers would reject this folder under the no-configuration run, and one reference is under R132's volume floor, so inference cannot put it back: this goes `broken`. Its own file, so nothing else here can mask it.",
+          "target": "sites/vitepress-docs/docs/public/vp-mark.png",
+          "offset": 151,
+          "line": 6,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "path": "legacy/public/404.html",
+      "entries": [
+        {
+          "raw": "/gallery/plate.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "🔴 R179's refuting input for a project file NO ADAPTER CLAIMS. Rails generates public/404.html and serves it as it stands; what makes legacy/ a project is its Gemfile, which the walk records as an unscanned file. A rule that looked for markers only among the files an adapter reads would reject legacy/public under the no-configuration run, and with one reference inference cannot put it back: this goes `broken`. The first file under legacy/ that the engine READS, so it is the first entry that can tell.",
+          "target": "legacy/public/gallery/plate.jpg",
+          "offset": 268,
+          "line": 9,
           "column": 15
         }
       ]

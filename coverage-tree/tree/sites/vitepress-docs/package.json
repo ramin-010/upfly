@@ -1,0 +1,6 @@
+{
+  "name": "@coverage-tree/vitepress-docs",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A VitePress site. VitePress keeps its package.json here, at the site's root, and its served folder two levels down in docs/public, beside the config directory docs/.vitepress."
+}
