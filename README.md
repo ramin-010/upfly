@@ -27,17 +27,36 @@ npx upfly optimize --apply --commit
 in stylesheets, `srcset` on `<picture>`, paths in manifests and Markdown.
 
 **It never fails silently.** Every reference gets a confidence tier, and anything dynamic or
-unresolvable is *never rewritten* and *always reported*:
+unresolvable is *never rewritten* and *always reported*. From a real run on a copy of
+[11ty/docs](https://github.com/11ty/docs) at `028e255`, lines left out marked `[...]`:
 
 ```
-47 images optimized · 122 references updated · 14.2 MB saved
+$ upfly optimize --apply --commit
+Upfly audit
+[...]
+  25 of 86 references resolved, pointing at 24 of those images
+[...]
+56 references had no answer to find
+[...]
+  plus 52 with no filename to check — each builds its path at runtime
+[...]
+Examined and not converted
 
-2 references could not be safely rewritten:
-  src/gallery.tsx:88   `/img/${slug}.png`   dynamic path, no single target
-  src/legacy.js:14     require(imgPath)     variable path
+  4 images, 93.4 KB, with no conversion to offer (use --include-declined to list them)
+[...]
+Plan
+
+  Convert to WebP: 25 images, 5.7 MB now and 1.4 MB after
+[...]
+    src/blog/six-million.jpg → src/blog/six-million.webp  2.2 MB → 489.8 KB
+[...]
+  Update references: 18 references in 13 files
+[...]
+Written as run 20260925T204012-4af6: 25 files created, 13 changed, 0 removed. `upfly undo` puts them all back.
+Committed as 609a4057f0a6, one commit holding exactly those files. `git revert 609a4057f0a6` undoes it.
 ```
 
-Admitting those two is what makes the other 122 trustworthy.
+Saying what it could not follow is what makes the 18 references it did rewrite trustworthy.
 
 **Undo is real.** Dry-run is the default. `--apply` refuses to run on a dirty git tree.
 `--commit` writes exactly one commit, so `git revert` undoes everything and your normal code
@@ -51,7 +70,7 @@ Requires Node ≥ 20 and pnpm.
 
 ```bash
 pnpm install
-pnpm check     # lint + typecheck + test — the same gate CI runs
+pnpm check     # lint + comment check + typecheck + test — the same gate CI runs
 pnpm coverage  # core must stay above 90%
 ```
 
