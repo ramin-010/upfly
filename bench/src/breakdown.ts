@@ -461,7 +461,7 @@ export function rotate<T>(values: readonly T[], by: number): readonly T[] {
   return [...values.slice(offset), ...values.slice(0, offset)];
 }
 
-export function renderBreakdown(sample: BreakdownSample): string {
+export function renderBreakdown(sample: BreakdownSample, experiment = false): string {
   const total =
     sample.discover.medianMs +
     sample.scan.medianMs +
@@ -499,7 +499,7 @@ export function renderBreakdown(sample: BreakdownSample): string {
     '    ⚠️ read-wall and parse OVERLAP and are not a partition of scan. Do not add them.',
     '',
     `    parse by extension: ${top}`,
-    `    adapters that threw (R86): ${sample.adapterThrows}`,
+    `    files an adapter could not parse: ${sample.adapterThrows}`,
     `    ${sample.fileCounts.join('/')} source files, ${sample.references} references`,
     ...(sample.fileCounts.length > 1
       ? ['    🔴 THE PASSES SAW DIFFERENT TREES. Nothing below is comparable.']
@@ -511,7 +511,9 @@ export function renderBreakdown(sample: BreakdownSample): string {
     `    ⚠️ The spreads above are WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
     '       on unchanged code and these steps drift with it, so a spread here is NOT the',
     '       attribution floor for a change measured against a PREVIOUS run. What beats that',
-    '       drift is an A/B inside one run — which is what the experiment block below is.',
+    experiment
+      ? '       drift is an A/B inside one run — which is what the experiment block below is.'
+      : '       drift is an A/B inside one run, which `--experiments` adds to this output.',
     '',
   ].join('\n');
 }

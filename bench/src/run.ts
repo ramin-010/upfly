@@ -343,8 +343,9 @@ async function main(): Promise<void> {
     const variants = argv.includes('--experiments') ? VARIANTS : (['baseline'] as const);
     const breakdownPasses = Number(flagValue('--breakdown-passes') ?? invocations);
     const samples = await sampleBreakdowns(breakdownPasses, variants);
-    for (const sample of samples) stdout.write(renderBreakdown(sample));
-    if (variants.length > 1) stdout.write(renderExperiment(samples));
+    const experiment = variants.length > 1;
+    for (const sample of samples) stdout.write(renderBreakdown(sample, experiment));
+    if (experiment) stdout.write(renderExperiment(samples));
 
     // `--measure-only` is what CI runs until a gate number exists that CI itself
     // produced. Reporting a number is useful; failing a build against a number

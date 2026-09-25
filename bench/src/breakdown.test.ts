@@ -192,6 +192,19 @@ describe('what every breakdown says about itself', () => {
     expect(rendered).toContain('NOT the');
   });
 
+  it('points at the experiment block only when the run prints one', () => {
+    const sample = summariseBreakdowns([pass()]);
+    expect(renderBreakdown(sample, true)).toContain('which is what the experiment block below is');
+    expect(renderBreakdown(sample)).not.toContain('experiment block below');
+    expect(renderBreakdown(sample)).toContain('which `--experiments` adds to this output');
+  });
+
+  it('says what its failure count counts', () => {
+    const rendered = renderBreakdown(summariseBreakdowns([pass()]));
+    expect(rendered).toContain('files an adapter could not parse: 0');
+    expect(rendered).not.toContain('(R86)');
+  });
+
   it('keeps the overlap warning that the 853% version was built to prevent', () => {
     const rendered = renderBreakdown(summariseBreakdowns([pass()]));
     expect(rendered).toContain('OVERLAP');
