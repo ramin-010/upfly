@@ -243,10 +243,14 @@ const REFUSAL_REASONS: ReadonlyArray<{
       reference.resolution === 'dynamic' &&
       (templateExpressionReason(reference.rawPath) !== null ||
         interpolationChunks(provenPath(reference)).length > 1),
+    // ⚠️ RE-MEASURED BY B15 on the final Phase 2 engine, with R112's own classifier, and the
+    // population moved for two recorded reasons: R176 stopped collecting 39 templates that
+    // were never images (versions, i18n keys, `layout.${ext}` naming `.tsx`), and R175 made
+    // the `+` chains R112 had to sweep out of the source by hand visible to the engine.
     bound:
-      'Of 62 such references, 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.',
+      'Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches — but 4 are NOT. Two read an imported module constant, which a module graph would resolve (to an absolute URL, R112); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.',
     measuredAgainst:
-      'R112, 2026-09-15, on the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www). ⚠️ If that corpus has changed, this bound has not been re-measured and does not describe it.',
+      "B15, 2026-09-25: R112's classifier re-run on the final Phase 2 engine (R175, R176) over the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www), + chains included. R112 measured 62 here on 2026-09-15. ⚠️ If that corpus or the engine has changed, this bound has not been re-measured and does not describe it.",
   },
   {
     // R118: the attribute could not be parsed as CSS AND provably holds no url-taking

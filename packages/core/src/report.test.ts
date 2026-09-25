@@ -2058,11 +2058,11 @@ describe('classifyReference: the four boxes R109 defines', () => {
     );
 
     expect(runtime?.count).toBeGreaterThan(0);
-    expect(runtime?.bound).toMatch(/16 are NOT/);
+    expect(runtime?.bound).toMatch(/4 are NOT/);
     // The provenance is its own field, not a sentence buried in the bound: a caveat a
     // reader cannot date is one they cannot check, which is R117 inside the schema.
-    expect(runtime?.measuredAgainst).toMatch(/R112, 2026-09-15/);
-    expect(runtime?.measuredAgainst).toMatch(/If that corpus has changed/);
+    expect(runtime?.measuredAgainst).toMatch(/B15, 2026-09-25/);
+    expect(runtime?.measuredAgainst).toMatch(/If that corpus or the engine has changed/);
   });
 
   it('carries no bound for a reason that has none', async () => {
