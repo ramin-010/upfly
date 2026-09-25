@@ -1,0 +1,6 @@
+# legacy/ is a Rails app: app/views/show.html.erb uses content_for, image_tag and
+# asset_path, and app/assets/ is the asset pipeline's directory. A Rails app's project
+# file is its Gemfile, beside app/ and public/.
+source "https://rubygems.org"
+
+gem "rails"
