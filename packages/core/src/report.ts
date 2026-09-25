@@ -36,7 +36,7 @@ import {
 } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './probe.js';
-import { isLinked } from './reference.js';
+import { isLinked, provenPath } from './reference.js';
 import type { ServingRoots } from './resolve.js';
 import type { Mention, SweepResult } from './sweep.js';
 import type {
@@ -234,11 +234,15 @@ const REFUSAL_REASONS: ReadonlyArray<{
     // ⚠️ **`templateExpressionReason` is the function that made these `dynamic` in the
     // first place**, so using it to explain why they were refused keeps one vocabulary
     // instead of inventing a sixth list (R76).
+    //
+    // ⚠️ Asked of the ASSEMBLED path when there is one (R175): a `+` chain's source text
+    // holds no `${`, so `base + '/icon-' + size + '.png'` would otherwise be filed as our
+    // miss while its template twin is filed here.
     id: 'assembled-at-runtime',
     holds: (reference) =>
       reference.resolution === 'dynamic' &&
       (templateExpressionReason(reference.rawPath) !== null ||
-        interpolationChunks(reference.rawPath).length > 1),
+        interpolationChunks(provenPath(reference)).length > 1),
     bound:
       'Of 62 such references, 46 are a parameter, a prop or instance state, which nothing reaches — but 16 are NOT. A same-file const with a finite set of values, a filename from a build-time glob, an imported module constant: those have an answer and we do not compute it, so they are misses this reason absorbs. Read as roughly three in four.',
     measuredAgainst:

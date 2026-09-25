@@ -1921,6 +1921,20 @@ describe('classifyReference: the four boxes R109 defines', () => {
       }
     });
 
+    it('counts a + chain by the path it assembles, not by its quote-and-plus text (R175)', () => {
+      // The chain's source holds no `${`, so read off `rawPath` it would be filed as OUR
+      // miss while its template twin, one line away, is filed here.
+      const entry = reference({
+        resolution: 'dynamic',
+        confidence: 'unsafe',
+        resolvedPath: null,
+        rawPath: "base + '/icon-' + size + '.png",
+        assembledPath: '${}/icon-${}.png',
+      });
+      expect(classifyReference(entry)).toBe('correctly-refused');
+      expect(refusalReasonId(entry)).toBe('assembled-at-runtime');
+    });
+
     it('counts a style attribute the adapter proved holds no reference (R118)', () => {
       const entry = reference({
         resolution: 'dynamic',

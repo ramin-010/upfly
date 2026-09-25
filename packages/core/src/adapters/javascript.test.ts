@@ -836,6 +836,303 @@ body`,
       expect(find('<a href="/a/hero.png">x</a>')).toEqual([]);
     });
   });
+
+  /**
+   * R175 — R167 group C. A `+` chain is a template literal spelled differently, and it is
+   * read by the template's own rule: the same bound, the same R80(b) globbing, the same
+   * external-URL test — all asked of what the chain ASSEMBLES.
+   */
+  describe('a path assembled with + (R175)', () => {
+    const TS = '/project/src/lib/paths.ts';
+
+    function only(text: string, file = TS): RawReference {
+      const found = find(text, file);
+      expect(found).toHaveLength(1);
+      return found[0] as RawReference;
+    }
+
+    it('reads a chain exactly as its template twin: the same pattern and the same ceiling', () => {
+      const chain = only(
+        "export const f = (width: number) => '/srcset/' + 'card-' + String(width) + '.jpg';",
+      );
+      const template = only('export const g = (width: number) => `/srcset/card-${width}.jpg`;');
+
+      expect(chain.ceiling).toBe(template.ceiling);
+      expect(chain.ceiling).toBe('medium');
+      expect(chain.shape).toBe('js.concat.pattern');
+      expect(template.shape).toBe('js.template.pattern');
+      expect(chain.assembledPath).toBe('/srcset/card-${}.jpg');
+      expect(chain.asserted).toBe(false);
+      expect(chain.kind).toBe('string');
+    });
+
+    it('keeps the range on source text, outer quotes excluded as a template excludes backticks', () => {
+      const text = "export const f = (w: number) => '/srcset/' + 'card-' + String(w) + '.jpg';";
+      const chain = only(text);
+      expect(text.slice(chain.start, chain.end)).toBe(chain.rawPath);
+      expect(chain.rawPath).toBe("/srcset/' + 'card-' + String(w) + '.jpg");
+    });
+
+    it('ends the range on an unknown last piece without trimming anything from it', () => {
+      const text = "export const f = (n: string, v: string) => '/img/' + n + '.png?v=' + v;";
+      const chain = only(text);
+      expect(chain.rawPath).toBe("/img/' + n + '.png?v=' + v");
+      expect(text.slice(chain.start, chain.end)).toBe(chain.rawPath);
+    });
+
+    it('is dynamic where its template twin is: a leading unknown, or two unknowns in the name', () => {
+      const leading = only(
+        "export const f = (base: string, size: number) => base + '/icon-' + size + '.png';",
+      );
+      expect(leading.ceiling).toBe('unsafe');
+      expect(leading.shape).toBe('js.concat.dynamic');
+      expect(leading.assembledPath).toBe('${}/icon-${}.png');
+
+      const twoInName = only(
+        "export const f = (t: string, s: string) => '/icons/' + t + '-' + s + '.png';",
+      );
+      expect(twoInName.ceiling).toBe('unsafe');
+    });
+
+    it('collects nothing where the static text shows no extension — a route, a key, a namespace (R176)', () => {
+      for (const text of [
+        "export const f = (albumId: string) => router.push('/gallery/' + albumId);",
+        "export const f = (id: string) => '/api/users/' + id;",
+        "export const f = (eventType: string, space: string) => eventType + '.' + space;",
+        'export const f = (type: string) => `report.${type}`;',
+        'export const f = (n: number) => `v1.2.0-beta.${n}`;',
+      ]) {
+        expect(find(text, TS)).toEqual([]);
+      }
+    });
+
+    it('collects nothing that is not path-shaped, even with an extension on the end', () => {
+      expect(find("export const f = (x: string) => 'see ' + x + ' for the logo.png';", TS)).toEqual(
+        [],
+      );
+    });
+
+    it('leaves a literal that is already a complete path to the string rule — it re-reads nothing', () => {
+      const literal = only("export const f = (v: string) => '/img/hero.jpg' + '?v=' + v;");
+      expect(literal.rawPath).toBe('/img/hero.jpg');
+      expect(literal.shape).toBe('js.string.literal');
+      expect(literal.ceiling).toBe('high');
+      expect(literal.assembledPath).toBeUndefined();
+
+      const template = only("export const f = (n: string) => `/img/${n}.png` + '?v=2';");
+      expect(template.shape).toBe('js.template.pattern');
+      expect(template.assembledPath).toBeUndefined();
+    });
+
+    it('reads a chain once, whole — never again as the shorter chains inside it', () => {
+      const chain = only(
+        "export const f = (b: string, d: string) => '/a/' + b + '/c-' + d + '.png';",
+      );
+      expect(chain.assembledPath).toBe('/a/${}/c-${}.png');
+    });
+
+    it('treats a parenthesised sum as ONE unknown, because the brackets may add numbers', () => {
+      const chain = only("export const f = (i: number) => '/img/' + (i + 1) + '.png';");
+      expect(chain.assembledPath).toBe('/img/${}.png');
+      expect(chain.ceiling).toBe('medium');
+    });
+
+    it('stops at a parenthesised chain on the left, and at an operator that is not +', () => {
+      const chain = only(
+        "export const f = (d: string, n: string) => ('/img/' + d) + '/' + n + '.png';",
+      );
+      expect(chain.assembledPath).toBe('${}/${}.png');
+
+      const literal = only("export const f = (a: number, b: number) => a - b + '/x.png';");
+      expect(literal.rawPath).toBe('/x.png');
+    });
+
+    it('takes a template with no holes as text, and a template with holes as one unknown', () => {
+      const text = "export const f = (n: string) => `/img/` + n + '.png';";
+      const plain = only(text);
+      expect(plain.assembledPath).toBe('/img/${}.png');
+      expect(text.slice(plain.start, plain.end)).toBe(plain.rawPath);
+      expect(plain.rawPath.startsWith('/img/`')).toBe(true);
+
+      const holed = only(
+        "export const f = (d: string, n: string) => `/img/${d}` + '/' + n + '.png';",
+      );
+      expect(holed.assembledPath).toBe('${}/${}.png');
+    });
+
+    it("drops another server's file, judged by what the chain assembles", () => {
+      expect(
+        find("export const f = (n: string) => 'https://cdn.example.com/' + n + '.png';", TS),
+      ).toEqual([]);
+    });
+
+    it('ignores a sum with no string in it', () => {
+      expect(find('export const f = (a: number, b: number) => a + b + 1;', TS)).toEqual([]);
+    });
+
+    it('reads a chain inside a JSX src as a guess, with the same bound', () => {
+      const chain = only(
+        "export const I = ({ size }) => <img src={'/icons/icon-' + size + '.png'} alt=\"\" />;",
+        '/project/src/components/I.jsx',
+      );
+      expect(chain.shape).toBe('js.concat.pattern');
+      expect(chain.asserted).toBe(false);
+    });
+  });
+
+  /**
+   * R175: R100 filed a module constant as "statically knowable, we cannot see it yet —
+   * OUR GAP". It is read through under ONE condition — the name's only binding in the whole
+   * file is a top-level `const` with a string initialiser — which is what makes it sound
+   * without scope analysis.
+   */
+  describe('same-file constants (R175)', () => {
+    const TS = '/project/src/lib/paths.ts';
+
+    it('reads a top-level string const through, in a chain and in a template alike', () => {
+      const text = [
+        "const ASSET_BASE = '/gallery';",
+        "export const a = (name: string) => ASSET_BASE + '/' + name + '.png';",
+        'export const b = (name: string) => `${ASSET_BASE}/${name}.png`;',
+      ].join('\n');
+      const [chain, template] = find(text, TS);
+
+      expect(chain?.shape).toBe('js.concat.pattern');
+      expect(chain?.assembledPath).toBe('/gallery/${}.png');
+      expect(chain?.rawPath.startsWith('ASSET_BASE + ')).toBe(true);
+      expect(template?.shape).toBe('js.template.pattern');
+      expect(template?.ceiling).toBe('medium');
+      expect(template?.assembledPath).toBe('/gallery/${}.png');
+      expect(template?.rawPath).toBe('${ASSET_BASE}/${name}.png');
+    });
+
+    it('reads an exported const too', () => {
+      const text = [
+        "export const DIR = '/img';",
+        "export const c = (n: string) => DIR + '/' + n + '.png';",
+      ].join('\n');
+      expect(find(text, TS)[0]?.assembledPath).toBe('/img/${}.png');
+    });
+
+    it('never reads a name with a second binding, whatever form the second one takes', () => {
+      const shadows = [
+        'function f1(P: string) { return P; }',
+        'function f2({ O }: { O: string }) { return O; }',
+        'function f3({ ...A }: object) { return A; }',
+        'function f4([, D]: string[]) { return D; }',
+        "function f5(R = '/x') { return R; }",
+        'function f6(...V: string[]) { return V; }',
+        'try { f1(1); } catch (C) { f1(C); }',
+        'try { f1(1); } catch { f1(2); }',
+        '{ class K {} }',
+        '{ function G() {} }',
+        'const g1 = function F() {};',
+        'const g2 = function () {};',
+        'const h1 = class E {};',
+        'const h2 = class {};',
+        'const o = { m(M: string) { return M; } };',
+        'class Z { q(Q: string) { return Q; } #p(T: string) { return T; } }',
+        'class Y { constructor(private S: string) {} }',
+        'const arrow = (W: string) => W;',
+        'export default class {}',
+      ];
+      const names = [
+        'P',
+        'O',
+        'A',
+        'D',
+        'R',
+        'V',
+        'C',
+        'K',
+        'G',
+        'F',
+        'E',
+        'M',
+        'Q',
+        'T',
+        'S',
+        'W',
+      ];
+      const text = [
+        ...names.map((name) => `const ${name} = '/${name.toLowerCase()}';`),
+        "const U = '/u';",
+        ...shadows,
+        `export const uses = (n: string) => [${[...names, 'U'].map((name) => `${name} + '/' + n + '.png'`).join(', ')}];`,
+      ].join('\n');
+
+      const found = find(text, TS);
+      expect(found).toHaveLength(names.length + 1);
+      // Every shadowed name stays an unknown — a leading hole, so `dynamic`.
+      expect(found.slice(0, names.length).every((ref) => ref.ceiling === 'unsafe')).toBe(true);
+      // The control: nothing binds U twice, so it IS read through.
+      expect(found.at(-1)?.assembledPath).toBe('/u/${}.png');
+    });
+
+    it('never reads a let or a var, whose first value proves nothing about a later call', () => {
+      const text = [
+        "let L = '/l';",
+        "var W = '/w';",
+        "export const u = (n: string) => [L + '/' + n + '.png', W + '/' + n + '.png'];",
+      ].join('\n');
+      expect(find(text, TS).map((ref) => ref.ceiling)).toEqual(['unsafe', 'unsafe']);
+    });
+
+    it('reads only a string initialiser bound to a plain name', () => {
+      const text = [
+        'const N = 42;',
+        "const [X] = ['/x'];",
+        'const S = `/s`;',
+        'declare const Y: string;',
+        'export { N };',
+        'export function e() {}',
+        "export const u = (n: string) => [N + '/' + n + '.png', X + '/' + n + '.png', S + '/' + n + '.png', Y + '/' + n + '.png'];",
+      ].join('\n');
+      expect(find(text, TS).map((ref) => ref.ceiling)).toEqual([
+        'unsafe',
+        'unsafe',
+        'unsafe',
+        'unsafe',
+      ]);
+    });
+
+    it("turns a path into another server's file when the const names another host", () => {
+      const text = [
+        "const CDN = 'https://cdn.example.com';",
+        "export const a = (n: string) => CDN + '/' + n + '.png';",
+        'export const b = (n: string) => `${CDN}/${n}.png`;',
+      ].join('\n');
+      // Untraced, the template was a `dynamic` phantom; read through, it is external.
+      expect(find(text, TS)).toEqual([]);
+    });
+
+    it('never makes a reference rewritable: fully read through, a template is still a pattern', () => {
+      const text = ["const DIR = '/img';", 'export const u = `${DIR}/hero.png`;'].join('\n');
+      const [template] = find(text, TS);
+      expect(template?.ceiling).toBe('medium');
+      expect(template?.assembledPath).toBe('/img/hero.png');
+    });
+
+    it("asks R108's directory test of what the text proves, in an asserting position too", () => {
+      // R108's own example, through the adapter rather than the predicate alone.
+      expect(
+        find(
+          'export const f = (id) => <iframe src={`/scratch2/${id}/adminpanel/`} />;',
+          '/p/a.jsx',
+        ),
+      ).toEqual([]);
+      // Only the constant shows this is a directory: the source text ends in `}`.
+      const traced = ["const DIR = '/docs/';", 'export const g = () => <iframe src={`${DIR}`} />;'];
+      expect(find(traced.join('\n'), '/p/b.jsx')).toEqual([]);
+    });
+
+    it('pins the known hazard: a complete-path literal after an unknown is still read alone', () => {
+      // R175 re-reads nothing, so `DIR + '/hero.png'` keeps today's reading of the literal
+      // — which is not the whole path. Measured and raised in R175, not changed there.
+      const text = ["const DIR = '/img';", "export const u = DIR + '/hero.png';"].join('\n');
+      expect(paths(text, TS)).toEqual(['/hero.png']);
+    });
+  });
 });
 
 /**

@@ -56,6 +56,21 @@ export interface RawReference {
   readonly end: number;
   /** The path exactly as written in the source. */
   readonly rawPath: string;
+  /**
+   * What the source text PROVES the path is, when that is not `rawPath` itself (R175).
+   *
+   * Two cases today. A `+` chain — `'/srcset/' + 'card-' + String(width) + '.jpg'` — has no
+   * single run of source that is its path, so `rawPath` is the chain's text and this is
+   * `/srcset/card-${}.jpg`. And a template with a same-file constant written in —
+   * `` `${ASSET_BASE}/${name}.png` `` becomes `/gallery/${}.png`. Every unknown segment is
+   * `${}`, one of the resolver's `INTERPOLATIONS`.
+   *
+   * ⚠️ **Read this, not `rawPath`, wherever the question is WHAT PATH this is** — the glob,
+   * the static-extension test, the report's classification. **Keep `rawPath` wherever the
+   * question is WHERE the text is** — the range, a citation, a sweep for a filename.
+   * Absent on every reference whose text is its path, which is all but those two.
+   */
+  readonly assembledPath?: string;
   readonly kind: ReferenceKind;
   /**
    * WHICH construct this was written in — `html.img.srcset.w`, `css.image-set`.

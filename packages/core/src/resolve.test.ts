@@ -131,6 +131,32 @@ describe('resolveReferences', () => {
       expect(reference?.confidence).toBe('medium');
     });
 
+    it('globs what a + chain ASSEMBLES, never its quote-and-plus source text (R175)', () => {
+      // Globbing the source would match nothing and fall back to `dynamic` — the ceiling
+      // right and the answer silently wrong, which is R106's second half all over again.
+      const reference = resolveOne({
+        rawPath: "./images/' + name + '.png",
+        assembledPath: './images/${}.png',
+        ceiling: 'medium',
+      });
+      expect(reference?.resolution).toBe('resolved-pattern');
+      expect(linkedPaths(reference as Reference)).toHaveLength(3);
+    });
+
+    it('reads a static extension off the assembled path when there is one (R175)', () => {
+      // `${EXT}` hides the extension in the source; a same-file constant shows `.json`.
+      expect(
+        resolveOne({
+          rawPath: '${DIR}/data${EXT}',
+          assembledPath: '${}/data.json',
+          ceiling: 'unsafe',
+        }),
+      ).toBeUndefined();
+      expect(resolveOne({ rawPath: '${DIR}/data${EXT}', ceiling: 'unsafe' })?.resolution).toBe(
+        'dynamic',
+      );
+    });
+
     it('is dynamic when nothing matches, never broken', () => {
       const reference = resolveOne({ rawPath: './nothing/${name}.png', ceiling: 'medium' });
       expect(reference?.resolution).toBe('dynamic');

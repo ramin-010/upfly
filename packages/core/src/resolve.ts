@@ -23,6 +23,7 @@ import {
 import type { AliasMap } from './aliases.js';
 import { expandAlias } from './aliases.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
+import { provenPath } from './reference.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
 /**
@@ -174,8 +175,11 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   }
 
   // 2. A pattern. Glob it; never let it fall through to `broken`.
+  //
+  // ⚠️ The ASSEMBLED path when there is one (R175): a `+` chain's text is not its path,
+  // and a template with a same-file constant written in globs as what the text proves.
   if (raw.ceiling === 'medium') {
-    const { matches, via } = index.matchPattern(raw.rawPath, raw, root, publicDirs);
+    const { matches, via } = index.matchPattern(provenPath(raw), raw, root, publicDirs);
     const [first, ...rest] = matches;
     if (first === undefined) {
       return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
@@ -322,7 +326,9 @@ function outOfScope(path: string, raw: RawReference, context: ResolveContext): R
  * whole point.
  */
 function provablyNotAnAsset(raw: RawReference): boolean {
-  const extension = staticExtensionOf(raw.rawPath);
+  // The assembled path when there is one (R175): `'/locales/' + lang + '.json'` shows its
+  // `.json` in what it assembles, not in the quote-and-plus text of the chain.
+  const extension = staticExtensionOf(provenPath(raw));
   return extension !== '' && !isImageExtension(extension);
 }
 

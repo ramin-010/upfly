@@ -1,12 +1,12 @@
 /**
- * The two accessors every consumer of a `Reference` must use.
+ * The accessors every consumer of a `Reference` must use.
  *
  * They live here, beside the types, rather than in the resolver, so that the graph
  * builder, the audit and the planner can ask "is this linked?" without importing the
  * module that decides it.
  */
 
-import type { Reference } from './types.js';
+import type { RawReference, Reference } from './types.js';
 
 /**
  * Whether this reference points at one or more assets in the graph.
@@ -49,4 +49,17 @@ export function linkedPaths(reference: Reference): readonly string[] {
       return unhandled;
     }
   }
+}
+
+/**
+ * The path a reference stands for: what its text PROVES, which is `rawPath` except for a
+ * `+` chain or a template with a same-file constant written in (R175).
+ *
+ * **Use this wherever the question is WHAT PATH this is** — a glob, a static extension, a
+ * classification. Keep `rawPath` wherever the question is WHERE the text is. One accessor
+ * rather than `?? rawPath` at each call site, because a rule asked in some places and not
+ * others is the defect R106 and R170 each found a week apart.
+ */
+export function provenPath(reference: RawReference): string {
+  return reference.assembledPath ?? reference.rawPath;
 }

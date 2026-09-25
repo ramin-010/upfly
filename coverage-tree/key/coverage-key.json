@@ -5200,6 +5200,36 @@
       ]
     },
     {
+      "path": "apps/web/src/lib/message-key.ts",
+      "entries": [
+        {
+          "raw": "report.${type}",
+          "occurrence": 1,
+          "shape": "js.template.dynamic",
+          "expect": "discarded",
+          "why": "R176's refuting input, for templates. A translation key: the dot is followed by a hole, so the static text shows no extension -- staticExtensionOf's 'the hole IS the extension'. Before R176 the bound read it as report.* with extension .*; on the five repositories that let 39 such templates through (i18n keys, version strings, IP formats, layout.${ext} naming .tsx source) and not one was an image. Under the mutation 'a hole after a dot counts as an extension' this reads dynamic.",
+          "offset": 142,
+          "line": 3,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/event-namespace.ts",
+      "entries": [
+        {
+          "raw": "eventType",
+          "occurrence": 2,
+          "shape": "js.concat.dynamic",
+          "expect": "discarded",
+          "why": "R176's refuting input, for + chains -- the class guard 2 caught. A namespaced listener name, eventType + '.' + space: 18 of these on railsgirls-com (Bootstrap, jQuery, JW Player) and 2 on scratch-www became dynamic references the first time chains were read with the template bound, because a hole after a dot passed as an extension. Under that mutation this reads dynamic.",
+          "offset": 141,
+          "line": 3,
+          "column": 10
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/components/IconBadge.tsx",
       "entries": [
         {

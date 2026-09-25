@@ -16,10 +16,13 @@
 import { parse } from '@babel/parser';
 import type {
   Node as BabelNode,
+  BinaryExpression,
+  File,
   ImportDeclaration,
   ImportExpression,
   JSXAttribute,
   JSXOpeningElement,
+  Program,
   StringLiteral,
   TaggedTemplateExpression,
   TemplateLiteral,
@@ -39,6 +42,7 @@ import {
   plausiblePathShape,
   provablyNotAFile,
   splitPathSuffix,
+  staticExtensionOf,
 } from './reference-path.js';
 
 /**
@@ -163,7 +167,15 @@ export function findJavaScriptReferences(input: {
       );
     }
 
-    const context: Context = { file, text, references: [], speculative: [], handled: new Set() };
+    const context: Context = {
+      file,
+      text,
+      references: [],
+      speculative: [],
+      handled: new Set(),
+      constantNamed: sameFileConstants((ast as File).program),
+      chainParts: new Set(),
+    };
     walk(ast, (node) => collectFromNode(node, context));
 
     // A speculative string whose range a real construct already claimed is that
@@ -300,6 +312,17 @@ interface Context {
    * speculative string rule must not overturn it.
    */
   readonly handled: Set<number>;
+  /**
+   * The value of a same-file constant a path is assembled from, or `null` (R175). See
+   * `sameFileConstants` for the one condition under which a name is read through.
+   */
+  readonly constantNamed: (name: string) => string | null;
+  /**
+   * The inner `+` nodes of every chain already read. A chain nests down its left side, so
+   * the walk meets each inner node after its outer one — and must not read it again as a
+   * second, shorter chain.
+   */
+  readonly chainParts: Set<BabelNode>;
 }
 
 /** Keys that hold position or comment data rather than child nodes. */
@@ -372,6 +395,9 @@ function collectFromNode(node: BabelNode, context: Context): void {
     case 'TemplateLiteral':
       collectSpeculativeTemplate(node, context);
       return;
+    case 'BinaryExpression':
+      if (node.operator === '+') collectFromChain(node, context);
+      return;
     default:
   }
 }
@@ -396,21 +422,9 @@ function collectFromNode(node: BabelNode, context: Context): void {
  */
 
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
-  if (node.start === null || node.start === undefined) return;
-  if (node.end === null || node.end === undefined) return;
-
-  const start = node.start + 1;
-  const raw = context.text.slice(start, node.end - 1);
-  // An escaped string's decoded value differs in length from its text, so no range
-  // would point at the path. A guess is not worth an unrewritable reference.
-  if (raw !== node.value) return;
-
-  const { path } = splitPathSuffix(raw);
-  // Anything with a file extension is a candidate — the same bound the JSON adapter
-  // uses. Deciding what an *asset* extension is stays with the resolver, which is
-  // the one place that policy lives.
-  if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return;
-  if (!plausiblePathShape(path)) return;
+  const candidate = speculativeStringPath(node, context.text);
+  if (candidate === null) return;
+  const { start, path } = candidate;
 
   context.speculative.push({
     file: context.file,
@@ -438,6 +452,35 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
 }
 
 /**
+ * Where a string literal names a complete path ON ITS OWN, or `null`.
+ *
+ * Split out of `collectSpeculativeString` so the chain reader asks the very same question
+ * rather than a copy of it (R175): a `+` chain containing a literal that is already a
+ * complete path is left to that literal, and "complete path" must mean one thing in both.
+ */
+function speculativeStringPath(
+  node: StringLiteral,
+  text: string,
+): { readonly start: number; readonly path: string } | null {
+  if (node.start === null || node.start === undefined) return null;
+  if (node.end === null || node.end === undefined) return null;
+
+  const start = node.start + 1;
+  const raw = text.slice(start, node.end - 1);
+  // An escaped string's decoded value differs in length from its text, so no range
+  // would point at the path. A guess is not worth an unrewritable reference.
+  if (raw !== node.value) return null;
+
+  const { path } = splitPathSuffix(raw);
+  // Anything with a file extension is a candidate — the same bound the JSON adapter
+  // uses. Deciding what an *asset* extension is stays with the resolver, which is
+  // the one place that policy lives.
+  if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return null;
+  if (!plausiblePathShape(path)) return null;
+  return { start, path };
+}
+
+/**
  * A path-shaped template literal that no construct above claimed.
  *
  * The sibling of `collectSpeculativeString`, and it was missed on the first pass —
@@ -455,37 +498,320 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
 function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;
   if (context.handled.has(node.start)) return;
-
-  // Bound it the same way the string rule is bounded: the static text has to look
-  // like a path with a file extension. `${x} items` is not a candidate.
-  //
-  // ⚠️ The holes become `*` rather than being deleted, which is how the resolver
-  // globs them — and joining the quasis *without* a placeholder silently lost the
-  // commonest templated path there is. `` `./images/${name}.png` `` concatenated to
-  // `./images/.png`, whose last segment is a **dotfile**, so `extensionOf` returned
-  // `''` and the reference was dropped. Every `` `/images/${slug}.png` `` in a
-  // gallery or CMS data object went with it — and since no basename exists for the
-  // sweep to find either, those assets were reported **confidently dead**.
-  //
-  // It only ever worked when the hole was not the whole filename stem, which is why
-  // R14-1b's `background-${dir}.png` and the plan's own `${base}/img/hero.png` both
-  // pass and the plan's other example, `./images/${name}.png`, did not.
-  const literal = node.quasis.map((quasi) => quasi.value.raw).join('*');
-  if (extensionOf(splitPathSuffix(literal).path) === '') return;
-  // The same shape test as the string rule, and for the same reason (R26): a template
-  // that builds `/gallery/Firing Practice ${n}.webp` is a path, not a sentence. Sharing
-  // the predicate is what keeps the two speculative collectors from disagreeing about
-  // what a path looks like — they disagreed about nothing else.
-  if (!plausiblePathShape(literal)) return;
+  if (!pathShaped(templateChunks(node, context).chunks)) return;
 
   addTemplateReference(
     node,
     context,
     'string',
-    templateShape(node),
+    templateShape(node, context),
     'a path-shaped template literal',
     false,
   );
+}
+
+/**
+ * Whether assembled static text looks like a path with a file extension — the bound on
+ * every guess made about a template or a `+` chain in no asserting position.
+ *
+ * Bound the same way the string rule is bounded: the static text has to look like a path
+ * with a file extension. `${x} items` is not a candidate.
+ *
+ * ⚠️ The holes become `*` rather than being deleted, which is how the resolver globs them
+ * — and joining the quasis *without* a placeholder silently lost the commonest templated
+ * path there is. `` `./images/${name}.png` `` concatenated to `./images/.png`, whose last
+ * segment is a **dotfile**, so `extensionOf` returned `''` and the reference was dropped.
+ * Every `` `/images/${slug}.png` `` in a gallery or CMS data object went with it — and
+ * since no basename exists for the sweep to find either, those assets were reported
+ * **confidently dead**. It only ever worked when the hole was not the whole filename stem,
+ * which is why R14-1b's `background-${dir}.png` and the plan's own `${base}/img/hero.png`
+ * both pass and the plan's other example, `./images/${name}.png`, did not.
+ *
+ * The same shape test as the string rule, and for the same reason (R26): a template that
+ * builds `/gallery/Firing Practice ${n}.webp` is a path, not a sentence. Sharing the
+ * predicate is what keeps the speculative collectors from disagreeing about what a path
+ * looks like — and since R175 there are three of them, because a `+` chain is read by this
+ * rule too.
+ *
+ * 🔴 **R176: THE EXTENSION MUST BE IN THE STATIC TEXT, NOT IN A HOLE.** The `*` placeholder
+ * made `extensionOf` read `report.${type}` as `report.*` — extension `.*` — so a hole after a
+ * dot passed as a file extension. On the five repositories that let through 39 template
+ * references and not one image among them: version strings (`v1.2.0-beta.${n}`), i18n
+ * keys, IP formats, and `layout.${ext}` naming `.tsx` source. Reading `+` chains the same
+ * way then added 20 more — `eventIn + '.' + this.type`, a regex, a date format — which is
+ * how guard 2 found it. `staticExtensionOf` already answers the right question, and says
+ * so: in `hero.${ext}` *"the hole IS the extension"*, so the text shows none. That is the
+ * standing `/gallery/${name}` already has — the extension may be in the hole, and a GUESS
+ * does not assume it is. ⚠️ Only the speculative bound: an asserting position (`<img
+ * src={`hero.${ext}`}>`) is read without it, exactly as before.
+ */
+function pathShaped(chunks: readonly string[]): boolean {
+  return staticExtensionOf(chunks.join(HOLE)) !== '' && plausiblePathShape(chunks.join('*'));
+}
+
+/**
+ * A template literal's static chunks — the text between its unknown segments — with every
+ * hole a same-file constant fills written in (R175).
+ *
+ * `traced` is whether any hole was filled, which is exactly when the path the text proves
+ * differs from the text itself, and so when a reference needs an `assembledPath`.
+ */
+function templateChunks(
+  template: TemplateLiteral,
+  context: Context,
+): { readonly chunks: readonly string[]; readonly traced: boolean } {
+  const chunks: string[] = [];
+  let current = '';
+  let traced = false;
+  for (const [index, quasi] of template.quasis.entries()) {
+    current += quasi.value.raw;
+    const hole = template.expressions[index];
+    if (hole === undefined) break;
+    const value = hole.type === 'Identifier' ? context.constantNamed(hole.name) : null;
+    if (value === null) {
+      chunks.push(current);
+      current = '';
+    } else {
+      current += value;
+      traced = true;
+    }
+  }
+  chunks.push(current);
+  return { chunks, traced };
+}
+
+/**
+ * A path assembled with `+` (R175, R167 group C).
+ *
+ * 🔴 **Read EXACTLY as its template twin is read, because R175 found no property of the
+ * spelling that justifies anything else.** `'/srcset/' + 'card-' + String(width) + '.jpg'`
+ * and `` `/srcset/card-${width}.jpg` `` are one path: the same bound (`pathShaped`), the
+ * same globbing rule (`assembledPathIsGlobbable`, R80(b)), and — in `addReference` — the
+ * same external-URL and R108 tests, all asked of the ASSEMBLED text. A pattern is never an
+ * edit in either spelling (`plan.ts`'s `collectRewrite`), so the chain having no single
+ * range a rewrite could replace changes nothing.
+ *
+ * ⚠️ **The one difference, and it favours the chain: where a literal operand is ALREADY a
+ * complete path, that literal stays the reference.** `'/img/hero.jpg' + '?v=' + v` is read
+ * today as `resolved` on its first literal, and a rewrite edits exactly that literal —
+ * correct, with the query after it. Its template twin is an unrewritable pattern. So a
+ * chain holding such a literal is not read as a chain at all: this ends a silence, and
+ * re-reads nothing that was already being read.
+ *
+ * ⚠️ **Emitted as a GUESS (`asserted: false`) wherever it sits**, including inside a JSX
+ * `src` — so it carries the speculative bound there too, where a template in that position
+ * does not. That difference is R175's named out-of-scope, not an oversight.
+ *
+ * The range runs from the first operand to the last with their outer quotes excluded, as a
+ * template's excludes its backticks, so `rawPath` is always source text and the range
+ * invariant holds; what the text PROVES the path is travels as `assembledPath`.
+ */
+function collectFromChain(node: BinaryExpression, context: Context): void {
+  if (context.chainParts.has(node)) return;
+  const operands = chainOperands(node, context.chainParts);
+  if (operands.some((operand) => standsAlone(operand, context))) return;
+
+  const chunks: string[] = [];
+  let current = '';
+  for (const operand of operands) {
+    const value = operandText(operand, context);
+    if (value === null) {
+      chunks.push(current);
+      current = '';
+    } else {
+      current += value;
+    }
+  }
+  chunks.push(current);
+  if (!pathShaped(chunks)) return;
+
+  const first = operands[0];
+  const last = operands[operands.length - 1];
+  if (first?.start === null || first?.start === undefined) return;
+  if (last?.end === null || last?.end === undefined) return;
+  const start = first.start + (isQuoted(first) ? 1 : 0);
+  const end = last.end - (isQuoted(last) ? 1 : 0);
+  const globbable = assembledPathIsGlobbable(chunks);
+
+  addReference({
+    context,
+    start,
+    end,
+    rawPath: context.text.slice(start, end),
+    assembledPath: chunks.join(HOLE),
+    kind: 'string',
+    shape: globbable ? 'js.concat.pattern' : 'js.concat.dynamic',
+    ceiling: globbable ? 'medium' : 'unsafe',
+    note: globbable
+      ? 'a path assembled with +, with a static prefix; the resolver decides which assets it names'
+      : 'a path assembled with +, with too little of the name fixed to glob — two unknown segments would sweep in assets nobody referenced (R80(b))',
+    skipPathChecks: true,
+    asserted: false,
+  });
+}
+
+/** How an unknown segment is written in an `assembledPath` — one of `INTERPOLATIONS`. */
+const HOLE = '${}';
+
+/**
+ * A chain's operands, left to right.
+ *
+ * `a + b + c` nests down its LEFT side, so that is the only side followed. ⚠️ **A
+ * parenthesised `+` is ONE operand**, not more of the chain: in `'/img/' + (i + 1) +
+ * '.png'` the brackets may add numbers, and reading `i` and `1` as two pieces of a path
+ * would write the digit into it.
+ */
+function chainOperands(node: BinaryExpression, parts: Set<BabelNode>): BabelNode[] {
+  const operands: BabelNode[] = [node.right];
+  let left: BabelNode = node.left;
+  while (left.type === 'BinaryExpression' && left.operator === '+' && !isParenthesized(left)) {
+    parts.add(left);
+    operands.unshift(left.right);
+    left = left.left;
+  }
+  operands.unshift(left);
+  return operands;
+}
+
+function isParenthesized(node: BabelNode): boolean {
+  return (node.extra as { parenthesized?: unknown } | undefined)?.parenthesized === true;
+}
+
+/** Whether an operand is, by itself, a path one of the other rules already reads. */
+function standsAlone(operand: BabelNode, context: Context): boolean {
+  if (operand.type === 'StringLiteral') {
+    return speculativeStringPath(operand, context.text) !== null;
+  }
+  return operand.type === 'TemplateLiteral' && pathShaped(templateChunks(operand, context).chunks);
+}
+
+/**
+ * What an operand contributes to the path's static text, or `null` for an unknown.
+ *
+ * A template with holes is ONE unknown here, deliberately: it is read by the template rule
+ * in its own right, and splitting it again inside the chain would only ever make the chain
+ * more globbable than its template twin is.
+ */
+function operandText(operand: BabelNode, context: Context): string | null {
+  if (operand.type === 'StringLiteral') return operand.value;
+  if (operand.type === 'TemplateLiteral') {
+    return operand.expressions.length === 0
+      ? operand.quasis.map((quasi) => quasi.value.raw).join('')
+      : null;
+  }
+  return operand.type === 'Identifier' ? context.constantNamed(operand.name) : null;
+}
+
+function isQuoted(node: BabelNode): boolean {
+  return node.type === 'StringLiteral' || node.type === 'TemplateLiteral';
+}
+
+/**
+ * Same-file string constants a path may be read through (R175), resolved on first use.
+ *
+ * 🔴 **R100 filed a module constant as "statically knowable, we cannot see it yet — OUR
+ * GAP"**, and `const ASSET_BASE = '/gallery'` seven lines above
+ * `` `${ASSET_BASE}/${name}.png` `` is exactly that. This reads it.
+ *
+ * ✅ **The one condition, and it is what makes this sound without scope analysis: the name
+ * has EXACTLY ONE binding anywhere in the file, and that binding is a top-level `const`
+ * initialised with a string.** A top-level binding is visible throughout the module, so
+ * with no other binding of the name, every use of it is that constant. A parameter, a
+ * nested declaration, a catch clause or a second top-level name → more than one binding,
+ * and the name stays an unknown, as it always was. `let` and `var` are never read: their
+ * first value proves nothing about a later call.
+ *
+ * ⚠️ Both halves are lazy, because most files never ask: the top-level scan runs only
+ * when a hole or operand is an identifier at all, and the whole-file binding count only
+ * when that identifier names such a constant.
+ */
+function sameFileConstants(program: Program): (name: string) => string | null {
+  let declared: ReadonlyMap<string, string> | undefined;
+  let bindings: ReadonlyMap<string, number> | undefined;
+  return (name) => {
+    declared ??= topLevelStringConstants(program);
+    const value = declared.get(name);
+    if (value === undefined) return null;
+    bindings ??= bindingCounts(program);
+    return bindings.get(name) === 1 ? value : null;
+  };
+}
+
+function topLevelStringConstants(program: Program): ReadonlyMap<string, string> {
+  const constants = new Map<string, string>();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
+    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue;
+    for (const { id, init } of declaration.declarations) {
+      if (id.type === 'Identifier' && init?.type === 'StringLiteral') {
+        constants.set(id.name, init.value);
+      }
+    }
+  }
+  return constants;
+}
+
+/**
+ * How many times each name is bound anywhere in the file.
+ *
+ * ⚠️ **Over-counting is the safe direction** — it can only refuse a trace — so anything
+ * that binds a name in ANY scope counts. Imports are not visited: a name imported cannot
+ * also be a top-level `const`, which the parser rejects as a redeclaration.
+ */
+function bindingCounts(program: Program): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  walk(program, (node) => {
+    for (const name of boundNames(node)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  });
+  return counts;
+}
+
+function boundNames(node: BabelNode): readonly string[] {
+  switch (node.type) {
+    case 'VariableDeclarator':
+      return patternNames(node.id);
+    case 'CatchClause':
+      return node.param === null || node.param === undefined ? [] : patternNames(node.param);
+    case 'ClassDeclaration':
+    case 'ClassExpression':
+      return node.id === null || node.id === undefined ? [] : [node.id.name];
+    case 'FunctionDeclaration':
+    case 'FunctionExpression':
+      return [
+        ...(node.id === null || node.id === undefined ? [] : [node.id.name]),
+        ...node.params.flatMap(patternNames),
+      ];
+    case 'ArrowFunctionExpression':
+    case 'ObjectMethod':
+    case 'ClassMethod':
+    case 'ClassPrivateMethod':
+      return node.params.flatMap(patternNames);
+    default:
+      return [];
+  }
+}
+
+/** The names a declaration pattern or a parameter binds. */
+function patternNames(pattern: BabelNode): readonly string[] {
+  switch (pattern.type) {
+    case 'Identifier':
+      return [pattern.name];
+    case 'ObjectPattern':
+      return pattern.properties.flatMap((property) =>
+        patternNames(property.type === 'RestElement' ? property.argument : property.value),
+      );
+    case 'ArrayPattern':
+      return pattern.elements.flatMap((element) => (element === null ? [] : patternNames(element)));
+    case 'AssignmentPattern':
+      return patternNames(pattern.left);
+    case 'RestElement':
+      return patternNames(pattern.argument);
+    case 'TSParameterProperty':
+      return patternNames(pattern.parameter);
+    default:
+      return [];
+  }
 }
 
 function collectFromImportDeclaration(node: ImportDeclaration, context: Context): void {
@@ -601,7 +927,7 @@ function addJsxAttributeValue(
       return;
     }
     if (expression.type === 'TemplateLiteral') {
-      addTemplateReference(expression, context, 'attr', templateShape(expression), label);
+      addTemplateReference(expression, context, 'attr', templateShape(expression, context), label);
     }
     // Anything else — an identifier, a call, a conditional — is a value, not a
     // path. The import that produced it was already captured on its own.
@@ -873,9 +1199,10 @@ function isBareSpecifier(value: string): boolean {
  * ⚠️ **Counted per NAME, not per template**, which is why a `/` in a later chunk resets
  * the count: in `/img/${dir}/hero.png` the two unknowns are not both in the name.
  */
-function templateShape(template: TemplateLiteral): ShapeId {
-  const chunks = template.quasis.map((quasi) => quasi.value.raw);
-  return assembledPathIsGlobbable(chunks) ? 'js.template.pattern' : 'js.template.dynamic';
+function templateShape(template: TemplateLiteral, context: Context): ShapeId {
+  return assembledPathIsGlobbable(templateChunks(template, context).chunks)
+    ? 'js.template.pattern'
+    : 'js.template.dynamic';
 }
 
 function addLiteralReference(
@@ -963,14 +1290,20 @@ function addTemplateReference(
   // while its matrix row read `dynamic`. Measured, not reasoned — the shape agreed with
   // the key and the outcome did not, which is the more dangerous half of the pair
   // because the label is what a reader checks.
-  const globbable =
-    hasExpressions && assembledPathIsGlobbable(template.quasis.map((q) => q.value.raw));
+  //
+  // 🔴 AND THE CHUNKS ARE THE TRACED ONES (R175): a hole a same-file constant fills is not
+  // an unknown, so `${ASSET_BASE}/${name}.png` is judged as the `/gallery/${name}.png` the
+  // text proves it is. When anything was traced, that path travels as `assembledPath`,
+  // because `rawPath` must stay the source text.
+  const { chunks, traced } = templateChunks(template, context);
+  const globbable = hasExpressions && assembledPathIsGlobbable(chunks);
 
   addReference({
     context,
     start: flattened.start,
     end: flattened.start + raw.length,
     rawPath: raw,
+    ...(traced ? { assembledPath: chunks.join(HOLE) } : {}),
     kind,
     shape,
     ceiling: globbable ? 'medium' : hasExpressions ? 'unsafe' : 'high',
@@ -989,6 +1322,12 @@ function addReference(input: {
   start: number;
   end: number;
   rawPath: string;
+  /**
+   * What the text PROVES the path is, when that is not `rawPath` itself: a `+` chain, or a
+   * template with a same-file constant written in (R175). Every test below that asks what
+   * the path IS reads this; the range stays on `rawPath`.
+   */
+  assembledPath?: string;
   kind: ReferenceKind;
   shape: ShapeId;
   ceiling: Confidence;
@@ -1002,6 +1341,7 @@ function addReference(input: {
     context,
     start,
     rawPath,
+    assembledPath,
     kind,
     shape,
     ceiling,
@@ -1011,6 +1351,7 @@ function addReference(input: {
   } = input;
   if (rawPath === '') return;
   const into = asserted ? context.references : context.speculative;
+  const provenPath = assembledPath ?? rawPath;
 
   // Above the `skipPathChecks` branch, not inside it (R21). That flag means *suffix
   // splitting would be wrong on this text* — which is what its own comment says —
@@ -1023,14 +1364,17 @@ function addReference(input: {
   // A URL is external whatever its holes interpolate to: `https://${branch}.x.com/`
   // is hosted somewhere we do not manage, and `` `${base}/hero.png` `` still starts
   // with a hole rather than a scheme, so it is untouched.
-  if (isExternalUrl(rawPath, kind)) return;
+  //
+  // ⚠️ Asked of the ASSEMBLED path (R175): `CDN + '/hero.png'` with `const CDN =
+  // 'https://…'` is another server's file however its source text begins.
+  if (isExternalUrl(provenPath, kind)) return;
 
   // R108, and it belongs beside the external-URL test for exactly the reason R21 gives
   // above: `skipPathChecks` means *suffix splitting would be wrong on this text*, and
   // every time a question has been put INSIDE that branch it has stopped being asked of
   // the references that need it most. A path that ends in `/` is a directory whether or
   // not its middle is a hole.
-  if (provablyNotAFile(rawPath) !== null) return;
+  if (provablyNotAFile(provenPath) !== null) return;
 
   if (skipPathChecks) {
     into.push({
@@ -1038,6 +1382,7 @@ function addReference(input: {
       start,
       end: input.end,
       rawPath,
+      ...(assembledPath === undefined ? {} : { assembledPath }),
       kind,
       shape,
       ceiling,
