@@ -133,6 +133,25 @@ describe('validateEdits', () => {
   });
 });
 
+/**
+ * A source string and a valid set of edits over it. The walk goes left to right leaving at
+ * least one character between edits, so the set is always valid and a test exercises
+ * inversion rather than rediscovering that overlapping edits are rejected.
+ */
+function generatedEdits(next: (limit: number) => number): { source: string; edits: Edit[] } {
+  const source = 'abcdefghijklmnopqrstuvwxyz'.slice(0, 6 + next(20));
+  const edits: Edit[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const start = cursor + next(3);
+    const end = Math.min(start + 1 + next(3), source.length);
+    if (start >= end) break;
+    edits.push(edit(start, end, 'X'.repeat(next(4))));
+    cursor = end + 1;
+  }
+  return { source, edits };
+}
+
 describe('invertEdits', () => {
   it('turns the rewritten text back into the original', () => {
     const source = 'a "./logo.png" b "./hero.jpg" c';
@@ -144,29 +163,23 @@ describe('invertEdits', () => {
   });
 
   it('round-trips over many generated edit sets', () => {
-    // Seeded rather than random so a failure is reproducible from the output alone.
+    // Seeded rather than random so a failure is reproducible from the output alone. The
+    // arithmetic is 32-bit and exact, and a choice comes from the high bits: a plain
+    // `seed * 1103515245` passes 2^53, where a double drops the low bits, and choosing by
+    // `seed % limit` then read only those, so every `next(2)` was 0.
     let seed = 20260911;
     const next = (limit: number): number => {
-      seed = (seed * 1103515245 + 12345) % 2147483648;
-      return seed % limit;
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return Math.floor((seed / 2 ** 32) * limit);
     };
+    const tested = new Set<string>();
+    let deletions = 0;
+    let replacements = 0;
+    let multiEdit = 0;
 
     let nonEmpty = 0;
     for (let round = 0; round < 200; round++) {
-      const source = 'abcdefghijklmnopqrstuvwxyz'.slice(0, 6 + next(20));
-      const edits: Edit[] = [];
-
-      // Walk left to right leaving at least one character between edits, so the
-      // generated set is always valid and the test exercises inversion rather than
-      // rediscovering that overlapping edits are rejected.
-      let cursor = 0;
-      while (cursor < source.length) {
-        const start = cursor + next(3);
-        const end = Math.min(start + 1 + next(3), source.length);
-        if (start >= end) break;
-        edits.push(edit(start, end, 'X'.repeat(next(4))));
-        cursor = end + 1;
-      }
+      const { source, edits } = generatedEdits(next);
       if (edits.length === 0) continue;
 
       const after = applyEdits(source, edits);
@@ -184,9 +197,19 @@ describe('invertEdits', () => {
       if (!applicable) continue;
 
       nonEmpty += 1;
+      tested.add(`${source} ${JSON.stringify(edits)}`);
+      deletions += edits.filter((one) => one.replacement === '').length;
+      replacements += edits.filter((one) => one.replacement !== '').length;
+      if (edits.length > 1) multiEdit += 1;
       expect(applyEdits(after, inverse), `round ${round}, source ${source}`).toBe(source);
     }
 
+    // The premise: the rounds differ from each other and exercise every kind of edit, so a
+    // generator that has gone degenerate cannot pass quietly.
     expect(nonEmpty).toBeGreaterThan(50);
+    expect(tested.size).toBe(nonEmpty);
+    expect(multiEdit).toBeGreaterThan(nonEmpty / 2);
+    expect(deletions).toBeGreaterThan(20);
+    expect(replacements).toBeGreaterThan(3 * deletions);
   });
 });
