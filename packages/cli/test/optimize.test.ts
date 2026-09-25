@@ -33,7 +33,10 @@ afterEach(() => {
 /** Upfly's own folder and git's, left out when comparing a project's files. */
 const NOT_THE_PROJECT = ['.git', '.upfly'];
 
-/** Run with --replace, originals are only removed from a folder the site is served from. */
+/**
+ * Under --replace an original is removed only inside a folder the site is served from, so
+ * those runs declare the project root as one.
+ */
 const POLICIES = [
   ['keep-original', []],
   ['replace', ['--replace', '--public', '.']],

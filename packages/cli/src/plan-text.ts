@@ -1,4 +1,4 @@
-/** The plan `upfly optimize` prints after the report, and the sentence saying what came of it. */
+/** The plan as `upfly optimize` prints it after the report, and what an applied run wrote. */
 
 import {
   type Graph,
