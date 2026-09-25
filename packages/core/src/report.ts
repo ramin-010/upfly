@@ -248,9 +248,9 @@ const REFUSAL_REASONS: ReadonlyArray<{
     // were never images (versions, i18n keys, `layout.${ext}` naming `.tsx`), and R175 made
     // the `+` chains R112 had to sweep out of the source by hand visible to the engine.
     bound:
-      'Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches — but 4 are NOT. Two read an imported module constant, which a module graph would resolve (to an absolute URL, R112); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.',
+      'Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches, but 4 are not. Two read an imported module constant, which a module graph would resolve (to an absolute URL); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.',
     measuredAgainst:
-      "B15, 2026-09-25: R112's classifier re-run on the final Phase 2 engine (R175, R176) over the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www), + chains included. R112 measured 62 here on 2026-09-15. ⚠️ If that corpus or the engine has changed, this bound has not been re-measured and does not describe it.",
+      '2026-09-25, on five public repositories: astro-docs, eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the engine have changed since, this bound has not been re-measured.',
   },
   {
     // R118: the attribute could not be parsed as CSS AND provably holds no url-taking
@@ -1038,7 +1038,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
 function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {
   return resolution === 'dynamic'
     ? 'no static path to resolve'
-    : 'alias-shaped; alias resolution arrives in Phase 2';
+    : 'alias-shaped, and no alias the project declares maps it';
 }
 
 /**
@@ -1093,7 +1093,7 @@ function notExercised(input: ReportInput): NotExercised[] {
   if (input.servingRoots.declared) {
     entries.push({
       mechanism: 'serving-root-detection',
-      why: 'the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)',
+      why: 'the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files',
     });
   }
 

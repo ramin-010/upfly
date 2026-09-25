@@ -33,6 +33,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'packages/*/test/**/*.test.ts',
       'bench/src/**/*.test.ts',
+      'tools/**/*.test.ts',
     ],
     // 🔴 **Vitest defaults to 5,000 ms per test and 10,000 ms per hook, and both have now
     // produced a FALSE DENY on a tree whose every assertion passes (R163).** CLAUDE.md

@@ -944,15 +944,14 @@ describe('buildReport', () => {
     }
 
     function reportWith(rawPaths: readonly string[]) {
+      return reportOf(
+        rawPaths.map((rawPath, index) => dynamicReference('app.ts', rawPath, index * 100)),
+      );
+    }
+
+    function reportOf(references: readonly Reference[]) {
       return buildReport({
-        graph: buildGraph({
-          root: ROOT,
-          assets: [],
-          references: rawPaths.map((rawPath, index) =>
-            dynamicReference('app.ts', rawPath, index * 100),
-          ),
-          unscannedFiles: [],
-        }),
+        graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
         audit: {
           findings: [],
           publicDirDeadCount: 0,
@@ -1006,6 +1005,19 @@ describe('buildReport', () => {
       // These two are built at run time, so the heading is the no-answer one.
       expect(text).toContain('2 references had no answer to find');
       expect(text).toContain('none with a filename to check');
+    });
+
+    it('says an alias-shaped path with no note matched no alias the project declares', () => {
+      const report = reportOf([
+        {
+          ...dynamicReference('app.ts', '@/assets/logo.png', 0),
+          resolution: 'unresolved-alias',
+        },
+      ]);
+
+      expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
+        'alias-shaped, and no alias the project declares maps it',
+      ]);
     });
   });
 
@@ -2058,11 +2070,11 @@ describe('classifyReference: the four boxes R109 defines', () => {
     );
 
     expect(runtime?.count).toBeGreaterThan(0);
-    expect(runtime?.bound).toMatch(/4 are NOT/);
+    expect(runtime?.bound).toMatch(/but 4 are not/);
     // The provenance is its own field, not a sentence buried in the bound: a caveat a
     // reader cannot date is one they cannot check, which is R117 inside the schema.
-    expect(runtime?.measuredAgainst).toMatch(/B15, 2026-09-25/);
-    expect(runtime?.measuredAgainst).toMatch(/If that corpus or the engine has changed/);
+    expect(runtime?.measuredAgainst).toMatch(/^2026-09-25, on five public repositories/);
+    expect(runtime?.measuredAgainst).toMatch(/If they or the engine have changed since/);
   });
 
   it('carries no bound for a reason that has none', async () => {

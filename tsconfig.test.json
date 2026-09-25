@@ -7,7 +7,9 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
+    "allowJs": true,
+    "checkJs": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["packages/*/src/**/*.ts", "bench/src/**/*.ts"]
+  "include": ["packages/*/src/**/*.ts", "bench/src/**/*.ts", "tools/**/*.ts", "tools/**/*.mjs"]
 }

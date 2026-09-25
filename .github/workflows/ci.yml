@@ -39,6 +39,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Every file is held to the comment standard against tools/comment-baseline.json:
+      # a file may lose findings but not gain them.
+      - name: Comments
+        run: pnpm comments:check
+
       - name: Typecheck
         run: pnpm typecheck
 

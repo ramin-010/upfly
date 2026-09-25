@@ -599,7 +599,7 @@ describe('javascriptAdapter', () => {
       const [reference] = find('const src = `${base}/img/hero.png`;');
 
       expect(reference?.ceiling).toBe('unsafe');
-      expect(reference?.note).toContain('R80(b)');
+      expect(reference?.note).toContain('a pattern needs a fixed directory');
     });
 
     it('keeps a relative templated path whose hole is the whole filename stem', () => {

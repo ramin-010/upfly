@@ -35,6 +35,7 @@ import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
+  NOT_GLOBBABLE_REASON,
   assembledPathIsGlobbable,
   interpolationChunks,
   isExternalUrl,
@@ -644,7 +645,7 @@ function collectFromChain(node: BinaryExpression, context: Context): void {
     ceiling: globbable ? 'medium' : 'unsafe',
     note: globbable
       ? 'a path assembled with +, with a static prefix; the resolver decides which assets it names'
-      : 'a path assembled with +, with too little of the name fixed to glob — two unknown segments would sweep in assets nobody referenced (R80(b))',
+      : `a path assembled with +: ${NOT_GLOBBABLE_REASON}`,
     skipPathChecks: true,
     asserted: false,
   });
@@ -1310,7 +1311,7 @@ function addTemplateReference(
     note: globbable
       ? `${description}: a template literal with a static prefix; the resolver decides whether it names exactly one asset`
       : hasExpressions
-        ? `${description}: too little of the name is fixed to glob — two unknown segments would sweep in assets nobody referenced (R80(b))`
+        ? `${description}: ${NOT_GLOBBABLE_REASON}`
         : description,
     skipPathChecks: hasExpressions,
     asserted,

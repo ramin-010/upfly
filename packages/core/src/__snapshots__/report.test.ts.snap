@@ -32,7 +32,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
       {
         "mechanism": "probe",
@@ -191,7 +191,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
       {
         "mechanism": "probe",
@@ -319,9 +319,9 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
     "classificationBounds": [
       {
-        "bound": "Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches — but 4 are NOT. Two read an imported module constant, which a module graph would resolve (to an absolute URL, R112); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.",
+        "bound": "Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches, but 4 are not. Two read an imported module constant, which a module graph would resolve (to an absolute URL); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.",
         "count": 1,
-        "measuredAgainst": "B15, 2026-09-25: R112's classifier re-run on the final Phase 2 engine (R175, R176) over the five pinned validation repositories (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www), + chains included. R112 measured 62 here on 2026-09-15. ⚠️ If that corpus or the engine has changed, this bound has not been re-measured and does not describe it.",
+        "measuredAgainst": "2026-09-25, on five public repositories: astro-docs, eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the engine have changed since, this bound has not been re-measured.",
         "reason": "assembled-at-runtime",
       },
     ],
@@ -393,18 +393,15 @@ What the counts above are known to get wrong
 
   1 classified as "assembled-at-runtime", and:
     Of 18 such references, 14 are a parameter, a prop or instance state, which
-    nothing reaches — but 4 are NOT. Two read an imported module constant,
-    which a module graph would resolve (to an absolute URL, R112); one is a
-    filename from a build-time glob; one is an environment variable the deploy
+    nothing reaches, but 4 are not. Two read an imported module constant,
+    which a module graph would resolve (to an absolute URL); one is a filename
+    from a build-time glob; one is an environment variable the deploy
     supplies. The first three have an answer we do not compute, so they are
     misses this reason absorbs. Read as roughly four in five.
 
-    measured: B15, 2026-09-25: R112's classifier re-run on the final Phase 2
-    engine (R175, R176) over the five pinned validation repositories
-    (astro-docs, eleventy-docs, shadcn-ui, railsgirls-com, scratch-www), +
-    chains included. R112 measured 62 here on 2026-09-15. ⚠️ If that corpus or
-    the engine has changed, this bound has not been re-measured and does not
-    describe it.
+    measured: 2026-09-25, on five public repositories: astro-docs,
+    eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the
+    engine have changed since, this bound has not been re-measured.
 
 Findings — 6 items
 
@@ -473,7 +470,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
       {
         "mechanism": "probe",
@@ -607,7 +604,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
     ],
     "servingRoots": {
@@ -790,7 +787,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
       {
         "mechanism": "probe",
@@ -964,7 +961,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "notExercised": [
       {
         "mechanism": "serving-root-detection",
-        "why": "the project declared its serving roots, so nothing had to infer them — a run that infers them can reach different files (R96)",
+        "why": "the project declared its serving roots, so nothing had to infer them; a run that infers them can reach different files",
       },
       {
         "mechanism": "probe",

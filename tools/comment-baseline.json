@@ -1,0 +1,797 @@
+{
+  "files": {
+    "bench/src/breakdown.test.ts": {
+      "internal-reference": 13,
+      "em-dash": 7,
+      "emphasis": 3,
+      "emoji": 9,
+      "long-comment": 2
+    },
+    "bench/src/breakdown.ts": {
+      "internal-reference": 33,
+      "em-dash": 20,
+      "emphasis": 30,
+      "emoji": 23,
+      "long-comment": 45
+    },
+    "bench/src/corpus-run.ts": {
+      "internal-reference": 6,
+      "em-dash": 5,
+      "emphasis": 1,
+      "emoji": 5,
+      "long-comment": 3
+    },
+    "bench/src/dead-rate.ts": {
+      "internal-reference": 5,
+      "em-dash": 6,
+      "emphasis": 6,
+      "emoji": 3,
+      "long-comment": 11
+    },
+    "bench/src/detect-roots.ts": {
+      "internal-reference": 3,
+      "em-dash": 2,
+      "emoji": 4,
+      "long-comment": 1
+    },
+    "bench/src/encode-quality.ts": {
+      "internal-reference": 11,
+      "em-dash": 12,
+      "emphasis": 11,
+      "emoji": 12,
+      "long-comment": 28
+    },
+    "bench/src/engine-run.test.ts": {
+      "emoji": 1
+    },
+    "bench/src/engine-run.ts": {
+      "internal-reference": 8,
+      "em-dash": 3,
+      "emphasis": 4,
+      "emoji": 5,
+      "long-comment": 2
+    },
+    "bench/src/fixture-build.ts": {
+      "internal-reference": 11,
+      "em-dash": 26,
+      "emphasis": 24,
+      "emoji": 9,
+      "long-comment": 23
+    },
+    "bench/src/generate.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 5,
+      "emphasis": 6,
+      "emoji": 5,
+      "long-comment": 8
+    },
+    "bench/src/generate.ts": {
+      "internal-reference": 13,
+      "em-dash": 26,
+      "emphasis": 28,
+      "emoji": 12,
+      "long-comment": 41
+    },
+    "bench/src/invocations.ts": {
+      "internal-reference": 1,
+      "em-dash": 5,
+      "emphasis": 12,
+      "emoji": 3,
+      "long-comment": 7
+    },
+    "bench/src/lossless-cohort.ts": {
+      "internal-reference": 9,
+      "em-dash": 9,
+      "emphasis": 8,
+      "emoji": 8,
+      "long-comment": 15
+    },
+    "bench/src/move-run.ts": {
+      "internal-reference": 6,
+      "em-dash": 6,
+      "emphasis": 7,
+      "emoji": 5,
+      "long-comment": 5
+    },
+    "bench/src/noise.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 1,
+      "emphasis": 2,
+      "emoji": 1
+    },
+    "bench/src/noise.ts": {
+      "internal-reference": 4,
+      "em-dash": 5,
+      "emphasis": 13,
+      "emoji": 5,
+      "long-comment": 27
+    },
+    "bench/src/optimize-twice.test.ts": {
+      "long-comment": 1
+    },
+    "bench/src/pipeline.ts": {
+      "internal-reference": 8,
+      "em-dash": 5,
+      "emphasis": 3,
+      "emoji": 3
+    },
+    "bench/src/repos.ts": {
+      "internal-reference": 7,
+      "em-dash": 3,
+      "emoji": 1,
+      "long-comment": 4
+    },
+    "bench/src/root-inference.test.ts": {
+      "internal-reference": 5,
+      "em-dash": 4,
+      "emphasis": 5,
+      "emoji": 4,
+      "long-comment": 6
+    },
+    "bench/src/root-inference.ts": {
+      "internal-reference": 10,
+      "em-dash": 7,
+      "emphasis": 11,
+      "emoji": 13,
+      "long-comment": 27
+    },
+    "bench/src/run.ts": {
+      "internal-reference": 13,
+      "em-dash": 13,
+      "emphasis": 16,
+      "emoji": 7,
+      "long-comment": 14
+    },
+    "bench/src/samples.ts": {
+      "em-dash": 1,
+      "emphasis": 3,
+      "emoji": 1
+    },
+    "bench/src/serving-root-decision.test.ts": {
+      "internal-reference": 7,
+      "em-dash": 2,
+      "emphasis": 5,
+      "emoji": 6,
+      "long-comment": 5
+    },
+    "bench/src/serving-root-decision.ts": {
+      "internal-reference": 10,
+      "em-dash": 11,
+      "emphasis": 10,
+      "emoji": 10,
+      "long-comment": 27
+    },
+    "bench/src/transferability.ts": {
+      "internal-reference": 12,
+      "em-dash": 12,
+      "emphasis": 14,
+      "emoji": 10,
+      "long-comment": 42
+    },
+    "bench/src/triage.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 5,
+      "emphasis": 3
+    },
+    "bench/src/triage.ts": {
+      "internal-reference": 2,
+      "em-dash": 6,
+      "emphasis": 6,
+      "emoji": 1,
+      "long-comment": 4
+    },
+    "bench/src/validate.ts": {
+      "internal-reference": 25,
+      "em-dash": 25,
+      "emphasis": 18,
+      "emoji": 6,
+      "long-comment": 24
+    },
+    "bench/src/verify.test.ts": {
+      "internal-reference": 15,
+      "em-dash": 13,
+      "emphasis": 11,
+      "emoji": 10,
+      "long-comment": 12
+    },
+    "bench/src/verify.ts": {
+      "internal-reference": 35,
+      "em-dash": 44,
+      "emphasis": 55,
+      "emoji": 28,
+      "long-comment": 57
+    },
+    "coverage-tree/tools/check-key.mjs": {
+      "internal-reference": 1,
+      "em-dash": 5,
+      "emoji": 3,
+      "long-comment": 10
+    },
+    "coverage-tree/tools/matrix.d.mts": {
+      "internal-reference": 14,
+      "em-dash": 7,
+      "emphasis": 2,
+      "emoji": 2
+    },
+    "coverage-tree/tools/matrix.mjs": {
+      "internal-reference": 57,
+      "em-dash": 46,
+      "emphasis": 21,
+      "emoji": 35,
+      "long-comment": 33
+    },
+    "coverage-tree/tools/measure.mjs": {
+      "internal-reference": 19,
+      "em-dash": 15,
+      "emphasis": 4,
+      "emoji": 12,
+      "long-comment": 18
+    },
+    "coverage-tree/tools/prove-can-fail.mjs": {
+      "internal-reference": 2,
+      "em-dash": 4,
+      "emphasis": 2,
+      "emoji": 3,
+      "long-comment": 1
+    },
+    "coverage-tree/tools/scan-occurrences.mjs": {
+      "em-dash": 2,
+      "emoji": 2,
+      "long-comment": 4
+    },
+    "coverage-tree/tools/stamp-positions.mjs": {
+      "internal-reference": 1,
+      "em-dash": 2,
+      "emoji": 2,
+      "long-comment": 3
+    },
+    "packages/cli/src/bin.ts": {
+      "internal-reference": 1
+    },
+    "packages/cli/src/index.ts": {
+      "internal-reference": 1,
+      "em-dash": 1
+    },
+    "packages/core/src/adapters/assembled-path.test.ts": {
+      "internal-reference": 11,
+      "em-dash": 13,
+      "emphasis": 2,
+      "emoji": 10,
+      "long-comment": 9
+    },
+    "packages/core/src/adapters/astro.fixtures.test.ts": {
+      "internal-reference": 3,
+      "em-dash": 7
+    },
+    "packages/core/src/adapters/astro.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 1
+    },
+    "packages/core/src/adapters/astro.ts": {
+      "internal-reference": 4,
+      "em-dash": 13,
+      "emphasis": 9,
+      "emoji": 4,
+      "long-comment": 22
+    },
+    "packages/core/src/adapters/css.fixtures.test.ts": {
+      "em-dash": 1
+    },
+    "packages/core/src/adapters/css.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 8,
+      "emphasis": 7,
+      "emoji": 6
+    },
+    "packages/core/src/adapters/css.ts": {
+      "internal-reference": 13,
+      "em-dash": 30,
+      "emphasis": 18,
+      "emoji": 20,
+      "long-comment": 24
+    },
+    "packages/core/src/adapters/default-adapters.ts": {
+      "em-dash": 6,
+      "emphasis": 3,
+      "emoji": 1,
+      "long-comment": 3
+    },
+    "packages/core/src/adapters/define.ts": {
+      "internal-reference": 1,
+      "em-dash": 5,
+      "emphasis": 2,
+      "emoji": 1,
+      "long-comment": 5
+    },
+    "packages/core/src/adapters/dispositions.test.ts": {
+      "internal-reference": 6,
+      "em-dash": 5,
+      "emphasis": 1,
+      "emoji": 3,
+      "long-comment": 1
+    },
+    "packages/core/src/adapters/html.test.ts": {
+      "internal-reference": 19,
+      "em-dash": 22,
+      "emphasis": 12,
+      "emoji": 13,
+      "long-comment": 3
+    },
+    "packages/core/src/adapters/html.ts": {
+      "internal-reference": 34,
+      "em-dash": 49,
+      "emphasis": 43,
+      "emoji": 34,
+      "long-comment": 47
+    },
+    "packages/core/src/adapters/javascript.fixtures.test.ts": {
+      "em-dash": 2
+    },
+    "packages/core/src/adapters/javascript.test.ts": {
+      "internal-reference": 18,
+      "em-dash": 30,
+      "emphasis": 13,
+      "emoji": 8,
+      "long-comment": 4
+    },
+    "packages/core/src/adapters/javascript.ts": {
+      "internal-reference": 47,
+      "em-dash": 62,
+      "emphasis": 30,
+      "emoji": 30,
+      "long-comment": 74
+    },
+    "packages/core/src/adapters/json.ts": {
+      "internal-reference": 2,
+      "em-dash": 6,
+      "emphasis": 3,
+      "emoji": 1,
+      "long-comment": 2
+    },
+    "packages/core/src/adapters/markdown.test.ts": {
+      "internal-reference": 7,
+      "em-dash": 14,
+      "emphasis": 11,
+      "emoji": 4
+    },
+    "packages/core/src/adapters/markdown.ts": {
+      "internal-reference": 13,
+      "em-dash": 47,
+      "emphasis": 31,
+      "emoji": 15,
+      "long-comment": 68
+    },
+    "packages/core/src/adapters/parse-failure.ts": {
+      "internal-reference": 2,
+      "em-dash": 6,
+      "emphasis": 4,
+      "emoji": 2,
+      "long-comment": 8
+    },
+    "packages/core/src/adapters/postcss-less.d.ts": {
+      "em-dash": 2
+    },
+    "packages/core/src/adapters/reference-path.ts": {
+      "internal-reference": 21,
+      "em-dash": 40,
+      "emphasis": 36,
+      "emoji": 28,
+      "long-comment": 97
+    },
+    "packages/core/src/adapters/shape-ladder.test.ts": {
+      "internal-reference": 2,
+      "em-dash": 8,
+      "emoji": 1,
+      "long-comment": 3
+    },
+    "packages/core/src/aliases.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 2,
+      "emphasis": 1
+    },
+    "packages/core/src/aliases.ts": {
+      "em-dash": 14,
+      "emphasis": 11,
+      "emoji": 4,
+      "long-comment": 19
+    },
+    "packages/core/src/audit.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 2,
+      "emphasis": 2
+    },
+    "packages/core/src/audit.ts": {
+      "internal-reference": 10,
+      "em-dash": 27,
+      "emphasis": 8,
+      "emoji": 7,
+      "long-comment": 9
+    },
+    "packages/core/src/citation.ts": {
+      "em-dash": 5,
+      "long-comment": 3
+    },
+    "packages/core/src/concurrency.test.ts": {
+      "internal-reference": 2,
+      "em-dash": 7,
+      "emphasis": 4,
+      "emoji": 8,
+      "long-comment": 6
+    },
+    "packages/core/src/conventions.test.ts": {
+      "internal-reference": 2,
+      "em-dash": 3,
+      "emphasis": 2,
+      "emoji": 1
+    },
+    "packages/core/src/conventions.ts": {
+      "internal-reference": 6,
+      "em-dash": 6,
+      "emphasis": 5,
+      "long-comment": 10
+    },
+    "packages/core/src/could-hold-reference.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 2,
+      "emphasis": 2,
+      "emoji": 2
+    },
+    "packages/core/src/could-hold-reference.ts": {
+      "internal-reference": 10,
+      "em-dash": 14,
+      "emphasis": 6,
+      "emoji": 6,
+      "long-comment": 57
+    },
+    "packages/core/src/coverage-matrix.test.ts": {
+      "internal-reference": 20,
+      "em-dash": 25,
+      "emphasis": 6,
+      "emoji": 11,
+      "long-comment": 3
+    },
+    "packages/core/src/discover.test.ts": {
+      "em-dash": 2,
+      "emphasis": 2
+    },
+    "packages/core/src/discover.ts": {
+      "em-dash": 6,
+      "emphasis": 5,
+      "long-comment": 6
+    },
+    "packages/core/src/duplicates.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 8,
+      "emphasis": 3,
+      "emoji": 7
+    },
+    "packages/core/src/duplicates.ts": {
+      "internal-reference": 1,
+      "em-dash": 7,
+      "emphasis": 7,
+      "emoji": 4,
+      "long-comment": 4
+    },
+    "packages/core/src/edits.ts": {
+      "em-dash": 1
+    },
+    "packages/core/src/errors.ts": {
+      "internal-reference": 4,
+      "em-dash": 7,
+      "emphasis": 5,
+      "emoji": 2,
+      "long-comment": 8
+    },
+    "packages/core/src/file-store-node.test.ts": {
+      "em-dash": 1,
+      "emphasis": 1,
+      "emoji": 2
+    },
+    "packages/core/src/file-store-node.ts": {
+      "internal-reference": 1,
+      "em-dash": 1,
+      "emphasis": 2,
+      "emoji": 1,
+      "long-comment": 1
+    },
+    "packages/core/src/fixture-integrity.test.ts": {
+      "internal-reference": 6,
+      "em-dash": 8,
+      "emphasis": 3,
+      "emoji": 3,
+      "long-comment": 3
+    },
+    "packages/core/src/fixture-oracle.test.ts": {
+      "internal-reference": 11,
+      "em-dash": 22,
+      "emphasis": 26,
+      "emoji": 11,
+      "long-comment": 53
+    },
+    "packages/core/src/fixtures.test.ts": {
+      "internal-reference": 18,
+      "em-dash": 24,
+      "emphasis": 5,
+      "emoji": 8,
+      "long-comment": 8
+    },
+    "packages/core/src/format.ts": {
+      "internal-reference": 1,
+      "em-dash": 3,
+      "emphasis": 4,
+      "emoji": 2
+    },
+    "packages/core/src/graph.test.ts": {
+      "em-dash": 6,
+      "emphasis": 1
+    },
+    "packages/core/src/graph.ts": {
+      "em-dash": 11,
+      "emphasis": 5,
+      "long-comment": 8
+    },
+    "packages/core/src/hostile.test.ts": {
+      "internal-reference": 3,
+      "em-dash": 9,
+      "emphasis": 2
+    },
+    "packages/core/src/index.ts": {
+      "internal-reference": 3
+    },
+    "packages/core/src/infer-serving-roots.test.ts": {
+      "internal-reference": 6,
+      "em-dash": 7,
+      "emphasis": 2,
+      "emoji": 3
+    },
+    "packages/core/src/infer-serving-roots.ts": {
+      "internal-reference": 6,
+      "em-dash": 8,
+      "emphasis": 17,
+      "emoji": 9,
+      "long-comment": 16
+    },
+    "packages/core/src/lock.ts": {
+      "internal-reference": 1,
+      "em-dash": 9,
+      "emphasis": 9,
+      "emoji": 5,
+      "long-comment": 8
+    },
+    "packages/core/src/move-check.test.ts": {
+      "internal-reference": 11,
+      "em-dash": 12,
+      "emphasis": 10,
+      "emoji": 9,
+      "long-comment": 2
+    },
+    "packages/core/src/move-check.ts": {
+      "internal-reference": 9,
+      "em-dash": 16,
+      "emphasis": 18,
+      "emoji": 9,
+      "long-comment": 15
+    },
+    "packages/core/src/old-path-search.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 6,
+      "emphasis": 4,
+      "emoji": 7
+    },
+    "packages/core/src/old-path-search.ts": {
+      "internal-reference": 3,
+      "em-dash": 12,
+      "emphasis": 19,
+      "emoji": 9,
+      "long-comment": 10
+    },
+    "packages/core/src/optimize.test.ts": {
+      "internal-reference": 6,
+      "em-dash": 4,
+      "emphasis": 3,
+      "emoji": 9,
+      "long-comment": 3
+    },
+    "packages/core/src/optimize.ts": {
+      "internal-reference": 10,
+      "em-dash": 13,
+      "emphasis": 12,
+      "emoji": 12,
+      "long-comment": 16
+    },
+    "packages/core/src/partial-states.test.ts": {
+      "internal-reference": 16,
+      "em-dash": 16,
+      "emphasis": 8,
+      "emoji": 8,
+      "long-comment": 22
+    },
+    "packages/core/src/paths.test.ts": {
+      "internal-reference": 4,
+      "em-dash": 5,
+      "emphasis": 3,
+      "emoji": 1
+    },
+    "packages/core/src/paths.ts": {
+      "internal-reference": 7,
+      "em-dash": 10,
+      "emphasis": 15,
+      "emoji": 4,
+      "long-comment": 26
+    },
+    "packages/core/src/plan.test.ts": {
+      "internal-reference": 8,
+      "em-dash": 5,
+      "emphasis": 4,
+      "emoji": 5
+    },
+    "packages/core/src/plan.ts": {
+      "internal-reference": 31,
+      "em-dash": 13,
+      "emphasis": 17,
+      "emoji": 13,
+      "long-comment": 39
+    },
+    "packages/core/src/probe-sharp.test.ts": {
+      "internal-reference": 5,
+      "em-dash": 4
+    },
+    "packages/core/src/probe-sharp.ts": {
+      "internal-reference": 4,
+      "em-dash": 3,
+      "long-comment": 6
+    },
+    "packages/core/src/probe.test.ts": {
+      "internal-reference": 3,
+      "em-dash": 7,
+      "emphasis": 4,
+      "emoji": 3
+    },
+    "packages/core/src/probe.ts": {
+      "internal-reference": 21,
+      "em-dash": 29,
+      "emphasis": 28,
+      "emoji": 14,
+      "long-comment": 38
+    },
+    "packages/core/src/reference.ts": {
+      "internal-reference": 4,
+      "em-dash": 2,
+      "emphasis": 2
+    },
+    "packages/core/src/relocate.test.ts": {
+      "internal-reference": 8,
+      "em-dash": 8,
+      "emphasis": 5,
+      "emoji": 8
+    },
+    "packages/core/src/relocate.ts": {
+      "internal-reference": 16,
+      "em-dash": 25,
+      "emphasis": 21,
+      "emoji": 10,
+      "long-comment": 18
+    },
+    "packages/core/src/report-human.ts": {
+      "internal-reference": 29,
+      "em-dash": 43,
+      "emphasis": 29,
+      "emoji": 15,
+      "long-comment": 41
+    },
+    "packages/core/src/report.test.ts": {
+      "internal-reference": 47,
+      "em-dash": 39,
+      "emphasis": 20,
+      "emoji": 16,
+      "long-comment": 5
+    },
+    "packages/core/src/report.ts": {
+      "internal-reference": 88,
+      "em-dash": 76,
+      "emphasis": 51,
+      "emoji": 30,
+      "long-comment": 46
+    },
+    "packages/core/src/resolution-health.ts": {
+      "long-comment": 1
+    },
+    "packages/core/src/resolve.test.ts": {
+      "internal-reference": 16,
+      "em-dash": 16,
+      "emphasis": 5,
+      "emoji": 7,
+      "long-comment": 2
+    },
+    "packages/core/src/resolve.ts": {
+      "internal-reference": 15,
+      "em-dash": 31,
+      "emphasis": 29,
+      "emoji": 10,
+      "long-comment": 27
+    },
+    "packages/core/src/scan.test.ts": {
+      "internal-reference": 5,
+      "em-dash": 7,
+      "emphasis": 3,
+      "emoji": 2
+    },
+    "packages/core/src/scan.ts": {
+      "internal-reference": 15,
+      "em-dash": 25,
+      "emphasis": 10,
+      "emoji": 2,
+      "long-comment": 25
+    },
+    "packages/core/src/serving-roots.test.ts": {
+      "internal-reference": 8,
+      "em-dash": 4,
+      "emoji": 1
+    },
+    "packages/core/src/serving-roots.ts": {
+      "internal-reference": 5,
+      "em-dash": 14,
+      "emphasis": 3,
+      "emoji": 4,
+      "long-comment": 18
+    },
+    "packages/core/src/shapes.reconcile.test.ts": {
+      "internal-reference": 6,
+      "em-dash": 16,
+      "emphasis": 3,
+      "emoji": 7,
+      "long-comment": 14
+    },
+    "packages/core/src/shapes.ts": {
+      "internal-reference": 25,
+      "em-dash": 33,
+      "emphasis": 31,
+      "emoji": 27,
+      "long-comment": 58,
+      "output-reference": 29
+    },
+    "packages/core/src/sweep.test.ts": {
+      "internal-reference": 2,
+      "em-dash": 5,
+      "emphasis": 4,
+      "emoji": 1,
+      "long-comment": 2
+    },
+    "packages/core/src/sweep.ts": {
+      "internal-reference": 7,
+      "em-dash": 20,
+      "emphasis": 6,
+      "long-comment": 18
+    },
+    "packages/core/src/transaction.test.ts": {
+      "em-dash": 1
+    },
+    "packages/core/src/transaction.ts": {
+      "internal-reference": 2,
+      "em-dash": 3,
+      "emphasis": 1,
+      "emoji": 3,
+      "long-comment": 5
+    },
+    "packages/core/src/types.ts": {
+      "internal-reference": 8,
+      "em-dash": 27,
+      "emphasis": 19,
+      "emoji": 5,
+      "long-comment": 6
+    },
+    "packages/core/src/unscanned.ts": {
+      "internal-reference": 6,
+      "em-dash": 3,
+      "emphasis": 6,
+      "emoji": 3
+    },
+    "packages/core/test/smoke.test.ts": {
+      "internal-reference": 1,
+      "em-dash": 1,
+      "emphasis": 3,
+      "emoji": 1,
+      "long-comment": 3
+    }
+  }
+}

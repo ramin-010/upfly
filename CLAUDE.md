@@ -47,6 +47,17 @@ it is the only channel between chats and a chat can end at any moment.
 14. **Time-box.** Slipping a phase moves scope to "Later", not the deadline.
 15. No new features mid-phase unless they fall out of the graph for free.
 16. Performance claims are only ever numbers produced by `bench/` in CI.
+17. Tests are typechecked: `tsconfig.test.json` covers every test file and runs in `pnpm typecheck`.
+18. Comments are written for a stranger. Comment the why, only where the code cannot say it, and
+    document every public export with one plain sentence plus `@param`, `@returns`, `@throws` and
+    `@example` where they help. Nothing a stranger cannot look up: no ruling numbers, plan sections,
+    phases, chat names or `notes/` paths. Write the fact, and put where it came from in the commit
+    message. Plain text: no bold, italics, emoji or em dashes. A comment over about ten lines is a
+    design note for `ARCHITECTURE.md`. Output text (report reasons, messages, CLI output) never
+    carries an internal reference. The standard, with examples: `../notes/15-comment-standard.md`.
+    `pnpm comments:check` runs inside `pnpm check` and holds each file to
+    `tools/comment-baseline.json`: a file may lose findings, never gain one. After cleaning a file,
+    run `pnpm comments:baseline` to lower its entry.
 
 ## Two things that decide whether this product is trusted
 

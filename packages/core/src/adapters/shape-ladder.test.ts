@@ -143,6 +143,8 @@ describe('R80(b) reaches the CEILING, not just the label (R89)', () => {
   });
 
   it('says why in the note, because rule 9 makes a silent refusal a P0', () => {
-    expect(template('/icons/${theme}-${size}.png')[0]?.note).toContain('R80(b)');
+    expect(template('/icons/${theme}-${size}.png')[0]?.note).toContain(
+      'at most one unknown part in the file name',
+    );
   });
 });

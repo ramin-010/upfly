@@ -23,6 +23,7 @@ import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
+  NOT_GLOBBABLE_REASON,
   assembledPathIsGlobbable,
   interpolationChunks,
   isExternalUrl,
@@ -521,14 +522,10 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
   // decides whether the pattern names anything, and falls back to `dynamic` when it does
   // not. So this can only ever ADD links; it cannot turn a dynamic reference broken.
   if (rawPath.includes('#{')) {
-    return interpolationIsGlobbable(rawPath)
-      ? null
-      : 'SCSS interpolation in the directory: too little is fixed to glob (R78 Q3)';
+    return interpolationIsGlobbable(rawPath) ? null : `SCSS interpolation: ${NOT_GLOBBABLE_REASON}`;
   }
   if (rawPath.includes('@{')) {
-    return interpolationIsGlobbable(rawPath)
-      ? null
-      : 'Less interpolation in the directory: too little is fixed to glob (R78 Q3)';
+    return interpolationIsGlobbable(rawPath) ? null : `Less interpolation: ${NOT_GLOBBABLE_REASON}`;
   }
   if (rawPath.startsWith('$')) return 'SCSS variable: the path is not known statically';
   if (rawPath.startsWith('@')) return 'Less variable: the path is not known statically';

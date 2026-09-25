@@ -234,6 +234,10 @@ export function assembledPathIsGlobbable(chunks: readonly string[]): boolean {
   return unknownsInName <= 1;
 }
 
+/** Why a path that fails `assembledPathIsGlobbable` is refused, worded for the report. */
+export const NOT_GLOBBABLE_REASON =
+  'too little of the path is fixed to match files safely; a pattern needs a fixed directory and at most one unknown part in the file name';
+
 /**
  * Why this path is built at render time rather than written literally, or `null` if
  * it is a plain path.
