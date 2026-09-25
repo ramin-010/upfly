@@ -43,6 +43,11 @@ export type UpflyErrorCode =
    * whether anything is actually running.
    */
   | 'TRANSACTION_LOCKED'
+  /**
+   * The last run stopped before it finished, and a new run's manifest would replace the
+   * only record of what it wrote and where its backups are. Revert it first.
+   */
+  | 'TRANSACTION_INTERRUPTED'
   /** A manifest written by a build whose schema this one does not understand. */
   | 'MANIFEST_VERSION_UNSUPPORTED';
 

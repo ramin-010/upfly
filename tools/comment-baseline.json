@@ -45,7 +45,7 @@
       "emoji": 1
     },
     "bench/src/engine-run.ts": {
-      "internal-reference": 8,
+      "internal-reference": 7,
       "em-dash": 3,
       "emphasis": 4,
       "emoji": 5,

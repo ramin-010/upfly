@@ -5,13 +5,20 @@
  * the first file is touched rather than after the last.
  */
 
+import { compareStrings } from './paths.js';
 import type { Edit } from './types.js';
 
 /** Bumped on any change a reader could trip over. Snapshot-tested as public API. */
 export const MANIFEST_SCHEMA_VERSION = 1;
 
+/**
+ * Upfly's own folder in a project, relative to the project root. The manifest, the lock
+ * and every run's staged files and backups live here, and discovery never reads it.
+ */
+export const UPFLY_DIRECTORY = '.upfly';
+
 /** Where the manifest lives, relative to the project root. */
-export const MANIFEST_PATH = '.upfly/manifest.json';
+export const MANIFEST_PATH = `${UPFLY_DIRECTORY}/manifest.json`;
 
 /**
  * Put a file at a path that does not exist yet.
@@ -173,6 +180,25 @@ export function withoutVolatileFields(manifest: Manifest): Record<string, unknow
     copy[field] = `<${field}>`;
   }
   return copy;
+}
+
+/**
+ * Every project path the run's operations create, rewrite or remove, sorted. For a
+ * committed run this is exactly the set of files it changed.
+ *
+ * @param manifest the record of one run
+ */
+export function pathsTouched(manifest: Manifest): readonly string[] {
+  const paths = new Set<string>();
+  for (const operation of manifest.operations) {
+    if (operation.kind === 'move') {
+      paths.add(operation.from);
+      paths.add(operation.to);
+    } else {
+      paths.add(operation.path);
+    }
+  }
+  return [...paths].sort(compareStrings);
 }
 
 /** Serialise deterministically: two runs over identical inputs produce identical bytes. */

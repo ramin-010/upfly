@@ -245,6 +245,7 @@ async function commitUnderLock(
   store: FileStore,
   context: RunContext,
 ): Promise<Manifest> {
+  await refuseOverInterruptedRun(store, context.runId);
   const pending: Manifest = {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
     hashAlgorithm: store.hashAlgorithm,
@@ -268,6 +269,31 @@ async function commitUnderLock(
   const committed: Manifest = { ...pending, state: 'committed', completedAt: context.now() };
   await store.writeText(MANIFEST_PATH, serialiseManifest(committed));
   return committed;
+}
+
+/**
+ * Refuse to start while the last run's manifest is still `pending`.
+ *
+ * Under the lock no other run is writing, so a pending manifest from another run is one
+ * that stopped part way. Its manifest is the only record of what it wrote and where its
+ * backups are, and writing this run's manifest would replace it. A manifest that cannot
+ * be parsed records nothing recoverable, so it does not block.
+ *
+ * @throws {UpflyError} `TRANSACTION_INTERRUPTED` naming the run to revert first
+ */
+async function refuseOverInterruptedRun(store: FileStore, runId: string): Promise<void> {
+  if ((await store.hash(MANIFEST_PATH)) === null) return;
+  let previous: Manifest;
+  try {
+    previous = parseManifest(await store.readText(MANIFEST_PATH));
+  } catch {
+    return;
+  }
+  if (previous.state !== 'pending' || previous.runId === runId) return;
+  throw new UpflyError(
+    'TRANSACTION_INTERRUPTED',
+    `The last run (${previous.runId}, started ${previous.startedAt}) stopped before it finished. Starting another would replace the only record of what it wrote, so nothing was changed. Undo that run first; that puts back every file it had written.`,
+  );
 }
 
 /**

@@ -12,7 +12,13 @@ import type { AuditResult } from './audit.js';
 import { buildGraph } from './graph.js';
 import { LOCK_PATH } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';
-import { type OptimizeInput, alwaysMeasureFor, newRunId, optimize } from './optimize.js';
+import {
+  type OptimizeInput,
+  type OptimizeProgress,
+  alwaysMeasureFor,
+  newRunId,
+  optimize,
+} from './optimize.js';
 import type { AssetProbe, ImageProbe } from './probe.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 import type { Asset, RawReference, Reference } from './types.js';
@@ -751,5 +757,88 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
 
     expect(creates).toEqual(PUBLIC.map((path) => path.replace(/\.png$/, '.webp')).sort());
     expect(deletes).toEqual([]);
+  });
+});
+
+describe('what a caller is told, and when it may still say no', () => {
+  const tree = () => ({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+
+  it('reports the plan on a dry run, and the files written once an applied run finishes', async () => {
+    const dryEvents: OptimizeProgress[] = [];
+    const wetEvents: OptimizeProgress[] = [];
+
+    await optimize(
+      inputFor({ ...harness(tree()), apply: false, onProgress: (e) => dryEvents.push(e) }),
+    );
+    await optimize(inputFor({ ...harness(tree()), onProgress: (e) => wetEvents.push(e) }));
+
+    expect(dryEvents).toEqual([{ stage: 'planned', conversions: 1, rewrites: 1 }]);
+    // The converted image and the file whose reference moved.
+    expect(wetEvents).toEqual([
+      { stage: 'planned', conversions: 1, rewrites: 1 },
+      { stage: 'written', files: 2 },
+    ]);
+  });
+
+  it('writes nothing, not even an encode, when the check before writing says no', async () => {
+    const store = harness(tree());
+    const before = new Map(store.tree);
+    const asked: number[] = [];
+
+    const result = await optimize(
+      inputFor({
+        ...store,
+        beforeWrite: (plan) => {
+          asked.push(plan.conversions.length);
+          return false;
+        },
+      }),
+    );
+
+    expect(asked).toEqual([1]);
+    expect(result.plan.conversions).toHaveLength(1);
+    expect(result.manifest).toBeNull();
+    expect([...store.tree]).toEqual([...before]);
+    expect(store.encodes).toEqual([]);
+  });
+
+  it('writes when the check says yes, and never asks it on a dry run or an empty plan', async () => {
+    const asked: string[] = [];
+    const check = (name: string) => async () => {
+      asked.push(name);
+      return true;
+    };
+
+    const applied = await optimize(inputFor({ ...harness(tree()), beforeWrite: check('applied') }));
+    await optimize(inputFor({ ...harness(tree()), apply: false, beforeWrite: check('dry') }));
+    await optimize(
+      inputFor({
+        ...harness(tree()),
+        probes: [probeOf('src/logo.png', { encoded: [] })],
+        beforeWrite: check('empty'),
+      }),
+    );
+
+    expect(asked).toEqual(['applied']);
+    expect(applied.manifest?.state).toBe('committed');
+  });
+
+  it('keeps its own folder out of git with a .gitignore inside it', async () => {
+    const store = harness(tree());
+
+    await optimize(inputFor(store));
+
+    expect(store.tree.get('.upfly/.gitignore')).toBe('*\n');
+  });
+
+  it('leaves a .gitignore already in that folder as it is, and writes none on a dry run', async () => {
+    const kept = harness({ ...tree(), '.upfly/.gitignore': 'runs/\n' });
+    const dry = harness(tree());
+
+    await optimize(inputFor(kept));
+    await optimize(inputFor({ ...dry, apply: false }));
+
+    expect(kept.tree.get('.upfly/.gitignore')).toBe('runs/\n');
+    expect(dry.tree.has('.upfly/.gitignore')).toBe(false);
   });
 });

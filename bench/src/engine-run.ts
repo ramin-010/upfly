@@ -24,9 +24,8 @@ import {
   applyEdits,
   commit,
   createNodeFileStore,
-  createSharpProbe,
   newRunId,
-  optimize,
+  optimizeProject,
   planRelocation,
   prepare,
   runPipeline,
@@ -105,7 +104,8 @@ export async function runEngine(
 }
 
 /**
- * Run the engine over `root` and apply what it plans.
+ * Run the engine over `root` and apply what it plans, through the same core entry point
+ * as `upfly optimize --apply`.
  *
  * The refusal is the first statement on purpose. This function converts images and
  * rewrites files under whatever path it is handed, and the pinned corpus is an
@@ -119,31 +119,14 @@ export async function optimizeTree(
 ): Promise<OptimizeResult> {
   refuseValidationCorpus(root);
 
-  const {
-    graph,
-    audit: findings,
-    servingRoots,
-    probes,
-    discovery,
-  } = await runEngine(root, declared);
-
-  return optimize({
-    graph,
-    audit: findings,
-    probes,
-    probe: await createSharpProbe(),
-    store: createNodeFileStore(root),
-    // R77's haystack, from the WALK rather than the graph: source files AND unscanned
-    // ones. The references this guard exists to find are the ones the graph never saw,
-    // so a graph-derived list would miss the files that matter.
-    files: [...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
-    servingRoots,
+  const { optimize } = await optimizeProject({
+    root,
+    ...(declared === undefined ? {} : { declared }),
     format: 'webp',
     publicPolicy,
     apply: true,
-    runId: newRunId(new Date()),
-    now: () => new Date().toISOString(),
   });
+  return optimize;
 }
 
 /**

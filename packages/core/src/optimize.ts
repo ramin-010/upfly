@@ -19,7 +19,7 @@ import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
 import type { Graph } from './graph.js';
 import { acquireLock } from './lock.js';
-import type { Manifest } from './manifest.js';
+import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
 import { type Survivor, findSurvivingPaths, spellingsFor } from './old-path-search.js';
 import {
   type OptimizationPlan,
@@ -94,7 +94,32 @@ export interface OptimizeInput {
    * process this is.
    */
   readonly lock?: LockPorts;
+  /** Called as each stage finishes, with what it counted, so a caller can show progress. */
+  readonly onProgress?: (event: OptimizeProgress) => void;
+  /**
+   * Called on an applied run once the plan is final, before anything is written, and only
+   * when the plan has something to write. Returning false stops the run there: nothing is
+   * written, and the result carries the plan with no manifest, as a dry run's does.
+   *
+   * A caller uses it for checks that need the finished plan, such as whether a version
+   * control system will accept every file the run is about to write.
+   */
+  readonly beforeWrite?: (plan: OptimizationPlan) => boolean | Promise<boolean>;
 }
+
+/** One stage of an `optimize` run finished. The numbers say what that stage counted. */
+export type OptimizeProgress =
+  /** The decisions are made: images to convert, and files whose references move. */
+  | { readonly stage: 'planned'; readonly conversions: number; readonly rewrites: number }
+  /** An applied run finished writing: project files created, rewritten or removed. */
+  | { readonly stage: 'written'; readonly files: number };
+
+/**
+ * Written inside Upfly's folder on the first applied run, so that git never lists the
+ * folder and the project's own `.gitignore` never has to mention it. An existing file is
+ * left as it is.
+ */
+const FOLDER_GITIGNORE = `${UPFLY_DIRECTORY}/.gitignore`;
 
 export interface OptimizeResult {
   /** Every decision, identical on a dry run and an applied one. */
@@ -276,6 +301,11 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   if (plan.refusal !== null) {
     return { plan, runId: input.runId, runDir, manifest: null, refusal: plan.refusal };
   }
+  input.onProgress?.({
+    stage: 'planned',
+    conversions: plan.conversions.length,
+    rewrites: plan.rewrites.length,
+  });
 
   // A dry run stops here, with every decision made and no byte written.
   //
@@ -285,14 +315,19 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   // identical. What is below is the same plan carried out. Encoding every image to
   // preview it would also make a dry run as slow as a real one, on a tool whose
   // default mode is the dry run.
-  if (!input.apply) {
-    return { plan, runId: input.runId, runDir, manifest: null, refusal: null };
-  }
+  const unwritten: OptimizeResult = {
+    plan,
+    runId: input.runId,
+    runDir,
+    manifest: null,
+    refusal: null,
+  };
+  if (!input.apply) return unwritten;
+  if (plan.conversions.length === 0 && plan.rewrites.length === 0) return unwritten;
+  if (input.beforeWrite !== undefined && !(await input.beforeWrite(plan))) return unwritten;
 
+  await input.store.createExclusive(FOLDER_GITIGNORE, '*\n');
   const operations = await stage(plan, runDir, input);
-  if (operations.length === 0) {
-    return { plan, runId: input.runId, runDir, manifest: null, refusal: null };
-  }
 
   // 🔴 R68, and the reason the lock is taken HERE and not only inside `commit`.
   // `commit` holds it across its own two manifest writes, which closes the failure as
@@ -311,11 +346,14 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     ...input.lock,
   });
 
+  let manifest: Manifest;
   try {
-    return await applyUnderLock(plan, operations, runDir, input);
+    manifest = await applyUnderLock(plan, operations, runDir, input);
   } finally {
     await held.release();
   }
+  input.onProgress?.({ stage: 'written', files: pathsTouched(manifest).length });
+  return { plan, runId: input.runId, runDir, manifest, refusal: null };
 }
 
 /** Everything an applied run does while it holds the lock. */
@@ -324,7 +362,7 @@ async function applyUnderLock(
   operations: readonly PlannedOperation[],
   runDir: string,
   input: OptimizeInput,
-): Promise<OptimizeResult> {
+): Promise<Manifest> {
   await prepare(operations, input.store, runDir);
   const context: RunContext = {
     runId: input.runId,
@@ -347,13 +385,7 @@ async function applyUnderLock(
     ],
   };
 
-  return {
-    plan,
-    runId: input.runId,
-    runDir,
-    manifest: await commit(operations, input.store, context, input.lock ?? {}),
-    refusal: null,
-  };
+  return commit(operations, input.store, context, input.lock ?? {});
 }
 
 /** The `possibly-dead` set, taken from the audit rather than worked out again. */

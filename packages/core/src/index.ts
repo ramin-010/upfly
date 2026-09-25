@@ -42,7 +42,9 @@ export {
   MANIFEST_PATH,
   MANIFEST_SCHEMA_VERSION,
   MANIFEST_VOLATILE_FIELDS,
+  UPFLY_DIRECTORY,
   parseManifest,
+  pathsTouched,
   serialiseManifest,
   withoutVolatileFields,
 } from './manifest.js';
@@ -80,7 +82,9 @@ export type {
   Unsearchable,
 } from './old-path-search.js';
 export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
-export type { OptimizeInput, OptimizeResult } from './optimize.js';
+export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './optimize.js';
+export { optimizeProject } from './optimize-project.js';
+export type { OptimizeProjectInput, OptimizeProjectResult } from './optimize-project.js';
 export type {
   OptimizationPlan,
   PlanInput,
@@ -103,7 +107,7 @@ export type {
 // R68. `LOCK_PATH` so a host can say which file to delete if it ever has to, and
 // `processIsAlive` because a caller supplying its own liveness check should be able to
 // fall back to the real one rather than reimplementing it slightly differently.
-export { LOCK_PATH, processIsAlive } from './lock.js';
+export { LOCK_PATH, processIsAlive, readLockHolder } from './lock.js';
 export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
 export { createNodeFileStore } from './file-store-node.js';
 export { UpflyError } from './errors.js';
@@ -123,6 +127,7 @@ export type {
   ProbeSkip,
   ProbeSkipCode,
 } from './probe.js';
+export { formatBytes } from './format.js';
 export { renderReport } from './report-human.js';
 export { REPORT_SCHEMA_VERSION, buildReport } from './report.js';
 export type {

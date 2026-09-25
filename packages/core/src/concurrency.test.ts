@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { LOCK_PATH, processIsAlive } from './lock.js';
+import { LOCK_PATH, processIsAlive, readLockHolder } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 
@@ -257,6 +257,25 @@ describe('R68: a lock its holder did not survive', () => {
   });
 });
 
+describe('readLockHolder', () => {
+  it('names the run holding the lock, and nothing when none does or the file is unreadable', async () => {
+    const { files, store } = memoryStore();
+    expect(await readLockHolder(store)).toBeNull();
+
+    const first = suspendable(store);
+    const running = commit([], first.store, contextFor('run-a'));
+    await first.inside;
+    expect(await readLockHolder(store)).toMatchObject({ runId: 'run-a', pid: process.pid });
+
+    first.release();
+    await running;
+    expect(await readLockHolder(store)).toBeNull();
+
+    files.set(LOCK_PATH, '{ this is not json');
+    expect(await readLockHolder(store)).toBeNull();
+  });
+});
+
 describe('R68: a run may re-enter its own lock', () => {
   it('lets the same runId take the lock it already holds', async () => {
     // `optimize` holds the lock across `prepare` and `commit`, and `commit` takes it
@@ -271,6 +290,34 @@ describe('R68: a run may re-enter its own lock', () => {
     await expect(commit([], store, contextFor('run-a'))).resolves.toMatchObject({
       state: 'committed',
     });
+  });
+
+  it('does not let another process in under the same run id while that run is alive', async () => {
+    // What an undo started from a second terminal meets: it reads the run id from the
+    // manifest, and the run that wrote it is still going.
+    const { files, store } = memoryStore();
+    const held = `${JSON.stringify({ pid: process.pid, startedAt: '2026-09-13T00:00:00.000Z', runId: 'run-a' }, null, 2)}\n`;
+    files.set(LOCK_PATH, held);
+
+    await expect(
+      commit([], store, contextFor('run-a'), { pid: process.pid + 1, isAlive: () => true }),
+    ).rejects.toThrow(expect.objectContaining({ code: 'TRANSACTION_LOCKED' }));
+    expect(files.get(LOCK_PATH)).toBe(held);
+  });
+
+  it('takes over a lock left under the same run id by a process that is gone', async () => {
+    // The undo of a run that was killed part way: its lock names the same run, and nobody
+    // is holding it any more.
+    const { files, store } = memoryStore();
+    files.set(
+      LOCK_PATH,
+      `${JSON.stringify({ pid: deadPid(), startedAt: '2026-09-13T00:00:00.000Z', runId: 'run-a' }, null, 2)}\n`,
+    );
+
+    await expect(commit([], store, contextFor('run-a'))).resolves.toMatchObject({
+      state: 'committed',
+    });
+    expect(files.has(LOCK_PATH)).toBe(false);
   });
 
   it('leaves the outer hold in place when the inner one finishes', async () => {

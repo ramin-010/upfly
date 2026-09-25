@@ -5,7 +5,12 @@ import { dirname, join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from './errors.js';
 import { createNodeFileStore } from './file-store-node.js';
-import { MANIFEST_PATH, MANIFEST_VOLATILE_FIELDS, withoutVolatileFields } from './manifest.js';
+import {
+  MANIFEST_PATH,
+  MANIFEST_VOLATILE_FIELDS,
+  pathsTouched,
+  withoutVolatileFields,
+} from './manifest.js';
 import {
   type FileStore,
   type PlannedOperation,
@@ -761,6 +766,66 @@ describe('a declined item points at a place', () => {
 
     expect(declined?.path).toBe('src/data/logos.ts');
     expect(declined?.line).toBe(55);
+  });
+});
+
+describe('a run that stopped part way keeps its record until it is reverted', () => {
+  const next: RunContext = { ...context(), runId: 'r2', runDir: '.upfly/runs/r2' };
+  // The killed run's process is gone, so the lock it left behind is stale.
+  const killed = { isAlive: () => false };
+
+  /** A run killed right after its pending manifest was written. */
+  async function interrupted() {
+    const harness = memoryStore(tree(), 1);
+    await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
+    harness.stopFailing();
+    return harness;
+  }
+
+  it('refuses to start another run over it, and changes nothing', async () => {
+    const harness = await interrupted();
+    const record = harness.files.get(MANIFEST_PATH);
+    const before = projectFiles(harness.files);
+
+    await expect(commit([], harness.store, next, killed)).rejects.toMatchObject({
+      code: 'TRANSACTION_INTERRUPTED',
+      message: expect.stringContaining('r1'),
+    });
+    expect(harness.files.get(MANIFEST_PATH)).toBe(record);
+    expect(projectFiles(harness.files)).toEqual(before);
+  });
+
+  it('lets the next run start once that run is reverted', async () => {
+    const harness = await interrupted();
+    const record = JSON.parse(harness.files.get(MANIFEST_PATH) as string);
+    await revert(record, harness.store, undefined, killed);
+
+    await expect(commit([], harness.store, next, killed)).resolves.toMatchObject({
+      state: 'committed',
+    });
+  });
+
+  it('lets the next run start over a finished run, or over a manifest nobody can read', async () => {
+    const finished = memoryStore(tree());
+    await commit(plan(), finished.store, context());
+    const unreadable = memoryStore({ ...tree(), [MANIFEST_PATH]: '{ cut off by a power' });
+
+    await expect(commit([], finished.store, next)).resolves.toMatchObject({ state: 'committed' });
+    await expect(commit([], unreadable.store, next)).resolves.toMatchObject({ state: 'committed' });
+  });
+});
+
+describe('pathsTouched', () => {
+  it('lists every path a run changed, both ends of a move included, sorted', async () => {
+    const manifest = await commit(plan(), memoryStore(tree()).store, context());
+
+    expect(pathsTouched(manifest)).toEqual([
+      'images/old.png',
+      'public/hero.png',
+      'public/images/hero.png',
+      'src/App.jsx',
+      'src/logo.webp',
+    ]);
   });
 });
 

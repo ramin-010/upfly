@@ -117,10 +117,12 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
     return { reentered: false, release: () => releaseIfOwner(store, runId, pid, isAlive) };
   }
 
-  const current = await readHolder(store);
+  const current = await readLockHolder(store);
 
-  // Ours already: `optimize` is holding it around a `commit` that is now asking too.
-  if (current !== null && current.runId === runId) {
+  // Ours already: `optimize` is holding it around a `commit` that is now asking too. The
+  // process must match as well as the run: an undo in another process reads the same run
+  // id from the manifest, and must not walk into that run while it is still writing.
+  if (current !== null && current.runId === runId && current.pid === pid) {
     return { reentered: true, release: async () => {} };
   }
 
@@ -167,14 +169,18 @@ async function releaseIfOwner(
   pid: number,
   _isAlive: ProcessLiveness,
 ): Promise<void> {
-  const current = await readHolder(store);
+  const current = await readLockHolder(store);
   if (current === null) return;
   if (current.runId !== runId || current.pid !== pid) return;
   await store.remove(LOCK_PATH);
 }
 
-/** The holder on disk, or `null` when there is none or it cannot be read. */
-async function readHolder(store: FileStore): Promise<LockHolder | null> {
+/**
+ * Who holds the project's lock, or `null` when nobody does or the file cannot be read.
+ *
+ * @param store the project's file store
+ */
+export async function readLockHolder(store: FileStore): Promise<LockHolder | null> {
   if ((await store.hash(LOCK_PATH)) === null) return null;
   try {
     const parsed: unknown = JSON.parse(await store.readText(LOCK_PATH));
