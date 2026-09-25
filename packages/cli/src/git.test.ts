@@ -1,9 +1,20 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { commitPaths, gitState } from './git.js';
+import {
+  RUN_TRAILER,
+  commitForRun,
+  commitPaths,
+  gitState,
+  identityProblem,
+  ignoredPaths,
+} from './git.js';
+
+// The long form of the path: on some machines the temporary folder is named in the short
+// form, while git always answers in the long one.
+const TEMP = realpathSync.native(tmpdir());
 
 const roots: string[] = [];
 afterEach(() => {
@@ -23,7 +34,7 @@ function git(root: string, ...args: string[]): string {
 
 /** A repository with one commit, and its own identity so the machine's does not matter. */
 function repository(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), 'upfly-git-'));
+  const root = mkdtempSync(join(TEMP, 'upfly-git-'));
   roots.push(root);
   git(root, 'init', '--quiet');
   git(root, 'config', 'user.name', 'Upfly Test');
@@ -35,38 +46,77 @@ function repository(files: Record<string, string>): string {
   return root;
 }
 
+/** Runs `body` with some environment variables set, then puts them back. */
+function withEnv<T>(values: Record<string, string>, body: () => T): T {
+  const saved = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  try {
+    return body();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) Reflect.deleteProperty(process.env, key);
+      else process.env[key] = value;
+    }
+  }
+}
+
 describe('gitState', () => {
   it('says when a directory is not in a repository', () => {
-    const root = mkdtempSync(join(tmpdir(), 'upfly-git-'));
+    const root = mkdtempSync(join(TEMP, 'upfly-git-'));
     roots.push(root);
     // A machine can keep a repository above its temporary folder; git must not look there.
-    const ceiling = process.env.GIT_CEILING_DIRECTORIES;
-    process.env.GIT_CEILING_DIRECTORIES = dirname(root);
-    try {
-      expect(gitState(root)).toEqual({ kind: 'not-a-repository' });
-    } finally {
-      if (ceiling === undefined) Reflect.deleteProperty(process.env, 'GIT_CEILING_DIRECTORIES');
-      else process.env.GIT_CEILING_DIRECTORIES = ceiling;
-    }
+    const state = withEnv({ GIT_CEILING_DIRECTORIES: dirname(root) }, () => gitState(root));
+    expect(state).toEqual({ kind: 'not-a-repository' });
   });
 
   it('lists modified and untracked files, and nothing for a clean tree', () => {
     const root = repository({ 'index.html': 'a', 'img/logo.png': 'b' });
-    expect(gitState(root)).toEqual({ kind: 'repository', changed: [] });
+    expect(gitState(root)).toEqual({
+      kind: 'repository',
+      top: resolve(root),
+      prefix: '',
+      tracked: true,
+      changed: [],
+    });
 
     write(root, 'index.html', 'changed');
     write(root, 'img/new.png', 'untracked');
-    expect(gitState(root)).toEqual({
-      kind: 'repository',
-      changed: ['img/new.png', 'index.html'],
-    });
+    expect(gitState(root)).toMatchObject({ changed: ['img/new.png', 'index.html'] });
   });
 
   it('does not see a folder that ignores itself, which is how .upfly stays out of the way', () => {
     const root = repository({ 'index.html': 'a' });
     write(root, '.upfly/.gitignore', '*\n');
     write(root, '.upfly/manifest.json', '{}');
-    expect(gitState(root)).toEqual({ kind: 'repository', changed: [] });
+    expect(gitState(root)).toMatchObject({ changed: [] });
+  });
+
+  it('answers for the project alone inside a larger repository, with paths relative to it', () => {
+    const outer = repository({ 'notes.txt': 'n', 'web/index.html': 'a', 'web/img/a.png': 'b' });
+    const project = join(outer, 'web');
+    write(outer, 'notes.txt', 'changed outside the project');
+    write(project, 'index.html', 'changed inside it');
+
+    expect(gitState(project)).toEqual({
+      kind: 'repository',
+      top: resolve(outer),
+      prefix: 'web/',
+      tracked: true,
+      changed: ['index.html'],
+    });
+  });
+
+  it('says when the repository around the project tracks none of its files', () => {
+    const outer = repository({ 'notes.txt': 'n' });
+    const project = join(outer, 'site');
+    write(project, 'index.html', 'never added');
+
+    expect(gitState(project)).toMatchObject({
+      kind: 'repository',
+      prefix: 'site/',
+      tracked: false,
+      changed: ['index.html'],
+    });
   });
 });
 
@@ -94,13 +144,98 @@ describe('commitPaths', () => {
       'A\timg/logo.webp',
       'M\tindex.html',
     ]);
-    expect(gitState(root)).toEqual({ kind: 'repository', changed: ['notes.txt'] });
+    expect(gitState(root)).toMatchObject({ changed: ['notes.txt'] });
   });
 
   it('takes a path with spaces and shell characters literally', () => {
     const root = repository({ 'img/a b;$(x).png': 'old' });
     write(root, 'img/a b;$(x).png', 'new');
     commitPaths(root, ['img/a b;$(x).png'], 'one file');
-    expect(gitState(root)).toEqual({ kind: 'repository', changed: [] });
+    expect(gitState(root)).toMatchObject({ changed: [] });
+  });
+
+  it('never lets a name read as a pattern take a second file', () => {
+    // As a pattern, `a[1].png` also matches `a1.png`.
+    const root = repository({ 'a[1].png': 'x', 'a1.png': 'y' });
+    write(root, 'a[1].png', 'x2');
+    write(root, 'a1.png', 'y2');
+
+    commitPaths(root, ['a[1].png'], 'one file');
+
+    expect(git(root, 'show', '--name-only', '--format=', 'HEAD').trim()).toBe('a[1].png');
+    expect(gitState(root)).toMatchObject({ changed: ['a1.png'] });
+  });
+
+  it('inside a larger repository, leaves work staged elsewhere out of the commit, and staged', () => {
+    const outer = repository({ 'notes.txt': 'n', 'web/index.html': 'a' });
+    const project = join(outer, 'web');
+    write(outer, 'notes.txt', 'staged by the user, outside the project');
+    git(outer, 'add', 'notes.txt');
+    write(project, 'index.html', 'written by the run');
+    write(project, 'img/logo.webp', 'created by the run');
+
+    commitPaths(project, ['img/logo.webp', 'index.html'], 'the run');
+
+    expect(git(outer, 'show', '--name-status', '--format=', 'HEAD').trim().split('\n')).toEqual([
+      'A\tweb/img/logo.webp',
+      'M\tweb/index.html',
+    ]);
+    expect(git(outer, 'diff', '--cached', '--name-only').trim()).toBe('notes.txt');
+  });
+});
+
+describe('ignoredPaths', () => {
+  it('names the new files git would refuse to add, and never a tracked one', () => {
+    const root = repository({ '.gitignore': '*.webp\nbuild/\n', 'index.html': 'a' });
+
+    expect(ignoredPaths(root, ['img/a.webp', 'index.html', 'img/a.png', 'build/x.png'])).toEqual([
+      'build/x.png',
+      'img/a.webp',
+    ]);
+    expect(ignoredPaths(root, ['index.html'])).toEqual([]);
+    expect(ignoredPaths(root, [])).toEqual([]);
+  });
+});
+
+describe('identityProblem', () => {
+  it('is null where git knows who commits, and git words the problem where it does not', () => {
+    const root = repository({ 'index.html': 'a' });
+    expect(identityProblem(root)).toBeNull();
+
+    const bare = mkdtempSync(join(TEMP, 'upfly-git-'));
+    roots.push(bare);
+    git(bare, 'init', '--quiet');
+    const home = join(bare, 'home');
+    mkdirSync(home);
+    const problem = withEnv(
+      {
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: home,
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_GLOBAL: join(home, 'none'),
+        // Otherwise git may make up an address from the machine's name.
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'user.useConfigOnly',
+        GIT_CONFIG_VALUE_0: 'true',
+      },
+      () => identityProblem(bare),
+    );
+    expect(problem).toMatch(/^Author identity unknown/);
+  });
+});
+
+describe('commitForRun', () => {
+  it('finds the commit that names a run, and nothing for a run no commit names', () => {
+    const root = repository({ 'index.html': 'a' });
+    write(root, 'index.html', 'b');
+    const hash = commitPaths(
+      root,
+      ['index.html'],
+      `the run\n\n${RUN_TRAILER}: 20260926T010203-abcd\n`,
+    );
+
+    expect(commitForRun(root, '20260926T010203-abcd')).toBe(hash);
+    expect(commitForRun(root, '20260926T010203-ffff')).toBeNull();
   });
 });

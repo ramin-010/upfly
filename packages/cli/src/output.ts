@@ -5,6 +5,7 @@
  */
 
 import type { CommandName } from './args.js';
+import type { ExitCode } from './exit-codes.js';
 
 /** The streams and environment a command runs against, so tests can supply their own. */
 export interface Io {
@@ -52,6 +53,44 @@ export function paint(on: boolean, style: 'bold' | 'dim' | 'red' | 'yellow', tex
 /** Writes one JSON line to stdout. */
 export function emit(io: Io, event: Record<string, unknown>): void {
   io.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+/** The options every command's output depends on. */
+export interface Style {
+  readonly command: CommandName;
+  readonly json: boolean;
+  readonly noColor: boolean;
+}
+
+/**
+ * Says why a command stopped and returns the exit code to end with: an `error` line under
+ * `--json`, otherwise `upfly:` and the message on stderr.
+ *
+ * @param code the exit code
+ * @param message what happened and what to do about it, in sentences
+ * @param reason a stable name for a refusal, for scripts that branch on it
+ * @returns `code`
+ */
+export function stopWith(
+  io: Io,
+  style: Style,
+  code: ExitCode,
+  message: string,
+  reason?: string,
+): ExitCode {
+  if (style.json) {
+    emit(io, {
+      type: 'error',
+      command: style.command,
+      exitCode: code,
+      ...(reason === undefined ? {} : { reason }),
+      message,
+    });
+  } else {
+    const colour = colourFor(io.stderr, io.env, style);
+    io.stderr.write(`${paint(colour, 'red', 'upfly:')} ${message}\n`);
+  }
+  return code;
 }
 
 /**

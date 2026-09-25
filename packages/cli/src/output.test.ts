@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Output, colourFor, paint, progressReporter } from './output.js';
+import { type Output, colourFor, paint, progressReporter, stopWith } from './output.js';
 
 const terminal: Output = { write: () => true, isTTY: true };
 const pipe: Output = { write: () => true };
@@ -65,5 +65,57 @@ describe('progressReporter', () => {
     progress.update({ stage: 'scanned', references: 12 });
     progress.clear();
     expect([...out, ...err]).toEqual([]);
+  });
+});
+
+describe('stopWith', () => {
+  function capture(env: Record<string, string> = {}) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = {
+      stdout: { write: (text: string) => out.push(text), isTTY: true },
+      stderr: { write: (text: string) => err.push(text), isTTY: true },
+      env,
+    };
+    return { io, out, err };
+  }
+  const style = { command: 'optimize' as const, json: false, noColor: false };
+
+  it('names the refusal in a JSON error line under --json, and returns the code', () => {
+    const { io, out, err } = capture();
+    const code = stopWith(io, { ...style, json: true }, 3, 'Commit first.', 'UNCOMMITTED_CHANGES');
+
+    expect(code).toBe(3);
+    expect(out.map((line) => JSON.parse(line))).toEqual([
+      {
+        type: 'error',
+        command: 'optimize',
+        exitCode: 3,
+        reason: 'UNCOMMITTED_CHANGES',
+        message: 'Commit first.',
+      },
+    ]);
+    expect(err).toEqual([]);
+  });
+
+  it('leaves the reason out of a usage error, which has none', () => {
+    const { io, out } = capture();
+    stopWith(io, { ...style, json: true }, 2, 'site is not a directory');
+    expect(JSON.parse(out[0] ?? '{}')).not.toHaveProperty('reason');
+  });
+
+  it('writes to stderr in red on a terminal, and plainly under NO_COLOR or --no-color', () => {
+    const coloured = capture();
+    const noColorEnv = capture({ NO_COLOR: '1' });
+    const noColorFlag = capture();
+
+    stopWith(coloured.io, style, 3, 'Commit first.');
+    stopWith(noColorEnv.io, style, 3, 'Commit first.');
+    stopWith(noColorFlag.io, { ...style, noColor: true }, 3, 'Commit first.');
+
+    expect(coloured.err).toEqual(['\u001b[31mupfly:\u001b[39m Commit first.\n']);
+    expect(noColorEnv.err).toEqual(['upfly: Commit first.\n']);
+    expect(noColorFlag.err).toEqual(['upfly: Commit first.\n']);
+    expect([...coloured.out, ...noColorEnv.out, ...noColorFlag.out]).toEqual([]);
   });
 });

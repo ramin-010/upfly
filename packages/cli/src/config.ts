@@ -75,7 +75,13 @@ export type ConfigOutcome =
   | { readonly kind: 'none' }
   | { readonly kind: 'loaded'; readonly file: string; readonly config: UpflyConfig }
   /** Another product's file, left untouched. The command stops for safety. */
-  | { readonly kind: 'refused'; readonly file: string; readonly message: string }
+  | {
+      readonly kind: 'refused';
+      readonly file: string;
+      readonly message: string;
+      /** The name `--json` gives this refusal. */
+      readonly reason: 'V2_EXTENSION_CONFIG';
+    }
   /** A file Upfly cannot use as written. The command stops as a usage error. */
   | { readonly kind: 'invalid'; readonly file: string; readonly message: string };
 
@@ -116,7 +122,12 @@ export async function loadConfig(root: string): Promise<ConfigOutcome> {
 
   if (json === null) return { kind: 'none' };
   if (isV2Only(json.value)) {
-    return { kind: 'refused', file: 'upfly.config.json', message: V2_REFUSAL };
+    return {
+      kind: 'refused',
+      file: 'upfly.config.json',
+      message: V2_REFUSAL,
+      reason: 'V2_EXTENSION_CONFIG',
+    };
   }
   return validate('upfly.config.json', { kind: 'value', value: json.value });
 }

@@ -1,10 +1,12 @@
 /** Reads the command line, runs the command, and returns the exit code. */
 
-import { parseCommandLine } from './args.js';
+import { type CommandOptions, parseCommandLine } from './args.js';
 import { runAudit } from './audit.js';
 import { EXIT_CODES, type ExitCode, VERSION } from './exit-codes.js';
 import { helpText } from './help.js';
+import { runOptimize } from './optimize.js';
 import { type Io, colourFor, emit, paint } from './output.js';
+import { runUndo } from './undo.js';
 
 /**
  * Runs one invocation of the CLI.
@@ -41,7 +43,7 @@ export async function main(argv: readonly string[], io: Io): Promise<ExitCode> {
     return EXIT_CODES.USAGE;
   }
   try {
-    return await runAudit(parsed.options, io);
+    return await run(parsed.options, io);
   } catch (error) {
     // Neither a finding nor a refusal: something Upfly did not anticipate went wrong.
     const message = error instanceof Error ? error.message : String(error);
@@ -56,5 +58,16 @@ export async function main(argv: readonly string[], io: Io): Promise<ExitCode> {
       io.stderr.write(`upfly: failed unexpectedly: ${message}\n`);
     }
     return EXIT_CODES.INTERNAL;
+  }
+}
+
+function run(options: CommandOptions, io: Io): Promise<ExitCode> {
+  switch (options.command) {
+    case 'audit':
+      return runAudit(options, io);
+    case 'optimize':
+      return runOptimize(options, io);
+    case 'undo':
+      return runUndo(options, io);
   }
 }

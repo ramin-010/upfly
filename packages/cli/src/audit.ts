@@ -13,7 +13,7 @@ import {
 import type { AuditOptions } from './args.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { type Io, colourFor, emit, paint, progressReporter } from './output.js';
+import { type Io, emit, progressReporter, stopWith } from './output.js';
 
 /**
  * Reads the project and prints what it found.
@@ -25,13 +25,15 @@ import { type Io, colourFor, emit, paint, progressReporter } from './output.js';
 export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode> {
   const root = resolve(options.dir);
   if (!isDirectory(root)) {
-    return fail(options, io, EXIT_CODES.USAGE, `${options.dir} is not a directory`);
+    return stopWith(io, options, EXIT_CODES.USAGE, `${options.dir} is not a directory`);
   }
 
   const config = await loadConfig(root);
-  if (config.kind === 'refused') return fail(options, io, EXIT_CODES.ABORTED, config.message);
+  if (config.kind === 'refused') {
+    return stopWith(io, options, EXIT_CODES.ABORTED, config.message, config.reason);
+  }
   if (config.kind === 'invalid') {
-    return fail(options, io, EXIT_CODES.USAGE, `${config.file} ${config.message}`);
+    return stopWith(io, options, EXIT_CODES.USAGE, `${config.file} ${config.message}`);
   }
   const settings = config.kind === 'loaded' ? config.config : {};
   const publicDirs = options.publicDirs ?? settings.publicDirs ?? null;
@@ -57,6 +59,7 @@ export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode>
     servingRoots: output.servingRoots,
     ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeDiscarded: options.includeDiscarded,
+    includeUnusedVectors: options.includeUnusedSvg,
   });
   write(options, io, report, output);
   return EXIT_CODES.OK;
@@ -91,17 +94,12 @@ function write(options: AuditOptions, io: Io, report: Report, output: PipelineOu
   }
 }
 
-function fail(options: AuditOptions, io: Io, code: ExitCode, message: string): ExitCode {
-  if (options.json) {
-    emit(io, { type: 'error', command: 'audit', exitCode: code, message });
-  } else {
-    const colour = colourFor(io.stderr, io.env, options);
-    io.stderr.write(`${paint(colour, 'red', 'upfly:')} ${message}\n`);
-  }
-  return code;
-}
-
-function isDirectory(path: string): boolean {
+/**
+ * Whether `path` names a directory.
+ *
+ * @param path an absolute path
+ */
+export function isDirectory(path: string): boolean {
   try {
     return statSync(path).isDirectory();
   } catch {

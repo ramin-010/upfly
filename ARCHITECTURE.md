@@ -27,7 +27,10 @@ what lets the whole engine be tested without a disk.
 
 `runPipeline` is the one wiring of these stages: `bench/`'s validation and its fixture builds
 both call it, so their numbers describe one engine. The accuracy suite resolves its scan under
-the same `decideServingRoots` for its unconfigured run.
+the same `decideServingRoots` for its unconfigured run. The write path has one wiring too:
+`optimizeProject` (`optimize-project.ts`) runs the pipeline with every image measured and hands
+its output to `optimize`, and both `upfly optimize` and the fixture builds call it, so what the
+builds prove is what users run.
 
 Two stages need one filesystem fact each without being filesystem modules, and both take it as
 an **injected port**: `scan` takes `readFile`, and `resolve` takes `exists`. The probe stage takes
@@ -934,6 +937,19 @@ would report afterwards rather than prevent.
 up an interrupted one are the same job — reverse whatever the disk says actually happened — so
 there is no rarely-exercised branch left to be wrong.
 
+A run that stopped part way leaves its manifest `pending`, and that manifest is the only record of
+what it wrote and where its backups are. So `commit` refuses to start while the manifest is
+`pending` for another run (`TRANSACTION_INTERRUPTED`): the interrupted run is reverted first. The
+lock does not settle this by itself, because the process that held it is gone and its lock is
+cleared as stale. The lock is re-entered only by the same run in the same process: an `undo`
+started from a second terminal reads the same run id from the manifest, and must still be refused
+while that run is writing.
+
+Upfly's folder hides itself from git: before an applied run's first write, `optimize` creates
+`.upfly/.gitignore` holding `*` unless one is already there. Staged images and backups never show
+in `git status`, `git add -A` never takes them, and the project's own `.gitignore` is never
+touched.
+
 **The manifest is self-contained**, and holds no absolute path, so it still means something
 after the project is moved. For a text file it stores the *inverse* edits rather than a copy of
 the file: the replaced text is a path string, so undo restores the file from bytes rather than
@@ -942,9 +958,9 @@ bytes are backed up under the run directory and `prepare` refuses a delete whose
 actually there. **The run directory therefore survives commit** — deleting it would throw away
 the only copy of anything the `replace` policy removed.
 
-On top of all that, `--apply` refuses to run on a dirty git tree unless forced, and `--commit`
-produces exactly one commit — making `git revert` the real undo button and code review the trust
-mechanism.
+On top of all that, `upfly optimize --apply` refuses a project folder with uncommitted changes
+unless forced, and `--commit` produces exactly one commit, making `git revert` the real undo
+button and code review the trust mechanism. The rules are under "The CLI" below.
 
 Windows specifics that are handled deliberately, not incidentally: every placement is a
 `copyFile` rather than a rename, so a run directory on another volume cannot fail the way a
@@ -1057,9 +1073,10 @@ Caveats carry their own count and a `detail` list. "No adapter reads these file 
 
 ## The CLI
 
-`upfly` is a thin layer over `runPipeline`: it reads the command line and the configuration, runs
-the engine, and prints. It decides serving roots with the engine's own `servingRootsFor`, so a
-command cannot decide them differently from the measurements behind it.
+`upfly` is a thin layer over the engine: it reads the command line and the configuration, runs
+`runPipeline` (`audit`), `optimizeProject` (`optimize`) or the transaction's `revert` (`undo`),
+and prints. It decides serving roots with the engine's own `servingRootsFor`, so a command cannot
+decide them differently from the measurements behind it.
 
 **The configuration file is `upfly.config.ts` (or `.js` and their module forms), or
 `upfly.config.json`, in the directory the command runs on.** The code forms load through c12 with
@@ -1083,7 +1100,40 @@ a terminal, and never under `--no-color` or a non-empty `NO_COLOR`.
 
 **Exit codes** are a contract: 0 the command ran, 1 `check` found findings over its thresholds, 2 the
 command line or configuration was wrong, 3 Upfly refused to act for safety, 4 something it did not
-anticipate went wrong. A crash is its own code, because it is neither a finding nor a refusal.
+anticipate went wrong. A crash is its own code, because it is neither a finding nor a refusal. A
+refusal's `error` line under `--json` also carries a `reason`, a stable name such as
+`UNCOMMITTED_CHANGES` or the engine's `TRANSACTION_LOCKED`, so a script can tell refusals apart
+without reading the sentence.
+
+### `optimize` and git
+
+The promise is that the run's changes are the only ones a reviewer has to look at, and that one
+`git revert` takes them all back. Everything below follows from that.
+
+- **Only the project folder is looked at.** A project can sit inside a larger repository, on
+  purpose (a package in a monorepo) or by accident (a home folder that is itself a repository).
+  `git status -- .` and `git ls-files -- .` run in the project folder, and git reports those paths
+  relative to the repository's top, so they are cut back to the project. When the top is above the
+  project, the dry run and the commit's output name the repository.
+- **`--apply` refuses uncommitted changes in the project folder, untracked files included** (exit
+  3). An untracked original that `--replace` removed could not be restored by git at all.
+  `.upfly/` never counts. `--allow-dirty` writes anyway; `upfly undo` still puts the files back.
+- **Where git cannot help, `--apply` refuses the same way**: no git, no repository, or a repository
+  that tracks no file in the folder (an ignored folder looks clean to `git status`). `--allow-dirty`
+  is the way through.
+- **`--commit` needs a clean folder and cannot be combined with `--allow-dirty`**: a file holding
+  both the user's edit and the run's would put the user's edit in Upfly's commit, and `git revert`
+  would take it out again. It also needs a git identity, checked before anything is written.
+- **The commit holds exactly the files the run wrote**, from the manifest: `git add` and then
+  `git commit --only` on those paths, read literally (`GIT_LITERAL_PATHSPECS`), so a name holding
+  `[` never matches a second file and work the user staged elsewhere stays staged and out of the
+  commit. Paths travel on stdin, never through a shell.
+- **A commit that could not hold the whole run stops the run before it writes.** Once the plan is
+  final, `optimize` hands it to a `beforeWrite` check, and the CLI asks `git check-ignore` about
+  every path the plan would write; if git would refuse any of them, nothing is written.
+- **The commit message ends with `Upfly-Run: <run id>`**, the id the manifest records, which is how
+  `upfly undo` finds the commit to say that it is still in the history. Undo follows the manifest
+  alone and reads no configuration file.
 
 ## Package layout
 
@@ -1093,6 +1143,8 @@ anticipate went wrong. A crash is its own code, because it is neither a finding 
 | `packages/cli` | `upfly` | argument parsing, human/JSON output, exit codes, git safety. |
 | `packages/vscode` | `upfly-vscode` | the editor surface (arrives in Phase 4). |
 
-`fixtures/` holds small but real projects per framework, each with a `build` script. CI runs
-`optimize --apply` against them and then builds them: if a build breaks, the reference
-detection was wrong. **That test is the product's central promise**, so it gates every PR.
+`fixtures/` holds small but real projects per framework, each with a `build` script. `bench`'s
+`fixture-build` runs `optimize --apply` against copies of them and then builds them and checks
+every link: if a build breaks, the reference detection was wrong. With `--cli` it does the same
+through the built `upfly` binary, with git. **That test is the product's central promise.** It
+runs locally: CI builds the packages but does not yet build the fixtures.

@@ -1,6 +1,7 @@
 /**
  * The command line, parsed into what each command needs. Unknown flags are an error, so a
- * typo is never read as a silently ignored option.
+ * typo is never read as a silently ignored option, and so is a flag that would change
+ * nothing in the run it was given to.
  */
 
 import { parseArgs } from 'node:util';
@@ -24,17 +25,45 @@ export interface ScopeOptions {
   readonly exclude: readonly string[];
 }
 
-export interface AuditOptions extends CommonOptions, ScopeOptions {
+export interface ReportOptions {
+  /** `--include-discarded`: list the path-like strings that named no image. */
+  readonly includeDiscarded: boolean;
+  /** `--include-unused-svg`: list the unused SVG files the report otherwise only counts. */
+  readonly includeUnusedSvg: boolean;
+}
+
+export interface AuditOptions extends CommonOptions, ScopeOptions, ReportOptions {
   readonly command: 'audit';
   /** `false` for `--no-probe`: no header reads and no encodes. */
   readonly probe: boolean;
   /** How many images to measure by encoding; `null` is every one (`--probe-all`). */
   readonly maxEncodes: number | null;
-  readonly includeDiscarded: boolean;
 }
 
+export interface OptimizeOptions extends CommonOptions, ScopeOptions, ReportOptions {
+  readonly command: 'optimize';
+  /** `--apply`: write the plan. Without it the run only reports what it would do. */
+  readonly apply: boolean;
+  /** `--commit`: commit the files the run wrote, and nothing else, as one commit. */
+  readonly commit: boolean;
+  /** `--replace`: remove each original once every reference to it has moved. */
+  readonly replace: boolean;
+  /** `--format`, or `null` for the config's format or the default. */
+  readonly format: 'webp' | 'avif' | null;
+  /** `--allow-dirty`: apply over uncommitted changes, or where git cannot help. */
+  readonly allowDirty: boolean;
+  /** `--include-declined`: list each image the plan examined and did not convert. */
+  readonly includeDeclined: boolean;
+}
+
+export interface UndoOptions extends CommonOptions {
+  readonly command: 'undo';
+}
+
+export type CommandOptions = AuditOptions | OptimizeOptions | UndoOptions;
+
 export type Parsed =
-  | { readonly kind: 'run'; readonly options: AuditOptions }
+  | { readonly kind: 'run'; readonly options: CommandOptions }
   | { readonly kind: 'help'; readonly command: CommandName | null }
   | { readonly kind: 'version' }
   | {
@@ -62,13 +91,30 @@ const SCOPE = {
   exclude: { type: 'string', multiple: true },
 } as const;
 
+const REPORT = {
+  'include-discarded': { type: 'boolean' },
+  'include-unused-svg': { type: 'boolean' },
+} as const;
+
 const AUDIT = {
   ...COMMON,
   ...SCOPE,
+  ...REPORT,
   'no-probe': { type: 'boolean' },
   'max-encodes': { type: 'string' },
   'probe-all': { type: 'boolean' },
-  'include-discarded': { type: 'boolean' },
+} as const;
+
+const OPTIMIZE = {
+  ...COMMON,
+  ...SCOPE,
+  ...REPORT,
+  apply: { type: 'boolean' },
+  commit: { type: 'boolean' },
+  replace: { type: 'boolean' },
+  format: { type: 'string' },
+  'allow-dirty': { type: 'boolean' },
+  'include-declined': { type: 'boolean' },
 } as const;
 
 /**
@@ -92,10 +138,9 @@ export function parseCommandLine(argv: readonly string[]): Parsed {
     };
   }
   const command = first as CommandName;
-  if (command !== 'audit') {
-    return { kind: 'usage-error', command, message: `\`upfly ${command}\` is not available yet` };
-  }
-  return parseAudit(rest);
+  if (command === 'audit') return parseAudit(rest);
+  if (command === 'optimize') return parseOptimize(rest);
+  return parseUndo(rest);
 }
 
 function parseAudit(args: readonly string[]): Parsed {
@@ -108,13 +153,8 @@ function parseAudit(args: readonly string[]): Parsed {
   }
   const { values, positionals } = parsed;
   if (values.help === true) return { kind: 'help', command };
-  if (positionals.length > 1) {
-    return {
-      kind: 'usage-error',
-      command,
-      message: `expected one directory, got ${positionals.length}: ${positionals.join(' ')}`,
-    };
-  }
+  const dir = directoryOf(positionals);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
   const scope = scopeOf(values);
   if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
   const maxEncodes = maxEncodesOf(values);
@@ -124,12 +164,13 @@ function parseAudit(args: readonly string[]): Parsed {
     kind: 'run',
     options: {
       command,
-      dir: positionals[0] ?? '.',
+      dir: dir.value,
       json: values.json === true,
       noColor: values['no-color'] === true,
       probe: values['no-probe'] !== true,
       maxEncodes,
       includeDiscarded: values['include-discarded'] === true,
+      includeUnusedSvg: values['include-unused-svg'] === true,
       ...scope,
     },
   };
@@ -137,6 +178,109 @@ function parseAudit(args: readonly string[]): Parsed {
 
 function parseAuditArgs(args: readonly string[]) {
   return parseArgs({ args: [...args], options: AUDIT, allowPositionals: true, strict: true });
+}
+
+function parseOptimize(args: readonly string[]): Parsed {
+  const command = 'optimize';
+  let parsed: ReturnType<typeof parseOptimizeArgs>;
+  try {
+    parsed = parseOptimizeArgs(args);
+  } catch (error) {
+    return { kind: 'usage-error', command, message: plainParseError(error) };
+  }
+  const { values, positionals } = parsed;
+  if (values.help === true) return { kind: 'help', command };
+  const dir = directoryOf(positionals);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
+  const scope = scopeOf(values);
+  if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
+  const format = values.format;
+  if (format !== undefined && format !== 'webp' && format !== 'avif') {
+    return {
+      kind: 'usage-error',
+      command,
+      message: `--format takes webp or avif, got \`${format}\``,
+    };
+  }
+  const apply = values.apply === true;
+  const commit = values.commit === true;
+  const allowDirty = values['allow-dirty'] === true;
+  const conflict = writeFlagConflict(apply, commit, allowDirty);
+  if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
+
+  return {
+    kind: 'run',
+    options: {
+      command,
+      dir: dir.value,
+      json: values.json === true,
+      noColor: values['no-color'] === true,
+      apply,
+      commit,
+      replace: values.replace === true,
+      format: format ?? null,
+      allowDirty,
+      includeDeclined: values['include-declined'] === true,
+      includeDiscarded: values['include-discarded'] === true,
+      includeUnusedSvg: values['include-unused-svg'] === true,
+      ...scope,
+    },
+  };
+}
+
+function parseOptimizeArgs(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: OPTIMIZE, allowPositionals: true, strict: true });
+}
+
+/**
+ * `--commit` and `--allow-dirty` only mean something to a run that writes, and together
+ * they would let a commit sweep up changes that were not the run's.
+ */
+function writeFlagConflict(apply: boolean, commit: boolean, allowDirty: boolean): string | null {
+  if (commit && allowDirty) {
+    return '--commit and --allow-dirty cannot be used together: the commit must hold only what this run wrote, so --commit needs a folder with no uncommitted changes';
+  }
+  if (commit && !apply) return '--commit commits what --apply writes; add --apply';
+  if (allowDirty && !apply) return '--allow-dirty only changes what --apply does; add --apply';
+  return null;
+}
+
+function parseUndo(args: readonly string[]): Parsed {
+  const command = 'undo';
+  let parsed: ReturnType<typeof parseUndoArgs>;
+  try {
+    parsed = parseUndoArgs(args);
+  } catch (error) {
+    return { kind: 'usage-error', command, message: plainParseError(error) };
+  }
+  const { values, positionals } = parsed;
+  if (values.help === true) return { kind: 'help', command };
+  const dir = directoryOf(positionals);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
+  return {
+    kind: 'run',
+    options: {
+      command,
+      dir: dir.value,
+      json: values.json === true,
+      noColor: values['no-color'] === true,
+    },
+  };
+}
+
+function parseUndoArgs(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: COMMON, allowPositionals: true, strict: true });
+}
+
+function directoryOf(
+  positionals: readonly string[],
+): { readonly value: string; readonly problem: null } | { readonly problem: string } {
+  if (positionals.length > 1) {
+    return {
+      problem: `expected one directory, got ${positionals.length}: ${positionals.join(' ')}`,
+    };
+  }
+  return { value: positionals[0] ?? '.', problem: null };
 }
 
 /** How many images to encode, from the three flags that decide it, or a usage error. */
