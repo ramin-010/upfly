@@ -112,6 +112,25 @@ describe('upfly undo', () => {
     expect(snapshot(root, NOT_THE_PROJECT)).toEqual(before);
   }, 60_000);
 
+  it('changes nothing when a backup of a removed original is gone', () => {
+    const root = standalone();
+    const applied = upfly(['optimize', root, '--apply', '--replace', '--public', '.', '--json']);
+    const run = result(applied.stdout).run as { id: string; removed: string[] };
+    const [removed] = run.removed;
+    expect(removed).toBeDefined();
+    rmSync(join(root, '.upfly/runs', run.id, 'backup', removed as string));
+    const before = snapshot(root, NOT_THE_PROJECT);
+
+    const undo = upfly(['undo', root, '--json']);
+
+    expect(undo.status).toBe(3);
+    expect(result(undo.stdout)).toMatchObject({
+      reason: 'TRANSACTION_FOREIGN_CHANGE',
+      message: expect.stringContaining('backup of 1 removed original(s) is gone'),
+    });
+    expect(snapshot(root, NOT_THE_PROJECT)).toEqual(before);
+  }, 60_000);
+
   it('puts back a run whose record says it stopped part way', () => {
     const root = standalone();
     const original = snapshot(root, NOT_THE_PROJECT);

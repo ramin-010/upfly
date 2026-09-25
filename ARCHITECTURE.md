@@ -955,7 +955,8 @@ after the project is moved. For a text file it stores the *inverse* edits rather
 the file: the replaced text is a path string, so undo restores the file from bytes rather than
 kilobytes. A delete is the one operation whose content nothing else can reconstruct, so its
 bytes are backed up under the run directory and `prepare` refuses a delete whose backup is not
-actually there. **The run directory therefore survives commit** — deleting it would throw away
+actually there. `revert` checks the same backups before its first write and refuses if one has
+gone since, so an undo never stops part way through putting originals back. **The run directory therefore survives commit** — deleting it would throw away
 the only copy of anything the `replace` policy removed.
 
 On top of all that, `upfly optimize --apply` refuses a project folder with uncommitted changes

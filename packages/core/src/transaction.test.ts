@@ -421,6 +421,19 @@ describe('revert', () => {
     expect(harness.files.get('src/logo.webp')).toBe('WEBP-BYTES');
   });
 
+  it("refuses, and changes nothing, when a removed original's backup is gone", async () => {
+    const harness = memoryStore(tree());
+    const manifest = await commit(plan(), harness.store, context());
+    harness.files.delete(`${RUN_DIR}/backup/old.png`);
+    const after = projectFiles(harness.files);
+
+    await expect(revert(manifest, harness.store)).rejects.toMatchObject({
+      code: 'TRANSACTION_FOREIGN_CHANGE',
+      message: expect.stringContaining('images/old.png'),
+    });
+    expect(projectFiles(harness.files)).toEqual(after);
+  });
+
   it('is safe to run twice', async () => {
     const original = tree();
     const harness = memoryStore(original);

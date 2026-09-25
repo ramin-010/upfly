@@ -400,6 +400,7 @@ async function revertUnderLock(
         )}. Nothing was reverted, because undoing over somebody else's edit would lose it.`,
     );
   }
+  await refuseMissingBackups(states, manifest, store);
 
   // The mirror of commit's phases, and it has to be, for the same reason: originals
   // come back before anything points at them again, and what the run created goes
@@ -417,6 +418,31 @@ async function revertUnderLock(
   };
   await store.writeText(MANIFEST_PATH, serialiseManifest(reverted));
   return reverted;
+}
+
+/**
+ * Refuse before the first write when a removed original's backup is gone, so that undo
+ * never stops part way through putting originals back.
+ *
+ * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` naming each original whose backup is missing
+ */
+async function refuseMissingBackups(
+  states: readonly OperationState[],
+  manifest: Manifest,
+  store: FileStore,
+): Promise<void> {
+  const missing: string[] = [];
+  for (const { operation, status } of states) {
+    if (status === 'not-applied' || operation.kind !== 'delete') continue;
+    if ((await store.hash(`${manifest.runDir}/${operation.backup}`)) === null) {
+      missing.push(operation.path);
+    }
+  }
+  if (missing.length === 0) return;
+  throw new UpflyError(
+    'TRANSACTION_FOREIGN_CHANGE',
+    `The backup of ${missing.length} removed original(s) is gone from ${manifest.runDir}: ${missing.join(', ')}. Nothing was reverted, because putting the rest back would leave those still missing.`,
+  );
 }
 
 /** Undo's first phase: put back what the run took away. */
