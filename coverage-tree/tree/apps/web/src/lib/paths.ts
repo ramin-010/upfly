@@ -19,7 +19,7 @@ export function tileImage(density: 1 | 2 | 3): string {
   return `/srcset/tile@${density}x.png`;
 }
 
-/** Assembled from a base and a name. Nothing static survives. */
+/** A const base and a name. Of the two, only the name varies. */
 const ASSET_BASE = '/gallery';
 
 export function galleryImage(name: string): string {
@@ -35,7 +35,7 @@ export function fromParts(dir: string, file: string, ext: string): string {
   return [dir, file].join('/') + ext;
 }
 
-/** Two more assembled paths, so neither dynamic row reads 1 of 1. */
+/** One more assembled path, the same path cardImage spells below. */
 export function srcsetImage(width: number): string {
   return '/srcset/' + 'card-' + String(width) + '.jpg';
 }

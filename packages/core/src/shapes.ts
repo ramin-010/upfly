@@ -418,6 +418,17 @@ export const SHAPES = [
     emission: 'engine',
   },
   {
+    id: 'js.concat.pattern',
+    label: 'path assembled by concatenation, one unknown segment',
+    spec: '4c',
+    emission: 'engine',
+    why:
+      'R175: a `+` chain in which no literal is itself a complete path is read exactly as its ' +
+      'template twin is, so a fixed directory and one unknown in the name is a pattern here too. ' +
+      'Its own row rather than `js.template.pattern`, because the reader that assembles a chain is ' +
+      'not the one that reads a template, and each can break without the other.',
+  },
+  {
     id: 'js.string.literal',
     label: 'a path-shaped string literal',
     spec: '4c',

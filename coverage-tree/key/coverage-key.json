@@ -364,6 +364,12 @@
       "motivation": "The same thing without a template literal, which is easy to miss."
     },
     {
+      "id": "js.concat.pattern",
+      "label": "path assembled by concatenation, one unknown segment",
+      "spec": "4c",
+      "motivation": "R175: a + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Three instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), and inside a JSX attribute (IconBadge.tsx)."
+    },
+    {
       "id": "js.string.literal",
       "label": "a path-shaped string literal",
       "spec": "4c",
@@ -4786,34 +4792,57 @@
           "column": 11
         },
         {
-          "raw": "/gallery",
-          "occurrence": 1,
-          "shape": "js.concat.dynamic",
-          "expect": "dynamic",
-          "why": "A base joined to a variable and an extension with +. Nothing static survives, and no wrong path was typed.",
-          "offset": 798,
-          "line": 23,
-          "column": 21
+          "raw": "ASSET_BASE",
+          "occurrence": 2,
+          "shape": "js.concat.pattern",
+          "expect": "resolved-pattern",
+          "why": "R175, KEY CHANGE under guard 1 (was: dynamic, js.concat.dynamic, anchored at the const on :23). The chain on :26. ASSET_BASE is a same-file module const, '/gallery' -- R100 files exactly this as 'statically knowable, we cannot see it yet: OUR GAP', not as a runtime value -- so the path is /gallery/*.png: a fixed directory and one unknown in the name, which R80(b) rules a pattern. Anchored where the path is ASSEMBLED, on the chain's own first operand: its template twin on :30 is anchored at its own text, and one definition used by two spellings cannot anchor both. Case-sensitive, as URL paths are: Banner.PNG and MixedCase.Png are not *.png.",
+          "target": [
+            "apps/web/public/gallery/a&b.png",
+            "apps/web/public/gallery/enc%20name.png",
+            "apps/web/public/gallery/hero (1).png",
+            "apps/web/public/gallery/hero image (2) copy.png",
+            "apps/web/public/gallery/hero image.png",
+            "apps/web/public/gallery/photo.png",
+            "apps/web/public/gallery/photo@2x.png"
+          ],
+          "offset": 872,
+          "line": 26,
+          "column": 10
         },
         {
           "raw": "${ASSET_BASE}/${name}.png",
           "occurrence": 1,
-          "shape": "js.template.dynamic",
-          "expect": "dynamic",
-          "why": "The same assembly as a template literal. Both parts are unknown, so there is no prefix to anchor a glob.",
+          "shape": "js.template.pattern",
+          "expect": "resolved-pattern",
+          "why": "R175, KEY CHANGE under guard 1 (was: dynamic -- 'Both parts are unknown, so there is no prefix to anchor a glob'). ASSET_BASE is not unknown: it is the module const '/gallery' seven lines up, which R100 files as statically knowable -- our gap, not a correct dynamic. Read through, the path is /gallery/*.png, the same pattern as the chain on :26.",
           "offset": 980,
           "line": 30,
-          "column": 11
+          "column": 11,
+          "target": [
+            "apps/web/public/gallery/a&b.png",
+            "apps/web/public/gallery/enc%20name.png",
+            "apps/web/public/gallery/hero (1).png",
+            "apps/web/public/gallery/hero image (2) copy.png",
+            "apps/web/public/gallery/hero image.png",
+            "apps/web/public/gallery/photo.png",
+            "apps/web/public/gallery/photo@2x.png"
+          ]
         },
         {
           "raw": "/srcset/",
           "occurrence": 2,
-          "shape": "js.concat.dynamic",
-          "expect": "dynamic",
-          "why": "A second concatenation, this one with a static prefix that IS a real directory — which is the tempting case, because a glob would look plausible and would still be a guess.",
+          "shape": "js.concat.pattern",
+          "expect": "resolved-pattern",
+          "why": "R175, KEY CHANGE under guard 1 (was: dynamic -- 'a glob would look plausible and would still be a guess'). That reason was written on 09-13, a day before R80(b) ruled one unknown segment in the name a pattern, and cardImage on :56 is this same path spelled as a template, keyed resolved-pattern. A pattern is never rewritten in either spelling (plan.ts:685), so the chain having no single editable range changes nothing. width: number claims no set of widths, so this is a complete match, not pattern.partial.",
           "offset": 1311,
           "line": 40,
-          "column": 11
+          "column": 11,
+          "target": [
+            "apps/web/public/srcset/card-400.jpg",
+            "apps/web/public/srcset/card-800.jpg",
+            "apps/web/public/srcset/card-1200.jpg"
+          ]
         },
         {
           "raw": "${base}/icon-${size}.png",
@@ -4935,8 +4964,8 @@
           "raw": "/gallery",
           "occurrence": 2,
           "shape": "js.concat.dynamic",
-          "expect": "dynamic",
-          "why": "A third concatenation, with the extension folded into the caller's argument so no extension literal appears at all. ⚠️ Invisible to the token scan, which needs an extension — keyed by hand.",
+          "expect": "discarded",
+          "why": "R175, KEY CHANGE under guard 1 (was: dynamic). Its static text is '/gallery', '/' and one unknown, with no extension -- exactly a route's: gallery-route.ts's router.push('/gallery/' + albumId), under the same directory of images. Nothing the text PROVES separates the two (R108); that this argument carries an extension is only its NAME, a suggestion. Its template twin (gallery-file-template.ts) is not collected, by the ruled bound for a template in a neutral position. R167's instruction applied -- if making :78 pass invents references, the key for :78 is what is wrong -- with R172 as the precedent. Invisible to the token scan, which needs an extension: keyed by hand.",
           "offset": 2776,
           "line": 78,
           "column": 11
@@ -5026,6 +5055,176 @@
           "offset": 57,
           "line": 2,
           "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/gallery-file-template.ts",
+      "entries": [
+        {
+          "raw": "/gallery/${nameWithExtension}",
+          "occurrence": 1,
+          "shape": "js.template.dynamic",
+          "expect": "discarded",
+          "why": "R174 step 2(a), R175: the template twin of paths.ts:78, added before any group C code. With its hole as *, the static text is /gallery/* -- no extension -- so collectSpeculativeTemplate does not collect it: the ruled bound for a template in a neutral position. paths.ts:78 is the same path spelled with + and is keyed alike. Under the mutation 'drop the extension bound' this reads resolved-pattern over all nine files in the gallery.",
+          "offset": 185,
+          "line": 3,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/gallery-route.ts",
+      "entries": [
+        {
+          "raw": "/gallery/",
+          "occurrence": 1,
+          "shape": "js.concat.dynamic",
+          "expect": "discarded",
+          "why": "R174 step 2(b), R175 -- THE RULE'S HARD SIDE. A route whose static prefix coincides with a directory of images: apps/web/public/gallery/ holds nine. It meets both conditions of R173's refined rule (a non-root directory, under a serving root, that holds images) and its static text is paths.ts:78's exactly -- the gallery directory and one unknown, no extension. Nothing the text PROVES separates the two (R108), so a rule that emits :78 emits this, and this is not a reference: the evidence that re-keyed :78 discarded. Under the mutation 'keep a chain as dynamic when its prefix names a non-root image directory' this reads dynamic.",
+          "offset": 204,
+          "line": 3,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/themed-icon-concat.ts",
+      "entries": [
+        {
+          "raw": "/icons/",
+          "occurrence": 1,
+          "shape": "js.concat.dynamic",
+          "expect": "dynamic",
+          "why": "R175: paths.ts:60 spelled with +. Two unknown parts in the name after a fixed directory -- R80(b)'s guess: a glob would claim icon-192.png and icon-512.png on a pattern that constrains almost nothing. The refuting input for 'a chain globs regardless of R80(b)', placed where the glob WOULD hit real files (R170: a leading hole refutes nothing, because the resolver refuses it anyway).",
+          "offset": 167,
+          "line": 3,
+          "column": 11
+        },
+        {
+          "raw": "'.png'",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "The extension fragment of the chain above. Not a path on its own; the chain is the reference.",
+          "offset": 199,
+          "line": 3,
+          "column": 43
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/shadowed-base.ts",
+      "entries": [
+        {
+          "raw": "BASE",
+          "occurrence": 3,
+          "shape": "js.concat.dynamic",
+          "expect": "dynamic",
+          "why": "R175's tracing bound, its refuting input. BASE has two bindings in this file -- the module const and the parameter -- so no use of it is read through. Inside fromBase the parameter wins, the directory is unknown, and a leading unknown is dynamic. Under the mutation 'read a const by name, however many bindings the name has' this reads resolved-pattern over the seven gallery PNGs.",
+          "offset": 201,
+          "line": 5,
+          "column": 10
+        },
+        {
+          "raw": "'.png'",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "The extension fragment of the chain above. Not a path on its own; the chain is the reference.",
+          "offset": 221,
+          "line": 5,
+          "column": 30
+        },
+        {
+          "raw": "${BASE}/${name}.png",
+          "occurrence": 1,
+          "shape": "js.template.dynamic",
+          "expect": "dynamic",
+          "why": "The template twin, shadowed the same way: the same bound asked of the other spelling (R106, R175). Both entries want the same file-level decision, so neither can mask the other (R166).",
+          "offset": 313,
+          "line": 9,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/let-base.ts",
+      "entries": [
+        {
+          "raw": "base",
+          "occurrence": 3,
+          "shape": "js.concat.dynamic",
+          "expect": "dynamic",
+          "why": "R175's tracing bound: only a const is read through. base is a let and setBase reassigns it, so its first value proves nothing about a call. Under the mutation 'read a let as well as a const' this reads resolved-pattern.",
+          "offset": 252,
+          "line": 9,
+          "column": 10
+        },
+        {
+          "raw": "'.png'",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "The extension fragment of the chain above. Not a path on its own; the chain is the reference.",
+          "offset": 272,
+          "line": 9,
+          "column": 30
+        },
+        {
+          "raw": "${base}/${name}.png",
+          "occurrence": 1,
+          "shape": "js.template.dynamic",
+          "expect": "dynamic",
+          "why": "The template twin, under the same bound (R106, R175).",
+          "offset": 353,
+          "line": 13,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/versioned-concat.ts",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.string.literal",
+          "expect": "resolved",
+          "target": "apps/web/public/img/hero.jpg",
+          "why": "R175 -- 'group C ends a silence; it re-reads nothing.' The whole path is one literal, so the string rule reads it exactly as it reads '/img/hero.jpg' alone: resolved, and a rewrite edits that literal and nothing else, which stays correct with the query appended after it. Its template twin would be an unrewritable pattern -- the one place the spelling justifies a different outcome, and it favours the chain. Under the mutation 'a chain always wins over its literals' this reads resolved-pattern.",
+          "offset": 175,
+          "line": 3,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/IconBadge.tsx",
+      "entries": [
+        {
+          "raw": "/icons/icon-",
+          "occurrence": 1,
+          "shape": "js.concat.pattern",
+          "expect": "resolved-pattern",
+          "target": [
+            "apps/web/public/icons/icon-192.png",
+            "apps/web/public/icons/icon-512.png"
+          ],
+          "why": "R175: a + chain inside a JSX src. No literal holds the path; assembled it is the icons directory, 'icon-', one unknown and '.png' -- one unknown in the name after a fixed directory, a pattern (R80(b)) matching both icons the manifest lists. The third js.concat.pattern instance, and the only one in an attribute position.",
+          "offset": 178,
+          "line": 3,
+          "column": 21
+        },
+        {
+          "raw": "'.png'",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "The extension fragment of the chain above. Not a path on its own; the chain is the reference.",
+          "offset": 201,
+          "line": 3,
+          "column": 44
         }
       ]
     },
