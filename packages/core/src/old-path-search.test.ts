@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { findSurvivingPaths, spellingsFor } from './old-path-search.js';
+import { compareStrings } from './paths.js';
 
 /**
  * R72 part 2 — searching for the old path without asking the graph.
@@ -207,5 +208,199 @@ describe('searching for what the move left behind', () => {
     expect(result.survivors).toHaveLength(1);
     expect(result.lines.join('\n')).toContain('to check');
     expect(result.lines.join('\n')).toContain('coincidence');
+  });
+});
+
+describe('searching every file once, with exactly the answers of one search per spelling', () => {
+  /**
+   * The search sweeps each file once for every spelling. What it finds must be exactly
+   * what one `indexOf` loop per spelling finds, occurrence for occurrence, so that simple
+   * algorithm is kept here as the oracle and the search is compared against it rather than
+   * against expectations written by hand.
+   */
+  type Move = { from: string; to: string };
+
+  /** The search as it was: one `indexOf` loop per spelling, and per destination, per file. */
+  function oneSearchPerSpelling(
+    moves: readonly Move[],
+    files: Readonly<Record<string, string>>,
+    servingDirs: readonly string[],
+  ) {
+    const spellings = [
+      ...new Set(moves.flatMap((move) => spellingsFor(move.from, servingDirs))),
+    ].sort((a, b) => b.length - a.length || compareStrings(a, b));
+    const destinations = [...new Set(moves.flatMap((move) => spellingsFor(move.to, servingDirs)))];
+
+    const survivors = Object.keys(files)
+      .sort(compareStrings)
+      .flatMap((file) => oneFileAsBefore(file, files[file] ?? '', spellings, destinations));
+    survivors.sort(
+      (a, b) =>
+        compareStrings(a.file, b.file) || a.line - b.line || compareStrings(a.spelling, b.spelling),
+    );
+    return { spellings, survivors };
+  }
+
+  function oneFileAsBefore(
+    file: string,
+    text: string,
+    spellings: readonly string[],
+    destinations: readonly string[],
+  ) {
+    const spans: [number, number][] = [];
+    for (const needle of destinations) {
+      for (
+        let at = text.indexOf(needle);
+        at !== -1;
+        at = text.indexOf(needle, at + needle.length)
+      ) {
+        spans.push([at, at + needle.length]);
+      }
+    }
+    const survivors: { file: string; line: number; offset: number; spelling: string }[] = [];
+    const claimed = new Set<number>();
+    for (const spelling of spellings) {
+      for (
+        let at = text.indexOf(spelling);
+        at !== -1;
+        at = text.indexOf(spelling, at + spelling.length)
+      ) {
+        const end = at + spelling.length;
+        const line = text.slice(0, at).split('\n').length;
+        if (claimed.has(line) || spans.some(([from, to]) => from <= at && end <= to)) continue;
+        claimed.add(line);
+        survivors.push({ file, line, offset: at, spelling });
+      }
+    }
+    return survivors;
+  }
+
+  function searchAll(
+    moves: readonly Move[],
+    files: Readonly<Record<string, string>>,
+    servingDirs: readonly string[],
+  ) {
+    return findSurvivingPaths({
+      moves,
+      files: Object.keys(files),
+      readFile: async (relative) => files[relative] ?? '',
+      servingDirs,
+    });
+  }
+
+  it('agrees with one search per spelling on 400 generated trees, occurrence for occurrence', async () => {
+    // Seeded rather than random so a failure is reproducible from the output alone. The
+    // alphabet is tiny on purpose: paths like `a/png.png` and texts built from pieces of
+    // them make overlapping matches, spellings nested inside longer ones, destinations
+    // that contain an old spelling, needles shorter than the ending the index files them
+    // under, and several matches on one line, far more often than real code does.
+    //
+    // The arithmetic is 32-bit and exact, and a choice comes from the high bits. A plain
+    // `seed * 1103515245` passes 2^53, where a double drops the low bits, and choosing by
+    // `seed % limit` then chooses from the weakest bits.
+    let seed = 20260925;
+    const next = (limit: number) => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return Math.floor((seed / 2 ** 32) * limit);
+    };
+    const pick = <T>(items: readonly T[]): T => items[next(items.length)] as T;
+    const segment = () => pick(['a', 'b', 'ab', 'png', 'p']);
+    const path = () => {
+      const directories = Array.from({ length: next(3) }, segment);
+      return [...directories, `${segment()}${pick(['.png', '.jpg', '.p', '.png.png', ''])}`].join(
+        '/',
+      );
+    };
+    const deeper = (from: string) => {
+      const cut = from.lastIndexOf('/');
+      return cut === -1
+        ? `upfly-moved/${from}`
+        : `${from.slice(0, cut)}/upfly-moved/${from.slice(cut + 1)}`;
+    };
+
+    let compared = 0;
+    for (let round = 0; round < 400; round++) {
+      const servingDirs = [pick(['', 'a', 'public']), pick(['b', 'ab'])].slice(0, 1 + next(2));
+      const moves = Array.from({ length: 1 + next(4) }, () => {
+        const from = path();
+        const to = pick([`${from.replace(/\.[^./]*$/, '')}.webp`, deeper(from), path()]);
+        return { from, to };
+      });
+      const pieces = moves.flatMap((move) => [
+        ...spellingsFor(move.from, servingDirs),
+        ...spellingsFor(move.to, servingDirs),
+        path(),
+      ]);
+      const files: Record<string, string> = {};
+      for (let file = 0; file < 1 + next(3); file++) {
+        files[`f${file}.txt`] = Array.from({ length: 4 + next(20) }, () =>
+          next(4) === 0 ? pick(['\n', ' ', '"', '/', '.']) : pick(pieces),
+        ).join(pick(['', ' ', '\n']));
+      }
+
+      const expected = oneSearchPerSpelling(moves, files, servingDirs);
+      const actual = await searchAll(moves, files, servingDirs);
+
+      expect(actual.spellings, `round ${round}`).toEqual(expected.spellings);
+      expect(
+        actual.survivors.map(({ file, line, offset, spelling }) => ({
+          file,
+          line,
+          offset,
+          spelling,
+        })),
+        `round ${round}: ${JSON.stringify({ moves, servingDirs, files })}`,
+      ).toEqual(expected.survivors);
+      compared += expected.survivors.length;
+    }
+    // Premise, asserted: the generator produced plenty to compare, not 400 empty trees.
+    expect(compared).toBeGreaterThan(1_000);
+  });
+
+  it('skips a match that overlaps an earlier match of the same spelling, as indexOf did', async () => {
+    // `x/png.png.png` holds `png.png` at 2, inside the destination `x/png.png`, and again
+    // at 6, overlapping the first. Searching on from the END of the first match never
+    // sees the second, so nothing survives. Counting every occurrence would report the
+    // one at 6, a match the original search could not produce.
+    const result = await searchAll(
+      [{ from: 'png.png', to: 'x/png.png' }],
+      { 'a.txt': 'x/png.png.png' },
+      [],
+    );
+
+    expect(result.survivors).toEqual([]);
+  });
+
+  it('gives a line to the longest spelling on it, even when a shorter one comes first', async () => {
+    // The line's survivor is the first match in rank order, longest spelling first, and
+    // only then by position. `img/hero.png` at the start of the line loses to
+    // `/public/img/hero.png` further along.
+    const result = await searchAll(
+      [{ from: 'public/img/hero.png', to: 'public/moved/hero.png' }],
+      { 'a.txt': 'img/hero.png then /public/img/hero.png' },
+      SERVING,
+    );
+
+    expect(result.survivors.map(({ offset, spelling }) => [offset, spelling])).toEqual([
+      [18, '/public/img/hero.png'],
+    ]);
+  });
+
+  it('finds a spelling shorter than the ending the index files needles under', async () => {
+    const result = await searchAll([{ from: 'x.y', to: 'z/x.y' }], { 'a.txt': 'x.y\n/x.y\n' }, []);
+
+    expect(result.survivors.map(({ line, spelling }) => [line, spelling])).toEqual([
+      [1, 'x.y'],
+      [2, '/x.y'],
+    ]);
+  });
+
+  it('numbers lines deep in a long file the way counting line breaks from the top does', async () => {
+    const text = `${'filler\n'.repeat(4_320)}see /img/hero.png\n${'more\n'.repeat(700)}`;
+    const result = await search({ 'long.txt': text }, 'public/img/hero.png');
+
+    expect(result.survivors.map(({ line, offset }) => [line, offset])).toEqual([
+      [4_321, text.indexOf('/img/hero.png')],
+    ]);
   });
 });

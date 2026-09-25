@@ -24,7 +24,6 @@
  * coincidence costs a glance; missing a break costs a 404.
  */
 
-import { lineOf } from './citation.js';
 import { plural } from './format.js';
 import { compareStrings } from './paths.js';
 
@@ -148,6 +147,10 @@ export function spellingsFor(from: string, servingDirs: readonly string[]): stri
  * Longest spellings first, and one match per line per file: a line containing
  * `/img/hero.png` matches both that spelling and the `img/hero.png` suffix, and reporting
  * it twice would make the count say two occurrences where a reader can see one.
+ *
+ * Each file is searched for all the spellings in one sweep (see `occurrencesIn`), so the
+ * cost follows the size of the text. A site that serves thousands of images from its own
+ * root has tens of thousands of spellings, and one search per spelling multiplied by them.
  */
 export async function findSurvivingPaths(input: OldPathSearchInput): Promise<OldPathSearchResult> {
   const spellings = [
@@ -164,6 +167,8 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
   const destinations = [
     ...new Set(input.moves.flatMap((move) => spellingsFor(move.to, input.servingDirs))),
   ];
+  const spellingIndex = indexNeedles(spellings);
+  const destinationIndex = indexNeedles(destinations);
 
   const survivors: Survivor[] = [];
   const unsearchable: Unsearchable[] = [];
@@ -180,23 +185,7 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
       continue;
     }
     filesSearched++;
-
-    const rewritten = spansOf(text, destinations);
-    const claimed = new Set<number>();
-    for (const spelling of spellings) {
-      let at = text.indexOf(spelling);
-      while (at !== -1) {
-        const end = at + spelling.length;
-        const line = lineOf(text, at);
-        // Inside a destination path means the move wrote this text, so it is the rewrite
-        // working rather than a reference left behind.
-        if (!claimed.has(line) && !covered(rewritten, at, end)) {
-          claimed.add(line);
-          survivors.push({ file, line, offset: at, spelling, text: lineTextAt(text, at) });
-        }
-        at = text.indexOf(spelling, end);
-      }
-    }
+    survivors.push(...survivorsIn(file, text, spellingIndex, destinationIndex));
   }
 
   survivors.sort(
@@ -213,28 +202,168 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
   };
 }
 
-/** Every span of `text` occupied by one of `needles`, merged only as far as needed. */
-function spansOf(text: string, needles: readonly string[]): [number, number][] {
-  const spans: [number, number][] = [];
-  for (const needle of needles) {
-    let at = text.indexOf(needle);
-    while (at !== -1) {
-      spans.push([at, at + needle.length]);
-      at = text.indexOf(needle, at + needle.length);
+/**
+ * The survivors in one file: at most one per line, the match met first when the spellings
+ * are taken in rank order, longest first, and each spelling's matches from the top.
+ */
+function survivorsIn(
+  file: string,
+  text: string,
+  spellings: NeedleIndex,
+  destinations: NeedleIndex,
+): Survivor[] {
+  const found = occurrencesIn(text, spellings);
+  if (found.length === 0) return [];
+
+  const insideDestination = containedIn(occurrencesIn(text, destinations));
+  const lineAt = lineIndex(text);
+  const firstOnLine = new Map<number, { rank: number; at: number; spelling: string }>();
+  for (const { rank, needle, offsets } of found) {
+    for (const at of offsets) {
+      // Inside a destination path means the move wrote this text, so it is the rewrite
+      // working rather than a reference left behind.
+      if (insideDestination(at, at + needle.length)) continue;
+      const line = lineAt(at);
+      const held = firstOnLine.get(line);
+      if (held === undefined || rank < held.rank || (rank === held.rank && at < held.at)) {
+        firstOnLine.set(line, { rank, at, spelling: needle });
+      }
     }
   }
-  return spans;
+
+  return [...firstOnLine].map(([line, { at, spelling }]) => ({
+    file,
+    line,
+    offset: at,
+    spelling,
+    text: lineTextAt(text, at),
+  }));
 }
 
 /**
- * Whether `[start, end)` lies inside one of the spans.
+ * How many characters at the end of a needle it is filed under.
  *
- * ⚠️ **Containment, not overlap.** A match that merely touches a destination is still a
- * survivor: the question is whether the move WROTE this text, and it wrote exactly the
- * destination path and nothing around it.
+ * Every spelling of a path ends with the file's name, so the needles of one search end
+ * in very few ways. Measured on railsgirls-com, a search for every image it serves holds
+ * 39,581 needles and 11 endings of four characters (`.png`, `.jpg`, `webp` and a few
+ * more). Looking for those 11 and checking each place one occurs reads a file a dozen
+ * times, where looking for each needle read it 39,581 times.
  */
-function covered(spans: readonly [number, number][], start: number, end: number): boolean {
-  return spans.some(([from, to]) => from <= start && end <= to);
+const ENDING_LENGTH = 4;
+
+/** The needles of one search, filed by their last `ENDING_LENGTH` characters, then by length. */
+type NeedleIndex = ReadonlyMap<string, ReadonlyMap<number, ReadonlyMap<string, number>>>;
+
+/** Where one needle occurs in one text. */
+interface Matches {
+  /** The needle's position in the list the index was built from; lower is searched first. */
+  readonly rank: number;
+  readonly needle: string;
+  /** Start offsets, ascending, none overlapping another match of the same needle. */
+  readonly offsets: readonly number[];
+}
+
+function indexNeedles(needles: readonly string[]): NeedleIndex {
+  const index = new Map<string, Map<number, Map<string, number>>>();
+  needles.forEach((needle, rank) => {
+    // An empty string names no path, and a search for one could never move past it.
+    if (needle === '') return;
+    const ending = needle.slice(-ENDING_LENGTH);
+    const byLength = index.get(ending) ?? new Map<number, Map<string, number>>();
+    index.set(ending, byLength);
+    const sameLength = byLength.get(needle.length) ?? new Map<string, number>();
+    byLength.set(needle.length, sameLength);
+    sameLength.set(needle, rank);
+  });
+  return index;
+}
+
+/**
+ * Every match of every indexed needle in `text`, exactly the ones that calling `indexOf`
+ * for each needle, from the end of its previous match, would return.
+ *
+ * A needle can only occur where its own ending does, so the text is searched once per
+ * distinct ending and each place an ending occurs is checked against the needles filed
+ * under it, by exact lookup. That finds every occurrence, overlapping ones included, in
+ * ascending order for each needle, because the endings are met in ascending order. Then,
+ * for each needle, the first match is kept and after it the first that starts at or after
+ * its end, which is what repeated `indexOf` keeps.
+ */
+function occurrencesIn(text: string, index: NeedleIndex): Matches[] {
+  const found = new Map<number, { needle: string; offsets: number[] }>();
+  for (const [ending, byLength] of index) {
+    for (let at = text.indexOf(ending); at !== -1; at = text.indexOf(ending, at + 1)) {
+      const end = at + ending.length;
+      for (const [length, needles] of byLength) {
+        if (length > end) continue;
+        const candidate = text.slice(end - length, end);
+        const rank = needles.get(candidate);
+        if (rank === undefined) continue;
+        const matches = found.get(rank);
+        if (matches === undefined) found.set(rank, { needle: candidate, offsets: [end - length] });
+        else matches.offsets.push(end - length);
+      }
+    }
+  }
+
+  return [...found].map(([rank, { needle, offsets }]) => {
+    const kept: number[] = [];
+    let free = 0;
+    for (const offset of offsets) {
+      if (offset < free) continue;
+      kept.push(offset);
+      free = offset + needle.length;
+    }
+    return { rank, needle, offsets: kept };
+  });
+}
+
+/**
+ * Whether `[start, end)` lies inside the span of one of the destination matches.
+ *
+ * Containment, not overlap. A match that merely touches a destination is still a
+ * survivor: the question is whether the move wrote this text, and it wrote exactly the
+ * destination path and nothing around it.
+ *
+ * Answered by a binary search rather than by trying every span. A span contains the
+ * range exactly when it starts at or before `start` and ends at or after `end`, so the
+ * furthest end among the spans that start by `start` decides it.
+ */
+function containedIn(destinations: readonly Matches[]): (start: number, end: number) => boolean {
+  const spans = destinations
+    .flatMap(({ needle, offsets }) => offsets.map((at) => [at, at + needle.length] as const))
+    .sort((a, b) => a[0] - b[0]);
+  const starts = spans.map(([from]) => from);
+  const reach: number[] = [];
+  let furthest = -1;
+  for (const [, to] of spans) {
+    furthest = Math.max(furthest, to);
+    reach.push(furthest);
+  }
+
+  return (start, end) => {
+    const last = countBelow(starts, start + 1) - 1;
+    return last >= 0 && (reach[last] ?? -1) >= end;
+  };
+}
+
+/** The one-based line of an offset, from a table of line breaks built once per file. */
+function lineIndex(text: string): (offset: number) => number {
+  const breaks: number[] = [];
+  for (let at = text.indexOf('\n'); at !== -1; at = text.indexOf('\n', at + 1)) breaks.push(at);
+  return (offset) => 1 + countBelow(breaks, offset);
+}
+
+/** How many of the ascending `values` are less than `limit`. */
+function countBelow(values: readonly number[], limit: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((values[middle] ?? limit) < limit) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 /** The line an offset sits on, trimmed and capped so a report stays readable. */
