@@ -49,11 +49,11 @@
  */
 
 import {
-  type Asset,
   IMAGE_EXTENSIONS,
   type InferredServingRoots,
   type RawReference,
   type ServingRoots,
+  type WalkedTree,
   compareStrings,
   detectServingRoots,
   inferServingRoots,
@@ -99,18 +99,23 @@ export interface ServingRootDecision {
   readonly assetReferences: number;
 }
 
-export interface ServingRootDecisionInput {
+export interface ServingRootDecisionInput extends WalkedTree {
   /** The walk's root, absolute, used only to relativise a reference's file path. */
   readonly root: string;
-  readonly directories: readonly string[];
-  readonly assets: readonly Asset[];
   readonly references: readonly RawReference[];
   /** Conventional names, for a caller that overrides them. `detectServingRoots`' default otherwise. */
   readonly names?: readonly string[];
+  /**
+   * What makes a directory a project (R179), for a caller that overrides them.
+   * `detectServingRoots`' default otherwise.
+   */
+  readonly markers?: readonly string[];
 }
 
 export function decideServingRoots(input: ServingRootDecisionInput): ServingRootDecision {
-  const detected = detectServingRoots(input.directories, input.names);
+  // The WHOLE walk, not its directories: R179's rule asks whether a project file sits
+  // beside a `public/`, and a `Gemfile` or `hugo.toml` is a file no adapter claims.
+  const detected = detectServingRoots(input, input.names, input.markers);
 
   const root = toPosix(input.root);
   const filtered: { file: string; path: string }[] = [];

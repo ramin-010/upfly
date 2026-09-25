@@ -123,7 +123,7 @@ async function buildOnce(root: string, declared: ServingRoots | null): Promise<n
     readFile: readFileText,
     exists: (path) => existsSync(path),
   });
-  const servingRoots = declared ?? detectServingRoots(discovery.directories);
+  const servingRoots = declared ?? detectServingRoots(discovery);
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,

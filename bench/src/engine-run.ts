@@ -95,6 +95,8 @@ export async function runEngine(
         root: discovery.root,
         directories: discovery.directories,
         assets: discovery.assets,
+        sourceFiles: discovery.sourceFiles,
+        unscannedFiles: discovery.unscannedFiles,
         references: scanned.references,
       }).servingRoots,
     publicDirs: (servingRoots) => servingRoots.dirs,

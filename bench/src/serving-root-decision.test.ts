@@ -19,7 +19,7 @@
  * happens to contain (R117).
  */
 
-import type { Asset, RawReference } from 'upfly-core';
+import type { Asset, RawReference, SourceFile, UnscannedFile } from 'upfly-core';
 import { describe, expect, it } from 'vitest';
 import { decideServingRoots, looksLikeAsset } from './serving-root-decision.js';
 
@@ -29,6 +29,28 @@ const ROOT = '/repo';
 function asset(relative: string): Asset {
   return { path: `${ROOT}/${relative}`, relative, extension: '.png', bytes: 1 };
 }
+
+/** A file an adapter claims — how a `package.json` reaches the walk. */
+function source(relative: string): SourceFile {
+  return { path: `${ROOT}/${relative}`, relative, extension: '.json', adapterId: 'json' };
+}
+
+/** A file no adapter claims — how a `Gemfile` reaches the walk. */
+function unscanned(relative: string): UnscannedFile {
+  return {
+    path: `${ROOT}/${relative}`,
+    relative,
+    extension: '',
+    reason: 'unclaimed-extension',
+    detail: '',
+  };
+}
+
+/**
+ * A walk with no files in it. R179's rule reads the files beside a `public/`, so a case
+ * that is not about that rule still has to say what the walk held.
+ */
+const NO_FILES = { sourceFiles: [], unscannedFiles: [] } as const;
 
 function reference(file: string, rawPath: string): RawReference {
   return {
@@ -69,6 +91,7 @@ describe('the denominator', () => {
 
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
       directories: ['docs', 'src', 'src/img'],
       assets: [asset('src/img/one.png'), asset('src/img/two.png'), asset('src/img/three.png')],
       references,
@@ -82,6 +105,7 @@ describe('the denominator', () => {
   it('reports the surviving count, because zero looks exactly like nothing to infer', () => {
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
       directories: ['src', 'src/img'],
       assets: [asset('src/img/one.png')],
       references: [reference('docs/a.md', '/guides/deploy/')],
@@ -96,6 +120,9 @@ describe('the union', () => {
   it('keeps every detected root and adds what inference found', () => {
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
+      // R179: a `public/` counts only beside a project file, as every real one does.
+      sourceFiles: [source('package.json')],
       directories: ['public', 'src', 'src/img'],
       assets: [
         asset('public/logo.png'),
@@ -120,6 +147,8 @@ describe('the union', () => {
   it('sorts the union, because rule 11 promises a byte-identical report', () => {
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
+      sourceFiles: [source('package.json')],
       directories: ['static', 'assets', 'assets/img'],
       assets: [
         asset('static/logo.png'),
@@ -141,11 +170,29 @@ describe('the union', () => {
     // report present a guess as a statement, and the report words the two differently.
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
+      sourceFiles: [source('package.json')],
       directories: ['public'],
       assets: [asset('public/logo.png')],
       references: [],
     });
+    expect(decision.servingRoots.dirs).toEqual(['public']);
     expect(decision.servingRoots.declared).toBe(false);
+  });
+
+  it('🔴 hands detection the WHOLE walk, so a project file no adapter claims still counts', () => {
+    // R179. A Rails app's project file is its `Gemfile`, which no adapter claims: it is in
+    // `unscannedFiles`, not `sourceFiles`. A decision that passed only the source files
+    // would reject every Rails `public/` without a sound.
+    const decision = decideServingRoots({
+      root: ROOT,
+      ...NO_FILES,
+      unscannedFiles: [unscanned('legacy/Gemfile')],
+      directories: ['legacy', 'legacy/public'],
+      assets: [asset('legacy/public/plate.png')],
+      references: [],
+    });
+    expect(decision.detected).toEqual(['legacy/public']);
   });
 });
 
@@ -157,6 +204,7 @@ describe('what it refuses', () => {
     // MIN_ROOT_REFERENCES, so it never gets a rate at all.
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
       directories: ['docs-examples', 'docs-examples/public'],
       assets: [asset('docs-examples/public/sample.png')],
       references: [reference('docs-examples/a.md', '/sample.png')],
@@ -169,6 +217,7 @@ describe('what it refuses', () => {
     // and score a candidate against a filename that does not exist anywhere.
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
       directories: ['src', 'src/img'],
       assets: [asset('src/img/one.png')],
       references: [
@@ -182,6 +231,7 @@ describe('what it refuses', () => {
   it('does not treat a protocol-relative URL as a root-relative path', () => {
     const decision = decideServingRoots({
       root: ROOT,
+      ...NO_FILES,
       directories: ['src', 'src/img'],
       assets: [asset('src/img/one.png')],
       references: [

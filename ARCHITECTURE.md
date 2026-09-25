@@ -284,7 +284,26 @@ a serving root whether or not it currently holds an image, because that is what 
 **It never reads a framework config.** A serving root in `next.config.js` or `astro.config.mjs` is
 more often computed JavaScript than a literal, so reading one means either executing a user's code
 or statically reading a value that usually is not static — and a plain static site has no config to
-read. The directory name is observable and static; the config is neither.
+read. The directory name is observable and static; the config is neither. Checking that a project
+file *exists*, below, is not reading one: existence is as observable and static as a name.
+
+**And only where the directory holding it is a project (R179).** A folder called `public` inside
+a tutorial is not a website folder, and no rule on the text of its references can tell it from
+Create React App's `public/index.html` — both name a root-relative file that nothing outside the
+folder mentions (R171). What differs is ownership: a website folder belongs to a project. So a
+`public` or `static` directory is claimed only when a project file sits beside it, in its parent —
+`package.json`; Hugo's `hugo.toml` or `config.toml` (and their YAML and JSON forms); a `Gemfile`;
+`composer.json` or `artisan`; `angular.json`; or VitePress's `.vitepress/`, a config *directory*,
+because VitePress keeps its `package.json` at the repository root. The list is `PROJECT_MARKERS`
+and, like the names, an argument. Detection reads the whole walk for it, not only the files an
+adapter claims: a `Gemfile` is an unscanned file. Measured on the five validation repositories, all
+14 name-matched folders have a `package.json` beside them and all 14 are kept; the coverage tree's
+`docs-examples/public` has none and is rejected. **Every marker except `package.json` is untested
+on a real repository** — the corpus holds only JavaScript projects. A folder whose project file sits
+further up is rejected: Phoenix's `priv/static`, Spring Boot's `src/main/resources/static`,
+VuePress's `.vuepress/public`, and a plain HTML site with no project file at all. That is the cheap
+direction — R140: a rejected root leaves a reference `broken`, never linked to the wrong file — and
+declaring the folder fixes it.
 
 **The name set is `public` and `static`, and it is an argument rather than a constant.** It is still
 a hardcoded convention list and it will be wrong for some framework, so a caller can supply its own.

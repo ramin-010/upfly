@@ -228,6 +228,8 @@ function servingRootsFor(
     root: discovery.root,
     directories: discovery.directories,
     assets: discovery.assets,
+    sourceFiles: discovery.sourceFiles,
+    unscannedFiles: discovery.unscannedFiles,
     references,
   }).servingRoots;
 }

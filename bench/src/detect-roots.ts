@@ -67,7 +67,7 @@ function basenamesOf(assets: readonly Asset[]): Set<string> {
 async function compare(repo: RepoSpec, names: readonly string[] | undefined): Promise<Comparison> {
   const root = join(VALIDATION_ROOT, repo.name);
   const discovery = await discover({ root, adapters: ADAPTERS });
-  const detected = detectServingRoots(discovery.directories, names).dirs;
+  const detected = detectServingRoots(discovery, names).dirs;
   const handTuned = normalise(repo.publicDirs);
 
   return {
@@ -117,7 +117,7 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
   // simulating a behaviour the engine stopped having. This is the fourth column that says
   // what replacing it would cost or buy, before it is replaced.
   const guess = resolveWith(CONVENTIONAL_SERVING_ROOTS);
-  const auto = resolveWith(detectServingRoots(discovery.directories, names));
+  const auto = resolveWith(detectServingRoots(discovery, names));
 
   // 🔴 R132's third column: detection UNIONED with what the references actually resolve.
   // The question `detected` cannot answer is `eleventy-docs`, which serves from `src/` —
@@ -131,6 +131,8 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     root: discovery.root,
     directories: discovery.directories,
     assets: discovery.assets,
+    sourceFiles: discovery.sourceFiles,
+    unscannedFiles: discovery.unscannedFiles,
     references: scanned.references,
     ...(names === undefined ? {} : { names }),
   });

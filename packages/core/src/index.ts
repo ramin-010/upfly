@@ -147,7 +147,12 @@ export {
   type RootCandidateScore,
   inferServingRoots,
 } from './infer-serving-roots.js';
-export { CONVENTIONAL_SERVING_ROOT_NAMES, detectServingRoots } from './serving-roots.js';
+export {
+  CONVENTIONAL_SERVING_ROOT_NAMES,
+  PROJECT_MARKERS,
+  detectServingRoots,
+} from './serving-roots.js';
+export type { WalkedTree } from './serving-roots.js';
 export {
   MINIMUM_ROOT_RELATIVE,
   RESOLUTION_FLOOR,

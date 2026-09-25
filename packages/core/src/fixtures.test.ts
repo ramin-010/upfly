@@ -545,7 +545,7 @@ describe('R58: the serving-root diagnosis, reached through a real tree', () => {
    */
   async function undetected(name: (typeof NAMES)[number]) {
     const { discovered, references, unscanned } = await scan(name);
-    const servingRoots = detectServingRoots(discovered.directories);
+    const servingRoots = detectServingRoots(discovered);
     const resolved = await resolveReferences(references, {
       root: discovered.root,
       assets: discovered.assets,

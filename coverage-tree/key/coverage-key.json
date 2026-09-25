@@ -39,7 +39,7 @@
   "notServingRoots": [
     {
       "path": "docs-examples/public",
-      "why": "🔴 A directory named `public` that serves nothing — it holds illustrations for a guide about a project that has a serving root. B2 and B3 both named this as the biggest untested risk, and no repository in the corpus has one. The resolver climbs ancestors looking for a directory NAMED public, so it will probably resolve against this one. Whether that is correct is recorded as UNDECIDED rather than guessed."
+      "why": "🔴 A directory named `public` that serves nothing — it holds illustrations for a guide about a project that has a serving root. B2 and B3 both named this as the biggest untested risk, and no repository in the corpus has one. R78 Q4 ruled it is not a serving root. Detection by name alone claimed it (R171); since R179 detection requires a project file beside a `public/`, and docs-examples/ holds none, so it is rejected."
     }
   ],
   "aliases": {
@@ -6114,9 +6114,7 @@
           "why": "🔴 R78 Q4: a root-relative path resolves against the nearest GENUINE serving root, and none of the four reaches docs-examples/ — so it is broken. The directory is called `public` because the guide it illustrates is about a project that has one.",
           "offset": 495,
           "line": 14,
-          "column": 15,
-          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible.",
-          "gapMechanism": "serving-root-detection"
+          "column": 15
         },
         {
           "raw": "/logo.png",
@@ -6126,9 +6124,7 @@
           "why": "🔴 R78 Q4: the same, with a basename that exists in six other directories — so resolving it against the wrong root also picks the wrong picture, not merely the wrong bucket.",
           "offset": 583,
           "line": 15,
-          "column": 15,
-          "knownGap": "R71 / R49: today's resolver climbs ancestors looking for a directory NAMED `public`, so it will wrongly resolve this against docs-examples/public. That is the gap, and this entry is what makes it visible.",
-          "gapMechanism": "serving-root-detection"
+          "column": 15
         },
         {
           "raw": "./sample.png",
