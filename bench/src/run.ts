@@ -45,9 +45,6 @@ import {
   measureBreakdown,
   renderBreakdown,
   renderExperiment,
-  renderPool,
-  renderRatios,
-  renderStep1,
   sampleBreakdowns,
 } from './breakdown.js';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
@@ -334,23 +331,20 @@ async function main(): Promise<void> {
 
     // 🔴 R134 step 1, as R142 re-ruled it. The gate number is above and is unchanged;
     // this is a SAMPLED per-step breakdown so a CI run says which step moved. R132 lands
-    // in `resolve`, the markdown skip and the parse pool both land in `parse`, and
-    // without a breakdown each of them costs its own CI round-trip to attribute.
+    // in `resolve`, the markdown skip lands in `parse`, and without a breakdown each of
+    // them costs its own CI round-trip to attribute.
     //
     // ⚠️ It runs AFTER the sampling, never interleaved with it, so the wrappers cannot
     // touch the figure the build gates on. Each pass is its own process for the reason
     // `invocations.ts` gives, and `--experiments` interleaves R141's variants so the
     // A/B survives the run-to-run drift that a spread inside one run cannot see (R143).
+    // It is a local tool now: CI stopped passing it when the parse pool it compared was
+    // deleted.
     const variants = argv.includes('--experiments') ? VARIANTS : (['baseline'] as const);
     const breakdownPasses = Number(flagValue('--breakdown-passes') ?? invocations);
     const samples = await sampleBreakdowns(breakdownPasses, variants);
     for (const sample of samples) stdout.write(renderBreakdown(sample));
-    if (variants.length > 1) {
-      stdout.write(renderExperiment(samples));
-      stdout.write(renderPool(samples));
-      stdout.write(renderRatios(samples));
-      stdout.write(renderStep1(samples));
-    }
+    if (variants.length > 1) stdout.write(renderExperiment(samples));
 
     // `--measure-only` is what CI runs until a gate number exists that CI itself
     // produced. Reporting a number is useful; failing a build against a number

@@ -18,9 +18,7 @@
     "lossless-cohort": "tsc --build && node dist/lossless-cohort.js",
     "noise": "tsc --build && node dist/noise.js",
     "root-inference": "tsc --build && node dist/root-inference.js",
-    "transferability": "tsc --build && node dist/transferability.js",
-    "pool-floor": "tsc --build && node dist/pool-floor.js",
-    "pool-anatomy": "tsc --build && node dist/pool-anatomy.js"
+    "transferability": "tsc --build && node dist/transferability.js"
   },
   "dependencies": {
     "sharp": "^0.35.4",

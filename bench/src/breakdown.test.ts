@@ -26,9 +26,6 @@ import {
   measureBreakdown,
   renderBreakdown,
   renderExperiment,
-  renderPool,
-  renderRatios,
-  renderStep1,
   rotate,
   summariseBreakdowns,
 } from './breakdown.js';
@@ -60,15 +57,6 @@ function pass(overrides: Partial<Breakdown> = {}): Breakdown {
     adapterThrows: 0,
     files: 7_681,
     references: 18_434,
-    poolReason: 'not-requested',
-    poolWorkers: 0,
-    poolFellBack: 0,
-    poolSpinUpMs: 0,
-    poolActiveMs: 0,
-    poolParseMs: 0,
-    poolAdapterMs: 0,
-    poolHandlerMs: 0,
-    poolTasks: 0,
     ...overrides,
   };
 }
@@ -249,10 +237,10 @@ describe('R141 experiment 1’s reading', () => {
     expect(rendered).toContain('MAIN THREAD');
   });
 
-  it('says the pool is the wrong target when parse is a minority of scan', () => {
+  it('says the parse is the wrong target when parse is a minority of scan', () => {
     // ⚠️ R19 ruled *"a worker pool is the wrong target"* once and was overturned because
     // parse was small then. This branch is how that answer would come back — and it must
-    // be reachable, or the instrument can only ever agree with R134.
+    // be reachable, or the instrument can only ever point at the parse.
     const rendered = renderExperiment(
       experimentAt({
         baseline: [10_000, 10_010, 10_020],
@@ -296,230 +284,5 @@ describe('one pass is not a floor', () => {
     );
     expect(rendered).toContain('ONE pass');
     expect(rendered).not.toContain('MAIN THREAD');
-  });
-
-  it('refuses to place the pool’s row against a single draw', () => {
-    const rendered = renderPool(experimentAt({ baseline: [10_000], pooled: [9_000] }));
-    expect(rendered).toContain('ONE PASS');
-    expect(rendered).not.toContain('NOT a finding');
-  });
-});
-
-describe('R134’s parse pool, as the harness reads it', () => {
-  it('says the pool did not run rather than reporting the baseline under its name', () => {
-    // 🔴 The failure this line exists for: `pooled` declining to engage produces the
-    // baseline's number, and a reader looking at milliseconds cannot tell that apart from
-    // a pool that engaged and bought nothing. They call for opposite responses.
-    const samples = [
-      summariseBreakdowns([pass({ variant: 'baseline', scanMs: 5_000 })]),
-      summariseBreakdowns([
-        pass({ variant: 'pooled', scanMs: 5_000, poolReason: 'below-floor', poolWorkers: 0 }),
-      ]),
-    ];
-    expect(renderPool(samples)).toContain('THE POOL DID NOT RUN');
-  });
-
-  it('shouts when files fell back to the main thread, because that is a failing worker', () => {
-    const samples = [
-      summariseBreakdowns([pass({ variant: 'baseline', scanMs: 5_000 })]),
-      summariseBreakdowns([
-        pass({ variant: 'pooled', scanMs: 3_000, poolReason: 'engaged', poolFellBack: 7 }),
-      ]),
-    ];
-    expect(renderPool(samples)).toContain('FELL BACK');
-  });
-
-  it('prints the ceiling beside the result, so the overhead is visible', () => {
-    // The gap between "what the pool recovered" and "what removing ALL main-thread work
-    // recovers" IS the pool's overhead, and neither number means much without the other.
-    const rendered = renderPool(
-      experimentAt({
-        baseline: [10_000, 10_010, 10_020],
-        pooled: [6_000, 6_010, 6_020],
-        'no-parse-no-mentions': [3_000, 3_010, 3_020],
-      }),
-    );
-    expect(rendered).toContain('-40.0%');
-    expect(rendered).toContain('the ceiling');
-    expect(rendered).toContain('-69.9%');
-  });
-});
-
-describe('R155 step 1’s bar, which is fixed before the run', () => {
-  /** Both paths at both concurrencies, everything but `scan` held still. */
-  function step1(scans: Partial<Record<Variant, readonly number[]>>) {
-    return VARIANTS.filter((variant) => scans[variant] !== undefined).map((variant) =>
-      summariseBreakdowns((scans[variant] ?? []).map((scanMs) => pass({ variant, scanMs }))),
-    );
-  }
-
-  it('passes only on a SIGN CHANGE outside the spread, not on being less slow', () => {
-    const rendered = renderStep1(
-      step1({
-        baseline: [10_000, 10_010, 10_020],
-        pooled: [8_000, 8_010, 8_020],
-        wide: [9_000, 9_010, 9_020],
-        'pooled-wide': [6_000, 6_010, 6_020],
-      }),
-    );
-    expect(rendered).toContain('PASSES the bar');
-    expect(rendered).toContain('VERDICT: PASSES');
-  });
-
-  it('fails while the pool is still slower, however much less slow it has become', () => {
-    // 🔴 R155 wrote this bar down in advance precisely so "+101.8% became +4%" could not be
-    // argued into a success later. Four per cent slower is slower.
-    const rendered = renderStep1(
-      step1({
-        baseline: [10_000, 10_010, 10_020],
-        pooled: [10_400, 10_410, 10_420],
-        wide: [9_000, 9_010, 9_020],
-        'pooled-wide': [9_360, 9_370, 9_380],
-      }),
-    );
-    expect(rendered).toContain('still slower');
-    expect(rendered).toContain('VERDICT: FAILS');
-    expect(rendered).not.toContain('PASSES');
-  });
-
-  it('fails a win that sits inside the spread, because that is not a win', () => {
-    const rendered = renderStep1(
-      step1({
-        baseline: [9_000, 10_000, 11_000],
-        pooled: [8_900, 9_900, 10_900],
-        wide: [9_000, 10_000, 11_000],
-        'pooled-wide': [8_900, 9_900, 10_900],
-      }),
-    );
-    expect(rendered).toContain('inside the');
-    expect(rendered).toContain('VERDICT: FAILS');
-  });
-
-  it('refuses to judge at all when a row ran one pass', () => {
-    // 🔴 The defect this was written for: a single pass has no spread, so the bar cannot be
-    // passed OR failed against it — and the first version of this renderer reported FAILS,
-    // which would have closed §5.1(g) as failed on a run that measured nothing.
-    const rendered = renderStep1(
-      step1({ baseline: [10_000], pooled: [8_000], wide: [9_000], 'pooled-wide': [6_000] }),
-    );
-    expect(rendered).toContain('NOT JUDGED');
-    expect(rendered).not.toContain('VERDICT: FAILS');
-    expect(rendered).not.toContain('VERDICT: PASSES');
-  });
-
-  it('prints nothing when the wide variants were not run', () => {
-    expect(renderStep1(step1({ baseline: [10_000, 10_010, 10_020] }))).not.toContain(
-      'concurrency 256',
-    );
-  });
-});
-
-describe('the parse-per-file comparison R154 asked for, now in R159’s block', () => {
-  it('shows both sides and their ratio, so the deciding number is not computed by the reader', () => {
-    const samples = [
-      summariseBreakdowns([
-        pass({ variant: 'baseline', scanMs: 10_000, parseMs: 8_000, files: 8_000 }),
-      ]),
-      summariseBreakdowns([
-        pass({
-          variant: 'pooled',
-          scanMs: 8_000,
-          poolReason: 'engaged',
-          poolWorkers: 4,
-          poolTasks: 8_000,
-          // 1.50 ms per file against the unpooled 1.00, i.e. the pool made parsing dearer.
-          poolAdapterMs: 12_000,
-          poolActiveMs: 8_000,
-          poolHandlerMs: 12_000,
-        }),
-      ]),
-    ];
-    // R159 moved the governing number out of `renderPool` into its own block, so that
-    // EVERY pooled variant carries it rather than only the shipped one. One place for it,
-    // because two places is two numbers that can disagree.
-    const rendered = renderRatios(samples);
-    expect(rendered).toContain('unpooled parse: 1.000 ms/file');
-    expect(rendered).toContain('1.500 ms');
-    expect(rendered).toContain('1.50x');
-  });
-});
-
-describe('R159’s ratio block, which every pooled variant must carry', () => {
-  function ratioCase(workers: number, adapterMs: number) {
-    return summariseBreakdowns([
-      pass({
-        variant: workers === 1 ? 'pooled-wide-1w' : workers === 2 ? 'pooled-wide-2w' : 'pooled',
-        poolReason: 'engaged',
-        poolWorkers: workers,
-        poolTasks: 1_000,
-        poolAdapterMs: adapterMs,
-        poolActiveMs: 1_000,
-        poolHandlerMs: adapterMs,
-        poolSpinUpMs: 100,
-      }),
-    ]);
-  }
-
-  const unpooled = summariseBreakdowns([pass({ variant: 'baseline', parseMs: 400, files: 1_000 })]);
-
-  it('prints a row for EVERY pooled variant, not only the shipped one', () => {
-    // 🔴 The defect this exists for: the governing number was printed for the 4-worker
-    // variant alone, and the 2-worker row — the only one that nearly passed — did not
-    // carry it. A governing number missing from the row under discussion governs nothing.
-    const rendered = renderRatios([unpooled, ratioCase(4, 1_600), ratioCase(2, 800)]);
-    expect(rendered).toContain('1.600 ms');
-    expect(rendered).toContain('0.800 ms');
-    expect(rendered).toContain('4.00x');
-    expect(rendered).toContain('2.00x');
-  });
-
-  it('prints net = workers ÷ ratio, which is what the parallelism is actually worth', () => {
-    // 4 workers against a 4.00x ratio is a net of 1.00x: the pool bought nothing.
-    const rendered = renderRatios([unpooled, ratioCase(4, 1_600)]);
-    expect(rendered).toContain('1.00x');
-  });
-
-  it('carries the ratio’s own spread, because it drifts on unchanged code', () => {
-    const drifting = summariseBreakdowns([
-      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 1_200 }),
-      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 1_600 }),
-      pass({ variant: 'pooled', poolWorkers: 4, poolTasks: 1_000, poolAdapterMs: 2_000 }),
-    ]);
-    // 3.22x and 3.01x were measured on unchanged code between two CI runs, so a move
-    // smaller than the spread beside it is not a finding.
-    expect(drifting.poolPerFileUs.spreadPercent).toBeGreaterThan(0);
-    expect(renderRatios([unpooled, drifting])).toContain(
-      `${drifting.poolPerFileUs.spreadPercent}%`,
-    );
-  });
-
-  it('prints nothing when no pooled variant ran', () => {
-    expect(renderRatios([unpooled])).toBe('');
-  });
-});
-
-describe('step 1’s verdict names the BEST passing row', () => {
-  function step1b(scans: Partial<Record<Variant, readonly number[]>>) {
-    return VARIANTS.filter((variant) => scans[variant] !== undefined).map((variant) =>
-      summariseBreakdowns((scans[variant] ?? []).map((scanMs) => pass({ variant, scanMs }))),
-    );
-  }
-
-  it('reports the largest improvement, not whichever row happened to be last', () => {
-    // 🔴 Rows print in configuration order, so a later row passing by LESS was being
-    // reported as the verdict. Understating what the pool achieved is still a wrong
-    // answer, and the verdict line is what a decision gets taken from.
-    const rendered = renderStep1(
-      step1b({
-        baseline: [10_000, 10_010, 10_020],
-        pooled: [9_500, 9_510, 9_520],
-        wide: [10_000, 10_010, 10_020],
-        // -25% here, and -5% in the row printed after it.
-        'pooled-wide': [7_500, 7_510, 7_520],
-        'pooled-wide-2w': [9_500, 9_510, 9_520],
-      }),
-    );
-    expect(rendered).toContain('VERDICT: PASSES at concurrency 256 (-25.0%)');
-    expect(rendered).not.toContain('VERDICT: PASSES at concurrency 256, 2 workers');
   });
 });

@@ -538,26 +538,6 @@ describe('scanSources', () => {
   it('scans nothing without complaint', async () => {
     const result = await scanSources({ sourceFiles: [], adapters, readFile: filesystem({}) });
 
-    // `pool` is part of the result even when no pool was asked for, and `not-requested` is
-    // the library default R127 ruled: `upfly-core` runs inside other people's processes, so
-    // it never spawns threads unless a caller says to. A bare `engaged: false` would not
-    // distinguish that from a pool that tried and could not.
-    expect(result).toEqual({
-      references: [],
-      unscanned: [],
-      mentions: [],
-      pool: { engaged: false, reason: 'not-requested', workers: 0, fellBack: 0 },
-    });
-  });
-
-  it('reports the pool reason on an ordinary scan that never asked for one', async () => {
-    const result = await scanSources({
-      sourceFiles: [sourceFile('a.css', 'test-css')],
-      adapters,
-      readFile: filesystem({ '/repo/a.css': 'a { background: url(hero.png) }' }),
-    });
-
-    expect(result.pool.reason).toBe('not-requested');
-    expect(result.pool.engaged).toBe(false);
+    expect(result).toEqual({ references: [], unscanned: [], mentions: [] });
   });
 });

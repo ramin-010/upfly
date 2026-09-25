@@ -912,15 +912,25 @@ milliseconds and failing the run for that would make the tool unusable on a firs
 
 Building the graph on a 10k-file / 2k-image repository must stay **under 3 seconds** cold.
 
-🔴 **That budget is currently MISSED, and this section used to describe a design that does not
-exist.** It read "file reads are parallel and adapter work runs in a worker pool." There is no worker
-pool; nothing has ever run adapter work off-thread. It was written from a diagnosis that measurement
-later inverted: parsing was believed to be about a sixth of the cost and is **77% of `scan`**, with
-Babel over `.tsx` alone reaching 41% of the whole budget. The earlier number came from a benchmark
-tree holding real code's file count and **a thirtieth of its bytes**.
-Measured on a recalibrated tree: **12,518 ms**, stable at 3% across three separate invocations.
-File reads *are* parallel. The fix — a worker pool, a faster parser, or both — is Phase 2 scope with
-this section as its brief. **The budget number does not move until a fix is measured.**
+🔴 **That budget is MISSED, and the reason is measured.** CI's `bench (gate)` cell reads about
+4.4 s on Linux and 5.2 s on Windows, inside the regression ceilings and above the target, which was
+deliberately not moved. Parsing is about 70% of `scan`, and the main thread is the bottleneck;
+reading files never was. An early version of this section claimed adapter work ran in a worker pool
+when nothing did, from a diagnosis that put parsing at a sixth of the cost, measured on a benchmark
+tree holding a thirtieth of real code's bytes.
+
+**A parse pool was then built, measured, and deleted.** Its workers ran the same `parseOne` the main
+thread runs, and every configuration was slower. Each worker pays V8's warm-up again, so the work
+grows as it is spread: 8,763 ms of CPU at one worker became 27,074 ms at eight, for identical input.
+And its two knobs oppose each other, because the setting that keeps the workers busy is the one
+that inflates the work. It was removed before the public API was published. **The last commit
+containing it is `c84a2f3`**, for the day a long-lived process such as the editor extension, which
+would pay the warm-up once, measures a win.
+
+What does ship is narrower: a file whose text holds none of the tokens a reference needs is not
+parsed at all, which is exact rather than fast and carries no performance claim. What remains
+untried is a parse cache, a faster parser, and that long-lived process. **The budget number does
+not move until a fix is measured.**
 
 That budget covers **discovery, parsing, resolution and graph building only**. Probing and
 encoding are explicitly excluded and reported as a separate number: both are dominated by

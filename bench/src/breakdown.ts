@@ -92,9 +92,9 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
  * sets it on a child it owns. Nothing in `upfly-core` touches it.
  *
  * ⛔ **The threadpool variants are GONE (R146): experiment 2 is closed, four paired
- * comparisons inside the spread on both platforms.** The last variant is R134's parse
- * pool, which is the only one that ADDS engine behaviour rather than removing some — so it
- * is the only one whose figure is a result rather than a bound.
+ * comparisons inside the spread on both platforms.** The parse pool's variants are gone
+ * too: the pool measured slower in every configuration and was deleted with them. The last
+ * commit holding both is `c84a2f3`.
  */
 interface VariantSpec {
   readonly label: string;
@@ -102,30 +102,18 @@ interface VariantSpec {
   readonly withMentions: boolean;
   /** Extra environment for the child process that measures it. */
   readonly env: Readonly<Record<string, string>>;
-  /** Run `scanSources` with R134's parse pool engaged. */
-  readonly pool?: boolean;
   /** Override `scanSources`' batch size. Absent means the shipped default of 16. */
   readonly concurrency?: number;
-  /** Override the worker count. Absent means `DEFAULT_POOL_WORKERS`. */
-  readonly workers?: number;
 }
 
-export const VARIANTS = [
-  'baseline',
-  'no-parse',
-  'no-parse-no-mentions',
-  'pooled',
-  'wide',
-  'pooled-wide',
-  'pooled-wide-2w',
-  'pooled-wide-1w',
-] as const;
+export const VARIANTS = ['baseline', 'no-parse', 'no-parse-no-mentions', 'wide'] as const;
 
 /**
- * The concurrency the `wide` variants use.
+ * The concurrency the `wide` variant uses.
  *
  * 🔴 **256 rather than "as high as possible", and it is a laptop reading rather than a
- * preference.** Sweeping 16 · 64 · 256 · 1,024 there, pooled `scan` fell 12,329 → 9,234 →
+ * preference.** Sweeping 16 · 64 · 256 · 1,024 there, with the parse pool since deleted,
+ * `scan` fell 12,329 → 9,234 →
  * 8,210 → 8,076 ms: most of the barrier's cost is gone by 256 and the last four-fold buys
  * almost nothing, while 1,024 concurrent reads is a very different demand on libuv than
  * anything the engine ships with. **CI decides whether that shape holds.**
@@ -158,69 +146,13 @@ export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
     withMentions: false,
     env: {},
   },
-  // 🔴 R134's parse pool, measured against `baseline` in the same run. It is the only
-  // variant that changes ENGINE behaviour rather than removing some of it, so it is the
-  // only one whose number is a result rather than a bound.
-  pooled: { label: 'pooled (R134)', stubParse: false, withMentions: true, env: {}, pool: true },
-  // 🔴 R155 step 1, and R141's experiment 3 at last. `scanSources` already takes
-  // `concurrency`, so removing the barrier costs no code — and **the UNPOOLED path has
-  // never been measured at any concurrency but 16**, which is the half owed since R150.
-  // Both paths move together or the comparison is between two changes rather than one.
+  // R141's experiment 3: the batch barrier's cost, as `scan` at a far wider concurrency.
+  // `scanSources` already takes `concurrency`, so the treatment costs no code.
   wide: {
-    label: `unpooled, concurrency ${WIDE_CONCURRENCY}`,
+    label: `concurrency ${WIDE_CONCURRENCY}`,
     stubParse: false,
     withMentions: true,
     env: {},
-    concurrency: WIDE_CONCURRENCY,
-  },
-  'pooled-wide': {
-    label: `pooled, concurrency ${WIDE_CONCURRENCY}`,
-    stubParse: false,
-    withMentions: true,
-    env: {},
-    pool: true,
-    concurrency: WIDE_CONCURRENCY,
-  },
-  // 🔴 R155 step 2(b), measured before it is built and with ONE variable changed against
-  // the row above it: two workers instead of four, same concurrency.
-  //
-  // ⚠️ **The motivation is CI's machine, not a preference.** The runner has **4 cores**, and
-  // the pool spawns 4 workers *plus* a main thread that reads and dispatches — five threads
-  // on four cores. And the arithmetic says contention, not warm-up, is most of the cost: the
-  // laptop's warm-up curve predicts only **1.49×** inflation for a 1,920-file-per-worker
-  // split, while CI measured **3.22×**. **Warm-up explains about a fifth of it.**
-  //
-  // ✅ Two workers halves the oversubscription and doubles the files each isolate sees, so it
-  // attacks both terms at once — at the cost of half the parallelism. **Which way that nets
-  // out is exactly what cannot be reasoned to**, and it is one variant.
-  'pooled-wide-2w': {
-    label: `pooled, concurrency ${WIDE_CONCURRENCY}, 2 workers`,
-    stubParse: false,
-    withMentions: true,
-    env: {},
-    pool: true,
-    workers: 2,
-    concurrency: WIDE_CONCURRENCY,
-  },
-  // 🔴 **R159's CONTROL, and it is the row that decides whether there is an hour left to
-  // spend.** One worker plus the main thread is TWO threads on four cores: **no
-  // oversubscription, and no splitting of the files across isolates.** So it separates the
-  // two halves of the 3.22× penalty that nothing else can:
-  //
-  // | its `ms/file` | what it means |
-  // |---|---|
-  // | ≈ **0.4** (the unpooled figure) | the penalty is ENTIRELY contention and splitting — a configuration might win |
-  // | ≈ **1.0** | 🔴 **a worker is intrinsically ~2.6× slower and NO configuration can win. Stop and say so.** |
-  //
-  // ⚠️ **Without it a near-miss at two workers cannot tell anyone whether to try three or to
-  // stop** — which is the difference between a decision and another round.
-  'pooled-wide-1w': {
-    label: `pooled, concurrency ${WIDE_CONCURRENCY}, 1 worker (control)`,
-    stubParse: false,
-    withMentions: true,
-    env: {},
-    pool: true,
-    workers: 1,
     concurrency: WIDE_CONCURRENCY,
   },
 };
@@ -262,24 +194,6 @@ export interface Breakdown {
   readonly adapterThrows: number;
   readonly files: number;
   readonly references: number;
-  /**
-   * What `scanSources` said about the pool.
-   *
-   * 🔴 Carried through to the render because a pool that declined to engage and a pool
-   * that engaged and bought nothing produce the same number and call for opposite
-   * responses. `not-requested` on the `pooled` variant would mean this measurement is of
-   * the baseline wearing another name.
-   */
-  readonly poolReason: string;
-  readonly poolWorkers: number;
-  readonly poolFellBack: number;
-  /** R153's anatomy, so CI can confirm or refute the laptop's split. Zeroes when unpooled. */
-  readonly poolSpinUpMs: number;
-  readonly poolActiveMs: number;
-  readonly poolParseMs: number;
-  readonly poolAdapterMs: number;
-  readonly poolHandlerMs: number;
-  readonly poolTasks: number;
 }
 
 /**
@@ -299,7 +213,7 @@ export interface Breakdown {
  * every boundary it crosses.
  */
 export async function measureBreakdown(root: string, variant: Variant): Promise<Breakdown> {
-  const { stubParse, withMentions, pool, concurrency, workers } = VARIANT_SPEC[variant];
+  const { stubParse, withMentions, concurrency } = VARIANT_SPEC[variant];
 
   let readMs = 0;
   let parseMs = 0;
@@ -377,12 +291,6 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     // and rightly: "absent" and "present but undefined" are different states, and the
     // mention pass's absence is the treatment being measured.
     ...(withMentions ? { assetBasenames: basenamesOf(found.assets) } : {}),
-    // 🔴 R134. `minFiles: 1` because the engagement floor is a separate question with its
-    // own instrument (`pool-floor.ts`); here the pool is being measured at full size and a
-    // floor that declined to engage would silently make this variant the baseline again.
-    ...(pool === true
-      ? { pool: { minFiles: 1, ...(workers === undefined ? {} : { workers }) } }
-      : {}),
     ...(concurrency === undefined ? {} : { concurrency }),
   });
   const scanMs = performance.now() - t1;
@@ -419,15 +327,6 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     adapterThrows,
     files: found.sourceFiles.length,
     references: parsed.references.length,
-    poolReason: parsed.pool.reason,
-    poolWorkers: parsed.pool.workers,
-    poolFellBack: parsed.pool.fellBack,
-    poolSpinUpMs: parsed.pool.anatomy?.spinUpMs ?? 0,
-    poolActiveMs: parsed.pool.anatomy?.poolActiveMs ?? 0,
-    poolParseMs: parsed.pool.anatomy?.workerParseMs ?? 0,
-    poolAdapterMs: parsed.pool.anatomy?.workerAdapterMs ?? 0,
-    poolHandlerMs: parsed.pool.anatomy?.workerHandlerMs ?? 0,
-    poolTasks: parsed.pool.anatomy?.tasks ?? 0,
   };
 }
 
@@ -453,28 +352,6 @@ export interface BreakdownSample {
   readonly fileCounts: readonly number[];
   readonly references: number;
   readonly adapterThrows: number;
-  /** What the pool did, from the median pass. `not-requested` means it never ran. */
-  readonly poolReason: string;
-  readonly poolWorkers: number;
-  readonly poolFellBack: number;
-  /**
-   * Adapter microseconds per file, summarised across every pass.
-   *
-   * 🔴 **Microseconds because `summarise` rounds to integers**, and a figure near 1.2 ms
-   * would round to 1 and lose the number the whole decision turns on.
-   *
-   * ⚠️ **Summarised rather than taken from the median pass, because the ratio DRIFTS** —
-   * 3.22× and 3.01× on unchanged code between two CI runs. R142 and R143 apply to it like
-   * everything else: it needs its own spread before a change to it is a finding.
-   */
-  readonly poolPerFileUs: Summary;
-  /** R153's anatomy, from the median pass. */
-  readonly poolSpinUpMs: number;
-  readonly poolActiveMs: number;
-  readonly poolParseMs: number;
-  readonly poolAdapterMs: number;
-  readonly poolHandlerMs: number;
-  readonly poolTasks: number;
   /** From the pass whose `scan` was the median, so it describes a real single execution. */
   readonly parseByExtension: readonly (readonly [string, number])[];
   /** Step labels whose spread crossed `MAX_STEP_SPREAD_PERCENT`. */
@@ -524,20 +401,6 @@ export function summariseBreakdowns(passes: readonly Breakdown[]): BreakdownSamp
     fileCounts: [...new Set(passes.map((pass) => pass.files))],
     references: median.references,
     adapterThrows: median.adapterThrows,
-    poolReason: median.poolReason,
-    poolWorkers: median.poolWorkers,
-    poolPerFileUs: summarise(
-      passes.map((pass) =>
-        pass.poolTasks === 0 ? 0 : (pass.poolAdapterMs / pass.poolTasks) * 1000,
-      ),
-    ),
-    poolSpinUpMs: median.poolSpinUpMs,
-    poolActiveMs: median.poolActiveMs,
-    poolParseMs: median.poolParseMs,
-    poolAdapterMs: median.poolAdapterMs,
-    poolHandlerMs: median.poolHandlerMs,
-    poolTasks: median.poolTasks,
-    poolFellBack: passes.reduce((sum, pass) => sum + pass.poolFellBack, 0),
     parseByExtension: median.parseByExtension,
     unusableSteps,
   };
@@ -718,267 +581,6 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 }
 
 /**
- * R134's parse pool, read against the baseline in the same run.
- *
- * 🔴 **This is the only figure in this file that is a RESULT rather than a bound.** The
- * `no-parse` variants say what parsing costs — an upper limit on what any pool could ever
- * recover. This says what one actually recovered, and the difference between those two
- * numbers is everything the pool spends on spin-up, cloning and serialisation.
- *
- * ✅ **CI measured the target before the pool existed:** parse is 69.4% of `scan` on
- * Windows, and with every main-thread cost removed `scan` floors at 926 ms, putting the
- * whole build at roughly 1,360 ms against §3.4's 3,000 ms. **So there is ~1,600 ms of
- * headroom and this may waste most of it and still pass.**
- *
- * 🔴 **The first line to read is not the time, it is `reason`.** A pool that declined to
- * engage produces the baseline's number under the pool's name, and a reader looking at a
- * table of milliseconds cannot tell those apart.
- */
-export function renderPool(samples: readonly BreakdownSample[]): string {
-  const baseline = samples.find((sample) => sample.variant === 'baseline');
-  const pooled = samples.find((sample) => sample.variant === 'pooled');
-  const floor = samples.find((sample) => sample.variant === 'no-parse-no-mentions');
-  if (baseline === undefined || pooled === undefined) return '';
-
-  const move =
-    ((pooled.scan.medianMs - baseline.scan.medianMs) / Math.max(1, baseline.scan.medianMs)) * 100;
-  const spread = spreadFloor(baseline, pooled);
-  const ceiling =
-    floor === undefined
-      ? null
-      : ((floor.scan.medianMs - baseline.scan.medianMs) / Math.max(1, baseline.scan.medianMs)) *
-        100;
-
-  return [
-    '',
-    '  R134 — the parse pool, against the baseline in this same run',
-    '',
-    `    pool engaged: ${pooled.poolReason}   workers: ${pooled.poolWorkers}   files handed back: ${pooled.poolFellBack}`,
-    ...(pooled.poolReason === 'engaged'
-      ? []
-      : ['    🔴 THE POOL DID NOT RUN. Every number below is the baseline under another name.']),
-    ...(pooled.poolFellBack === 0
-      ? []
-      : [`    🔴 ${pooled.poolFellBack} FILES FELL BACK TO THE MAIN THREAD. A worker is failing.`]),
-    '',
-    `    scan   ${String(baseline.scan.medianMs).padStart(6)} ms  ->  ${String(pooled.scan.medianMs).padStart(6)} ms   ${`${move >= 0 ? '+' : ''}${move.toFixed(1)}%`}${
-      spread === null
-        ? '   ONE PASS — no floor to place this against'
-        : Math.abs(move) <= spread
-          ? `   inside the ${spread}% spread — NOT a finding`
-          : `   outside the ${spread}% spread`
-    }`,
-    ...(ceiling === null
-      ? []
-      : [
-          `    the ceiling, from the same run: ${ceiling.toFixed(1)}% — what removing ALL main-thread`,
-          '    work does. The gap between that and the line above is what the pool spends on',
-          '    spin-up, cloning and serialisation.',
-        ]),
-    '',
-    // 🔴 R153. CI is the only instrument that can confirm or refute the laptop's split, and
-    // the laptop's headline pair was unusable (30–45% spread) while its ANATOMY reproduced
-    // across three runs. These three lines are what transfers.
-    ...(pooled.poolTasks === 0
-      ? []
-      : [
-          `    spin-up ${Math.round(pooled.poolSpinUpMs)} ms · worker idle ${(
-            ((pooled.poolActiveMs * Math.max(1, pooled.poolWorkers) - pooled.poolHandlerMs) /
-              Math.max(1, pooled.poolActiveMs * Math.max(1, pooled.poolWorkers))) *
-              100
-          ).toFixed(1)}% of available worker time`,
-          '    🔴 The parse ratio — the governing number — is in its own block below, for',
-          '       EVERY pooled variant. R159: the 2-worker row is the only one that nearly',
-          '       passed and it was the one row not carrying it.',
-          '',
-        ]),
-    '    ⚠️ Correctness is asserted elsewhere and not here: `scan-pool.test.ts` runs the',
-    '       pooled and unpooled scans over a file that throws WITH partial references and',
-    '       requires byte-identical output (R134). A faster wrong answer is not a result.',
-    '',
-  ].join('\n');
-}
-
-/**
- * The parse ratio, for EVERY pooled variant — R158's governing number (R159).
- *
- * 🔴 **R158 made this the number that decides the pool and R159 found it printed for one
- * variant only — not the 2-worker row, which is the only one that nearly passed.** A
- * governing number that is missing from the row under discussion is not governing anything.
- *
- * ## The arithmetic it governs
- *
- * **The pool buys N× parallelism and pays the ratio as inflation. It nets N ÷ ratio.** At
- * four workers and 3.22× that is **1.24×**, which is why the pool's perfect case — zero
- * transport, zero spin-up, zero idling — is only **−13.5%** while it measures **+39.1%**.
- * ✅ R158's ruling follows from it: **a fix that does not move the ratio cannot move the
- * outcome, however much machinery it removes.**
- *
- * ## ⚠️ It drifts, so it carries its own spread
- *
- * **3.22× and 3.01× on unchanged code between two CI runs.** R142 and R143 apply to it
- * exactly as they apply to everything else: a change smaller than its own spread is not a
- * finding, and a single pass cannot carry it at all.
- *
- * ## 🔴 The control row is the one to read first
- *
- * `1 worker` is two threads on four cores — **no oversubscription and no splitting** — so
- * it separates the two halves of the penalty. **≈0.4 ms/file** means the whole cost is
- * contention and splitting and a configuration might still win; **≈1.0 ms/file** means a
- * worker is intrinsically ~2.6× slower and **no configuration can win.**
- */
-export function renderRatios(samples: readonly BreakdownSample[]): string {
-  const baseline = samples.find((sample) => sample.variant === 'baseline');
-  if (baseline === undefined) return '';
-
-  const unpooledFiles = baseline.fileCounts[0] ?? 0;
-  const unpooledPerFile = unpooledFiles === 0 ? 0 : baseline.parse.medianMs / unpooledFiles;
-
-  const pooled = samples.filter((sample) => sample.poolTasks > 0);
-  if (pooled.length === 0) return '';
-
-  const rows = pooled.map((sample) => {
-    const perFile = sample.poolPerFileUs.medianMs / 1000;
-    const ratio = unpooledPerFile === 0 ? 0 : perFile / unpooledPerFile;
-    const idle =
-      sample.poolActiveMs === 0
-        ? 0
-        : ((sample.poolActiveMs * Math.max(1, sample.poolWorkers) - sample.poolHandlerMs) /
-            (sample.poolActiveMs * Math.max(1, sample.poolWorkers))) *
-          100;
-    return [
-      `    ${VARIANT_LABEL[sample.variant].padEnd(40)}`,
-      `${String(sample.poolWorkers).padStart(3)}w`,
-      `${perFile.toFixed(3)} ms`.padStart(10),
-      `${sample.poolPerFileUs.spreadPercent}%`.padStart(6),
-      `${ratio.toFixed(2)}x`.padStart(8),
-      `${Math.round(sample.poolSpinUpMs)} ms`.padStart(9),
-      `${idle.toFixed(1)}%`.padStart(8),
-      // N ÷ ratio: what the parallelism is actually worth after the inflation is paid.
-      `${ratio === 0 ? 'n/a' : `${(sample.poolWorkers / ratio).toFixed(2)}x`}`.padStart(8),
-    ].join('');
-  });
-
-  return [
-    '',
-    '  THE PARSE RATIO — the governing number, for every pooled variant (R158, R159)',
-    '',
-    `    unpooled parse: ${unpooledPerFile.toFixed(3)} ms/file at ${baseline.parse.spreadPercent}% spread, over ${unpooledFiles} files`,
-    '',
-    `    ${'variant'.padEnd(40)}    ${'ms/file'.padStart(10)}${'spr'.padStart(6)}${'ratio'.padStart(8)}${'spin-up'.padStart(9)}${'idle'.padStart(8)}${'net'.padStart(8)}`,
-    ...rows,
-    '',
-    '    net = workers ÷ ratio: what the parallelism is worth AFTER the inflation is paid.',
-    '    🔴 A fix that does not move the ratio cannot move the outcome, however much',
-    '       machinery it removes (R158).',
-    '',
-    '    🔴 READ THE 1-WORKER CONTROL FIRST. Two threads on four cores: no oversubscription',
-    '       and no splitting. Near the unpooled ms/file means the penalty is contention and',
-    '       splitting, and a configuration might still win. Near 1.0 ms means a worker is',
-    '       intrinsically slower and NO configuration can win — stop, and say so (R159).',
-    '',
-    '    ⚠️ The ratio DRIFTS: 3.22x and 3.01x on unchanged code between two CI runs. Its own',
-    '       spread is beside it, and a move smaller than that is not a finding (R142, R143).',
-    '',
-  ].join('\n');
-}
-
-/**
- * R155 step 1 — the concurrency test, on BOTH paths, against a bar fixed in advance.
- *
- * 🔴 **THE BAR IS R155's AND IT IS NOT NEGOTIABLE AFTERWARDS: pooled `scan` must come back
- * FASTER than unpooled in the SAME run, outside that run's spread. A sign change from
- * +31.7%, not "less slow."** It is printed above the numbers rather than below them,
- * because a threshold read after a result is a threshold chosen to fit it.
- *
- * ⚠️ **Two claims, kept apart.** Passing this bar says *the pool is worth having*. It does
- * NOT say §3.4's 3,000 ms target is met — R155's own arithmetic expects ~−12%, which would
- * clear the bar and still miss the budget. **The results document must not merge them.**
- *
- * ✅ **The unpooled row is the half nobody had measured.** R141's experiment 3 has been
- * owed since R150 and asks what the barrier costs *without* a pool; every concurrency
- * figure so far was taken with one. Moving both paths together is what makes the
- * comparison one change instead of two.
- */
-export function renderStep1(samples: readonly BreakdownSample[]): string {
-  const rows: readonly (readonly [string, Variant, Variant])[] = [
-    ['concurrency 16 (shipped)', 'baseline', 'pooled'],
-    [`concurrency ${WIDE_CONCURRENCY}`, 'wide', 'pooled-wide'],
-    // R155 step 2(b) judged against the SAME bar and the same unpooled row, so it cannot
-    // pass on a technicality the other two would have failed.
-    [`concurrency ${WIDE_CONCURRENCY}, 2 workers`, 'wide', 'pooled-wide-2w'],
-  ];
-
-  const lines: string[] = [];
-  let verdict = 'NO DATA';
-  /** The largest improvement seen so far, so the verdict names the best row. */
-  let best = 0;
-  // 🔴 A single pass has no spread, and a bar cannot be FAILED against a floor that does
-  // not exist any more than it can be passed. R142 and R143 both say so, and here the cost
-  // of getting it wrong is §5.1(g) closing as FAILED on a run that measured nothing.
-  let judgeable = true;
-  for (const [label, unpooledVariant, pooledVariant] of rows) {
-    const left = samples.find((sample) => sample.variant === unpooledVariant);
-    const right = samples.find((sample) => sample.variant === pooledVariant);
-    if (left === undefined || right === undefined) continue;
-
-    const move =
-      ((right.scan.medianMs - left.scan.medianMs) / Math.max(1, left.scan.medianMs)) * 100;
-    const floor = spreadFloor(left, right);
-    const passes = floor !== null && move < 0 && Math.abs(move) > floor;
-    lines.push(
-      `    ${label.padEnd(30)} unpooled ${String(left.scan.medianMs).padStart(6)} ms   pooled ${String(right.scan.medianMs).padStart(6)} ms   ${`${move >= 0 ? '+' : ''}${move.toFixed(1)}%`.padStart(
-        8,
-      )}   ${
-        floor === null
-          ? 'ONE PASS — no floor'
-          : passes
-            ? `PASSES the bar (outside ${floor}%)`
-            : move >= 0
-              ? 'FAILS — pooled is still slower'
-              : `FAILS — inside the ${floor}% spread`
-      }`,
-    );
-    if (floor === null) judgeable = false;
-    // 🔴 The BEST passing row, not the last one. Rows are printed in configuration order,
-    // so a later row that passes by less would otherwise be reported as the verdict and
-    // understate what the pool achieved — a wrong answer in the modest direction is still
-    // a wrong answer, and this line is what a decision gets taken from.
-    if (passes && move < best) {
-      best = move;
-      verdict = `PASSES at ${label} (${move.toFixed(1)}%)`;
-    } else if (!passes && verdict === 'NO DATA') {
-      verdict = 'FAILS';
-    }
-  }
-
-  if (lines.length === 0) return '';
-
-  return [
-    '',
-    '  R155 STEP 1 — the concurrency test, both paths, against a bar fixed BEFORE the run',
-    '',
-    '    🔴 THE BAR: pooled must come back FASTER than unpooled in the SAME run, by more',
-    '       than the spread of that run. A sign change from +31.7%, not a smaller positive.',
-    '',
-    ...lines,
-    '',
-    `    VERDICT: ${
-      judgeable
-        ? verdict
-        : 'NOT JUDGED — a row ran ONE PASS, and a bar cannot be failed against a floor that does not exist'
-    }`,
-    '',
-    '    ⚠️ Passing says the pool is worth having. It does NOT say the 3,000 ms target in',
-    '       §3.4 is met — R155 expects ~−12%, which clears this bar and misses the budget.',
-    '       Two claims, and the results document keeps them apart.',
-    '    ⚠️ The unpooled row is R141 experiment 3, owed since R150: every concurrency figure',
-    '       before this one was taken with a pool attached.',
-    '',
-  ].join('\n');
-}
-
-/**
  * R141's decision rule, applied out loud — and refused when the spreads cannot carry it.
  *
  * ⚠️ **Stated as a share rather than as R141's absolute 1,500 / 5,000 ms**, because those
@@ -1028,14 +630,13 @@ function verdict(
   return share >= 50
     ? [
         `    VERDICT: parsing is ${share.toFixed(1)}% of scan's wall clock. The MAIN THREAD is the`,
-        "       bottleneck, and R134's pool is aimed at the right thing. That share is also its",
-        '       CEILING: a perfect pool removes this and no more.',
+        '       bottleneck, so a faster parse is the lever. That share is also the CEILING of',
+        '       moving parsing elsewhere; a parse pool tried and was slower in every configuration.',
       ]
     : [
-        `    VERDICT: parsing is only ${share.toFixed(1)}% of scan's wall clock, so a parse pool's`,
-        "       ceiling is that much and R141's second reading holds — the answer is the",
-        '       threadpool or the read strategy, not a pool. 🔴 This is the result that costs',
-        '       a week if it is ignored. Take it to Rinkal before any pool code (R134).',
+        `    VERDICT: parsing is only ${share.toFixed(1)}% of scan's wall clock, so a faster parse`,
+        "       can recover that much at most and R141's second reading holds: the answer is the",
+        '       threadpool or the read strategy.',
       ];
 }
 
