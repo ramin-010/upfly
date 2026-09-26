@@ -1,15 +1,11 @@
 /**
  * Applying a plan to a working tree, and taking it back off again.
  *
- * The design and the reasoning behind the commit order are in ARCHITECTURE.md under
- * "The transaction". The part worth knowing before reading this file: the manifest
- * is written before anything is touched, so an interrupted run always leaves behind
- * a record of what it was in the middle of.
- *
- * A plan and a manifest are deliberately different types. The plan holds the edits
- * that go forward and lives only in memory; the manifest holds the edits that come
- * back and is the only thing undo reads. Nothing needs to redo an interrupted run,
- * so nothing stores what it would take to.
+ * The manifest is written before anything is touched, so an interrupted run always leaves
+ * a record of what it was in the middle of. A plan holds the edits that go forward and
+ * lives only in memory; the manifest holds the edits that come back and is the only thing
+ * undo reads. Nothing redoes an interrupted run, so nothing stores what that would take.
+ * See "The transaction" in ARCHITECTURE.md.
  */
 
 import { applyEdits, invertEdits, validateEdits } from './edits.js';
@@ -30,14 +26,12 @@ import {
 import type { Edit } from './types.js';
 
 /**
- * The two things about the outside world the lock needs, injected only for tests.
- *
- * ⚠️ Both default to the truth. A caller that passes nothing gets the real process id
- * and the real liveness check, so forgetting them cannot weaken the lock — which is
- * the property an optional port has to have before it is allowed to be optional.
+ * The two facts about the outside world the lock needs, injectable only for tests. Both
+ * default to the real process id and liveness check, so leaving them out cannot weaken
+ * the lock.
  */
 export interface LockPorts {
-  /** This process. A test overrides it to act convincingly as a different one. */
+  /** This process. A test overrides it to act as a different one. */
   readonly pid?: number;
   readonly isAlive?: ProcessLiveness;
 }
@@ -45,20 +39,14 @@ export interface LockPorts {
 /**
  * Everything the transaction is allowed to do to a disk.
  *
- * Injected the same way as the resolver's `exists` and the probe's decoder, for the
- * usual reason and one extra: a fake store can be told to fail on the nth write,
- * which is how the crash tests interrupt a commit through the same code path a real
- * crash would take.
- *
- * Every path is POSIX-relative to the project root. Nothing above this port sees an
- * absolute path, which is also why no absolute path reaches the manifest.
+ * A port, so that a test store can fail at any write, copy or removal: that is how the
+ * crash tests interrupt a commit on the same path a real crash takes. Every path is
+ * POSIX-relative to the project root, which keeps absolute paths out of the manifest.
  */
 export interface FileStore {
   /**
-   * Names the function `hash` uses, so the manifest can record it.
-   *
-   * It comes from the store rather than from a constant here, which is what stops a
-   * manifest ever naming an algorithm other than the one that made its hashes.
+   * Names the function `hash` uses. The manifest takes it from here, so it always names
+   * the algorithm that made its hashes.
    */
   readonly hashAlgorithm: string;
   /** Content hash, or null when the path does not exist. */
@@ -66,14 +54,11 @@ export interface FileStore {
   readText(path: string): Promise<string>;
   writeText(path: string, text: string): Promise<void>;
   /**
-   * Create a file **only if it does not exist**, atomically. `false` if it did.
+   * Creates a file only if it does not exist, atomically, and returns `false` if it did.
    *
-   * ⚠️ **A method rather than a composition of `hash` and `writeText`, because the
-   * composition is a race.** Two runs both see no file, both write, both believe they
-   * are alone — which is the precise shape of the bug R68's lock exists to prevent, so
-   * building the lock out of it would be a guard with the defect inside it. The
-   * atomicity must come from the filesystem (`O_EXCL`), which means it has to be
-   * visible at the port.
+   * The lock is built on this. Checking with `hash` and then calling `writeText` is a race
+   * in which two runs both see no file and both write it, so the atomicity has to come
+   * from the filesystem (`O_EXCL`).
    */
   createExclusive(path: string, text: string): Promise<boolean>;
   copy(from: string, to: string): Promise<void>;
@@ -81,10 +66,8 @@ export interface FileStore {
 }
 
 /**
- * An edit as planned, carrying the direction that goes on to disk.
- *
- * The manifest stores the reverse of this. Keeping the two apart means there is no
- * moment where the same information is written down twice and could disagree.
+ * An edit as planned, in the direction that goes on to disk. The manifest stores only the
+ * reverse, so the same change is never written down twice in two forms that could disagree.
  */
 export interface PlannedEdit {
   readonly kind: 'edit';
@@ -115,10 +98,9 @@ export type OperationStatus =
   /** Never happened. Undo has nothing to do. */
   | 'not-applied'
   /**
-   * The file matches neither the before state nor the after state, so something
-   * other than this run changed it. The transaction will not touch it: silently
-   * writing over somebody's work is worse than leaving a run half applied, and they
-   * cannot fix what they are never told about.
+   * The file matches neither the before state nor the after state, so something other
+   * than this run changed it. The transaction will not touch it and names it instead:
+   * writing over somebody's work is worse than leaving a run half applied.
    */
   | 'foreign';
 
@@ -136,18 +118,18 @@ export interface OperationState {
  * nothing and the same failure during commit costs a half-changed tree.
  *
  * @throws {UpflyError} `TRANSACTION_PLAN_INVALID` naming the operation and the problem.
+ * @throws {UpflyError} `INVALID_EDIT_RANGE`, `OVERLAPPING_EDITS` or `AMBIGUOUS_EDITS` when a
+ *         planned edit does not fit the file it is for.
  */
 export async function prepare(
   plan: readonly PlannedOperation[],
   store: FileStore,
   runDir: string,
 ): Promise<void> {
-  // Keyed case-insensitively, because two paths differing only in case are two files
-  // on Linux and one file on Windows and macOS. Comparing exactly let a plan holding
-  // a create at `Reaktor.webp` and another at `reaktor.webp` through, and neither
-  // existed yet so the absent check passed for both: the second write then landed on
-  // top of the first. Folding on every platform means a plan this refuses is refused
-  // everywhere rather than only where the filesystem happens to notice.
+  // Keyed case-insensitively: two paths differing only in case are one file on Windows
+  // and macOS, and while neither exists both pass the absent check. Folded on every
+  // platform, so a plan is refused everywhere or nowhere.
+  // See "Two paths are the same file more often than they look" in ARCHITECTURE.md.
   const claimed = new Map<string, { path: string; by: string }>();
 
   const claim = (path: string, by: string): void => {
@@ -190,9 +172,8 @@ export async function prepare(
       case 'delete': {
         claim(operation.path, 'delete');
         await expectHash(store, operation.path, operation.beforeHash, 'delete');
-        // A delete is the only operation whose bytes nothing else in the manifest
-        // can reconstruct. The type demands a backup path; this demands the file
-        // actually be there, since a field can be filled in with a path nobody wrote.
+        // A delete's bytes can be rebuilt from nothing else in the manifest, and a backup
+        // path can name a file nobody wrote, so the backup has to be there.
         await expectStaged(store, runDir, operation.backup, 'delete');
         break;
       }
@@ -207,14 +188,13 @@ export async function prepare(
 /**
  * Apply a prepared plan.
  *
- * Commit owns the manifest from beginning to end, so no caller is in a position to
- * write it last. The phase order is what keeps an interrupted run buildable: files
- * appear before anything points at them, and originals go only once nothing points
- * at them any more.
+ * Commit writes the manifest itself, pending before the first change and committed after
+ * the last, so no caller can write it late. The phase order keeps an interrupted run
+ * buildable: files appear before anything points at them, and originals go only once
+ * nothing points at them any more.
  *
- * Every edit target is hashed again at the moment it is read, rather than trusting
- * the identical check `prepare` made: encoding runs between the two, so that check
- * is only as fresh as however long the images took.
+ * Every edit target is hashed again as it is read rather than trusting the check `prepare`
+ * made, since a file saved after that check would leave offsets that no longer fit it.
  */
 export async function commit(
   plan: readonly PlannedOperation[],
@@ -222,15 +202,10 @@ export async function commit(
   context: RunContext,
   lock: LockPorts = {},
 ): Promise<Manifest> {
-  // R68. Held for the whole of commit, which is the window in which this run writes
-  // the one shared manifest twice — pending on the way in, committed on the way out.
-  // A second run landing between those two writes is what loses the first run's
-  // record, and with it the only pointer to its backups.
-  //
-  // Re-entrant: `optimize` already holds it across `prepare` and this call, because
-  // the gap between staging and committing is a window too. A consumer calling
-  // `commit` directly is protected all the same, which is the point of locking here
-  // rather than only in `optimize`.
+  // Held for the whole commit, which writes the shared manifest twice. Another run writing
+  // in between would replace one run's record, the only pointer to its backups. `optimize`
+  // already holds the lock; taking it here as well covers a caller using `commit` directly.
+  // See "One writer at a time" in ARCHITECTURE.md.
   const held = await acquireLock({ store, runId: context.runId, now: context.now, ...lock });
   try {
     return await commitUnderLock(plan, store, context);
@@ -260,8 +235,7 @@ async function commitUnderLock(
   };
   await store.writeText(MANIFEST_PATH, serialiseManifest(pending));
 
-  // Each phase takes the previous one's witness, so these three cannot be reordered
-  // and the removals cannot run before the edits. See `PhaseComplete`.
+  // Each phase takes the previous one's witness. See `PhaseComplete`.
   const created = await createPhase(plan, store, context.runDir);
   const edited = await editPhase(plan, store, created);
   await removePhase(plan, store, edited);
@@ -299,9 +273,8 @@ async function refuseOverInterruptedRun(store: FileStore, runId: string): Promis
 /**
  * Decide, by hashing, what actually happened to each operation.
  *
- * This is why commit keeps no journal of its own progress. Every operation records
- * the hash on both sides, so the state of the tree is enough to say whether it ran,
- * and nothing depends on how far a counter got before the process died.
+ * Every operation records the hash on both sides, so the tree alone says whether it ran.
+ * That is why commit keeps no journal of its own progress.
  */
 export async function inspect(
   manifest: Manifest,
@@ -353,16 +326,15 @@ export async function inspect(
 }
 
 /**
- * Put the tree back the way it was.
+ * Put the tree back the way it was, whether the run finished or was interrupted.
  *
- * There is deliberately no separate function for recovering an interrupted run.
- * Undoing a finished run and cleaning up an interrupted one are the same job:
- * reverse whatever the disk says actually happened. One path means there is no
- * rarely-exercised recovery branch left to be wrong.
+ * Both are the same job, reversing whatever the disk says actually happened, so there is
+ * no separate recovery branch that is rarely run and could be wrong.
  *
  * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` naming every file changed by
- *         something other than this run. Nothing is reverted in that case, so the
- *         tree is never left in a third state nobody planned.
+ *         something other than this run, or every removed original whose backup is gone.
+ *         Nothing is reverted in either case, so the tree is never left in a third state
+ *         nobody planned.
  */
 export async function revert(
   manifest: Manifest,
@@ -370,9 +342,8 @@ export async function revert(
   now: () => string = () => new Date().toISOString(),
   lock: LockPorts = {},
 ): Promise<Manifest> {
-  // Undo writes the same shared manifest, so it is a writer and takes the same lock.
-  // Re-entrant on `runId`, which is what lets a run recover ITSELF after a failure
-  // without deadlocking against the lock it is still holding.
+  // Undo writes the same shared manifest, so it takes the same lock. Re-entry lets a run
+  // undo itself while it still holds the lock.
   const held = await acquireLock({ store, runId: manifest.runId, now, ...lock });
   try {
     return await revertUnderLock(manifest, store, now);
@@ -520,12 +491,8 @@ async function manifestOperations(
 }
 
 /**
- * Refuse to compare hashes that were not made the same way.
- *
- * Every status below is decided by comparing a stored hash against a fresh one. If
- * the two came from different functions none of them match, so every file would be
- * reported as changed by somebody else. That is the most alarming thing this tool
- * can say, and it would be entirely an artefact of the mismatch.
+ * Refuse to compare hashes that were not made the same way. Hashes from two different
+ * functions never match, so every file would be reported as changed by somebody else.
  */
 function requireSameHashFunction(manifest: Manifest, store: FileStore): void {
   if (manifest.hashAlgorithm === store.hashAlgorithm) return;
@@ -597,28 +564,17 @@ async function expectHash(
   }
 }
 
+const phaseWitness = Symbol('the commit phase that produced this');
+
 /**
  * Proof that one commit phase finished over the whole plan.
  *
- * This type exists to make one specific refactor fail to compile, and it is worth the
- * machinery because the bug it guards is invisible to every test there is.
- *
- * Step 4 removes originals, and it is only safe because step 3 completed over EVERY
- * edit rather than running per asset. Interleaved into a create-edit-delete loop, one
- * asset at a time, asset B's delete runs before asset A's edits, and any file naming
- * both is momentarily inconsistent. The crash matrix cannot catch that: it injects
- * failures by mutation count, and an interleaved loop produces the same count in the
- * same order.
- *
- * ⚠️ What it prevents and what it does not. It makes the three phases impossible to
- * reorder, and impossible to call the removals before the edits, because the witness
- * for a phase can only be produced by running it. It does NOT make a per-asset loop
- * impossible: slicing the plan and calling all three per asset would still compile.
- * What it removes is the innocent-looking version, where three loops are merged into
- * one and nothing in the diff says an invariant died.
+ * Removing originals is safe only once every edit is written, and the crash tests cannot
+ * tell whole phases from one loop that interleaves them per asset. A phase's witness comes
+ * only from running it, so the phases cannot be reordered or merged by accident; slicing
+ * the plan and running all three per asset would still compile. See "The transaction" in
+ * ARCHITECTURE.md.
  */
-const phaseWitness = Symbol('the commit phase that produced this');
-
 interface PhaseComplete<Name extends string> {
   readonly [phaseWitness]: Name;
 }
@@ -683,13 +639,9 @@ async function removePhase(
 /**
  * Read an edit target, refusing it when the bytes are no longer the ones planned.
  *
- * `prepare` checks this same hash, but it can be a long way earlier: encoding runs
- * between them, and an editor saving the file in that window leaves edit offsets
- * that no longer describe the text. Applying them writes something nobody planned,
- * and the inverse derived from the same read would not fit the file either, so the
- * undo recorded in the manifest would be wrong in the same stroke. `inspect` calls
- * the result `foreign` afterwards, which detects the damage rather than preventing
- * it, and the file it detects it on is somebody's unsaved work.
+ * `prepare` checks the same hash earlier, but an editor saving the file since then leaves
+ * edit offsets that no longer describe the text. Applying them would write something
+ * nobody planned, which `inspect` could only report afterwards as `foreign`.
  */
 async function readVerified(store: FileStore, path: string, expected: string): Promise<string> {
   if ((await store.hash(path)) !== expected) {
@@ -716,12 +668,8 @@ async function expectStaged(
 }
 
 /**
- * Refuse a plan whose undo would not apply.
- *
- * Two adjacent edits where the first removes text can invert into two edits sharing
- * a start offset, which `applyEdits` rejects. Discovering that during undo would
- * mean discovering it when the tree is already changed and somebody is asking for
- * their work back, so it is settled while nothing has happened yet.
+ * Refuse a plan whose undo would not apply (see `invertEdits`). Undo is too late to find
+ * that out: the tree has changed and somebody is asking for their work back.
  */
 async function checkUndoable(store: FileStore, operation: PlannedEdit): Promise<void> {
   const before = await store.readText(operation.path);

@@ -1,27 +1,14 @@
 /**
- * After a move, look for the OLD path in every file — without asking the graph.
+ * Search each file's text for the old path of a moved or replaced asset, without reading
+ * the graph.
  *
- * 🔴 **R72 part 2.** Part 1 states what `broken before vs after` cannot see; this goes
- * and looks. The property that matters, and the only one, is **independence**: the check
- * that failed did so because *the same graph that missed the reference did the counting*,
- * so a second check built on the same graph would inherit the same blind spot wearing a
- * different name. **Nothing here reads a `Graph`.** It takes a list of files and a way to
- * read them, and searches text.
- *
- * ⚠️ **It searches the PATH, never the basename.** A move usually keeps the filename, so
- * a basename search matches the asset at its *new* location and proves nothing — it would
- * report a clean tree as full of survivors, and the noise would be indistinguishable from
- * the signal. `sweepForMentions` searches basenames, and was examined rather than reused:
- * it matches filename-shaped tokens, it picks its haystacks **from the graph**
- * (zero-reference assets only), and it deliberately skips excluded directories. Three
- * reasons, any one of which disqualifies it here.
- *
- * 🔴 **What a survivor IS, stated carefully.** It is an occurrence of the old path that
- * the move did not rewrite. That is usually a reference we could not repoint — and it may
- * also be prose, a changelog entry, a comment, or a coincidence. **This check cannot tell
- * those apart**, which is why it reports the line and lets a person read it, and why the
- * output says *occurrences to check* rather than *references we broke*. Reporting a
- * coincidence costs a glance; missing a break costs a 404.
+ * Independence is the point: a check built on the graph inherits the graph's blind spots.
+ * It searches the path, not the basename: a move keeps the file name, so the basename would
+ * also match the asset at its new place. That is why `sweepForMentions`, which matches the
+ * basenames of assets the graph says nothing references, is not reused. A survivor is an
+ * occurrence the move did not rewrite, which may be a reference or may be prose, so the
+ * line is reported for a person to read.
+ * See "Moving an asset" in ARCHITECTURE.md.
  */
 
 import { plural } from './format.js';
@@ -33,13 +20,11 @@ export interface Survivor {
   readonly file: string;
   readonly line: number;
   /**
-   * Byte offset of the match within the file.
+   * Offset of the match in the file's text, in UTF-16 code units like an edit's `start`.
    *
-   * 🔴 Needed by `optimize`, and the reason is the one thing that makes this check
-   * usable before a write rather than only after one: at plan time the old path is
-   * still everywhere, including in the references the plan is **about to rewrite**.
-   * Those are not survivors. Telling them apart needs the position, because a line
-   * number cannot say whether a planned edit covers this occurrence.
+   * `optimize` searches before writing, when the old path still appears in the references
+   * the plan is about to rewrite. Those are not survivors, and only the offset tells them
+   * apart: a line number cannot say whether a planned edit covers this occurrence.
    */
   readonly offset: number;
   /** Which spelling matched, so a reader knows what to look for on that line. */
@@ -65,26 +50,21 @@ export interface OldPathSearchResult {
 }
 
 export interface OldPathSearchInput {
-  /** The moves that were carried out. Only `from` is searched for. */
+  /** The moves to check. Each `from` is searched for; `to` only discounts matches inside it. */
   readonly moves: readonly { readonly from: string; readonly to: string }[];
   /**
-   * Every file to search, POSIX-relative to the project root.
-   *
-   * ⚠️ **The caller decides the haystack, and that decision is a limit worth stating.**
-   * Passing discovery's source *and* unscanned files searches strictly more than the
-   * graph ever parsed, which is the point — but it still excludes directories an ignore
-   * rule pruned, and the rendered limits say so.
+   * Every file to search, POSIX-relative to the project root. The caller chooses them:
+   * discovery's source and unscanned files cover more than the graph parsed, but not the
+   * directories an ignore rule pruned, which the rendered limits say.
    */
   readonly files: readonly string[];
   /** Reads one file by its POSIX-relative path. Rejecting is a reported `Unsearchable`. */
   readonly readFile: (relative: string) => Promise<string>;
   /**
-   * Serving directories, so the URL spelling of a served asset can be derived.
-   *
-   * Configuration or detection output, **not graph knowledge** — no reference resolution
-   * is consulted. Required rather than optional: without it `public/hero.png` would be
-   * searched for only as `public/hero.png`, and the spelling that actually appears in
-   * markup is `/hero.png`. A caller with none passes `[]` and says so.
+   * Serving directories, so the URL spelling of a served asset can be derived. They come
+   * from configuration or detection, not from the graph. Required: without them
+   * `public/hero.png` is never searched for as `/hero.png`, the spelling markup uses. A
+   * caller with none passes `[]`.
    */
   readonly servingDirs: readonly string[];
 }
@@ -93,33 +73,23 @@ export interface OldPathSearchInput {
 const TEXT_CAP = 120;
 
 /**
- * Every way the old path might be written down.
+ * Every spelling of an asset's path that the old-path search looks for.
  *
- * 🔴 **The tension this resolves, because it has no clean answer.** A long needle
- * (`public/img/hero.png`) misses the spelling that actually appears in markup
- * (`/img/hero.png`); a short one (`/hero.png`) matches half the repository. So several
- * spellings are searched and **each survivor names the one that matched**, which turns a
- * false positive into a glance rather than an investigation.
+ * A long needle (`public/img/hero.png`) misses the URL markup uses (`/img/hero.png`), and a
+ * short one matches too much, so several are searched and each survivor names the one that
+ * matched. The last directory and file name (`img/hero.png`) catch relative spellings such
+ * as `../../img/hero.png`. The basename alone is not a spelling: after a move the asset
+ * still has that name.
  *
- * ⚠️ **The parent-directory suffix is what catches relative spellings** — `./img/hero.png`
- * and `../../img/hero.png` both end in `img/hero.png`. The basename alone is deliberately
- * NOT a spelling, however tempting: after the move the asset still has that name.
+ * @param from the asset's POSIX path, relative to the project root
+ * @param servingDirs serving directories; a path under one is also spelled as its URL
  */
 export function spellingsFor(from: string, servingDirs: readonly string[]): string[] {
-  // 🔴 `/${from}` is the URL spelling for a project that serves its own root — the `''`
-  // serving directory — and it is here unconditionally rather than in the loop below.
-  // An explicit `if (dir === '')` branch WAS written, and a mutation proved it was dead
-  // code: it added a string this line already contains, so breaking it changed nothing
-  // and the test covering it stayed green. **A branch that never does anything looks
-  // exactly like one that always works** — and the `''` case is the one this codebase has
-  // got backwards twice in two modules (R70). It is handled here, once, in the open.
+  // `/${from}` is the URL when the project serves its own root (the `''` serving
+  // directory). It is added here, so the loop needs no case for `''`: there its condition
+  // reads `from.startsWith('/')`, which a project-relative path never does.
   const spellings = new Set<string>([from, `/${from}`]);
 
-  // No `dir !== ''` guard here, and that is deliberate rather than an omission: for an
-  // empty serving directory this condition reads `from.startsWith('/')`, and `from` is
-  // project-relative so it never does. A guard was written, and a mutation showed it
-  // could not change any outcome — the second dead branch this function grew around the
-  // same `''` case in one sitting. Both are gone.
   for (const dir of servingDirs) {
     if (from === dir || from.startsWith(`${dir}/`)) {
       const served = from.slice(dir.length).replace(/^\/+/, '');
@@ -149,21 +119,17 @@ export function spellingsFor(from: string, servingDirs: readonly string[]): stri
  * it twice would make the count say two occurrences where a reader can see one.
  *
  * Each file is searched for all the spellings in one sweep (see `occurrencesIn`), so the
- * cost follows the size of the text. A site that serves thousands of images from its own
- * root has tens of thousands of spellings, and one search per spelling multiplied by them.
+ * cost follows the size of the text rather than the number of spellings, which reaches
+ * tens of thousands on a site that serves thousands of images from its own root.
  */
 export async function findSurvivingPaths(input: OldPathSearchInput): Promise<OldPathSearchResult> {
   const spellings = [
     ...new Set(input.moves.flatMap((move) => spellingsFor(move.from, input.servingDirs))),
   ].sort((a, b) => b.length - a.length || compareStrings(a, b));
 
-  // 🔴 Where the move PUT things, so a successful rewrite is not reported as a survivor.
-  // Found by running this on `astro-docs` and reading the output: the asset served at
-  // `/default-og-image.png` moved to `/upfly-moved/default-og-image.png`, and the old
-  // URL spelling is a **suffix of the new one** — so the very file the move had correctly
-  // rewritten came back as a survivor. **The basename problem in a new costume**: the
-  // ruling warned that a move keeps the filename, and when an asset sits at the serving
-  // root its whole URL is a filename with a slash on the front.
+  // Where the moves put things, so a rewrite that worked is not reported as a survivor.
+  // An asset at a serving root has a URL that is its file name with a slash in front, so
+  // the old URL (`/og.png`) is also the end of the new one (`/moved/og.png`).
   const destinations = [
     ...new Set(input.moves.flatMap((move) => spellingsFor(move.to, input.servingDirs))),
   ];
@@ -179,8 +145,8 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
     try {
       text = await input.readFile(file);
     } catch (cause) {
-      // A file that vanished or is binary is a hole in the search, and a hole in a
-      // search that reports "nothing found" is exactly the defect R72 is about.
+      // A file that could not be read is a hole in the search, and "nothing found" over a
+      // hole reads as a guarantee, so it is listed.
       unsearchable.push({ file, reason: (cause as Error).message });
       continue;
     }
@@ -244,10 +210,10 @@ function survivorsIn(
  * How many characters at the end of a needle it is filed under.
  *
  * Every spelling of a path ends with the file's name, so the needles of one search end
- * in very few ways. Measured on railsgirls-com, a search for every image it serves holds
- * 39,581 needles and 11 endings of four characters (`.png`, `.jpg`, `webp` and a few
- * more). Looking for those 11 and checking each place one occurs reads a file a dozen
- * times, where looking for each needle read it 39,581 times.
+ * in very few ways. On railsgirls-com, a search for every image it serves holds 39,581
+ * needles and 11 endings of four characters (`.png`, `.jpg`, `webp` and a few more).
+ * Looking for those 11 and checking each place one occurs reads a file a dozen times,
+ * where looking for each needle would read it 39,581 times.
  */
 const ENDING_LENGTH = 4;
 
@@ -375,11 +341,9 @@ function lineTextAt(text: string, offset: number): string {
 }
 
 /**
- * The finding and what it still cannot see.
- *
- * Same rule as `move-check.ts`: the limits are not conditional on the verdict. **A clean
- * result is exactly where an unstated limit gets read as a guarantee**, and this check
- * has a large one — it can only find a path that is written down somewhere as text.
+ * The finding and what the search cannot see, printed whatever the finding, as in
+ * `move-check.ts`: a clean result is where an unstated limit is read as a guarantee, and
+ * this search finds only a path written down as text.
  */
 function render(
   survivors: readonly Survivor[],

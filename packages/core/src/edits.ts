@@ -2,15 +2,12 @@ import { UpflyError } from './errors.js';
 import type { Edit } from './types.js';
 
 /**
- * Apply range replacements to a string.
+ * Apply range replacements to a string. The edits may come in any order, and every
+ * offset refers to `source` as given.
  *
- * This is the primitive every adapter's `rewrite` is built on, so it is strict on
- * purpose: rewriting a user's source file is the riskiest thing the engine does, and
- * a silently mis-applied edit is exactly the "5% failure rate" that makes a tool like
- * this untrustworthy. Anything ambiguous throws rather than guessing.
- *
- * Edits are applied from the end of the string backwards, so offsets earlier in the
- * document stay valid as we go and no offset arithmetic is needed.
+ * This is the primitive every adapter's `rewrite` is built on, so it is strict: rewriting
+ * a user's source file is the riskiest thing the engine does, and anything ambiguous
+ * throws rather than guessing. See "Edits and `applyEdits`" in ARCHITECTURE.md.
  *
  * @throws {UpflyError} `INVALID_EDIT_RANGE` if a range is not a valid slice of `source`.
  * @throws {UpflyError} `OVERLAPPING_EDITS` if two edits cover overlapping text.
@@ -35,15 +32,12 @@ export function applyEdits(source: string, edits: readonly Edit[]): string {
 /**
  * Build the edits that turn `applyEdits(source, edits)` back into `source`.
  *
- * Undo needs to restore a file without keeping a copy of it. Each replacement lands
- * at a known offset in the new text, so the reverse edit is that range put back to
- * the text it replaced, and the text it replaced is a path string rather than a
- * whole file.
+ * This is how undo restores a file without keeping a copy of it: each reverse edit puts
+ * one replaced range back, and what it stores is a path string rather than a whole file.
  *
- * The caller must check the result is applyable before relying on it: two adjacent
- * edits where the first deletes text can invert to two edits sharing a start offset,
- * which `applyEdits` refuses. Finding that out during undo would be finding it out
- * far too late, so the transaction validates the inverse while planning.
+ * Check that the result applies before relying on it: two adjacent edits where the first
+ * deletes text can invert to two edits sharing a start offset, which `applyEdits` refuses.
+ * The transaction's `prepare` checks this before anything is written.
  */
 export function invertEdits(source: string, edits: readonly Edit[]): Edit[] {
   const ordered = validateEdits(source, edits);
@@ -67,8 +61,8 @@ export function invertEdits(source: string, edits: readonly Edit[]): Edit[] {
 /**
  * Check a set of edits against a source string and return them sorted ascending.
  *
- * Exported because the planner validates a whole run's edits before anything is
- * written to disk — failing during planning is much cheaper than failing halfway
+ * It throws the same errors as `applyEdits` without applying anything, so a caller can
+ * reject edits before a byte is written, which is far cheaper than failing halfway
  * through a rewrite.
  */
 export function validateEdits(source: string, edits: readonly Edit[]): Edit[] {

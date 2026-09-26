@@ -7,18 +7,21 @@ export type UpflyErrorCode =
   | 'ROOT_NOT_A_DIRECTORY'
   /** Two adapters claim the same file extension, so the winner would be arbitrary. */
   | 'ADAPTER_EXTENSION_CONFLICT'
-  /** An adapter could not parse a file it was handed. Never swallowed: see rule 9. */
+  /**
+   * An adapter could not parse a file it was handed. Never swallowed: the file is still
+   * reported as one that could not be parsed.
+   */
   | 'ADAPTER_PARSE_FAILED'
   /**
-   * A file names an adapter that was not supplied — scanning with a different
-   * adapter set than discovery used. Loud because the quiet alternative is a file
-   * going unread and an asset silently looking dead.
+   * A file names an adapter that was not supplied, because scanning used a different
+   * adapter set from discovery. An error because the quiet alternative is a file going
+   * unread and an asset wrongly looking dead.
    */
   | 'ADAPTER_NOT_REGISTERED'
   /**
-   * A reference linked to a path that is not in the asset set — references resolved
-   * against one asset set and graphed against another. Loud because the quiet
-   * version of this bug is a phantom dead asset.
+   * A reference linked to a path that is not in the asset set: the references were
+   * resolved against one asset set and graphed against another. An error because the
+   * quiet version of this bug is an asset reported dead that is not.
    */
   | 'GRAPH_UNKNOWN_ASSET'
   /**
@@ -27,20 +30,18 @@ export type UpflyErrorCode =
    */
   | 'TRANSACTION_PLAN_INVALID'
   /**
-   * A file the run was to rewrite was changed by something outside the run, and the
-   * two directions both refuse rather than write over it. Commit will not apply edit
-   * offsets to text that has moved since the plan was checked; undo will not revert
-   * a file matching neither the state the run found nor the state it left. The file
-   * is always named, because the quiet alternative is losing whoever changed it.
+   * Something outside the run changed a file the run touches, and both directions refuse
+   * rather than write over it. Commit will not apply edit offsets to text that has moved
+   * since the plan was checked; undo will not revert a file matching neither the state
+   * the run found nor the state it left, and will not start when the backup of a removed
+   * original is gone. The files are always named, so whoever changed them can find out.
    */
   | 'TRANSACTION_FOREIGN_CHANGE'
   /**
-   * Another run holds the project lock, so this one will not start (R68).
-   *
-   * A refusal rather than a queue: a queued run stalls silently behind a long one and
-   * the extension simply looks frozen. The message names the run, the process and when
-   * it started, because “wait and try again” is only actionable if the user can tell
-   * whether anything is actually running.
+   * Another run holds the project lock, so this one will not start. It is refused rather
+   * than queued, since a queued run stalls silently behind a long one. The message names
+   * the run, its process and when it started, so the user can tell whether anything is
+   * still running.
    */
   | 'TRANSACTION_LOCKED'
   /**
@@ -48,55 +49,42 @@ export type UpflyErrorCode =
    * only record of what it wrote and where its backups are. Revert it first.
    */
   | 'TRANSACTION_INTERRUPTED'
-  /** A manifest written by a build whose schema this one does not understand. */
+  /**
+   * A manifest this build cannot use: its schema version is not this build's, or its
+   * hashes were made with a different algorithm.
+   */
   | 'MANIFEST_VERSION_UNSUPPORTED';
 
 /**
- * All errors the engine throws deliberately.
+ * An error the engine throws on purpose, with a stable `code`.
  *
- * Carrying a `code` means callers (the CLI, the extension, an agent reading JSON)
- * can branch on the failure without string-matching a message that may change.
+ * Callers (the CLI, the extension, an agent reading JSON) can branch on the code without
+ * matching a message that may change.
  */
 export class UpflyError extends Error {
   readonly code: UpflyErrorCode;
 
   /**
-   * References the adapter had already found when it failed (R20).
+   * References the adapter had already found when it failed.
    *
-   * An adapter that reads a composite format finds things and *then* hits the part
-   * it cannot parse. The Markdown adapter collects every `![](hero.png)` before
-   * handing the same text to the HTML adapter, which hands a `<style>` block to the
-   * CSS adapter — so one unparseable stylesheet inside one Markdown file threw away
-   * every image reference in the document.
+   * An adapter for a composite format finds references before it reaches the part it
+   * cannot parse: the Markdown adapter collects every `![](hero.png)` before passing the
+   * text to the HTML adapter, which hands any `<style>` block to the CSS adapter. The
+   * failure is still thrown and the file still reported as not parsed, but the references
+   * found first survive it, so one bad stylesheet does not make every image look dead.
    *
-   * ⚠️ **This is not permission to swallow the failure.** The throw still happens,
-   * `scan` still records the file as `parse-failed`, and the report still names it —
-   * rule 9 is untouched. What changes is that the references found *before* the
-   * failure survive it, because they are correct and losing them is what makes the
-   * asset look dead.
-   *
-   * Typed as `unknown[]` rather than `RawReference[]` so `errors.ts` stays free of
-   * a dependency on `types.ts`; `scan` narrows it at the single place it is read.
+   * `unknown[]` rather than `RawReference[]` so this module does not depend on `types.ts`;
+   * `scan` narrows it where it reads it.
    */
   readonly partial: readonly unknown[];
 
   /**
-   * What a third-party parser said, on its way somewhere that is not a report (R60).
-   *
-   * `message` is ours and is what reaches the report. This is PostCSS's or Babel's
-   * own wording, kept because it is the only thing that helps somebody debugging an
-   * adapter, and kept *here* because a report must not carry it: it is not ours, it
-   * describes the library rather than describing what Upfly did, and it changes on a
-   * dependency upgrade — which makes rule 11 quietly false, since the same repository
-   * audited either side of a `pnpm up` produces different bytes.
-   *
-   * ⚠️ **The important half is where this is NOT.** `UnscannedFile` — the value the
-   * report is built from — has exactly one `detail` field and it holds our sentence.
-   * Had the library's text been a second field there, keeping it out of the output
-   * would be a rule somebody has to remember, which is the shape B3 was burned by
-   * when a guard it recorded as structural was still discipline. `scan` reads this
-   * off the error and hands it to a diagnostic channel; nothing deterministic can
-   * reach it, because it is never in the value a renderer or a sort is given.
+   * What a third-party parser such as PostCSS or Babel said, kept for somebody debugging
+   * an adapter. `message` is ours and is what the report carries; this text changes
+   * between library versions, so it would make the report differ for the same input.
+   * `scan` passes it to a diagnostic channel, and the value the report is built from has
+   * no field for it.
+   * See "The recorded reason is ours, and the library's is not in the report" in ARCHITECTURE.md.
    *
    * `''` when the failure was ours to begin with and no library spoke.
    */

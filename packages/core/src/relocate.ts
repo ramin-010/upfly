@@ -1,38 +1,15 @@
 /**
  * Move an asset and repoint every reference that names it.
  *
- * The engine half of `upfly move` (§1.2). **Renaming and moving are the same
- * operation** — an asset's path changed — so there is one mechanism, and a single-file
- * move is the simple case of a folder move.
+ * Renaming and moving are one operation, so a single-file move is the simple case of a
+ * folder move. Pure, like `plan.ts`: it reads a graph and returns decisions. The moves ride
+ * the same transaction and manifest as `optimize`, so `revert` undoes them too.
  *
- * Pure, like `plan.ts`: it reads a graph and returns decisions. Nothing here touches a
- * disk. The decisions ride the same transaction and manifest as `optimize`, so `undo`
- * covers a move for free.
- *
- * ⚠️ **R39 governs this module more than any rule in the phase, and it is why
- * `relocate` was built last rather than first.** A move acts on **what the graph
- * knows**. A reference the graph *missed* becomes a dangling reference **we caused**,
- * not one we found — and R26 measured a 16% false-`dead` rate on a real repository
- * before its fix. The same engine that finds a problem can manufacture it at scale the
- * moment it starts writing. Every refusal below is cheaper than that.
- *
- * 🔴 **R70 is the shape of this module.** Three questions were open before it was
- * built and **two of them turned out to be one**: an alias cannot express a path
- * outside its own root, and a root-relative URL only works inside a served directory.
- * Both are the same event — the asset crossed the boundary between **bundler-managed**
- * and **served directly** — and that changes the *mechanism* of reference rather than
- * the path:
- *
- * | where it lives | how code refers to it | what resolves it |
- * |---|---|---|
- * | `src/assets/hero.png` | `import hero from '~/assets/hero.png'` | the bundler — hashes it, emits it |
- * | `public/img/hero.png` | `<img src="/img/hero.png">` | the web server — serves the bytes verbatim |
- *
- * **Turning one into the other is a code change, not a path rewrite.** An import
- * statement would have to become a URL string, or the reverse. **`relocate` rewrites
- * paths. It does not rewrite code.** So it refuses, and reports — the shape §1.2
- * already uses for a destination outside the project. A move wholly inside one world
- * proceeds normally.
+ * A move acts on what the graph knows, so a reference the graph missed becomes a broken
+ * reference this run caused; every refusal below is cheaper than that. It rewrites paths,
+ * not code, so it refuses a move that changes how a file is reached, such as from an
+ * import the bundler resolves to a URL a browser requests.
+ * See "Moving an asset" in ARCHITECTURE.md.
  */
 
 import { spell } from './adapters/reference-path.js';
@@ -53,43 +30,29 @@ export interface Move {
 }
 
 /**
- * Why a move will not be made.
- *
- * ⚠️ **A refusal is a first-class outcome, not an error.** §1.2 settled that for a
- * destination outside the project — *"N references will break, here they are"* — and
- * every code here is the same family: **some destinations are not path changes.**
- * Saying nothing would be the silent-skip failure (rule 9) in a new costume.
+ * Why a move will not be made. A refusal is an outcome, not an error: the move is
+ * reported with its reason rather than dropped.
  */
 export type RefusalCode =
   /** The destination is not inside the project, so we cannot rewrite what reaches it. */
   | 'outside-project'
   /**
-   * The asset would cross between bundler-managed and served-directly (R70 a and b).
-   *
-   * The single most important refusal in this module, and the one a reader is most
-   * likely to think is over-cautious. It is not: after this move there is no path text
-   * that reaches the file, whatever we write.
+   * The move would change how the file is reached, not only its path: between the bundled
+   * source tree and a served directory, between two serving roots, or out of reach of the
+   * alias an import uses.
    */
   | 'crosses-serving-boundary'
   /**
-   * A pattern reference binds this asset together with others that are not moving.
-   *
-   * R70(c), inheriting R65. A pattern is one edit over N assets, so moving some and
-   * not others breaks it — and **moving all N silently is not the fix, because the
-   * user asked for one file.**
+   * A pattern reference matches this asset and others. The pattern is one piece of text
+   * for all of them, so moving one breaks it; moving the rest too is not the fix, because
+   * the user asked for one file.
    */
   | 'binds-a-pattern'
-  /** Something is already at the destination, so the move would destroy it. */
+  /** An asset is already at the destination, so the move would destroy it. */
   | 'destination-occupied'
   /** Two moves in one request target the same destination. */
   | 'destination-claimed-twice'
-  /**
-   * Two moves in one request move the same file to different places.
-   *
-   * Found by writing the real-repository runner: `accepted` is keyed on the source, so
-   * the second move silently replaced the first and the plan reported one move having
-   * been asked for two. A quiet wrong answer, and the kind only a second caller finds.
-   */
+  /** Two moves in one request move the same file to different places. */
   | 'source-claimed-twice'
   /** The asset is not in the graph, so we cannot know what points at it. */
   | 'not-an-asset';
@@ -110,13 +73,9 @@ export interface RelocationPlan {
   /** Moves not made, each with its reason. */
   readonly refused: readonly RefusedMove[];
   /**
-   * References that name a moved asset and could not be repointed.
-   *
-   * 🔴 **These are the ones R39 is about.** The move still happens — the other
-   * references are repointed and the file is where the user asked for it — but a
-   * reference we could not edit is a reference that will break, and it is named here
-   * rather than left to be discovered. An unsafe or template reference cannot be
-   * rewritten by replacing path text, and a dynamic one has no path text at all.
+   * References to a moved asset that could not be repointed, and why. The move still
+   * happens and the other references follow it; each of these will break, so it is named
+   * here rather than left to be found.
    */
   readonly declined: readonly Declined[];
 }
@@ -128,23 +87,22 @@ export interface RelocateInput {
   /** The serving roots the resolver used. An asset under any of them is served. */
   readonly servingRoots: ServingRoots;
   /**
-   * The aliases the resolver used, so an aliased reference can be re-expressed.
+   * The aliases the resolver used, so an aliased import can be re-spelled through its alias.
    *
-   * ⚠️ **Required, not optional, and `{}` is a real answer.** The graph does not record
-   * that a reference came through an alias — `resolvedVia` says `file` either way — so
-   * without this an aliased path would be re-derived as though it were relative, which
-   * produces text that resolves to nothing and looks perfectly reasonable. A caller
-   * that genuinely has no aliases passes an empty map and says so.
+   * Required, so forgetting it cannot pass for having none: the graph does not record that
+   * a reference came through an alias (`resolvedVia` is `serving-root`, as for a URL), and
+   * without the aliases an aliased import would be re-spelled as a URL or declined. A
+   * caller with no aliases passes an empty map.
    */
   readonly aliases: AliasMap;
   readonly rootLinkPolicy?: RootLinkPolicy;
 }
 
 /**
- * Plan a set of moves. Pure; refuses rather than guessing.
+ * Plan a set of moves, refusing any it cannot make safely rather than guessing.
  *
- * Nothing partially applies: a refused move contributes no rewrites, so a caller that
- * ignores `refused` writes nothing wrong — it simply writes less than it asked for.
+ * A refused move contributes no rewrites, so a caller that ignores `refused` writes
+ * nothing wrong, only less than it asked for.
  */
 export function planRelocation(input: RelocateInput): RelocationPlan {
   const refused: RefusedMove[] = [];
@@ -204,10 +162,9 @@ function refuse(
     );
   }
 
-  // A destination that climbs out of the root, on either separator. Checked on the
-  // text rather than by resolving, because a caller hands us project-relative paths
-  // and a path that escapes them is a request we cannot honour rather than a file we
-  // should go looking for.
+  // A destination that starts outside the root, on either separator. Checked on the text
+  // rather than by resolving: the caller hands over project-relative paths, and one that
+  // escapes the project is a request Upfly cannot honour, not a file to go looking for.
   const to = toPosix(move.to);
   if (to.startsWith('/') || to.startsWith('../') || to === '..' || /^[a-zA-Z]:/.test(move.to)) {
     return say(
@@ -227,7 +184,7 @@ function refuse(
   const previous = claimed.get(to.toLowerCase());
   if (previous !== undefined) {
     // Case-insensitively, because two destinations differing only in case are one file
-    // on Windows and macOS. The same fold `prepare` applies, for the same reason.
+    // on Windows and macOS. `prepare` folds case for the same reason.
     return say(
       'destination-claimed-twice',
       `${previous} is already being moved to ${move.to}, so this move would depend on which ran first.`,
@@ -241,7 +198,8 @@ function refuse(
     );
   }
 
-  // 🔴 R70(a) and (b), which are one test because they are one event.
+  // One test for both directions between bundled and served, and for a move between two
+  // serving roots: in each, the way the file is reached changes.
   const from = servingRootOf(move.from, input.servingRoots);
   const into = servingRootOf(to, input.servingRoots);
   if (from !== into) {
@@ -253,8 +211,8 @@ function refuse(
     return say('binds-a-pattern', bound);
   }
 
-  // R70(a) again, in its narrow form: within the bundler world an alias still has to
-  // be able to *say* the new path. `~/assets/*` cannot express `src/lib/x.png`.
+  // Within the bundled world an alias still has to be able to spell the new path:
+  // `~/assets/*` cannot express `src/lib/x.png`.
   const inexpressible = aliasCannotExpress(move, input);
   if (inexpressible !== null) {
     return say('crosses-serving-boundary', inexpressible);
@@ -285,12 +243,11 @@ function rootName(root: string): string {
 }
 
 /**
- * R70(c): the assets a pattern binds to this one, or `null` when none does.
+ * Why moving this asset alone would break a pattern, naming the other assets it matches,
+ * or `null` when no pattern binds this asset to another.
  *
- * A template reference is **one edit standing for N assets**, so moving one of them
- * breaks it for all N. ⚠️ **Moving all N instead is not the fix** — the user asked for
- * one file, and silently taking the others with it is the kind of help nobody asked
- * for. Naming them is what makes the refusal actionable.
+ * A template reference is one piece of text standing for N assets, so moving one breaks
+ * it for all N. Moving the others as well is not the fix: the user asked for one file.
  */
 function patternSiblings(relative: string, graph: Graph): string | null {
   for (const reference of graph.references) {
@@ -308,12 +265,11 @@ function patternSiblings(relative: string, graph: Graph): string | null {
 }
 
 /**
- * Whether some alias names the old path but none can name the new one.
+ * The refusal when some alias names the old path but none can name the new one, or `null`.
  *
- * `astro-docs` imports `~/assets/houston.png` through `~/* → src/*`. Move that file to
- * a directory no target of that rule covers and **no alias path reaches it** — the
- * reference cannot be re-spelled, only rewritten into a different kind of reference,
- * which is the code change R70 refuses.
+ * `astro-docs` imports `~/assets/houston.png` through `~/* → src/*`. Moved to a directory
+ * no target of that rule covers, the file is reached by no alias path: the import could
+ * only become a different kind of reference, which this module does not do.
  */
 function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
   const root = input.graph.root;
@@ -335,12 +291,10 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
 /**
  * The alias rule this reference goes through, or `null` when it is not aliased.
  *
- * ⚠️ **Scope is checked, not just the prefix.** A rule only applies to references from
- * inside the directory its config governs — `expandAlias` enforces that, and a matcher
- * here that looked only at the prefix would claim a `~/` reference in a file the rule
- * does not cover. It would then re-spell that reference through an alias the resolver
- * never used, producing text that looks right and reaches nothing. The same condition
- * as `aliases.ts`, spelled the same way.
+ * Scope is checked as well as the prefix, with the same condition as `expandAlias`: a rule
+ * applies only to references from inside the directory its config governs. Matching the
+ * prefix alone would re-spell a `~/` reference through an alias the resolver never used,
+ * producing text that looks right and reaches nothing.
  */
 function aliasRuleFor(rawPath: string, file: string, aliases: AliasMap): AliasRule | null {
   for (const rule of aliases.rules) {
@@ -427,10 +381,8 @@ function collectRepoint(
 /**
  * Why this reference may not be edited, or `null` when it may.
  *
- * The same three tests `plan.ts` applies before repointing a converted asset. They are
- * restated rather than shared because the *sentences* differ — one is about a
- * conversion and one about a move — but the conditions must not drift, and a change to
- * either belongs in both.
+ * The same tests and sentences as `rewriteRefusal` in `plan.ts`; each caller adds its own
+ * ending. The conditions must not drift, so a change to either belongs in both.
  */
 function rewriteRefusalFor(
   reference: Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>,
@@ -450,29 +402,24 @@ function rewriteRefusalFor(
 }
 
 /**
- * The new text for one reference, **as expressed from the file that holds it**.
+ * The new text for one reference, as expressed from the file that holds it.
  *
  * A root-relative reference stays root-relative, a relative one is re-derived from the
- * referencing file's directory, an aliased one keeps its alias — and the original
- * spelling survives, because a diff full of `./` appearing and disappearing is a diff
- * nobody can review.
+ * referencing file's directory, and an aliased one keeps its alias. The original spelling
+ * survives too, because a diff full of `./` appearing and disappearing is a diff nobody
+ * can review.
  */
 function repointed(reference: Reference, move: Move, input: RelocateInput): string | null {
   const { rawPath } = reference;
   const suffix = rawPath.slice(pathPartOf(rawPath).length);
   const path = pathPartOf(rawPath);
 
-  // 🔴 **EVERY RETURN BELOW BUILDS THE NEW TEXT FROM `move.to`, WHICH IS THE ON-DISK
-  // PATH, AND THE AUTHOR DID NOT NECESSARILY WRITE PATHS THAT WAY (R118).** A file
-  // genuinely named `hero image.png` is reached from HTML by writing
-  // `hero%20image.png`; handing back `move.to` verbatim would put a **raw space inside a
-  // URL**, which is not a cosmetic difference — the rewritten reference stops working.
-  // Resolving this family is what made these rewritable in the first place, so the
-  // decode and the re-encode are one change.
-  //
-  // ⚠️ `reference.spelling` rather than a look at `rawPath`, because the two cases are
-  // indistinguishable in the text: `enc%20name.png` IS the filename in one case and is
-  // an encoding of `enc name.png` in another. Only the lookup knows which answered.
+  // Every return below builds the new text from `move.to`, an on-disk path, so it is
+  // re-encoded the way the author wrote the old one: a file named `hero image.png` is
+  // written `hero%20image.png` in HTML, and a raw space would break the reference. The
+  // spelling comes from `reference.spelling`, not from `rawPath`, because `enc%20name.png`
+  // can be a file's real name or an encoding of `enc name.png`, and only the resolver's
+  // lookup knows which one matched.
   const spelling =
     reference.resolution === 'resolved' ? (reference.spelling ?? 'literal') : 'literal';
   const asWritten = (target: string): string => spell(target, spelling);

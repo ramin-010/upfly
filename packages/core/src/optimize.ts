@@ -1,17 +1,11 @@
 /**
- * The wiring: a graph and its measurements in, a committed transaction out.
+ * The wiring: a graph and its measurements in, a committed transaction out. The order is
+ * fixed: plan, stage, prepare, commit.
  *
- * Deliberately thin, and it carries no policy of its own. Every decision about what
- * converts, what is repointed and what is declined belongs to `plan.ts`, which is
- * pure; every decision about what is safe to write belongs to `transaction.ts`. If a
- * change here starts with `if` about whether to convert something, it is in the wrong
- * file, and the two-implementations-of-one-rule problem is the one this project keeps
- * paying for.
- *
- * The sequence is fixed: plan, stage, prepare, commit. The planner decides, staging
- * puts bytes where the transaction expects them, `prepare` checks the whole plan
- * against the tree while nothing has been touched, and `commit` writes in the order
- * that keeps every prefix of the run buildable.
+ * It carries no policy of its own. What converts, what is repointed and what is declined
+ * is decided in `plan.ts`, which is pure; what is safe to write is decided in
+ * `transaction.ts`. A condition here about whether to convert something belongs in the
+ * planner, so that each rule has one implementation.
  */
 
 import { createHash } from 'node:crypto';
@@ -43,19 +37,13 @@ import type { Asset } from './types.js';
 
 export interface OptimizeInput {
   /**
-   * The graph the audit reported on, not one built separately.
-   *
-   * A second graph would let the plan act on a repository the user never saw a
-   * report about, and the two could disagree without anything failing.
+   * The graph the audit reported on, not one built separately. A second graph could
+   * disagree with the report the user saw, and nothing would fail.
    */
   readonly graph: Graph;
   /**
-   * The audit of that same graph, read only for its hedged assets.
-   *
-   * Taken as a result rather than recomputed: which assets are `possibly-dead` comes
-   * out of the sweep and the per-asset hedging rule, and a second implementation of
-   * that rule here is exactly the shape this codebase keeps being burned by. The
-   * planner gets the set; it never gets the logic.
+   * The audit of that same graph, read only for its `possibly-dead` assets. Taken rather
+   * than worked out again, so the rule that hedges an asset has one implementation.
    */
   readonly audit: AuditResult;
   /** The measurements the audit used, so a saving is never quoted from a new number. */
@@ -64,34 +52,28 @@ export interface OptimizeInput {
   readonly probe: ImageProbe;
   readonly store: FileStore;
   /**
-   * Every file in the project, POSIX-relative — source *and* unscanned.
+   * Every file in the project, POSIX-relative, scanned or not: the text searched for
+   * mentions of an original the plan would delete.
    *
-   * 🔴 **R77's haystack, and it must come from the WALK rather than from the graph.**
-   * The whole class of defect R77 guards against is a reference the graph never saw, and
-   * a file holding only such a reference appears nowhere in `graph.references`. Deriving
-   * this list from the graph would therefore miss exactly the files it exists to search
-   * — measured on `scratch-www`, where `phone-input.jsx` holds
-   * `flagsImagePath="/images/flags.png"` and nothing else the engine recognises.
-   *
-   * ⚠️ **Required, not optional, and `[]` is a real answer** — the same reasoning as
-   * `MoveCheckInput.excludedRoots`. A caller that simply forgot it would get a silent
-   * empty search and a confident delete, which is the failure this input exists to stop.
+   * It has to come from the walk, not the graph. The search is for references the graph
+   * never found, and a file holding only such a reference is not in the graph at all.
+   * Required, and `[]` is a real answer: a caller that forgot it would get an empty search
+   * and a confident delete.
    */
   readonly files: readonly string[];
   readonly servingRoots: ServingRoots;
   readonly format: EncodeFormat;
   readonly publicPolicy: PublicPolicy;
   readonly rootLinkPolicy?: RootLinkPolicy;
-  /** Nothing outside the run directory is written unless this is true (rule 8). */
+  /** False for a dry run, which plans and writes nothing. */
   readonly apply: boolean;
   readonly runId: string;
   readonly now: () => string;
   /**
-   * Test seams for R68's lock. Both default to the truth; omitting them is correct.
-   *
-   * Here rather than as positional arguments because an applied run passes them on to
-   * `commit`, and two places that each had their own copy could disagree about which
-   * process this is.
+   * Test seams for the project lock, defaulting to the real process id and liveness check,
+   * so leaving this out is correct. The same value goes to `optimize`'s own hold and to the
+   * one `commit` takes inside it, so the two agree on which process this is, which re-entry
+   * needs.
    */
   readonly lock?: LockPorts;
   /** Called as each stage finishes, with what it counted, so a caller can show progress. */
@@ -134,36 +116,15 @@ export interface OptimizeResult {
 }
 
 /**
- * Which assets have a literal mention of their path that this plan would NOT rewrite.
+ * Which assets have a literal mention of their path that this plan would not rewrite.
  *
- * 🔴 **R77.** `optimize --replace` deletes an original once its references have moved,
- * and *"its references"* means the ones the graph found. On `scratch-www` that left 67
- * occurrences of 12 deleted images standing — in custom JSX props (`flagsImagePath`,
- * `headerImgSrc`, `thumbnail`) and a config value (`og_image`) — while the run's own
- * before-and-after count reported no regression, because the same graph that missed them
- * did the counting. This looks for them in the text instead, before anything is written.
- *
- * ⚠️ **The occurrences the plan is ABOUT TO REWRITE are not survivors**, and at plan time
- * they all still read as the old path. They are excluded by position: an occurrence
- * inside a planned edit's range is one this run is going to fix. Without that exclusion
- * the check would refuse every conversion it looked at, which is the failure mode that
- * makes an over-cautious guard get deleted by the next person.
- *
- * ⚠️ **Only assets whose ORIGINAL WOULD BE DELETED are searched for.** Under
- * `keep-original` the source stays, an unrewritten mention still resolves, and refusing
- * would cost a saving to prevent nothing.
- *
- * 🔴 **What this bounds, stated because a bound nobody states is read as a guarantee:**
- * it catches a path **written down literally**. A path a program assembles at runtime —
- * `'/images/' + name + '.png'` — is not written down anywhere and matches nothing, so
- * this makes `replace` safe for the literal case and **no wider than that**.
- *
- * ✅ **Since R180 it is no longer the only guard, and it is not the one for references
- * the graph FOUND.** The planner keeps any original a found reference still needs — a
- * pattern, a literal whose rewrite it refused, an asset nothing links to — before this
- * runs, so those never reach the search. What this adds is the reference the graph never
- * saw. ⚠️ What neither covers: a path assembled at runtime that the graph did not find
- * either, to an asset that some OTHER reference links and this run rewrites.
+ * The planner already keeps any original that a reference the graph found still needs.
+ * This searches the text for references the graph never found, such as a custom JSX prop
+ * or a config value, before anything is written. A mention inside a range the plan
+ * rewrites is not a survivor, or every conversion would be refused. Only originals the
+ * plan deletes are searched: under `keep-original` a mention still resolves. A path built
+ * at runtime (`'/images/' + name + '.png'`) is not written down, so it is never found.
+ * See "The transaction" in ARCHITECTURE.md.
  */
 async function mentionsThatWouldSurvive(
   plan: OptimizationPlan,
@@ -194,18 +155,17 @@ async function mentionsThatWouldSurvive(
     return !ranges.some(([start, end]) => start <= survivor.offset && survivor.offset < end);
   });
 
-  // An occurrence names a spelling, not an asset, so map back through the spellings that
-  // produced it. A spelling can belong to more than one asset only if two assets share a
-  // path, which cannot happen.
+  // An occurrence names a spelling, not an asset, so map back through each asset's
+  // spellings. Two assets can share one (the suffix `img/hero.png`, or `/hero.png` under two
+  // serving roots), and a mention of it then blocks both: a lost saving, never a lost file.
   const assets = new Map<string, string>();
   for (const conversion of deleting) {
     const spellings = new Set(spellingsFor(conversion.asset, input.servingRoots.dirs));
     const mine = occurrences.filter((survivor) => spellings.has(survivor.spelling));
     const first = mine[0];
     if (first === undefined) continue;
-    // One location plus a count, not the whole list: the reason has to stay one readable
-    // sentence, and a user who opens the named file finds the rest by searching for the
-    // same path.
+    // One location plus a count, so the reason stays one readable sentence. Searching for
+    // the same path finds the rest.
     const more = mine.length === 1 ? '' : ` (and ${mine.length - 1} more)`;
     assets.set(conversion.asset, `${first.file}:${first.line}${more}`);
   }
@@ -214,10 +174,9 @@ async function mentionsThatWouldSurvive(
 }
 
 /**
- * A run directory name: sortable, readable, and not derived from content.
- *
- * Two legitimate runs over an unchanged repository must not collide on a directory,
- * which is what a content hash would do, so the suffix is random rather than derived.
+ * A run directory name: sortable, readable, and not derived from content. The suffix is
+ * random because two runs over an unchanged repository must not share a directory, as
+ * they would if it were a content hash.
  */
 export function newRunId(now: Date, random: () => number = Math.random): string {
   const stamp = now
@@ -233,15 +192,10 @@ export function newRunId(now: Date, random: () => number = Math.random): string 
 /**
  * Assets a pattern reference could match, as objects rather than as paths.
  *
- * ⚠️ The reason this exists rather than handing `patternTargets` straight to the
- * probe: it returns absolute paths, the planner speaks in project-relative ones, and
- * the probe's cap is keyed on absolute. Those line up today by convention, and the
- * day either side changes convention every pattern would silently become undecidable,
- * because an exemption that matches nothing looks exactly like no exemption.
- *
- * So the lookup happens once, here, and it throws rather than returning a short list.
- * A target that names no asset means the two halves have drifted, which is a fault in
- * this engine and not in anybody's repository.
+ * `patternTargets` returns absolute paths, the planner speaks in project-relative ones,
+ * and the probe's cap is keyed on absolute ones. They line up by convention only, and an
+ * exemption that matches nothing looks exactly like no exemption. So a target that names
+ * no asset throws: the two sides have drifted, a fault in the engine, not the project.
  */
 function patternTargetAssets(graph: Graph): readonly Asset[] {
   const byPath = new Map(graph.assets.map((node) => [node.asset.path, node.asset]));
@@ -259,11 +213,11 @@ function patternTargetAssets(graph: Graph): readonly Asset[] {
 }
 
 /**
- * The assets to measure whatever the encode cap says.
+ * The assets to measure whatever the encode cap says: every asset a pattern reference
+ * could match.
  *
- * Exposed because the caller runs the probe: `optimize` must not take a second set of
- * measurements, or the saving it writes would come from different numbers than the
- * saving the audit reported.
+ * Exported because the caller runs the probe. `optimize` takes no measurements of its own,
+ * so the saving it writes comes from the same numbers as the saving the audit reported.
  */
 export function alwaysMeasureFor(graph: Graph): readonly Asset[] {
   return patternTargetAssets(graph);
@@ -286,15 +240,10 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
 
   const first = planWith();
 
-  // 🔴 **R77, and it runs on a DRY RUN too — deliberately.** `OptimizeResult.plan` is
-  // documented as *"every decision, identical on a dry run and an applied one"*, and a
-  // guard that only fired on apply would make the preview a different set of decisions
-  // from the run it previews. That is the one invariant this result has.
-  //
-  // Planned twice rather than filtered once: dropping a conversion also has to drop the
-  // rewrites it caused, and those are interleaved per file with every other asset's.
-  // The planner is pure and cheap, so asking it again with the blocked set is both
-  // simpler and safer than unpicking its output.
+  // Searched on a dry run too, or the preview would make different decisions from the run
+  // it previews. Planned again rather than filtered: dropping a conversion also drops the
+  // rewrites it caused, which share files with other assets' rewrites, and the planner is
+  // pure and cheap.
   const blocked = await mentionsThatWouldSurvive(first, input);
   const plan = blocked.assets.size === 0 ? first : planWith(blocked.assets);
 
@@ -307,14 +256,9 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     rewrites: plan.rewrites.length,
   });
 
-  // A dry run stops here, with every decision made and no byte written.
-  //
-  // It deliberately does not encode. B2's note had staging happen either way so that
-  // a preview could not compute something different from what an applied run does,
-  // and the decisions are what could differ: those are all above this line and are
-  // identical. What is below is the same plan carried out. Encoding every image to
-  // preview it would also make a dry run as slow as a real one, on a tool whose
-  // default mode is the dry run.
+  // A dry run stops here, with every decision made and no byte written. It does not
+  // encode: the decisions are all above this line, and encoding every image would make
+  // the default mode as slow as an applied run.
   const unwritten: OptimizeResult = {
     plan,
     runId: input.runId,
@@ -329,16 +273,10 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   await input.store.createExclusive(FOLDER_GITIGNORE, '*\n');
   const operations = await stage(plan, runDir, input);
 
-  // 🔴 R68, and the reason the lock is taken HERE and not only inside `commit`.
-  // `commit` holds it across its own two manifest writes, which closes the failure as
-  // ruled. It does not close the gap between staging and committing: a second run that
-  // starts and finishes entirely inside that gap has its committed manifest overwritten
-  // by this run's pending one the moment this run resumes, and its backups are orphaned
-  // exactly as if it had been interrupted mid-write. Held from before `prepare` to
-  // after `commit`, that window does not exist.
-  //
-  // The inner acquisition in `commit` re-enters on `runId` and its release is a no-op,
-  // so the two holds nest rather than fight.
+  // Held from before `prepare` until after `commit`, not only inside `commit`: a run that
+  // started and finished between the two would have its committed manifest replaced by
+  // this run's pending one, leaving its backups with nothing pointing at them. `commit`
+  // re-enters this hold, and releasing that inner hold does nothing.
   const held = await acquireLock({
     store: input.store,
     runId: input.runId,
@@ -368,13 +306,10 @@ async function applyUnderLock(
     runId: input.runId,
     runDir,
     now: input.now,
-    // R66: both lists, because `Declined` in the manifest is *"something the run
-    // chose not to do"* — action-scoped — and not removing an original is exactly
-    // that. It is kept out of `plan.declined` only because the REPORT renders that
-    // list under "Examined and not converted", which these assets were. The manifest
-    // has no such heading to contradict, and it is the record that outlives the run,
-    // so leaving the kept originals out of it would put the silence back where it
-    // matters most.
+    // Both lists: a kept original is something the run chose not to do, which is what the
+    // manifest's `declined` records, and the manifest outlives the run. The plan keeps them
+    // apart only because the report shows `declined` under "Examined and not converted",
+    // and these assets were converted.
     declined: [
       ...plan.declined,
       ...plan.keptOriginals.map((kept) => ({
@@ -403,7 +338,8 @@ function hedgedAssets(audit: AuditResult): ReadonlySet<string> {
  *
  * Staged files mirror the project tree under `<runDir>/staged/` rather than being
  * named by a hash, so a person looking into a run directory recognises what they are
- * seeing. Asset paths are unique, so collisions are impossible.
+ * seeing. They cannot collide, because the planner declines every conversion whose target
+ * another conversion shares.
  */
 async function stage(
   plan: OptimizationPlan,
@@ -423,13 +359,11 @@ async function stage(
     await input.probe.encodeToFile({
       path: source.asset.path,
       format: conversion.format,
-      // Getting this wrong writes a one-frame GIF and reports a saving only
-      // achievable by destroying the animation.
+      // Getting this wrong keeps one frame of an animation, for a saving only
+      // achievable by destroying it.
       animated: animated.has(conversion.asset),
-      // 🔴 R131. The plan chose this setting because it MEASURED fewer bytes that way.
-      // Writing at the probe's default quality instead would put a different file on
-      // disk from the one whose saving the user was shown — the advertised number would
-      // have been real and the delivered file would not match it.
+      // The setting the saving was measured at. The probe's default quality would put a
+      // different file on disk from the one whose saving the user was shown.
       lossless: conversion.quality === 'lossless',
       destination: `${input.graph.root}/${runDir}/${staged}`,
     });
@@ -443,8 +377,6 @@ async function stage(
     if (!conversion.replacesOriginal) continue;
 
     // Before `prepare`, which refuses a delete whose backup is not actually there.
-    // The bytes of a removed original are the one thing the manifest cannot
-    // reconstruct from anything else.
     const backup = `backup/${conversion.asset}`;
     await input.store.copy(conversion.asset, `${runDir}/${backup}`);
     const beforeHash = await input.store.hash(conversion.asset);
@@ -460,9 +392,8 @@ async function stage(
       kind: 'edit',
       path: rewrite.file,
       beforeHash: hashText(before, input.store.hashAlgorithm),
-      // A second pass over text already in memory. The alternative is storing the
-      // edited text and handing it to commit, which would mean commit wrote bytes it
-      // had not re-read the source for.
+      // Applied here only to hash it. Handing the edited text to commit instead would
+      // have commit write bytes without re-reading the source.
       afterHash: hashText(applyEdits(before, rewrite.edits), input.store.hashAlgorithm),
       edits: rewrite.edits,
     });
@@ -486,11 +417,9 @@ function animatedAssets(probes: readonly AssetProbe[]): ReadonlySet<string> {
 }
 
 /**
- * Hash text the way the store hashes a file.
- *
- * The algorithm comes from the store rather than from a constant here, so the hashes
- * this computes and the hashes the transaction verifies cannot be made by different
- * functions.
+ * Hash text the way the store hashes a file, with the store's own algorithm. The store
+ * hashes bytes and this hashes the text, so the two agree only for a file that is valid
+ * UTF-8.
  */
 function hashText(text: string, algorithm: string): string {
   return createHash(algorithm).update(text, 'utf8').digest('hex');

@@ -403,27 +403,10 @@
       "emphasis": 3,
       "emoji": 7
     },
-    "packages/core/src/edits.ts": {
-      "em-dash": 1
-    },
-    "packages/core/src/errors.ts": {
-      "internal-reference": 4,
-      "em-dash": 7,
-      "emphasis": 5,
-      "emoji": 2,
-      "long-comment": 8
-    },
     "packages/core/src/file-store-node.test.ts": {
       "em-dash": 1,
       "emphasis": 1,
       "emoji": 2
-    },
-    "packages/core/src/file-store-node.ts": {
-      "internal-reference": 1,
-      "em-dash": 1,
-      "emphasis": 2,
-      "emoji": 1,
-      "long-comment": 1
     },
     "packages/core/src/fixture-integrity.test.ts": {
       "internal-reference": 6,
@@ -461,13 +444,6 @@
       "emphasis": 2,
       "emoji": 3
     },
-    "packages/core/src/lock.ts": {
-      "internal-reference": 1,
-      "em-dash": 9,
-      "emphasis": 9,
-      "emoji": 5,
-      "long-comment": 8
-    },
     "packages/core/src/move-check.test.ts": {
       "internal-reference": 11,
       "em-dash": 12,
@@ -475,25 +451,11 @@
       "emoji": 9,
       "long-comment": 2
     },
-    "packages/core/src/move-check.ts": {
-      "internal-reference": 9,
-      "em-dash": 16,
-      "emphasis": 18,
-      "emoji": 9,
-      "long-comment": 15
-    },
     "packages/core/src/old-path-search.test.ts": {
       "internal-reference": 4,
       "em-dash": 6,
       "emphasis": 4,
       "emoji": 7
-    },
-    "packages/core/src/old-path-search.ts": {
-      "internal-reference": 3,
-      "em-dash": 12,
-      "emphasis": 19,
-      "emoji": 9,
-      "long-comment": 10
     },
     "packages/core/src/optimize.test.ts": {
       "internal-reference": 6,
@@ -501,13 +463,6 @@
       "emphasis": 3,
       "emoji": 9,
       "long-comment": 3
-    },
-    "packages/core/src/optimize.ts": {
-      "internal-reference": 10,
-      "em-dash": 13,
-      "emphasis": 12,
-      "emoji": 12,
-      "long-comment": 16
     },
     "packages/core/src/partial-states.test.ts": {
       "internal-reference": 16,
@@ -528,13 +483,6 @@
       "emphasis": 4,
       "emoji": 5
     },
-    "packages/core/src/plan.ts": {
-      "internal-reference": 31,
-      "em-dash": 13,
-      "emphasis": 17,
-      "emoji": 13,
-      "long-comment": 39
-    },
     "packages/core/src/probe-sharp.test.ts": {
       "internal-reference": 5,
       "em-dash": 4
@@ -550,13 +498,6 @@
       "em-dash": 8,
       "emphasis": 5,
       "emoji": 8
-    },
-    "packages/core/src/relocate.ts": {
-      "internal-reference": 15,
-      "em-dash": 23,
-      "emphasis": 20,
-      "emoji": 10,
-      "long-comment": 18
     },
     "packages/core/src/report.test.ts": {
       "internal-reference": 47,
@@ -607,13 +548,6 @@
     },
     "packages/core/src/transaction.test.ts": {
       "em-dash": 1
-    },
-    "packages/core/src/transaction.ts": {
-      "internal-reference": 2,
-      "em-dash": 3,
-      "emphasis": 1,
-      "emoji": 3,
-      "long-comment": 5
     },
     "packages/core/test/smoke.test.ts": {
       "internal-reference": 1,

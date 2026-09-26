@@ -1,17 +1,11 @@
 /**
- * The real `FileStore`, backed by the filesystem.
+ * The real `FileStore`, backed by the filesystem, and one of the few modules that touch
+ * a disk.
  *
- * One of the small number of modules allowed to touch a disk, alongside `discover`
- * and the sharp probe. Everything above it stays testable against an in-memory
- * store, which is what makes the crash tests possible.
- *
- * The filesystem calls are reached through a port rather than imported at the point
- * of use, and that is not symmetry for its own sake. The busy retry below is the
- * most platform-specific behaviour in the project, and nothing Node offers produces
- * EBUSY or EPERM on demand: on Windows a read-only file and a file with an open
- * handle both delete cleanly. Without a seam the retry could only be tested apart
- * from the three methods meant to use it, which certifies a function while proving
- * nothing about whether it is reached.
+ * The filesystem calls go through `FileOperations` so a test can make them fail with
+ * EBUSY or EPERM. A real disk will not produce those on demand (on Windows, Node deletes a
+ * read-only file and a file with an open handle cleanly), and without the seam the busy
+ * retry could only be tested apart from the methods that use it.
  */
 
 import { createHash } from 'node:crypto';
@@ -25,46 +19,33 @@ const BUSY_RETRIES = 5;
 const BUSY_BACKOFF_MS = 20;
 
 /**
- * The digest every hash in a manifest is made with.
- *
- * Named in one place and reported through `hashAlgorithm` so the manifest records
- * what actually produced its hashes. Changing it here changes what new manifests
- * declare, and an older manifest declaring the old name is then refused rather than
- * compared against incomparable values.
+ * The digest every hash in a manifest is made with, reported through `hashAlgorithm` so
+ * the manifest records it. If it changes, a manifest naming the old one is refused rather
+ * than compared against hashes that can never match.
  */
 const HASH_ALGORITHM = 'sha256';
 
 /**
- * The filesystem operations the store performs, narrowed to the six it needs.
+ * The filesystem operations the store performs.
  *
  * Every path reaching an implementation is already absolute: the store resolves
- * against its root first. Not exported from the package index, so the public surface
- * is still `createNodeFileStore(root)` and nothing outside this package can supply
- * its own filesystem.
+ * against its root first. Not exported from the package index: code outside the package
+ * gets this store from `createNodeFileStore(root)`.
  */
 export interface FileOperations {
   /**
-   * Raw bytes.
-   *
-   * Hashing reads bytes rather than decoded text, so a file that is not valid UTF-8
-   * still hashes to what is actually on disk and a manifest written on one machine
-   * means the same thing on another.
+   * Raw bytes. Hashing reads bytes rather than decoded text, so a file that is not valid
+   * UTF-8 still hashes to what is on disk, the same on every machine.
    */
   read(path: string): Promise<Uint8Array>;
   readText(path: string): Promise<string>;
   write(path: string, text: string): Promise<void>;
-  /**
-   * Create only if absent, atomically. `false` when the file was already there.
-   *
-   * Separate from `write` because the whole value is the `O_EXCL` flag: a caller that
-   * checked first and then wrote would race, which is the failure the lock exists to
-   * prevent.
-   */
+  /** Create only if absent, atomically (`O_EXCL`). `false` when the file was already there. */
   createExclusive(path: string, text: string): Promise<boolean>;
   ensureDirectory(path: string): Promise<void>;
   /** Fails rather than overwriting an existing destination. */
   copy(from: string, to: string): Promise<void>;
-  /** Tolerates an absent path. */
+  /** Tolerates an absent path, so undo is safe to repeat. */
   remove(path: string): Promise<void>;
 }
 
@@ -73,10 +54,9 @@ export const nodeFileOperations: FileOperations = {
   read: (path) => readFile(path),
   readText: (path) => readFile(path, 'utf8'),
   write: (path, text) => writeFile(path, text, 'utf8'),
-  // `wx` is write-exclusive: the kernel creates the file or fails with EEXIST, and
-  // nothing can interleave between the two. EEXIST is the ordinary answer here rather
-  // than an error, so it is the only code turned into `false` — anything else (a
-  // read-only directory, a bad path) is a real failure and still throws.
+  // `wx`: the kernel creates the file or fails with EEXIST, with nothing in between.
+  // EEXIST is the ordinary answer, so it alone becomes `false`; anything else (a read-only
+  // directory, a bad path) is a real failure and still throws.
   createExclusive: async (path, text) => {
     try {
       await writeFile(path, text, { encoding: 'utf8', flag: 'wx' });
@@ -89,27 +69,20 @@ export const nodeFileOperations: FileOperations = {
   ensureDirectory: async (path) => {
     await mkdir(path, { recursive: true });
   },
-  // copyFile rather than rename throughout: a rename across volumes fails on
-  // Windows, and staged bytes may legitimately sit on a different volume from the
-  // project. Copying costs a write we would otherwise avoid and removes a
-  // platform-specific failure that only shows up on somebody else's machine.
-  //
-  // COPYFILE_EXCL because every destination the transaction copies to is one it has
-  // already established should not exist. A silent overwrite here would turn a plan
-  // error into somebody's lost file.
+  // A copy, never a rename: a rename across volumes fails on Windows, and staged bytes
+  // may sit on a different volume from the project. `COPYFILE_EXCL` because the
+  // transaction only copies to paths it has checked are absent, so a file already there
+  // is a plan error, and overwriting it would lose somebody's file.
   copy: (from, to) => copyFile(from, to, constants.COPYFILE_EXCL),
-  // Tolerant of an already-absent file so that reverting a run twice, or reverting
-  // one that was interrupted midway through its removals, is not an error. Undo has
-  // to be safe to repeat.
   remove: (path) => rm(path, { force: true }),
 };
 
 /**
  * Build a store rooted at a project directory.
  *
- * Every path handed to the returned store is POSIX-relative to `root`. Resolving
- * them here rather than at the call sites is what keeps absolute paths out of the
- * manifest, which is what lets a manifest survive the project being moved.
+ * Every path handed to the returned store is POSIX-relative to `root`. Resolving them
+ * here rather than at the call sites keeps absolute paths out of the manifest, so a
+ * manifest still means the same thing after the project is moved.
  */
 export function createNodeFileStore(root: string): FileStore {
   return createFileStoreOn(nodeFileOperations, root);
@@ -150,11 +123,6 @@ export function createFileStoreOn(operations: FileOperations, root: string): Fil
     async createExclusive(path: string, text: string): Promise<boolean> {
       const target = absolute(path);
       await operations.ensureDirectory(dirname(target));
-      // ⚠️ **Deliberately not wrapped in `retryWhileBusy`.** The busy retry exists for
-      // a file another process is holding open, and retrying an exclusive create would
-      // do something different and wrong: it would keep asking until the other run
-      // released its lock, which is *queueing*. R68 ruled refuse over queue, and a
-      // retry loop here would smuggle the rejected behaviour in under a helper.
       return operations.createExclusive(target, text);
     },
 
@@ -175,11 +143,11 @@ function isMissing(cause: unknown): boolean {
 }
 
 /**
- * Retry an operation a file lock is blocking.
+ * Retry an operation while another process holds the file open.
  *
  * On Windows an editor, an antivirus scanner or a dev server holding a handle open
- * produces EBUSY or EPERM for a few milliseconds. Failing the whole run for that
- * would make the tool unusable on the platform it is meant to be first-class on.
+ * produces EBUSY or EPERM for a few milliseconds, and failing the whole run for that
+ * would make the tool unusable there.
  */
 async function retryWhileBusy(action: () => Promise<void>): Promise<void> {
   for (let attempt = 0; ; attempt++) {
