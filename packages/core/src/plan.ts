@@ -647,6 +647,13 @@ function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | nu
   return null;
 }
 
+/**
+ * Why a reference in a file that did not read cleanly as UTF-8 stays as it is. Shared with
+ * `relocate.ts`, whose refusals must match these.
+ */
+export const NOT_UTF8 =
+  'the file is not valid UTF-8 or holds U+FFFD, and writing it back as UTF-8 could change bytes this edit does not touch';
+
 /** The end of every sentence `unusedUnderReplace` writes: the rule, and the way round it. */
 const REPLACE_CONVERTS_ONLY_WHAT_MOVES =
   '`--replace` converts an image only when a reference moves to the new file; without `--replace` it can be converted with the original kept';
@@ -700,6 +707,9 @@ function unusedUnderReplace(node: AssetNode, input: PlanInput): string | null {
 function rewriteRefusal(reference: LinkedReference, input: PlanInput): string | null {
   if (reference.confidence === 'unsafe') {
     return 'the reference has no static path to replace';
+  }
+  if (input.graph.texts.get(reference.file)?.holdsReplacementCharacter === true) {
+    return NOT_UTF8;
   }
   if (reference.resolvedVia === 'speculative-root') {
     return 'the path is a guess that happened to resolve against the project root, which shows the asset is alive but not that this text may be edited';

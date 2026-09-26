@@ -18,10 +18,10 @@ import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.j
 /**
  * Reads a file's text. Injected so this module stays pure.
  *
- * The real implementation is `(path) => readFile(path, 'utf8')`. Encoding is the
- * caller's concern: offsets are UTF-16 code units into whatever string this returns, so
- * as long as the same decoding is used to read and to rewrite, a byte-order mark or an
- * unusual encoding stays consistent.
+ * The real implementation is `(path) => readFile(path, 'utf8')`, and the store writes
+ * UTF-8 back. Offsets are UTF-16 code units into the string this returns. A byte-order
+ * mark survives the round trip; bytes that are not UTF-8 do not, which is why a text
+ * holding U+FFFD is never rewritten (see `ScannedText`).
  */
 export type ReadFilePort = (absolutePath: string) => Promise<string>;
 
@@ -54,6 +54,13 @@ export interface ScannedText {
   readonly path: string;
   /** SHA-256 of the text, encoded as UTF-8. */
   readonly hash: string;
+  /**
+   * Whether the text holds U+FFFD, which UTF-8 decoding puts in place of bytes that are not
+   * UTF-8. Writing such a text back would not reproduce those bytes, so no edit is planned
+   * in it. A valid file holding U+FFFD itself cannot be told apart from the text alone, and
+   * loses only its rewrites.
+   */
+  readonly holdsReplacementCharacter: boolean;
 }
 
 /**
@@ -114,6 +121,9 @@ export interface ScanResult {
   /** The text of every file that yielded a reference, in source-file order. */
   readonly texts: readonly ScannedText[];
 }
+
+/** What UTF-8 decoding puts in place of each byte sequence that is not UTF-8. */
+const REPLACEMENT_CHARACTER = '\uFFFD';
 
 /** How many files are read at once. IO-bound, so higher than the core count. */
 const DEFAULT_CONCURRENCY = 16;
@@ -219,7 +229,14 @@ async function scanOne(
 
   const scanned = parseOne(file, adapter, text, assetBasenames);
   if (scanned.references.length === 0) return { ...scanned, text: null };
-  return { ...scanned, text: { path: file.path, hash: hashText(text) } };
+  return {
+    ...scanned,
+    text: {
+      path: file.path,
+      hash: hashText(text),
+      holdsReplacementCharacter: text.includes(REPLACEMENT_CHARACTER),
+    },
+  };
 }
 
 /**

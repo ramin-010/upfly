@@ -122,7 +122,13 @@ describe('the ordinary case', () => {
   it('gives each rewrite the hash of the text its offsets count into', () => {
     const assets = [asset('src/logo.png')];
     const references = [resolved('src/App.jsx', './logo.png', 'src/logo.png')];
-    const texts = [{ path: `${ROOT}/src/App.jsx`, hash: 'hash-of-the-scanned-text' }];
+    const texts = [
+      {
+        path: `${ROOT}/src/App.jsx`,
+        hash: 'hash-of-the-scanned-text',
+        holdsReplacementCharacter: false,
+      },
+    ];
 
     const plan = planOptimization({
       ...input({ assets, references }),

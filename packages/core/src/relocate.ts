@@ -20,6 +20,7 @@ import { compareStrings, relativePath, toPosix } from './paths.js';
 import { servingRootOf } from './plan.js';
 import {
   type EditsInFile,
+  NOT_UTF8,
   type PlannedRewrite,
   type RootLinkPolicy,
   collectEdit,
@@ -393,6 +394,7 @@ function rewriteRefusalFor(
   input: RelocateInput,
 ): string | null {
   if (reference.confidence === 'unsafe') return 'the reference has no static path to replace';
+  if (input.graph.texts.get(reference.file)?.holdsReplacementCharacter === true) return NOT_UTF8;
   if (reference.resolvedVia === 'speculative-root') {
     return 'the path is a guess that happened to resolve against the project root, which shows the asset is alive but not that this text may be edited';
   }

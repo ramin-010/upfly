@@ -23,6 +23,7 @@ import {
   parseManifest,
   serialiseManifest,
 } from './manifest.js';
+import { hashText } from './text-hash.js';
 import type { Edit } from './types.js';
 
 /**
@@ -51,6 +52,7 @@ export interface FileStore {
   readonly hashAlgorithm: string;
   /** Content hash, or null when the path does not exist. */
   hash(path: string): Promise<string | null>;
+  /** Decoded as UTF-8, the encoding `writeText` writes. */
   readText(path: string): Promise<string>;
   writeText(path: string, text: string): Promise<void>;
   /**
@@ -159,7 +161,9 @@ export async function prepare(
       case 'edit': {
         claim(operation.path, 'edit');
         await expectHash(store, operation.path, operation.beforeHash, 'edit');
-        await checkUndoable(store, operation);
+        const text = await store.readText(operation.path);
+        expectUtf8(store, operation, text);
+        checkUndoable(operation, text);
         break;
       }
       case 'move': {
@@ -668,11 +672,26 @@ async function expectStaged(
 }
 
 /**
+ * Refuse an edit target that is not valid UTF-8.
+ *
+ * The store reads text as UTF-8 and writes it back the same way, which reproduces a valid
+ * file's bytes and no other: each byte that is not UTF-8 would come back as U+FFFD. The
+ * hash check before this one matched the file's bytes, so the text re-encoded differs from
+ * them exactly when the file is not UTF-8.
+ */
+function expectUtf8(store: FileStore, operation: PlannedEdit, text: string): void {
+  if (hashText(text, store.hashAlgorithm) === operation.beforeHash) return;
+  throw new UpflyError(
+    'TRANSACTION_PLAN_INVALID',
+    `${operation.path} is not valid UTF-8, and writing it back as UTF-8 would change bytes its edits do not touch, so no file was changed. Save it as UTF-8, or leave it out of the plan.`,
+  );
+}
+
+/**
  * Refuse a plan whose undo would not apply (see `invertEdits`). Undo is too late to find
  * that out: the tree has changed and somebody is asking for their work back.
  */
-async function checkUndoable(store: FileStore, operation: PlannedEdit): Promise<void> {
-  const before = await store.readText(operation.path);
+function checkUndoable(operation: PlannedEdit, before: string): void {
   const after = applyEdits(before, operation.edits);
   const inverse = invertEdits(before, operation.edits);
 

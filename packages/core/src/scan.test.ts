@@ -527,7 +527,23 @@ describe('scanSources', () => {
       }),
     });
 
-    expect(result.texts).toEqual([{ path: '/repo/index.html', hash: hashText('ref:hero.png') }]);
+    expect(result.texts).toEqual([
+      {
+        path: '/repo/index.html',
+        hash: hashText('ref:hero.png'),
+        holdsReplacementCharacter: false,
+      },
+    ]);
+  });
+
+  it('marks a text holding U+FFFD, which is how bytes that are not UTF-8 read', async () => {
+    const result = await scanSources({
+      sourceFiles: [sourceFile('index.html', 'test-html')],
+      adapters,
+      readFile: filesystem({ '/repo/index.html': 'Caf\uFFFD\nref:hero.png' }),
+    });
+
+    expect(result.texts.map((text) => text.holdsReplacementCharacter)).toEqual([true]);
   });
 
   it('scans nothing without complaint', async () => {

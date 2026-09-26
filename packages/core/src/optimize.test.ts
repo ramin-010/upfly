@@ -33,7 +33,7 @@ function sha(text: string): string {
 
 /** What the scan records of a file it read, which an applied run checks the file against. */
 function scanned(file: string, text: string): ScannedText {
-  return { path: `${ROOT}/${file}`, hash: sha(text) };
+  return { path: `${ROOT}/${file}`, hash: sha(text), holdsReplacementCharacter: false };
 }
 
 function asset(relative: string, bytes = 10_000): Asset {

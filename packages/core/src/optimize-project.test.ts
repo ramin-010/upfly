@@ -127,6 +127,35 @@ describe('a source file saved after the scan read it', () => {
   });
 });
 
+describe('a page that is not UTF-8', () => {
+  it('keeps its bytes: its reference is declined with the reason, and the rest of the run goes on', async () => {
+    const root = await copy();
+    // "Café" in Latin-1: 0xE9 is not UTF-8, so it reads as U+FFFD, and writing the page
+    // back as UTF-8 would turn that one byte into three.
+    const latin1 = Buffer.from('<p>Caf\xE9</p>\n<img src="images/logo.png" alt="">\n', 'latin1');
+    await writeFile(join(root, 'latin1.html'), latin1);
+
+    const { optimize } = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(optimize.plan.rewrites.map((rewrite) => rewrite.file)).toEqual(
+      expect.arrayContaining(['index.html']),
+    );
+    expect(optimize.plan.rewrites.map((rewrite) => rewrite.file)).not.toContain('latin1.html');
+    expect(optimize.plan.declined).toContainEqual({
+      path: 'latin1.html',
+      line: null,
+      reason: expect.stringContaining('not valid UTF-8'),
+    });
+    expect(await readFile(join(root, 'latin1.html'))).toEqual(latin1);
+  });
+});
+
 describe('an image removed after the scan read it', () => {
   it('is a refusal with a code and a sentence, not a crash', async () => {
     const root = await copy();

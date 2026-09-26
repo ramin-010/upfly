@@ -1255,6 +1255,20 @@ about determinism survives.
 emoji or a non-ASCII path would desynchronise the two, and every rewrite after that point
 would land in the wrong place. There is a test for this in `edits.test.ts`.
 
+### A source file that is not UTF-8
+
+Source files are read as UTF-8 and written back as UTF-8. That round trip reproduces a valid
+file's bytes, a byte-order mark included, and no other file's: each byte that is not UTF-8 reads
+as U+FFFD and would be written back as that character's three bytes. So the scan records whether
+a text holds U+FFFD (`ScannedText.holdsReplacementCharacter`), and the planner declines every
+rewrite in such a file with that reason, which a dry run shows; under `replace`, an original a
+declined reference still needs is kept, as for any declined reference. The file is still read,
+and its references still link, so nothing it names looks unused. A valid file that holds U+FFFD
+itself cannot be told apart from the text alone, and loses only its rewrites.
+
+The transaction makes the precise check for a caller that builds its own plan: `prepare`
+refuses an edit target whose bytes differ from its text re-encoded as UTF-8.
+
 ## Edits and `applyEdits`
 
 `applyEdits(source, edits)` is the primitive underneath every adapter's `rewrite`. It applies

@@ -298,6 +298,36 @@ describe('prepare', () => {
   });
 });
 
+describe('prepare, on a file that is not UTF-8', () => {
+  it('refuses the edit, saying why, and leaves every byte in place', async () => {
+    // A caller building its own plan, with the hash of the bytes on disk. Writing the
+    // edited text back as UTF-8 would turn the Latin-1 0xE9 into three bytes.
+    const root = await mkdtemp(join(tmpdir(), 'upfly-latin1-'));
+    const bytes = Buffer.from('<p>Caf\xE9</p><img src="logo.png">', 'latin1');
+    await writeFile(join(root, 'page.html'), bytes);
+    const store = createNodeFileStore(root);
+    const start = bytes.indexOf('logo.png');
+
+    try {
+      const edit: PlannedOperation = {
+        kind: 'edit',
+        path: 'page.html',
+        beforeHash: (await store.hash('page.html')) ?? '',
+        afterHash: sha('unused'),
+        edits: [{ start, end: start + 8, replacement: 'logo.webp', expected: 'logo.png' }],
+      };
+
+      await expect(prepare([edit], store, RUN_DIR)).rejects.toMatchObject({
+        code: 'TRANSACTION_PLAN_INVALID',
+        message: expect.stringContaining('page.html is not valid UTF-8'),
+      });
+      expect(await readFile(join(root, 'page.html'))).toEqual(bytes);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('commit', () => {
   it('writes the manifest before it touches a single file', async () => {
     // Allow exactly one mutation, then die. Whichever mutation that was is the one
