@@ -1,19 +1,5 @@
 {
   "files": {
-    "bench/src/breakdown.test.ts": {
-      "internal-reference": 13,
-      "em-dash": 7,
-      "emphasis": 3,
-      "emoji": 9,
-      "long-comment": 2
-    },
-    "bench/src/breakdown.ts": {
-      "internal-reference": 33,
-      "em-dash": 20,
-      "emphasis": 30,
-      "emoji": 23,
-      "long-comment": 45
-    },
     "bench/src/corpus-run.ts": {
       "internal-reference": 6,
       "em-dash": 5,
@@ -72,13 +58,6 @@
       "emoji": 12,
       "long-comment": 41
     },
-    "bench/src/invocations.ts": {
-      "internal-reference": 1,
-      "em-dash": 5,
-      "emphasis": 12,
-      "emoji": 3,
-      "long-comment": 7
-    },
     "bench/src/lossless-cohort.ts": {
       "internal-reference": 9,
       "em-dash": 9,
@@ -92,19 +71,6 @@
       "emphasis": 7,
       "emoji": 5,
       "long-comment": 5
-    },
-    "bench/src/noise.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 1,
-      "emphasis": 2,
-      "emoji": 1
-    },
-    "bench/src/noise.ts": {
-      "internal-reference": 4,
-      "em-dash": 5,
-      "emphasis": 13,
-      "emoji": 5,
-      "long-comment": 27
     },
     "bench/src/optimize-twice.test.ts": {
       "long-comment": 1
@@ -129,18 +95,6 @@
       "emoji": 13,
       "long-comment": 27
     },
-    "bench/src/run.ts": {
-      "internal-reference": 13,
-      "em-dash": 13,
-      "emphasis": 16,
-      "emoji": 7,
-      "long-comment": 14
-    },
-    "bench/src/samples.ts": {
-      "em-dash": 1,
-      "emphasis": 3,
-      "emoji": 1
-    },
     "bench/src/transferability.ts": {
       "internal-reference": 12,
       "em-dash": 12,
@@ -148,38 +102,12 @@
       "emoji": 10,
       "long-comment": 42
     },
-    "bench/src/triage.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 5,
-      "emphasis": 3
-    },
-    "bench/src/triage.ts": {
-      "internal-reference": 2,
-      "em-dash": 6,
-      "emphasis": 6,
-      "emoji": 1,
-      "long-comment": 4
-    },
     "bench/src/validate.ts": {
       "internal-reference": 25,
       "em-dash": 25,
       "emphasis": 18,
       "emoji": 6,
       "long-comment": 24
-    },
-    "bench/src/verify.test.ts": {
-      "internal-reference": 15,
-      "em-dash": 13,
-      "emphasis": 11,
-      "emoji": 10,
-      "long-comment": 12
-    },
-    "bench/src/verify.ts": {
-      "internal-reference": 35,
-      "em-dash": 44,
-      "emphasis": 55,
-      "emoji": 28,
-      "long-comment": 57
     },
     "coverage-tree/tools/check-key.mjs": {
       "internal-reference": 1,

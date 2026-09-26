@@ -1,23 +1,10 @@
 /**
- * R119 — the oracle shared the engine's blind spot, and this is the test that would
- * have caught it.
+ * The oracle has to decode a path before comparing it. `netguru%20(1).jpg` names a file
+ * called `netguru (1).jpg`, and a check that compares text as written confirms the false
+ * `broken` and false `dead` that an engine with the same blind spot would report.
  *
- * 🔴 **`verifyBroken` looked the path up exactly as written**, so
- * `images/lodz/2015/netguru%20(1).jpg` missed a real file called `netguru (1).jpg` — and
- * its basename fallback missed it too, for the same reason. It then returned
- * **`confirmed-genuine` with evidence attached**, which is worse than returning nothing:
- * the run printed *"None came back false"* over 1,886 adjudicated findings while four of
- * them were false, on the one criterion the product is sold on.
- *
- * ⚠️ **R117, and this file is the repair.** The corpus could confirm *zero false broken*
- * and could not refute it, because the only inputs that would have refuted it were ones
- * the engine and the oracle mis-read the same way. The case is now an INPUT the checker
- * owns rather than something we hope a repository happens to contain.
- *
- * ⚠️ **An oracle that shares the mechanism it checks is not an oracle.** This one was
- * built to avoid exactly that — its own directory index, its own grep, never the engine —
- * and it reproduced the defect anyway, because *not decoding* is the default behaviour of
- * any string comparison. Independence of implementation is not independence of assumption.
+ * The engine decodes these spellings, so real repositories no longer produce findings that
+ * exercise the oracle's decoding. The inputs are written here instead.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -32,19 +19,14 @@ let root = '';
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'verify-spelling-'));
   mkdirSync(join(root, 'img'), { recursive: true });
-  // The two names that only exist DECODED. Written as real files, because the oracle
-  // reads a directory rather than a list.
+  // Two names that exist on disk only in decoded form. Real files, because the oracle reads
+  // a directory rather than a list.
   writeFileSync(join(root, 'img', 'hero image.png'), 'x');
   writeFileSync(join(root, 'img', 'a&b.png'), 'x');
-  // 🔴 R130's refuting input. This asset is mentioned NOWHERE under its own extension —
-  // only as `only%20encoded.jpg`, the same stem under a different one, in a spelling the
-  // literal stem lookup cannot match. The honest verdict is `ambiguous`; the defect
-  // returned `confirmed-genuine`.
+  // Mentioned only as `only%20encoded.jpg`: the same name under another extension, in a
+  // spelling the token index cannot hold. The right verdict is `ambiguous`.
   writeFileSync(join(root, 'img', 'only encoded.png'), 'x');
-  // \U0001f534 The source names both assets ONLY in an encoded spelling. That is the input that
-  // refutes `verifyDead`, and the corpus no longer supplies it: R118 fixed the ENGINE, so
-  // these assets stopped being reported dead and the oracle's copy of the defect went
-  // unreachable. The checker owns the input now (R117).
+  // The page names each asset only in an encoded spelling.
   writeFileSync(
     join(root, 'page.html'),
     '<img src="./img/hero%20image.png"><img src="./img/a&amp;b.png"><img src="./img/only%20encoded.jpg">',
@@ -60,8 +42,7 @@ function brokenReport(rawPath: string): Report {
     where: 'page.html:1',
     rawPath,
   };
-  // `unusedVectors` is read unconditionally by `verifyFindings` (R22's demoted
-  // assets, which must not fall out of this pass), so the stub carries it.
+  // `verifyFindings` also checks `unusedVectors.assets`, so the stub carries it.
   return { findings: [finding], unusedVectors: { assets: [] } } as unknown as Report;
 }
 
@@ -102,9 +83,8 @@ describe('verifyBroken asks every spelling', () => {
   });
 
   /**
-   * The control. Without it, an oracle that answered `confirmed-false` to everything
-   * would pass the two assertions above — which is the shape of B9's mutation proof that
-   * could not fail.
+   * The control: an oracle that answered `confirmed-false` to everything would pass the
+   * two tests above.
    */
   it('still calls a genuinely missing path genuine', async () => {
     const result = await verifyFindings(root, brokenReport('./img/nothing%20here.png'), ['']);
@@ -120,24 +100,10 @@ describe('verifyBroken asks every spelling', () => {
 });
 
 /**
- * R121 — R119's tail, and the expensive half.
- *
- * 🔴 **A false `broken` and a false `dead` are the SAME defect seen from both ends.**
- * A reference that points at nothing, plus a file nobody references — in
- * `railsgirls-com` the engine emitted both, about the same pair, at the same time, and
- * neither instrument noticed the contradiction. `verifyBroken` certified the first as
- * genuine (R119) and `verifyDead` certifies the second, because both look the path up as
- * a string and a string comparison does not decode.
- *
- * ⚠️ **And this direction costs more.** A false `broken` wastes five minutes. A false
- * `dead` tells somebody it is safe to delete a file their site is serving.
- *
- * ⚠️ **Measured before it was fixed: four assets in `railsgirls-com` are named ONLY in
- * an encoded spelling** — `fb baner rails girls.jpg`, `netguru (1).jpg`,
- * `ofiszjal_male_czarne litery.jpg` and `c&s.png`. The corpus can refute this one; it is
- * still pinned here, because R118 fixed the ENGINE and so the corpus no longer reaches the
- * oracle's copy of the defect. **A checker whose only refuting input has been removed by a
- * fix elsewhere is back to confirming (R117).**
+ * A false `broken` and a false `dead` are one defect seen from both ends: a reference to
+ * `hero%20image.png` looks as if it points at nothing, and `hero image.png` looks as if
+ * nobody references it. This direction costs more. A false `broken` wastes a few minutes;
+ * a false `dead` tells somebody it is safe to delete a file their site serves.
  */
 describe('verifyDead asks every spelling too', () => {
   it('🔴 calls a percent-spelled mention what it is — the asset is ALIVE', async () => {
@@ -153,8 +119,8 @@ describe('verifyDead asks every spelling too', () => {
   });
 
   /**
-   * The control, and it is doing real work here: without it an oracle that answered
-   * `confirmed-false` to every asset would pass both assertions above.
+   * The control: an oracle that answered `confirmed-false` to every asset would pass both
+   * tests above.
    */
   it('still calls a genuinely unreferenced asset dead', async () => {
     const result = await verifyFindings(root, deadReport('img/nobody-mentions-me.png'), ['']);
@@ -163,19 +129,9 @@ describe('verifyDead asks every spelling too', () => {
   });
 
   /**
-   * 🔴 **R130 — the same defect one level down, and the branch nobody examined because it
-   * looked like the cheap one.**
-   *
-   * `verifyDead`'s extension-swap branch asked `hitsByStem` for the asset's stem **exactly
-   * as it sits on disk**, while R121 taught the branch directly above it to ask in every
-   * spelling. So for `img/only encoded.png`, whose only mention in the repository writes
-   * `only%20encoded.jpg` — the same name under a different extension, in an encoded
-   * spelling — the lookup found nothing.
-   *
-   * ⚠️ **And the miss does not land on `ambiguous`.** It falls straight through to
-   * `confirmed-genuine`, which prints *"no mention of this file anywhere, under any image
-   * extension"* about a name the codebase does mention. The branch that produces the
-   * softest verdict when it fires was reaching the hardest one when it did not.
+   * The extension-swap branch has to ask in every spelling too. A miss there does not land
+   * on `ambiguous`: it falls through to `confirmed-genuine`, "no mention of this file
+   * anywhere, under any image extension", about a name the page does mention.
    */
   it('🔴 does not certify an asset dead when only an encoded, extension-swapped mention exists', async () => {
     const result = await verifyFindings(root, deadReport('img/only encoded.png'), ['']);
@@ -185,13 +141,9 @@ describe('verifyDead asks every spelling too', () => {
 });
 
 /**
- * ⚠️ **`verifyHedge` has the same blind spot pointed the OTHER way, and it is the safe
- * direction — which is exactly why it would have been fixed last.** It asks whether a
- * hedge's citation is real: does the cited file contain the asset's name? A citation
- * pointing at a line that writes `hero%20image.png` found nothing, so the oracle called a
- * perfectly good citation **`confirmed-false`** and failed the gate loudly over an engine
- * that was right. R86's family: a correct engine reported as broken costs somebody an
- * afternoon.
+ * The same blind spot in the safe direction. `verifyHedge` checks that a cited file holds
+ * the asset's name, and a citation of a line that writes `hero%20image.png` is correct:
+ * missing it would report a correct engine as wrong.
  */
 describe('verifyHedge asks every spelling too', () => {
   it('accepts a citation whose line writes the name in an encoded spelling', async () => {

@@ -5,12 +5,10 @@
  * `bench/` already uses: `invocations.ts` and `triage.ts` are importable, entry points
  * carry a top-level `main()`. A test that imported the entry point would run it.
  *
- * ⚠️ **There are now THREE copies of this arithmetic in `bench/`** — `run.ts`'s
- * `sample()`, `invocations.ts`'s inline median, and this one. They agree today. They are
- * not shared yet because consolidating them means editing the instrument CI gates on, in
- * the same session that instrument is being used to establish a floor, and a silent
- * arithmetic change underneath a measurement is how a wrong number becomes a fact.
- * **Raised rather than done; the next chat should fold the other two into this.**
+ * `run.ts`'s `sample()` and `invocations.ts` still compute the same median and spread
+ * inline, and all three agree. Folding those two into this one changes the arithmetic
+ * under the CI gate, so it belongs in a change of its own, with the gate's output
+ * compared before and after.
  */
 
 export interface Summary {
@@ -21,10 +19,9 @@ export interface Summary {
   /**
    * `(max - min) / median`, as a percentage.
    *
-   * Against the **median** rather than the min, so the figure is comparable with the
-   * two already on record (47% and 37%) and with `invocations.ts`'s 20% threshold. A
-   * spread against the min reads higher and compares with nothing this project wrote
-   * down.
+   * Against the median rather than the min, so the figure compares directly with the 20%
+   * line that `run.ts` and `invocations.ts` draw with the same arithmetic. A spread
+   * against the min reads higher and compares with neither.
    */
   readonly spreadPercent: number;
   /** Every sample, sorted, so a reader sees the shape rather than trusting the summary. */

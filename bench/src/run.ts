@@ -1,23 +1,12 @@
 /**
- * Measure the engine, so that every performance claim is a number this produced.
+ * Measure the engine, so that every performance claim in the README is a number this
+ * produced in CI.
  *
- * Rule 16: a claim in the README is only ever a number `bench/` measured in CI. This
- * file owes four of them, three of which the build plan currently *assumes*:
- *
- * 1. **The graph budget** — discovery, scanning, resolution and linking on a
- *    10 000-file / 2 000-image tree, which §3.4 puts at under 3 s cold.
- * 2. **The encode-cap default**, which R11 deliberately left to be measured rather
- *    than guessed.
- * 3. **The probe concurrency default**, which §3.4 assumes is `os.cpus() - 1`. That
- *    was an assumption: libvips already multithreads inside a single encode, so the
- *    pool multiplies an already-parallel workload and the right number is not
- *    obvious from the core count.
- * 4. **The sweep**, which the R8 ruling requires be measured. It is bounded — only
- *    zero-reference assets, only unread files — but "bounded" is not a number.
- *
- * Probing and encoding are reported **separately** from the graph budget and never
- * folded into it: they are dominated by libvips, and tuning our code against
- * somebody else's decode time would be measuring the wrong thing.
+ * It times the graph budget (discovery, scanning, resolution and linking on a 10,000-file,
+ * 2,000-image tree), the sweep, and the probe: headers, encodes at a few cap sizes, and the
+ * probe's concurrency. Probing and encoding are reported apart from the graph budget:
+ * libvips dominates them, and tuning our code against its decode time would measure the
+ * wrong thing. See "Performance budget" in ARCHITECTURE.md.
  */
 
 import { existsSync } from 'node:fs';
@@ -55,40 +44,24 @@ import {
 } from './invocations.js';
 
 /**
- * §3.4's design target: what the graph build is supposed to cost.
+ * The design target: what the graph build is supposed to cost.
  *
- * 🔴 **This is NOT the gate, and keeping the two apart is the point of having both.**
- * §5.1(g) failed against this and the target was deliberately not moved. A regression
- * ceiling loose enough not to flake is necessarily far above it, and a reader who sees
- * one number called "budget" will take a passing build for a met target. Both are
- * printed, always, with the relationship spelled out.
+ * It is not what CI gates on. A ceiling loose enough not to fail on noise sits far above
+ * it, so both are printed on every run, and a passing build is not read as a met target.
  */
 const DESIGN_TARGET_MS = 3_000;
 
 /**
- * The per-platform **regression ceiling**: don't get slower than this.
+ * The per-platform regression ceiling: the headline must not be slower than this.
  *
- * ✅ **Set from CI on 2026-09-13, from three runs per platform** — the numbers the
- * workflow had been printing under `--measure-only` since the tree was recalibrated:
+ * About 30% above the slowest of three CI runs on each platform (4,165 ms on Linux and
+ * 5,641 ms on Windows). The headline drifts by up to about 22% between runs of unchanged
+ * code, and a ceiling inside that range flips its verdict on the same commit. It catches
+ * a regression above about 30% and cannot see a 10% one, which needs an A/B run back to
+ * back in one session with `noise.ts`. See "The gate is a regression ceiling, not the
+ * target" in ARCHITECTURE.md.
  *
- * | | run 1 | run 2 | run 3 | max | drift across runs |
- * |---|---|---|---|---|---|
- * | ubuntu | 3 299 | 4 022 | 4 165 | 4 165 | **21.5%** |
- * | windows | 4 758 | 5 233 | 5 641 | 5 641 | **16.9%** |
- *
- * 🔴 **The headroom is sized by the drift, not by taste.** On unchanged code the headline
- * moves up to 21.5% between runs, so a ceiling near the observed max is a coin flip —
- * and it demonstrably was one: at the old 3 500/5 000 the same commit reported `OVER`,
- * `within budget`, `OVER` on ubuntu and `within budget`, `OVER`, `OVER` on windows.
- * **The verdict flipped between runs of identical code, which is what a gate must not
- * do.** Max observed + ~30% puts the line clear of the noise.
- *
- * ⚠️ **What this can and cannot catch, stated so nobody over-reads a green build:** it
- * catches a regression larger than ~30%. It cannot catch a 10% one, because a 10% change
- * is smaller than the drift a single run carries. Catching those needs an A/B
- * back-to-back in one session — `bench/src/noise.ts`, floor 1-4% — not this gate.
- *
- * `UPFLY_BENCH_BUDGET_MS` still overrides, which is how the workflow pins it per platform.
+ * `UPFLY_BENCH_BUDGET_MS` overrides it, which is how CI pins it per platform.
  */
 const BUDGET_MS = Number(
   process.env.UPFLY_BENCH_BUDGET_MS ?? (process.platform === 'win32' ? 7_500 : 5_500),
@@ -104,10 +77,8 @@ interface Timing {
 /**
  * A measurement taken more than once.
  *
- * A single sample is not a number. The graph budget came back at 6.1 s and then
- * 12.7 s on identical input, which made every conclusion drawn from it — including
- * the per-platform gate — provisional. Rule 16 says a claim is a number `bench/`
- * produced; a value that moves 2x between runs is not one.
+ * A single run is not a number to quote: on identical input, the graph budget can take
+ * twice as long in one run as in the next.
  */
 interface Sample {
   readonly label: string;
@@ -120,7 +91,7 @@ interface Sample {
   readonly runs: number;
   /** Every sample, so a reader can see the shape rather than trust the summary. */
   readonly allMs: readonly number[];
-  /** These samples agreed with each other. NOT a claim of reproducibility. */
+  /** These samples agreed with each other, which does not mean another run will repeat them. */
   readonly samplesAgree: boolean;
 }
 
@@ -130,10 +101,9 @@ const MAX_SPREAD_PERCENT = 20;
 /**
  * Run `work` repeatedly and summarise it.
  *
- * The first pass is **discarded**. A read-dominated workload is dominated by the
- * filesystem cache, so the first run measures a cold cache and the rest measure a
- * warm one — averaging them together measures neither, which is the likeliest cause
- * of the 2x swing this exists to catch.
+ * The first pass is discarded. A read-dominated workload is dominated by the filesystem
+ * cache, so the first run measures a cold cache and the rest measure a warm one, and
+ * averaging them together measures neither.
  */
 async function sample<T>(
   label: string,
@@ -187,7 +157,7 @@ interface BenchResult {
     /** The single-pass breakdown's total, for comparison with the median. */
     readonly stepTotalMs: number;
     readonly budgetMs: number;
-    /** False when over budget *or* when the samples disagreed too much to say. */
+    /** False when over budget, or when the samples disagreed too much to say. */
     readonly withinBudget: boolean;
     readonly sample: Sample;
     readonly steps: readonly Timing[];
@@ -235,10 +205,9 @@ async function timed<T>(label: string, work: () => Promise<T> | T): Promise<[T, 
 /**
  * The across-invocation report.
  *
- * Both spreads are shown, because they answer different questions and conflating
- * them is what made the old number quotable when it should not have been: the
- * internal figure says whether one process agreed with itself, and the headline says
- * whether two processes did.
+ * Both spreads are shown because they answer different questions: the spread inside each
+ * invocation says whether one process agreed with itself, and the spread between them
+ * says whether separate processes did.
  */
 function renderInvocations(
   sample: InvocationSample,
@@ -259,7 +228,7 @@ function renderInvocations(
     `  UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}`,
     '',
     `  headline: ${sample.medianMs} ms of ${BUDGET_MS} ms  ${verdict}`,
-    `  §3.4 design target: ${DESIGN_TARGET_MS} ms — ${
+    `  design target: ${DESIGN_TARGET_MS} ms — ${
       sample.medianMs <= DESIGN_TARGET_MS
         ? 'met'
         : 'NOT met, and the ceiling above is not that target'
@@ -268,9 +237,9 @@ function renderInvocations(
     `  spread between invocations: ${sample.spreadPercent}% (min ${sample.minMs}, max ${sample.maxMs})`,
     `  spread inside each: ${sample.internalSpreadPercent.map((value) => `${value}%`).join(', ')}`,
     '',
-    // 🔴 Printed on EVERY run, pass or fail. A tight spread above says these invocations
-    // agreed with each other; it says nothing about whether the same commit measures the
-    // same tomorrow, and that is the variation that actually bites.
+    // Printed on every run, pass or fail. A tight spread above says these invocations
+    // agreed with each other, not that the same commit will measure the same in the next
+    // run, and that is the variation that matters.
     `  ⚠️ Agreement above is WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
     '     on unchanged code, and that is invisible from inside a single run. The ceiling',
     '     carries headroom for it; the spread figure above does not protect against it.',
@@ -291,7 +260,7 @@ async function main(): Promise<void> {
   // --- The breakdown child: one warm-up, then the variants it was given. ---------
   //
   // Spawned by `sampleBreakdowns`, never run by hand. It prints JSON and nothing else,
-  // so anything written to stdout here breaks the parent's parse.
+  // so anything written to stdout here breaks the parent process's parse.
   if (argv.includes('--breakdown-child')) {
     const generated = await generateTree({ fresh: false });
     const requested = (flagValue('--variants') ?? 'baseline')
@@ -311,10 +280,9 @@ async function main(): Promise<void> {
 
   // --- The gate mode: sample across separate invocations, not within one. --------
   //
-  // Ruled after three consecutive invocations reported medians 17% apart while each
-  // was internally tight to 4-6%. The in-process sampler controls the filesystem
-  // cache; it cannot control the process. This spawns children, so it must run
-  // before the work below rather than alongside it.
+  // The in-process sampler controls the filesystem cache, not the process: invocations
+  // that each agree closely with themselves can still land far apart. This spawns
+  // children, so it must run before the work below rather than alongside it.
   const invocations = Number(
     argv.find((a) => a.startsWith('--invocations='))?.slice('--invocations='.length) ?? 0,
   );
@@ -329,17 +297,12 @@ async function main(): Promise<void> {
     const across = await sampleAcrossInvocations(invocations, runsEach);
     stdout.write(renderInvocations(across, invocations, runsEach));
 
-    // 🔴 R134 step 1, as R142 re-ruled it. The gate number is above and is unchanged;
-    // this is a SAMPLED per-step breakdown so a CI run says which step moved. R132 lands
-    // in `resolve`, the markdown skip lands in `parse`, and without a breakdown each of
-    // them costs its own CI round-trip to attribute.
-    //
-    // ⚠️ It runs AFTER the sampling, never interleaved with it, so the wrappers cannot
-    // touch the figure the build gates on. Each pass is its own process for the reason
-    // `invocations.ts` gives, and `--experiments` interleaves R141's variants so the
-    // A/B survives the run-to-run drift that a spread inside one run cannot see (R143).
-    // It is a local tool now: CI stopped passing it when the parse pool it compared was
-    // deleted.
+    // Then a sampled per-step breakdown, so a CI run says which step moved. It runs after
+    // the sampling, never interleaved with it, so its timing wrappers cannot touch the
+    // figure the build gates on. Each pass is its own process for the reason
+    // `invocations.ts` gives. `--experiments` adds the variants `breakdown.ts` interleaves
+    // in one run, so its A/B survives the drift between runs; it is for local use, and CI
+    // does not pass it.
     const variants = argv.includes('--experiments') ? VARIANTS : (['baseline'] as const);
     const breakdownPasses = Number(flagValue('--breakdown-passes') ?? invocations);
     const samples = await sampleBreakdowns(breakdownPasses, variants);
@@ -347,9 +310,9 @@ async function main(): Promise<void> {
     for (const sample of samples) stdout.write(renderBreakdown(sample, experiment));
     if (experiment) stdout.write(renderExperiment(samples));
 
-    // `--measure-only` is what CI runs until a gate number exists that CI itself
-    // produced. Reporting a number is useful; failing a build against a number
-    // measured on somebody's laptop is not.
+    // `--measure-only` prints the figures without gating on them, which is how a ceiling
+    // is measured on a runner before one is set: failing a build against a number
+    // measured on another machine proves nothing.
     if (argv.includes('--measure-only')) {
       stdout.write('  (measure-only: not gating, so this cannot fail the build)\n\n');
       exit(0);
@@ -367,8 +330,8 @@ async function main(): Promise<void> {
 
   // --- 1. The graph budget: everything up to and including linking. -------------
   //
-  // Sampled, not timed once. This is the number the gate uses, and a single run of
-  // it disagreed with itself by 2x.
+  // Sampled, not timed once: this is the number CI gates on, and a single run of it does
+  // not repeat closely enough for that.
   const runs = Number(argv.find((a) => a.startsWith('--runs='))?.slice('--runs='.length) ?? 5);
 
   const [, graphBudget] = await sample('graph budget', runs, async () => {
@@ -428,7 +391,7 @@ async function main(): Promise<void> {
   // sampled total above is what anyone may quote.
   const stepTotalMs = discoverMs.ms + scanMs.ms + resolveMs.ms + graphMs.ms;
 
-  // --- 2. The sweep, which R8 requires be measured. ------------------------------
+  // --- 2. The sweep: zero-reference assets against the unread files. -------------
   const [sweep, sweepMs] = await timed('sweep', () =>
     sweepForMentions({
       graph,
@@ -511,8 +474,8 @@ async function main(): Promise<void> {
  *
  * The cap default falls out of this: pick the count whose wall-clock a person will
  * sit through. Measured at the real size mix rather than an average, because the
- * cap takes the **largest first** and those are the expensive ones — an average
- * would understate the cost of the assets the cap actually selects.
+ * cap takes the largest first and those are the expensive ones; an average would
+ * understate the cost of the assets the cap actually selects.
  */
 async function measureEncodeCost(
   assets: readonly Asset[],
@@ -531,11 +494,12 @@ async function measureEncodeCost(
 }
 
 /**
- * Whether our pool helps, and where it stops helping.
+ * Whether the probe's pool helps, and where it stops helping.
  *
- * §3.4 assumes `os.cpus() - 1`. libvips already uses every core inside one encode,
- * so this pool multiplies an already-parallel workload and the answer is an
- * empirical question rather than an arithmetic one.
+ * libvips already uses every core inside one encode, so the pool multiplies an already
+ * parallel workload and its size cannot be worked out from the core count. This is what
+ * the default of 4 in `probe.ts` rests on; `os.cpus() - 1`, the obvious guess, stays in
+ * the sweep to compare against.
  */
 async function measureConcurrency(
   assets: readonly Asset[],
@@ -563,7 +527,7 @@ function round(value: number, places: number): number {
   return Math.round(value * factor) / factor;
 }
 
-/** Plain text, no locale formatting — the same rule the report renderer follows. */
+/** Plain text with no locale formatting, the same rule the report renderer follows. */
 function render(result: BenchResult, generation: Timing): string {
   const lines: string[] = [
     'upfly-core bench',
@@ -613,7 +577,7 @@ function render(result: BenchResult, generation: Timing): string {
   return lines.join('\n');
 }
 
-/** `OK`, `OVER`, or a refusal to say — the third is not a failure, it is honesty. */
+/** `OK`, `OVER`, or `UNUSABLE` when the samples disagree too much to say either. */
 function verdict(budget: BenchResult['graphBudget']): string {
   if (!budget.sample.samplesAgree) return 'UNUSABLE (samples disagree)';
   return budget.withinBudget ? 'OK' : 'OVER';

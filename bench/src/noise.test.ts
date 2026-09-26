@@ -4,18 +4,17 @@ import { summarise } from './samples.js';
 /**
  * The noise gauge's own arithmetic.
  *
- * Small, and here because **every conclusion about §3.4 now rests on this one
- * function**. The floor it reports is what decides whether an optimisation is believed,
- * so a spread computed against the wrong denominator would not be a cosmetic defect —
- * it would make a 1% floor out of a 26% one, or the reverse.
+ * Small, but the floor it reports decides whether an optimisation is believed, so a
+ * spread computed against the wrong denominator would not be a cosmetic defect: it
+ * could make a 1% floor out of a 26% one, or the reverse.
  *
- * The gauge's *sensitivity* is proven separately and not here: `--inject-ms` adds a
+ * The gauge's sensitivity is proven separately and not here: `--inject-ms` adds a
  * known delay to a real run and the floor has to move by it. A unit test cannot show
  * that the instrument sees a real change, only that it divides correctly.
  */
 describe('the noise gauge’s arithmetic', () => {
   it('reports the median, not the mean, so one outlier cannot move it', () => {
-    // The reason `run.ts` chose a median in the first place. A mean of these is 2 164.
+    // The reason `run.ts` quotes a median. A mean of these is 1 964.
     const summary = summarise([1000, 1020, 1040, 1060, 5700]);
     expect(summary.medianMs).toBe(1040);
   });
@@ -25,9 +24,8 @@ describe('the noise gauge’s arithmetic', () => {
   });
 
   it('measures spread against the median, so the figure is comparable with the record', () => {
-    // 47% and 37% are both on record as `(max - min) / median`, and so is
-    // `invocations.ts`'s 20% threshold. A spread against the *min* would read 50% here
-    // and silently fail to compare with any number this project has written down.
+    // `run.ts` and `invocations.ts` compute spread the same way and draw their 20% line
+    // against it. A spread against the min would read 50% here and compare with neither.
     const summary = summarise([1000, 1200, 1500]);
     expect(summary.minMs).toBe(1000);
     expect(summary.maxMs).toBe(1500);
@@ -35,9 +33,9 @@ describe('the noise gauge’s arithmetic', () => {
   });
 
   it('calls a single sample perfectly tight, which is true and is why --cold needs reading', () => {
-    // ⚠️ Not a curiosity. `--cold` takes one sample per process, so every invocation
-    // reports 0% internally and only the figure BETWEEN processes means anything. A
-    // reader who took the internal 0% for stability would have it exactly backwards.
+    // `--cold` takes one sample per process, so every invocation reports 0% internally
+    // and only the figure between processes means anything. Reading the internal 0% as
+    // stability would have it backwards.
     const summary = summarise([4200]);
     expect(summary.spreadPercent).toBe(0);
     expect(summary.medianMs).toBe(4200);

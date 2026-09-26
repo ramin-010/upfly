@@ -1,60 +1,14 @@
 /**
- * Where the graph build's time goes — sampled, so a step's movement can be attributed.
+ * Where the graph build's time goes, sampled, so a step's movement can be attributed.
+ * It says which step moved; it is never the gated figure.
  *
- * 🔴 **R142 ruled this: the per-step breakdown was ONE pass and one pass cannot attribute
- * a change.** Two CI runs gave an accidental control. Over a commit that touched no parse
- * code, `parse` moved **−2.5% on ubuntu and +12.5% on windows**, and `scan` and
- * `read (wall)` flipped sign too — a 15-point spread on steps nobody edited. The
- * instrument's own label was honest (*"it attributes a change to a step; it is NOT a
- * number to quote"*) but attributing a change to a step is exactly what a single sample
- * cannot do.
+ * Each step gets a median and a spread over passes in separate processes, with `UNUSABLE`
+ * beside a step whose passes disagree. Those spreads are within one run and cannot see
+ * the drift between runs, so every run says so. `--experiments` adds the reading that
+ * survives that drift: an A/B inside one run, timing `scan` under treatments that each
+ * remove one more thing (`EXPERIMENT_1`).
  *
- * ## 🔴 The fix as ruled does not measure the quantity the ruling was drawn from (R143)
- *
- * R142's control is **between CI runs**. Repeating the pass N times **inside one run**
- * measures a different and much smaller thing, and `invocations.ts` has already measured
- * both: between-invocation spread is **2–9%** while the headline itself drifts **17–22%
- * between runs of unchanged code**. That module's own comment says why, and it is
- * structural rather than fixable: *"between-run drift is invisible from inside a single
- * run, by construction."*
- *
- * ⚠️ **So a tight spread printed here is exactly the reading that made `usable` a
- * misleading name** before it was renamed `samplesAgree`. This module therefore:
- *
- * - reports a **per-step median and per-step spread**, and prints **UNUSABLE** beside any
- *   step whose spread crosses the line — R142's literal ask, and it is worth having: it
- *   is what says a 69 ms `graph` step cannot resolve a 10% change at all;
- * - states on **every** run that its own spread is **not** the attribution floor, and
- *   repeats the measured between-run drift beside it;
- * - and carries the thing that actually beats drift: **an A/B inside one run.**
- *
- * ## ✅ The A/B, and why the variants are a partition when read-wall and parse are not
- *
- * `scan` is read-wall ∪ parse ∪ the mention pass ∪ overhead, and the first two **overlap**
- * — the bench has printed that warning on every run since the first version of it summed
- * concurrent reads and reported 853%. Those cannot be subtracted from each other.
- *
- * What CAN be subtracted is the **same quantity under three treatments**. All three
- * variants measure `scan` wall clock on the same tree in the same job:
- *
- * | variant | what it removes | what the difference from the one above it is |
- * |---|---|---|
- * | `baseline` | nothing | — |
- * | `no-parse` | every adapter returns `[]` | **what parsing costs** (R141 experiment 1) |
- * | `no-parse-no-mentions` | also the basename mention pass | what the mention pass costs |
- *
- * The last row is the I/O floor, and it is in here because without it R141's experiment
- * can confirm but not refute (R117). R141's reading is *"stays near 5,000 ms → the disk
- * is the bottleneck"* — but `collectMentions` runs synchronously on the main thread for
- * every file too, and R19 measured it at **1,325 ms**. A `no-parse` run that stayed high
- * would have been read as a disk floor when a third of it was the main thread after all.
- *
- * ⚠️ **Variants are interleaved and ROTATED across processes** — child 0 runs A,B,C, child
- * 1 runs B,C,A, child 2 runs C,A,B — so neither run-to-run drift nor JIT order can favour
- * one variant. That is B11's BEFORE/AFTER/BEFORE bracket and `noise.ts`'s `--pair`, which
- * is the one design in this project that has ever survived its own noise floor.
- *
- * Reads only; writes nothing anywhere (R52).
+ * Reads only; writes nothing anywhere.
  */
 
 import { execFile } from 'node:child_process';
@@ -79,22 +33,12 @@ const exec = promisify(execFile);
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 /**
- * The treatments.
+ * One treatment of the instrumented pass.
  *
- * The first three are R141 experiment 1 and each removes the one above it plus one more,
- * so consecutive differences are the cost of what was removed. The last two are
- * **experiment 2**, which is the same work under a raised libuv threadpool.
- *
- * 🔴 **`UV_THREADPOOL_SIZE` is read by libuv when the pool is first used and cannot be
- * changed afterwards, so it is a property of the PROCESS.** That is why it is a spawn-time
- * `env` here rather than an assignment — and it is also §3.4's rule arriving from the
- * other direction: *set it in the CLI entry point, never in the library.* The bench parent
- * sets it on a child it owns. Nothing in `upfly-core` touches it.
- *
- * ⛔ **The threadpool variants are GONE (R146): experiment 2 is closed, four paired
- * comparisons inside the spread on both platforms.** The parse pool's variants are gone
- * too: the pool measured slower in every configuration and was deleted with them. The last
- * commit holding both is `c84a2f3`.
+ * `env` is applied when the child process is spawned, because libuv reads
+ * `UV_THREADPOOL_SIZE` when its pool is first used and ignores later changes, which makes
+ * it a property of the process. For the same reason it belongs to an entry point, never
+ * to the library: nothing in `upfly-core` touches it. Every current variant leaves it empty.
  */
 interface VariantSpec {
   readonly label: string;
@@ -111,29 +55,26 @@ export const VARIANTS = ['baseline', 'no-parse', 'no-parse-no-mentions', 'wide']
 /**
  * The concurrency the `wide` variant uses.
  *
- * 🔴 **256 rather than "as high as possible", and it is a laptop reading rather than a
- * preference.** Sweeping 16 · 64 · 256 · 1,024 there, with the parse pool since deleted,
- * `scan` fell 12,329 → 9,234 →
- * 8,210 → 8,076 ms: most of the barrier's cost is gone by 256 and the last four-fold buys
- * almost nothing, while 1,024 concurrent reads is a very different demand on libuv than
- * anything the engine ships with. **CI decides whether that shape holds.**
+ * 256 rather than as high as possible. On a development machine, `scan` fell by about a
+ * third from 16 to 256 and 1,024 bought almost nothing more, while 1,024 concurrent reads
+ * is a very different demand on libuv from anything the engine ships with. CI has not
+ * confirmed that shape.
  */
 export const WIDE_CONCURRENCY = 256;
 export type Variant = (typeof VARIANTS)[number];
 
-/** R141 experiment 1's three treatments, which are a partition of `scan`. */
+/**
+ * The parse experiment's treatments, which partition `scan`'s time. Each removes one
+ * more thing than the one before, so consecutive differences are what parsing costs and
+ * what the mention pass costs, and the last is everything else. The mention pass is its
+ * own treatment because it also runs on the main thread for every file: left in the last
+ * row, it would pass for time spent waiting on the disk.
+ */
 export const EXPERIMENT_1: readonly Variant[] = ['baseline', 'no-parse', 'no-parse-no-mentions'];
 /**
- * ⛔ **R141 EXPERIMENT 2 IS CLOSED AND ITS VARIANTS ARE DELETED (R146).**
- *
- * CI ran it: **four paired comparisons across both platforms, every one inside the
- * spread.** R19 was right, R12's 26% was laptop noise, and this chat's own laptop reading
- * of −18.9% did not survive CI either. 🔴 **Nothing should re-run it** — a dead experiment
- * left in the harness costs CI time on every push forever and is eventually read as an open
- * question. The ruling holds the result; the harness does not need to keep asking.
- *
- * ⚠️ **The spawn-time `env` machinery it needed is KEPT**, because it cost nothing and
- * R141's experiment 3 may want it.
+ * Experiment 2, a larger libuv threadpool, is answered and has no variant: paired
+ * comparisons on both CI platforms all landed inside the spread. A settled experiment
+ * left in the harness costs CI time on every push and reads as an open question.
  */
 export const EXPERIMENT_2_CLOSED = true;
 
@@ -146,8 +87,8 @@ export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
     withMentions: false,
     env: {},
   },
-  // R141's experiment 3: the batch barrier's cost, as `scan` at a far wider concurrency.
-  // `scanSources` already takes `concurrency`, so the treatment costs no code.
+  // The batch barrier's cost, as `scan` at a far wider concurrency. `scanSources`
+  // already takes `concurrency`, so the treatment costs no code.
   wide: {
     label: `concurrency ${WIDE_CONCURRENCY}`,
     stubParse: false,
@@ -167,12 +108,10 @@ export const VARIANT_LABEL: Readonly<Record<Variant, string>> = Object.freeze(
 /**
  * Above this a step's samples disagree too much to attribute a change to it.
  *
- * ⚠️ **INHERITED, NOT CHOSEN.** 20% is the line `invocations.ts` and `run.ts` already
- * draw, and picking a different one here from taste is what R127 warns about — a number
- * chosen by taste is how `os.cpus() - 1` became a default 21% worse than 4. It is a
- * machine-health line, exactly as it is there: a step that crosses it had something
- * wrong with it, not merely a small signal. **Re-size it from the first CI run that
- * prints per-step spreads, never from a laptop.**
+ * The same 20% line `invocations.ts` and `run.ts` draw, not one picked separately here.
+ * It is a machine-health line, as it is there: a step that crosses it had something
+ * wrong with it, not merely a small signal. Re-size it from the per-step spreads CI
+ * prints, never from one development machine.
  */
 export const MAX_STEP_SPREAD_PERCENT = 20;
 
@@ -186,11 +125,11 @@ export interface Breakdown {
   readonly readMs: number;
   /** Summed read durations. Divided by `readMs`, the effective concurrency. */
   readonly readOccupancyMs: number;
-  /** Summed adapter time. Synchronous, so this IS elapsed time. */
+  /** Summed adapter time. Adapters run synchronously, so the sum is elapsed time. */
   readonly parseMs: number;
   /** JSON-friendly, because this crosses a process boundary. A `Map` would not. */
   readonly parseByExtension: readonly (readonly [string, number])[];
-  /** R86, and printed even when zero. */
+  /** Adapter calls that threw. Printed even when zero, so a zero is a count, not an omission. */
   readonly adapterThrows: number;
   readonly files: number;
   readonly references: number;
@@ -199,18 +138,15 @@ export interface Breakdown {
 /**
  * One instrumented pass.
  *
- * ✅ **Read against parse is measured from OUTSIDE the engine, with no core change.**
- * `scanSources` takes its reader and its adapters as parameters, so wrapping both
- * accumulates the real in-run cost of each — interleaved, at the real concurrency, in the
- * real execution order. A read-everything-then-parse-everything probe would decompose a
- * *different* execution and report it as this one's shape, which is precisely how the
- * "~72% is parsing" figure was arrived at and later withdrawn (R141).
+ * Read against parse is measured from outside the engine. `scanSources` takes its reader
+ * and its adapters as parameters, so wrapping both times each in the real run:
+ * interleaved, at the real concurrency, in the real order. Reading everything and then
+ * parsing everything would time a different execution and report it as this one's shape.
  *
- * ⚠️ **A throw is a third outcome (R86).** An adapter that throws still spent time
- * parsing, and a wrapper recording only the success path would under-count exactly the
- * files that are hardest to parse. The timing is taken in `finally` and the throw is
- * re-thrown untouched — including `UpflyError.partial`, which R134 warns must survive
- * every boundary it crosses.
+ * An adapter that throws still spent time parsing, and timing only the success path would
+ * under-count the files that are hardest to parse. So the timing is taken in `finally`,
+ * and the error is rethrown untouched, `UpflyError.partial` included, which has to
+ * survive every boundary it crosses.
  */
 export async function measureBreakdown(root: string, variant: Variant): Promise<Breakdown> {
   const { stubParse, withMentions, concurrency } = VARIANT_SPEC[variant];
@@ -220,24 +156,16 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
   let adapterThrows = 0;
   const parseByExtension = new Map<string, number>();
 
-  // 🔴 READS OVERLAP AND PARSES DO NOT, AND SUMMING BOTH THE SAME WAY IS WRONG.
-  // The first version of this added up each read's elapsed time and printed it as a
-  // share of the wall clock. It came out at **853%**, because `scanSources` reads in
-  // concurrent batches — summing concurrent durations measures OCCUPANCY, not time.
-  // Parsing is synchronous, so on one thread those durations cannot overlap and their
-  // sum is real elapsed time.
+  // Reads overlap and parses do not, so they are measured differently. `scanSources`
+  // reads in concurrent batches, and summing concurrent durations measures occupancy,
+  // not time. So `readMs` is the union of the intervals with at least one read in flight,
+  // and the occupancy sum is kept beside it because their ratio is the effective
+  // concurrency. Parsing is synchronous, so the sum of parse durations is elapsed time.
   //
-  // So reads are measured as the union of the intervals during which at least one was
-  // in flight, which is the wall-clock window the process spent waiting on I/O. The
-  // occupancy sum is kept beside it because their ratio is the effective concurrency,
-  // which is worth knowing when a pool is being sized.
-  //
-  // ⚠️ **read-wall and parse are NOT additive.** A parse can run while another file's
-  // read is outstanding, so they overlap and must never be added together or presented
-  // as a partition of `scan`. 🔴 And the window closes in a `finally`, which runs on the
-  // MAIN THREAD — so while the main thread parses file A, file B's completed read is
-  // still counted as outstanding. That is R141's inference, and the `no-parse` variant
-  // is what turns it from an inference into a measurement: read-wall should collapse.
+  // Read-wall and parse overlap and are never added. The window also closes in a
+  // `finally` that runs on the main thread, so a read that completes while another file
+  // parses stays counted as outstanding until the parse ends. The `no-parse` variant
+  // measures how much of read-wall that is.
   let readOccupancyMs = 0;
   let readsInFlight = 0;
   let windowStarted = 0;
@@ -262,10 +190,10 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
       const extension = extname(input.file).toLowerCase();
       const started = performance.now();
       try {
-        // 🔴 R141 experiment 1, and it is the whole of it: scan every file, return no
-        // references. The wrapper stays on so the stub's own cost is visible rather
-        // than assumed to be zero, and `extensions`/`id` are untouched so `discover`
-        // claims exactly the same files — which the renderer then asserts.
+        // The stubbed parse: scan every file, return no references. The wrapper stays on
+        // so the stub's own cost is visible rather than assumed to be zero, and
+        // `extensions` and `id` are untouched so `discover` claims the same files in every
+        // variant, which `breakdown.test.ts` checks.
         return stubParse ? [] : adapter.findReferences(input);
       } catch (error) {
         adapterThrows++;
@@ -287,8 +215,8 @@ export async function measureBreakdown(root: string, variant: Variant): Promise<
     sourceFiles: found.sourceFiles,
     adapters: timedAdapters,
     readFile: timedRead,
-    // Spread rather than `: undefined`, which `exactOptionalPropertyTypes` rejects —
-    // and rightly: "absent" and "present but undefined" are different states, and the
+    // Spread rather than `: undefined`, which `exactOptionalPropertyTypes` rejects, and
+    // rightly: "absent" and "present but undefined" are different states, and the
     // mention pass's absence is the treatment being measured.
     ...(withMentions ? { assetBasenames: basenamesOf(found.assets) } : {}),
     ...(concurrency === undefined ? {} : { concurrency }),
@@ -411,9 +339,7 @@ export function summariseBreakdowns(passes: readonly Breakdown[]): BreakdownSamp
  *
  * A fresh process per sample for the reason `invocations.ts` gives: the in-process
  * sampler controls the filesystem cache and nothing else. Each child discards one
- * warm-up pass before it measures anything, which is `run.ts`'s `sample()` ruling and
- * not a new decision — the old single-pass breakdown ran cold in the parent, after that
- * parent had spawned all the sampling children and therefore never warmed its own JIT.
+ * warm-up pass before it measures anything, as `sample()` in `run.ts` does.
  */
 export async function sampleBreakdowns(
   processes: number,
@@ -422,7 +348,7 @@ export async function sampleBreakdowns(
   const script = fileURLToPath(new URL('run.js', import.meta.url));
   const collected = new Map<Variant, Breakdown[]>(variants.map((variant) => [variant, []]));
 
-  // 🔴 Grouped by environment because `UV_THREADPOOL_SIZE` is a property of the PROCESS:
+  // Grouped by environment because `UV_THREADPOOL_SIZE` is a property of the process:
   // libuv reads it when the pool is first used and it cannot be changed after. Variants
   // that need the same environment share a child; variants that need a different one get
   // their own. Each group is still rotated, so no variant is always measured first.
@@ -454,7 +380,10 @@ export async function sampleBreakdowns(
   return variants.map((variant) => summariseBreakdowns(collected.get(variant) ?? []));
 }
 
-/** Child `i` starts at variant `i`, so no variant is always first or always last. */
+/**
+ * Child `i` starts at variant `i`, so no variant is always first or always last, and
+ * neither drift across the run nor JIT warm-up favours one of them.
+ */
 export function rotate<T>(values: readonly T[], by: number): readonly T[] {
   if (values.length === 0) return values;
   const offset = ((by % values.length) + values.length) % values.length;
@@ -505,9 +434,9 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
       ? ['    🔴 THE PASSES SAW DIFFERENT TREES. Nothing below is comparable.']
       : []),
     '',
-    // 🔴 R143. Printed on EVERY run, pass or fail, for the same reason `renderInvocations`
-    // prints its drift line: a tight spread here says these passes agreed inside ONE run,
-    // and R142's 15-point control was measured BETWEEN runs, which this cannot see.
+    // Printed on every run, pass or fail, for the same reason `renderInvocations` prints
+    // its drift line: a tight spread here says these passes agreed inside one run, not
+    // that a step holds still between runs, which this cannot see.
     `    ⚠️ The spreads above are WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
     '       on unchanged code and these steps drift with it, so a spread here is NOT the',
     '       attribution floor for a change measured against a PREVIOUS run. What beats that',
@@ -522,8 +451,8 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
  * The A/B, and the only reading in this file that survives run-to-run drift.
  *
  * Consecutive variants differ by one removed thing, so each difference names a cost.
- * ✅ **These ARE a partition** — every row is `scan` wall clock, measured the same way,
- * under a different treatment, in the same job. That is what read-wall and parse are not.
+ * These are a partition: every row is `scan` wall clock, measured the same way, under a
+ * different treatment, in the same job. That is what read-wall and parse are not.
  */
 export function renderExperiment(samples: readonly BreakdownSample[]): string {
   const baseline = samples.find((sample) => sample.variant === 'baseline');
@@ -583,25 +512,24 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 }
 
 /**
- * R141's decision rule, applied out loud — and refused when the spreads cannot carry it.
- *
- * ⚠️ **Stated as a share rather than as R141's absolute 1,500 / 5,000 ms**, because those
- * are this tree on this runner and the same rule has to survive both changing. The
- * question underneath is unchanged: is the main thread the bottleneck, or is the disk.
- */
-/**
  * The noise floor two samples share, or `null` when there is not one.
  *
- * 🔴 **One pass has a spread of 0% and that is not a floor, it is an absence.**
- * `noise.test.ts` records the same trap on the same arithmetic: *"calls a single sample
- * perfectly tight, which is true and is why `--cold` needs reading"*. A verdict placed
- * against a 0% floor derived from one draw is R12's *"26% off"* being born again.
+ * One pass has a spread of 0%, and that is not a floor but the absence of one: a verdict
+ * placed against it would call any difference a finding. `noise.test.ts` records the
+ * same trap in the same arithmetic.
  */
 function spreadFloor(a: BreakdownSample, b: BreakdownSample): number | null {
   if (a.passes < 2 || b.passes < 2) return null;
   return Math.max(a.scan.spreadPercent, b.scan.spreadPercent);
 }
 
+/**
+ * The experiment's decision rule, applied out loud, and refused when the spreads cannot
+ * carry it: is the main thread the bottleneck, or is the disk.
+ *
+ * Stated as a share of `scan` rather than in milliseconds, because milliseconds belong to
+ * one tree on one runner and the rule has to survive both changing.
+ */
 function verdict(
   baseline: BreakdownSample,
   noParse: BreakdownSample,

@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { type Hit, triage } from './triage.js';
 
 /**
- * Every rule in `triage.ts` **removes an item from human review**, so the direction
- * that matters here is over-reach. A hit wrongly marked explained is a false negative
- * hidden inside the pass built to find false negatives, and nothing downstream looks
- * at it again.
+ * Every rule in `triage.ts` removes an item from human review, so the direction that
+ * matters here is over-reach. A hit wrongly marked explained is a missed reference hidden
+ * inside the pass built to find missed references, and nothing downstream looks at it
+ * again.
  *
- * So the cases below are drawn from the three real repositories rather than invented,
- * and roughly half of them assert that a rule *declines* to fire.
+ * So the cases come from the validation repositories in `repos.ts` wherever one shows the
+ * shape, and about half of them assert that a rule declines to fire.
  */
 
 const CLAIMED = new Set(['.md', '.mdx', '.js', '.ts', '.tsx', '.json', '.html', '.css']);
@@ -21,7 +21,7 @@ function explanationFor(input: Hit): string | null {
   return triage(input, CLAIMED).explanation;
 }
 
-describe('§5.1(b) triage', () => {
+describe('triage of the hits the graph did not link', () => {
   describe('rules that fire', () => {
     it('explains a file type no adapter reads', () => {
       expect(explanationFor(hit('config.yaml', 'image: hero.png', 'img/hero.png'))).toContain(
@@ -43,7 +43,7 @@ describe('§5.1(b) triage', () => {
     });
 
     it('explains a commented-out line', () => {
-      // `eleventy.config.js:427` — a mapping someone disabled.
+      // `eleventy.config.js:427`: a mapping someone disabled.
       expect(
         explanationFor(
           hit(
@@ -57,7 +57,7 @@ describe('§5.1(b) triage', () => {
 
     it('explains a line that names a different file with the same basename', () => {
       // `src/_data/mascots.js:11` writes `/img/mascots/possum.jpg`; the sweep matched
-      // it to `src/img/possum.jpg`. Same basename, different file — renaming this
+      // it to `src/img/possum.jpg`. Same basename, different file: renaming this
       // asset would not touch that line.
       expect(
         explanationFor(
@@ -81,7 +81,7 @@ describe('§5.1(b) triage', () => {
 
   describe('rules that must NOT fire — each of these is a real miss', () => {
     it('leaves a frontmatter path alone', () => {
-      // `src/docs/languages/sass.md:9` — `logoImage: "/img/logos/sass.svg"` is a
+      // `src/docs/languages/sass.md:9`: `logoImage: "/img/logos/sass.svg"` is a
       // genuine reference in YAML frontmatter that no adapter reads. Renaming the
       // asset breaks the site, so this must reach a person.
       expect(
@@ -97,7 +97,7 @@ describe('§5.1(b) triage', () => {
 
     it('leaves a templated URL that resolves to this asset alone', () => {
       // `apps/v4/app/layout.tsx:44`. The prefix is assembled at runtime, so the
-      // engine cannot link it — but a rename would break it.
+      // engine cannot link it, but a rename would break it.
       expect(
         explanationFor(
           hit(
@@ -110,7 +110,7 @@ describe('§5.1(b) triage', () => {
     });
 
     it('does not treat a URL elsewhere on the line as covering the token', () => {
-      // The token has to be *inside* the URL. A line that links to a docs page and
+      // The token has to be inside the URL. A line that links to a docs page and
       // separately references a local image is a live reference.
       expect(
         explanationFor(
@@ -134,8 +134,9 @@ describe('§5.1(b) triage', () => {
     });
 
     it('does not call a bare filename prose in a short data line', () => {
-      // `src/data/logos.ts:56` — `{ file: 'gitbook.svg' }` is the R14 case and a
-      // real reference. Too short to be a sentence, and not Markdown.
+      // `src/data/logos.ts:56`: `{ file: 'gitbook.svg' }` is a real reference, a filename
+      // in a data object that code turns into a path. Too short to be a sentence, and not
+      // Markdown.
       expect(
         explanationFor(
           hit('src/data/logos.ts', "gitbook: { file: 'gitbook.svg' },", 'public/logos/gitbook.svg'),

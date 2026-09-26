@@ -1,43 +1,11 @@
 /**
- * The noise floor: how much `graphMs` moves when the work does not change at all.
+ * The noise floor: how much `graphMs` moves when the work does not change at all. An
+ * optimisation that claims less than the floor cannot be told from noise.
  *
- * 🔴 **Why this exists before any optimisation.** §5.1(g) failed at ~12 500 ms against
- * a 3 000 ms budget, and the obvious next move is to make the graph build faster. It is
- * not the next move. Two chats independently measured this instrument disagreeing with
- * itself by **47%** and **37%** on identical work, with the direction flipping between
- * runs. **An "improvement" smaller than that is a coin flip**, and the cost of getting
- * it wrong is not a wasted afternoon — it is a number written into the build plan as a
- * fact. B4 already threw away a 40-minute run on a contention story that was wrong.
- *
- * **Two things are measured here, and they answer different questions.**
- *
- * 1. `--invocations` — the **floor**. One repository, the same work, N separate
- *    processes. Whatever spread comes back is what an optimisation must beat before
- *    anybody believes it. Separate processes rather than N loops in one, for the reason
- *    `invocations.ts` gives: the in-process sampler controls the filesystem cache and
- *    nothing else.
- *
- * 2. `--pair` — the **free gauge nobody had used.** `railsgirls-com` and
- *    `railsgirls-com-unconfigured` walk the same 6 496 files and build the same 10 127
- *    references, so their difference inside one run is measurement error and nothing
- *    else. ⚠️ That claim was checked rather than assumed, because `graphMs` spans the
- *    serving-root step and the two entries take different branches through it:
- *    `detectServingRoots` costs **0.083 ms** median over railsgirls' 443 directories,
- *    both branches make **exactly 119 `exists()` calls**, and both produce 10 127
- *    references and 111 broken. So the systematic term is ~0.001% of a ~6 000 ms build
- *    and the pair is clean. **The `shadcn-ui` pair is NOT** — same files and references
- *    but 20 vs 1 broken and 8 vs 125 dead, so it does genuinely different resolution
- *    work. Both twins look alike in `SUMMARY.md`; only one is an instrument.
- *
- * ✅ **`--inject-ms` is the gauge's own mutation test**, and it is the reason this is a
- * committed instrument rather than a scratch script. A floor nobody has shown to be
- * sensitive is a number, not an instrument — *"a test whose guard never fires proves
- * nothing"* applies to a benchmark exactly as it does to a suite. Injecting a known
- * delay and confirming it lands above the floor is what separates the two.
- *
- * ⚠️ **For a benchmark the fixture is the machine state.** Check for surviving
- * processes before trusting any run of this (R49-b has bitten twice), and do not run it
- * beside anything else. Reads only; it never writes inside the corpus (R52).
+ * `--invocations` times one repository in N separate processes, `--pair` times two entries
+ * whose work is identical (`PAIR`), and `--inject-ms` checks that the gauge sees a known
+ * delay (`burn`). The machine's state is the fixture: check that no node process survives
+ * from an earlier run, and run nothing beside it. It only reads the corpus.
  *
  * Usage:
  *   pnpm --filter upfly-bench run noise -- --invocations=7 --runs=3
@@ -71,7 +39,7 @@ import { type Summary, summarise } from './samples.js';
 const exec = promisify(execFile);
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
-/** The default subject: the larger half of the pair, and the one both chats measured. */
+/** The default subject: the configured entry of `PAIR`. */
 const DEFAULT_REPO = 'railsgirls-com';
 
 /**
@@ -80,7 +48,9 @@ const DEFAULT_REPO = 'railsgirls-com';
  * Same repository, same pinned commit, same 6 496 files. The configured entry declares
  * `['']`; the other detects, which on this repository finds nothing and falls through
  * to the same project-root resolution. Verified identical: 119 `exists()` calls, 10 127
- * references and 111 broken on both sides.
+ * references and 111 broken on both sides. Detection is the only extra step, at about
+ * 0.08 ms of a 6 s build. The `shadcn-ui` twin is not a gauge: its two entries differ in
+ * broken and dead counts, so they do different resolution work.
  */
 const PAIR: readonly { readonly label: string; readonly declared: ServingRoots | null }[] = [
   { label: 'railsgirls-com', declared: { dirs: [''], declared: true } },
@@ -97,9 +67,8 @@ function basenamesOf(assets: readonly Asset[]): Set<string> {
 /**
  * One graph build, timed exactly as `pipeline.ts` times `graphMs`.
  *
- * Deliberately a copy of that span rather than a call into `runPipeline`: the pipeline
- * also probes, audits and sweeps, and folding libvips into a measurement of our own
- * traversal is how the 77%-parsing finding got muddled in the first place.
+ * A copy of that span rather than a call into `runPipeline`, which also probes, audits
+ * and sweeps: folding libvips into a measurement of our own traversal blurs it.
  */
 async function buildOnce(root: string, declared: ServingRoots | null): Promise<number> {
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -113,10 +82,9 @@ async function buildOnce(root: string, declared: ServingRoots | null): Promise<n
     assetBasenames: basenamesOf(discovery.assets),
   });
   // Inside the span because `pipeline.ts` has it inside `graphMs`, and a floor measured
-  // over a different span is not comparable with the column it is meant to judge.
-  // Measured before being included: 0.5 ms on `railsgirls-com` (no config to read) but
-  // **169.8 ms, min 157.6 max 198.4, on `shadcn-ui`**, which has 62 real alias rules.
-  // Negligible for the default subject; not negligible for every subject.
+  // over a different span is not comparable with the column it is meant to judge. It
+  // costs about 0.5 ms on `railsgirls-com`, which has no alias config, and about 170 ms
+  // on `shadcn-ui`, which has 62 alias rules.
   const aliases = await loadAliases({
     root: discovery.root,
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
@@ -142,7 +110,12 @@ async function buildOnce(root: string, declared: ServingRoots | null): Promise<n
   return performance.now() - started;
 }
 
-/** Burn `ms` of wall clock, for `--inject-ms`. Synchronous, so nothing overlaps it. */
+/**
+ * Burn `ms` of wall clock, for `--inject-ms`. Synchronous, so nothing overlaps it.
+ *
+ * A known delay has to land above the floor. A floor nobody has shown to see one is a
+ * number, not an instrument.
+ */
 function burn(ms: number): void {
   const until = performance.now() + ms;
   while (performance.now() < until) {
@@ -160,10 +133,10 @@ async function child(): Promise<void> {
   const root = join(VALIDATION_ROOT, repo);
   const declared = unconfigured ? null : { dirs: [''], declared: true };
 
-  // 🔴 `--cold` is what `validate.ts` actually does: build the graph ONCE, with no
-  // warm-up discarded, as the first thing this process does to this tree. The warm
-  // median-of-N below is what `bench/run.ts` does. Comparing the two spreads is how we
-  // find out whether the 47% on record is a property of the work or of the sampling.
+  // `--cold` is what `validate.ts` does: build the graph once, with no warm-up discarded,
+  // as the first thing this process does to this tree. The warm median-of-N below is
+  // what `bench/run.ts` does. Comparing the two spreads shows whether the noise belongs
+  // to the work or to the sampling.
   const cold = argv.includes('--cold');
   if (!cold) await buildOnce(root, declared); // warm-up, discarded
 
@@ -199,7 +172,7 @@ async function floor(invocations: number, runs: number, repo: string, injectMs: 
   return { across: summarise(medians), internal };
 }
 
-/** The pair, inside one process, which is how both earlier measurements were taken. */
+/** The pair, back to back inside one process. */
 async function pair(runs: number): Promise<void> {
   const results: { label: string; summary: Summary }[] = [];
 

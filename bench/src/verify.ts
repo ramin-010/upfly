@@ -1,34 +1,13 @@
 /**
- * §5.1(d), the half a machine should do.
+ * Checks the engine's `broken`, `dead` and `possibly-dead` findings against the repository
+ * itself, so a person reviews only the ones a machine cannot settle.
  *
- * The protocol says a person opens every `broken` finding and greps every dead
- * asset before believing it. The first worksheets this produced held **601
- * checkboxes with the grep command already written out** — and if the command is
- * written, the machine should run it. That is data entry, not review, and a person
- * doing it 601 times starts rubber-stamping around item forty, which is worse than
- * not checking at all.
- *
- * ⚠️ **The oracle here is deliberately NOT the engine.** No `resolve.ts`, no
- * `sweep.ts`, no adapters — a directory index built by its own walker and a grep
- * built from its own regex. An engine checking its own findings with its own logic
- * agrees with itself, which is the same rule `fixture-integrity.test.ts` follows and
- * for the same reason.
- *
- * It differs from the engine's own machinery on purpose, in three ways that are the
- * whole point:
- *
- * - it walks the directories `discover` prunes and whatever `.upflyignore` excluded,
- *   because an asset referenced from a pruned directory is still referenced — but **not**
- *   vendored dependencies or generated build output, which are derived rather than
- *   authored. See `ORACLE_SKIPS` for the measurement behind that;
- * - it matches an asset's **stem under a different extension** as well as its exact
- *   filename, which catches the case Phase 2 will create;
- * - it decides a path exists by looking it up in the **directory index**, not with
- *   `existsSync`, because `existsSync` is case-insensitive on Windows and would
- *   report a genuine cross-platform defect as a false finding.
- *
- * Every item comes back *confirmed-genuine*, *confirmed-false* or *ambiguous* with
- * the evidence attached. Only the ambiguous ones are a person's problem.
+ * It does not run the engine's resolver, sweep or adapters. It walks and indexes the tree
+ * with its own code, taking from the engine only the image extensions and the functions
+ * that write a path in its encoded spellings. A check built on the engine's code agrees
+ * with the engine's mistakes; `fixture-integrity.test.ts` follows the same rule. Each item
+ * comes back `confirmed-genuine`, `confirmed-false` or `ambiguous`, with the evidence that
+ * decided it. See "Verifying findings from outside the engine" in ARCHITECTURE.md.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -47,17 +26,15 @@ export interface ItemVerdict {
   /** What the oracle actually saw. A verdict without this is an opinion. */
   readonly evidence: readonly string[];
   /**
-   * Items sharing this are the **same decision**, and the worksheet renders them
-   * once. Twenty scaffolding fixtures all missing `/next.svg` is one judgement
-   * call, and asking for it twenty times is how a worksheet goes back to being
-   * 601 checkboxes nobody reads.
+   * Items sharing this are one decision, and the worksheet renders them once: twenty
+   * fixtures all missing `/next.svg` are one judgement call, not twenty.
    */
   readonly group?: string;
 }
 
 export interface VerifyResult {
   readonly items: readonly ItemVerdict[];
-  /** Files the oracle could not read, so its own coverage is not silent (rule 9). */
+  /** Files the oracle could not read or did not grep, each with the reason. */
   readonly unreadable: readonly string[];
   readonly filesIndexed: number;
   readonly filesGrepped: number;
@@ -75,28 +52,26 @@ interface Hit {
 /**
  * Everything the oracle knows about the repository, built once.
  *
- * `files` is every path as the filesystem actually spells it, so a lookup is
- * case-exact on every platform.
+ * `files` holds every path as the filesystem spells it, so a lookup is case-exact on every
+ * platform. `existsSync` is case-insensitive on Windows, and would call a `broken` finding
+ * false when the reference breaks on a case-sensitive filesystem.
  */
 interface RepoIndex {
   readonly files: ReadonlySet<string>;
   readonly hitsByToken: ReadonlyMap<string, readonly Hit[]>;
   readonly hitsByStem: ReadonlyMap<string, readonly Hit[]>;
   /**
-   * Lowercased text of every grepped file, for the literal fallback below.
-   *
-   * Held in memory on purpose: it is the only way to answer "does this exact name appear"
-   * for a basename the tokeniser cannot represent, and a bench tool can afford it.
+   * Lowercased text of every grepped file, for the literal searches. Kept in memory because
+   * it is the only way to find a name the tokeniser cannot represent, and a bench tool can
+   * afford it.
    */
   readonly lowerTexts: ReadonlyMap<string, string>;
   readonly unreadable: readonly string[];
   readonly filesIndexed: number;
   readonly filesGrepped: number;
   /**
-   * Whether the tokeniser that built this index can represent a given basename.
-   *
-   * Carried on the index rather than computed at the call site so it is answered by
-   * the same tokeniser that did the indexing, which is the whole point.
+   * Whether the tokeniser that built this index can produce a given basename. Carried on
+   * the index so the answer comes from that same tokeniser.
    */
   readonly canRepresent: (name: string) => boolean;
 }
@@ -121,15 +96,10 @@ export async function verifyFindings(
     }
   }
 
-  // R22's demoted vectors, verified exactly as if they had stayed itemised.
-  //
-  // ⚠️ **Not optional, and the reason is a near miss.** These are no longer in
-  // `report.findings`, so the first version of R22 dropped 145 assets out of this pass
-  // without anything saying so -- astro-docs' verdict count fell from 150 to 24 while the
-  // write-up was about to quote "0 confirmed-false" over the smaller number. A finding the
-  // report declines to itemise is still a claim about somebody's repository, and the
-  // independent oracle is the only thing that checks it. `assets` is `null` unless the run
-  // asked for them, which is why `validate.ts` passes `includeUnusedVectors`.
+  // Unused vectors are counted in `unusedVectors` rather than listed in `findings`, but each
+  // is still a `dead` or `possibly-dead` claim about the repository, so each is checked like
+  // one. `assets` is `null` unless the run asked for the list, which is why `validate.ts`
+  // passes `includeUnusedVectors`.
   for (const vector of report.unusedVectors.assets ?? []) {
     items.push(
       vector.kind === 'dead'
@@ -147,11 +117,9 @@ export async function verifyFindings(
 }
 
 /**
- * §5.1(d): every `broken` finding, opened.
- *
- * **One false `broken` fails the gate**, so this resolves the path the way a bundler
- * would — file-relative, then every serving root that is an ancestor of the
- * referencing file, then the project root — and answers from the directory index.
+ * Resolves a `broken` finding's path again, against the directory index. A relative path
+ * is tried from the referencing file only; a root-relative one against the serving roots of
+ * the app that holds the file, the `public/` directories above it, and the project root.
  */
 function verifyBroken(
   file: string,
@@ -162,19 +130,9 @@ function verifyBroken(
   const subject = `${file} → ${rawPath}`;
   const path = rawPath.split('?')[0]?.split('#')[0] ?? rawPath;
 
-  // 🔴 **EVERY SPELLING, BECAUSE THIS ORACLE SHARED THE ENGINE'S BLIND SPOT AND
-  // CERTIFIED FOUR FALSE FINDINGS AS GENUINE (R119).** It asked `index.files.has(candidate)`
-  // with the path exactly as written, so `images/lodz/2015/netguru%20(1).jpg` missed a real
-  // file called `netguru (1).jpg` — and the basename test missed it too, for the same
-  // reason. It then returned **`confirmed-genuine` with evidence attached**, which is worse
-  // than returning nothing: the run printed *"None came back false"* over 1,886 adjudicated
-  // findings while four of them were false.
-  //
-  // ⚠️ **An oracle that shares the mechanism it is checking is not an oracle.** The point
-  // of this file is that it does not use the engine — its own index, its own grep — and it
-  // was nevertheless reproducing the engine's exact defect, because *not decoding* is the
-  // default behaviour of any string comparison. R96's family, and the damaging direction:
-  // it AGREED.
+  // Every spelling the path decodes to. `netguru%20(1).jpg` names a file called
+  // `netguru (1).jpg`, and a check that compared the text as written would share the
+  // engine's blind spot and confirm a false `broken` as genuine.
   const spellings = spellingsOf(path).map((candidate) => candidate.path);
   const candidates = spellings.flatMap((spelling) => candidatePaths(file, spelling, publicDirs));
 
@@ -225,24 +183,14 @@ function verifyBroken(
 }
 
 /**
- * Every place a bundler could actually serve this path from.
+ * Every path a server could answer this reference with.
  *
- * ⚠️ **Proximity filters; it does not merely order.** The first version of this
- * function tried every configured serving root and reported 19 of shadcn-ui's 20
- * `broken` findings as false, on evidence like *"`/next.svg` resolves to
- * `apps/v4/public/next.svg`"* — for a file under
- * `packages/shadcn/test/fixtures/frameworks/next-app/`, which `apps/v4` does not
- * serve. That is precisely the cross-app false link R13's correction was issued to
- * remove, reimplemented here and then used to "disprove" the engine that had already
- * fixed it.
- *
- * The lesson is worth more than the fix: an independent oracle has to be independent
- * in **implementation**, not in **correctness**. Modelling how static serving works
- * is not copying the engine — it is the ground truth both are trying to match.
- *
- * A serving root `apps/v4/public` serves the app rooted at `apps/v4`, so it applies
- * only to files underneath it. Ancestor `public/` directories are tried the same way,
- * which is what auto-detection would find.
+ * A serving root applies only to files of the app it serves: `apps/v4/public` serves the
+ * app rooted at `apps/v4`, so it cannot answer `/next.svg` for a file in another app. A
+ * `public/` directory above the file is tried the same way, as serving-root detection would
+ * find it. Trying every root would call a correct `broken` false. This models how static
+ * serving works, which is what the engine is measured against, rather than copying the
+ * engine. See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 function candidatePaths(
   file: string,
@@ -272,38 +220,19 @@ function candidatePaths(
     candidates.push(bare);
   } else {
     candidates.push(posix.normalize(posix.join(posix.dirname(file), path)));
-    // ⚠️ **The project-root reading of a `./` path is deliberately NOT offered here,
-    // and removing it is the point.** It used to be, citing R15 — but R15 allows that
-    // fallback only for a **speculative** reference, and every `broken` finding is
-    // asserted by construction (rung 7 tests `asserted`). `./` in an `<img src>`
-    // unambiguously means file-relative, and R15's own reasoning is that falling back
-    // would link a genuinely broken reference to an unrelated file: a false link,
-    // which costs a broken build where a false `broken` costs five minutes.
-    //
-    // Offering it made the oracle MORE generous than the engine intends to be, and on
-    // `railsgirls-com` that produced six "confirmed FALSE" verdicts against an engine
-    // that was right every time: `files/galway/archive.html` asks for
-    // `./images/galway/alanna.jpg`, which does not exist beside it — the images moved
-    // and the archived page was left behind. An oracle that disagrees with a correct
-    // engine fails the gate exactly as loudly as a real defect.
+    // No project-root reading of a relative path. The engine allows that fallback only for
+    // a speculative reference, and every `broken` finding is asserted: `./images/a.jpg` in
+    // an `<img src>` means beside this file. Trying the root would match an unrelated file
+    // and report a correct `broken` as false.
   }
 
   return [...new Set(candidates)].filter((candidate) => !candidate.startsWith('..'));
 }
 
 /**
- * Whether the tokeniser can actually produce this basename — **asked, not guessed**.
- *
- * ⚠️ **This was a regex proxy, `/^[\w@.\- ]+$/`, and the proxy disagreed with the
- * thing it stood for.** The tokeniser's leftward walk stops after six words, so
- * `WhatsApp Image 2025-12-11 at 15.08.45 - Sonia Bishnoi.webp` — eight words, and
- * exactly the shape R26 came from — passes the character test, is NOT representable,
- * and therefore skipped the literal fallback and fell through to a confident verdict
- * the index could not support. One asset on RBU-Website, measured.
- *
- * That is the same defect as the guard that tested a decoy: a check whose subject is
- * not the thing in play. So the proxy is gone and the tokeniser is asked directly, by
- * running it over a synthetic occurrence of the name. It cannot drift from itself.
+ * Whether the tokeniser can produce this basename, found by running it over a synthetic
+ * occurrence of the name. A character test cannot answer this: the leftward walk adds at
+ * most six words, so a long name made of allowed characters can still be unrepresentable.
  */
 function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
   const wanted = name.toLowerCase();
@@ -314,24 +243,9 @@ function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
 }
 
 /**
- * Every spelling a source file might name this asset by.
- *
- * 🔴 **R121, and it is R119's tail pointed at the expensive direction.** `verifyDead`
- * asked the token index for the basename EXACTLY AS IT SITS ON DISK, so an asset called
- * `hero image.png` whose only mention writes `hero%20image.png` produced no hit and came
- * back **`confirmed-genuine`** — *this filename appears nowhere in your codebase*, about a
- * file the site is serving.
- *
- * ⚠️ **A false `broken` and a false `dead` are the same defect seen from both ends.** In
- * `railsgirls-com` the engine emitted both about the same pair at the same time — a
- * reference pointing at nothing AND a file nobody references — and neither instrument
- * noticed the contradiction. **A false `broken` costs five minutes; a false `dead` costs
- * the file.**
- *
- * ⚠️ Measured: four assets in that repository are named ONLY in an encoded spelling.
- * R118 fixed the ENGINE, so they stopped being reported dead and the oracle's copy of the
- * defect became unreachable from the corpus — which is why `verify.test.ts` owns the
- * input now rather than hoping a repository supplies it (R117).
+ * Every spelling a source file might name this asset by: as on disk, percent-encoded and
+ * entity-encoded. A page that writes `hero%20image.png` references `hero image.png`, and
+ * missing it confirms a false `dead`, which tells someone to delete a file their site serves.
  */
 function nameSpellings(asset: string): readonly string[] {
   const name = posix.basename(asset);
@@ -339,39 +253,13 @@ function nameSpellings(asset: string): readonly string[] {
 }
 
 /**
- * The fallback for a basename the tokeniser cannot represent at all.
+ * The asset's name under another image extension, found by literal search. Like
+ * `literalHits`, it runs only for spellings the token index cannot represent; the caller
+ * has already asked `hitsByStem` about the rest.
  *
- * ⚠️ **A different search strategy on purpose, not a wider regex.** `WhatsApp Image
- * 2026-03-11 at 1.29.35 PM (1).webp` contains parentheses, which are not in the oracle's
- * character class — so no token is produced, the lookup finds nothing, and `verifyDead`
- * concludes *confirmed-genuine* having checked nothing. That verdict is not evidence, and
- * it is the shape that made §5.1(j) read 0.0% when **4 of those assets were referenced**.
- *
- * Widening the class was the wrong fix twice over: parentheses are delimiters in unquoted
- * CSS `url(…)` and bare Markdown `![](…)`, and every widening so far has cost more than it
- * bought. A literal case-insensitive substring search **cannot have a tokenisation hole**,
- * because it does no tokenising. It runs only for names the index provably cannot hold —
- * measured at 10 of 553 on `RBU-Website` — so its cost is bounded by that count rather
- * than by the corpus.
- *
- * ⚠️ **This is also the answer to "how would we know".** The index will always have some
- * character it cannot represent; what matters is that a name it cannot represent takes a
- * different road rather than falling through to a confident verdict.
- *
- * Returns `null` when the name *is* tokenisable, so the ordinary path runs unchanged.
- */
-/**
- * The stem under a different image extension, found by literal search.
- *
- * ⚠️ **Runs only for spellings the token index cannot represent**, exactly as
- * `literalHits` does, so it costs the number of such names rather than the corpus. A
- * representable spelling was already asked of `hitsByStem` by the caller.
- *
- * ⚠️ **It requires a real extension boundary.** Searching for the stem alone would match
- * `only encoded-2.png` and any longer name beginning with the same letters, which would
- * turn a caution flag into noise. The character after the stem must be a dot, and what
- * follows must be an image extension that is **not** the asset's own — the asset's own
- * extension is the exact-match case and was answered above.
+ * The needle is the stem, a dot and an image extension other than the asset's own, so
+ * `only encoded` does not match `only encoded-2.png`. The asset's own extension is the
+ * exact match, answered before this runs.
  */
 function literalStemHits(
   asset: string,
@@ -406,12 +294,19 @@ function literalStemHits(
   return found;
 }
 
+/**
+ * Searches literally for the spellings of an asset's name that the token index cannot
+ * hold. `photo (1).webp` has parentheses, which are outside the tokeniser's character
+ * class. Widening the class is not the fix, because parentheses delimit unquoted CSS
+ * `url(…)` and Markdown `![](…)`. A substring search has no tokenisation gaps, and it runs
+ * only for such names, so its cost follows their number rather than the repository's size.
+ *
+ * Returns `null` when the token index still has to be asked.
+ */
 function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
-  // 🔴 **Every SPELLING, and the search runs whenever ANY of them is unrepresentable.**
-  // `hero image.png` is representable, so the old guard returned `null` here and the token
-  // path ran — and the token path cannot see `hero%20image.png`, because `%` is not in the
-  // index's character class. The name being representable said nothing about the spelling
-  // the source actually used.
+  // The search runs when any spelling is unrepresentable, not only the name on disk:
+  // `hero image.png` is representable, but the index cannot see `hero%20image.png`, since
+  // `%` is outside its character class.
   const spellings = nameSpellings(asset);
   const unrepresentable = spellings.filter((spelling) => !index.canRepresent(spelling));
   if (unrepresentable.length === 0) return null;
@@ -430,9 +325,8 @@ function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
   }
 
   if (found.length === 0) {
-    // ⚠️ **Not a verdict yet when the literal name IS representable.** Returning
-    // `confirmed-genuine` here would answer for the token index without having asked it:
-    // the literal search covered only the spellings it could not hold. Fall through.
+    // When the name itself is representable, only the other spellings were searched for,
+    // so the token index still has to be asked.
     if (index.canRepresent(posix.basename(asset))) return null;
     return {
       kind: 'dead',
@@ -458,19 +352,15 @@ function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
 }
 
 /**
- * §5.1(d): every `dead` asset, grepped across the whole repository.
- *
- * `dead` is the strong claim — *this filename appears nowhere in your codebase* — so
- * this is the claim most worth attacking. The oracle greps places the engine
- * deliberately does not: pruned directories, ignored ones, and the asset's stem
- * under a different extension.
+ * Searches the repository for a `dead` asset's name. `dead` says the name appears nowhere,
+ * the strongest claim the engine makes, so the search also covers directories
+ * `.upflyignore` excludes and the name under other image extensions.
  */
 function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
   const literal = literalHits(asset, index);
   if (literal !== null) return literal;
 
-  // Every spelling the index can actually hold. The ones it cannot were searched for
-  // literally above (R121).
+  // Every spelling the index can hold. `literalHits` has searched for the others.
   const exact = nameSpellings(asset)
     .flatMap((spelling) => index.hitsByToken.get(spelling.toLowerCase()) ?? [])
     .filter((hit) => hit.file !== asset);
@@ -486,17 +376,9 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
     };
   }
 
-  // 🔴 R130: the stem must be asked for in every spelling too, and this is R121's defect
-  // one level down. `stem` above is the basename EXACTLY AS IT SITS ON DISK, so an asset
-  // called `hero image.png` whose only mention writes `hero%20image.jpg` misses here —
-  // and the miss does not land on `ambiguous`, it falls through to the
-  // **`confirmed-genuine`** return below, which prints *"no mention of this file
-  // anywhere, under any image extension"* about a name the codebase does mention.
-  //
-  // ⚠️ R121 fixed the exact-match branch directly above with `nameSpellings` and left
-  // this one asking the literal question. **The cheap-looking branch was the one still
-  // pointed the expensive way**: a false `broken` costs five minutes, a false `dead`
-  // costs the file.
+  // The stem is asked for in every spelling too: a name mentioned only as
+  // `hero%20image.jpg` is still mentioned, and a miss here falls through to
+  // `confirmed-genuine`.
   const stems = new Set(
     nameSpellings(asset).map((spelling) => {
       const lower = spelling.toLowerCase();
@@ -508,17 +390,9 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
     .flatMap((candidate) => index.hitsByStem.get(candidate) ?? [])
     .filter((hit) => hit.extensionSwapped && hit.file !== asset);
 
-  // 🔴 AND ASKING IN EVERY SPELLING IS NOT ENOUGH HERE, WHICH IS THE PART THAT SURPRISED
-  // ME. The token index cannot hold `%` at all — it is outside the tokeniser's character
-  // class — so `only%20encoded.jpg` is indexed under the stem `20encoded`, and NO
-  // spelling of `only encoded` can ever match it. Spelling the question correctly does
-  // not help when the index cannot hold the answer.
-  //
-  // R121 already solved that shape for the exact branch, with a literal substring search
-  // reserved for the spellings the index provably cannot represent (`literalHits`). This
-  // is that same fallback for the stem, and it is bounded the same way: it runs only for
-  // unrepresentable spellings, so its cost is the count of those names rather than the
-  // corpus.
+  // The index cannot hold `%`, so `only%20encoded.jpg` is indexed under the stem
+  // `20encoded`, where no spelling of `only encoded` can find it. As in `literalHits`,
+  // spellings the index cannot represent are searched for literally.
   if (swapped.length === 0) {
     const literal = literalStemHits(asset, stems, index);
     if (literal.length > 0) {
@@ -561,12 +435,9 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
 }
 
 /**
- * §5.1(d): every hedge's citation, opened.
- *
- * `possibly-dead` is not exempt from review, and the thing to check is not whether
- * the asset is alive — the hedge does not claim to know — but whether the citation
- * is **real**. A hedge pointing at a line that does not contain the name is worse
- * than no hedge: it sends a user somewhere and wastes the trust the citation bought.
+ * Checks each citation of a `possibly-dead` finding. The hedge does not say whether the
+ * asset is alive, so what is checked is that the cited file and line hold the name. A
+ * citation of the wrong place is worse than none, because a user follows it.
  */
 function verifyHedge(
   asset: string,
@@ -586,11 +457,8 @@ function verifyHedge(
       continue;
     }
 
-    // ⚠️ **The same blind spot pointed the SAFE way, which is why it would have been
-    // fixed last (R121).** A citation at a line writing `hero%20image.png` produced no
-    // token hit, so the oracle called a perfectly good citation `confirmed-false` and
-    // failed the gate over an engine that was right. A correct engine reported as broken
-    // costs somebody an afternoon (R86's family).
+    // Every spelling here too: a citation of a line that writes `hero%20image.png` is
+    // correct, and missing it would report a correct engine as wrong.
     const spellings = nameSpellings(asset);
     const hits = spellings.flatMap(
       (spelling) => index.hitsByToken.get(spelling.toLowerCase()) ?? [],
@@ -650,17 +518,8 @@ function verifyHedge(
 }
 
 /**
- * Index one file's image-filename tokens into the two maps.
- *
- * ⚠️ **Extracted so the guard below can run the REAL indexing path.** While this was
- * an inline loop, `assertOracleSeesSpaces` tested `oracleTokens` directly and the loop
- * was free to call `pattern.exec` instead — which is exactly what it did. The guard
- * was active, passing and specific, and pointed at an object nothing on the path used.
- *
- * With the loop behind a named function the guard can assert on what the index
- * actually produces, so reverting the tokeniser fails the guard rather than sliding
- * past it. **The test to apply to any guard: if the function it calls were deleted,
- * would production break?**
+ * Indexes one file's image-filename tokens into the two maps. A function of its own so
+ * that `assertOracleSeesSpaces` runs the same indexing path as the walk.
  */
 function indexOneFile(
   text: string,
@@ -680,36 +539,19 @@ function indexOneFile(
       text: lineText(text, index),
       extensionSwapped: false,
     };
-    // ⚠️ **Push, never spread.** This was
-    // `map.set(token, [...(map.get(token) ?? []), hit])`, which copies the whole array
-    // per hit and is quadratic in the number of times one filename appears. On the three
-    // pinned repos nothing repeats often enough to notice; on a real site with 1,873
-    // images it turned a 23-second pipeline into a run that had not finished in ten
-    // minutes. A check nobody can afford to run is a check nobody runs.
     pushHit(hitsByToken, token, hit);
     pushHit(hitsByStem, stem, { ...hit, extensionSwapped: true });
   }
 }
 
 /**
- * The oracle's own tokeniser, which must be able to see a filename containing a space.
+ * The oracle's own filename tokeniser. The pattern cannot cross a space, so from each match
+ * it walks left over up to six space-separated words and yields every step: `Practice.webp`,
+ * then `Firing Practice.webp`.
  *
- * ⚠️ **It could not, and that is the R17 amendment landing for the third time.** This
- * index was built with `[\w@.\-]+\.(ext)` — no space — exactly like the engine's sweep.
- * So for an asset named `Firing Practice.webp` the oracle indexed only `practice.webp`,
- * the lookup for `firing practice.webp` found nothing, and it returned
- * **confirmed-genuine for a false `dead`.** *"Independent in implementation is not
- * independent in assumption"*: a different tree walk and a different regex, and the same
- * blind spot, because both were written by people who do not put spaces in filenames.
- *
- * This is the defect that would have made §5.1(j) worthless — the rate would have come
- * back near zero because the instrument could not see the class being measured. **R26's
- * 16% was found by a person grepping served paths by hand, not by this.**
- *
- * Deliberately a **separate copy** of the extend-leftwards trick rather than an import of
- * `imageFilenameCandidates`: the whole value of an oracle is that it agrees with the
- * engine by coincidence rather than by construction. `assertOracleSeesSpaces` below is
- * what stops the copy silently regressing.
+ * A copy of the engine's `imageFilenameCandidates` rather than an import, so the oracle
+ * agrees with the engine by coincidence, not by construction. `assertOracleSeesSpaces`
+ * keeps the copy from losing the walk.
  */
 function* oracleTokens(text: string, pattern: RegExp): Generator<[token: string, index: number]> {
   pattern.lastIndex = 0;
@@ -732,20 +574,13 @@ function* oracleTokens(text: string, pattern: RegExp): Generator<[token: string,
 }
 
 /**
- * Prove the oracle can see the class it is about to measure, before it measures it.
- *
- * A gate whose instrument is blind to the failure reports a clean result either way, and
- * that is the one outcome this project has learned to distrust. Cheap, runs once, and
- * throws rather than warning — a warning in a bench script is a line nobody reads.
+ * Proves the index can see a filename containing a space before any verdict relies on it:
+ * an oracle blind to that class reports a clean result either way. It throws rather than
+ * warns, because a warning in a bench script is a line nobody reads.
  */
 function assertOracleSeesSpaces(pattern: () => RegExp): void {
-  // ⚠️ **Runs the real indexing path, not the tokeniser.** The previous version called
-  // `oracleTokens` directly, and the index was free to tokenise some other way — which
-  // it did, with `pattern.exec`. So the guard passed, named the right risk, asserted
-  // the right property, and certified an object nothing on the path used.
-  //
-  // Asserting on what `indexOneFile` puts in the map closes that: a tokeniser change
-  // that skips the space-aware pass now fails here instead of sliding past.
+  // Asserts on what `indexOneFile` puts in the map rather than on `oracleTokens`, so an
+  // indexing path that bypasses the space-aware tokeniser fails here.
   const hitsByToken = new Map<string, Hit[]>();
   const hitsByStem = new Map<string, Hit[]>();
   indexOneFile('src="/ncc/Firing Practice.webp"', 'probe.html', pattern(), hitsByToken, hitsByStem);
@@ -770,7 +605,6 @@ async function buildIndex(root: string): Promise<RepoIndex> {
   const makePattern = () => new RegExp(`[\\w@.\\-]+\\.(?:${extensions})\\b`, 'gi');
   const pattern = makePattern();
 
-  // Before measuring anything, prove the instrument can see the class being measured.
   assertOracleSeesSpaces(makePattern);
 
   let walked = 0;
@@ -789,17 +623,8 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     }
 
     const extension = rel.slice(rel.lastIndexOf('.')).toLowerCase();
-    // ⚠️ **`.svg` is an image AND a text container, so it is grepped.** Skipping every
-    // image extension meant the oracle never looked inside an SVG, and on
-    // `railsgirls-com` that produced three "confirmed FALSE" hedges whose citations
-    // were all real: Inkscape writes `sodipodi:docname="GitLab.svg"` into the file, the
-    // engine's sweep reads `.svg` as unscanned text and cited it correctly, and the
-    // oracle — which had never read the file — called the engine wrong.
-    //
-    // ARCHITECTURE.md says this about the engine's own sweep in as many words. The
-    // oracle simply did not have it, which is what "independent in implementation is
-    // not independent in assumption" costs when the assumption is *"an image is not
-    // text"*.
+    // An SVG is text as well as an image, so it is read: editors write names into it, such
+    // as Inkscape's `sodipodi:docname="GitLab.svg"`, and the engine's sweep cites those lines.
     if (IMAGE_EXTENSIONS.includes(extension) && extension !== '.svg') continue;
 
     let text: string;
@@ -813,8 +638,8 @@ async function buildIndex(root: string): Promise<RepoIndex> {
       unreadable.push(`${rel} — larger than ${MAX_GREP_BYTES} bytes, not grepped`);
       continue;
     }
-    // Built with `String.fromCharCode` on purpose: a literal NUL in a source file
-    // is exactly the character this harness mangles in transit, and it did.
+    // `String.fromCharCode(0)` rather than a literal NUL, which is invisible in the source
+    // and easily corrupted.
     if (text.includes(String.fromCharCode(0))) {
       unreadable.push(`${rel} — contains a NUL byte, treated as binary and not grepped`);
       continue;
@@ -838,25 +663,9 @@ async function buildIndex(root: string): Promise<RepoIndex> {
 }
 
 /**
- * Everything but `.git` and vendored dependencies.
- *
- * Deliberately not `discover`'s prune list: an asset referenced from `dist/` or from
- * a directory the user ignored is still referenced, and the point of an independent
- * oracle is to look where the engine agreed not to.
- *
- * ⚠️ **`node_modules` is the exception, and it is a validity fix rather than a speed one.**
- * That principle is about the *user's own* output — `dist/`, a `.gitignore`d build — and a
- * third-party package is not that. A user's asset filename appearing inside a dependency's
- * own files is a coincidence, not a reference to their asset, so counting it would produce
- * a **false confirmed-false** and bias §5.1(j)'s rate *upward*, making the engine look
- * worse than it is. The engine prunes `node_modules` too, so indexing it here would not be
- * independence — it would make the two corpora incomparable.
- *
- * None of the three pinned §5.1(c) repos has `node_modules` installed, so this changes
- * nothing there. It matters only on a real working repository, which is exactly what (j)
- * is pointed at. (It is also what took a run past ten minutes.)
+ * Appends without copying. Spreading into a new array per hit is quadratic in the number
+ * of times one filename appears.
  */
-/** Append without copying. See the note at the call site. */
 function pushHit(into: Map<string, Hit[]>, key: string, hit: Hit): void {
   const existing = into.get(key);
   if (existing === undefined) into.set(key, [hit]);
@@ -864,33 +673,10 @@ function pushHit(into: Map<string, Hit[]>, key: string, hit: Hit): void {
 }
 
 /**
- * Directories the oracle does not index: vendored dependencies and generated output.
- *
- * ⚠️ **This reverses a decision written in this file, and the reversal is measured.** The
- * note above said an asset referenced from `dist/` is still referenced, so the oracle
- * should look there. Two problems showed up the first time it was pointed at a real
- * working repository rather than a pinned clone:
- *
- * - **Cost.** `.next/` holds 1,482 files of minified bundles, and the oracle's regex
- *   backtracks catastrophically over long runs of word characters. Measured on
- *   `D:/RBU/RBU-Website`: **over ten minutes** with `.next` indexed, **181 ms** without,
- *   across the same 1,314 other files. A check nobody can afford to run is a check nobody
- *   runs, and §5.1(j) is meant to be run on real repositories.
- * - **Validity, which matters more.** Generated output is *derived from* source. If the
- *   source still names an asset, the oracle finds it in the source; the only thing a build
- *   directory adds is the case where the source reference is **gone and the bundle is
- *   stale** — where the asset genuinely is dead and the oracle would wrongly call the
- *   finding false. Indexing it inflates the measured error rate with the engine's own
- *   correct answers.
- *
- * The same argument covers `node_modules`: a user's filename appearing inside a dependency
- * is a coincidence, not a reference to their asset.
- *
- * None of the three pinned §5.1(c) repos contains any of these directories, so this
- * changes nothing there — which is also why it was never noticed.
- *
- * ⚠️ **Raised rather than settled:** this changes §5.1(d)'s stated method, not the engine.
- * If the parent chat wants the other number, deleting an entry here is the whole change.
+ * Directories the oracle does not index: version control, dependencies and generated
+ * output. A stale bundle can name an asset the source no longer uses, and a dependency can
+ * hold a user's filename by coincidence; either would call a correct `dead` false. Minified
+ * bundles are also where the filename pattern is slowest.
  */
 const ORACLE_SKIPS: ReadonlySet<string> = new Set([
   '.git',
