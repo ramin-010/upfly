@@ -191,12 +191,17 @@ export function compareWithBaseline(baseline, current) {
 }
 
 /**
- * Lists the files in scope under `root`, as sorted POSIX-relative paths.
+ * Lists the files in scope under `root`, as sorted POSIX-relative paths: the source files at
+ * the root itself, such as `vitest.config.ts`, and every source file under the scanned
+ * directories.
  *
  * @param {string} root
  * @returns {string[]}
  */
 export function filesInScope(root) {
+  const configs = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && SOURCE_EXTENSION.test(entry.name))
+    .map((entry) => entry.name);
   const files = scannedDirs(root).flatMap((dir) => {
     const absolute = path.join(root, dir);
     if (!existsSync(absolute)) return [];
@@ -208,7 +213,7 @@ export function filesInScope(root) {
           !relative.split('/').some((segment) => SKIPPED_DIRS.has(segment)),
       );
   });
-  return files.sort(byCodeUnit);
+  return [...configs, ...files].sort(byCodeUnit);
 }
 
 /**

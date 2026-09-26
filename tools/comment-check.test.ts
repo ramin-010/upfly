@@ -200,6 +200,20 @@ describe('the script itself', () => {
     expect(output).toMatch(/line \d+:/);
   });
 
+  it('reads the source files at the root, such as vitest.config.ts, but no other folder', () => {
+    const planted = `// one ${EM_DASH} two\nexport {};\n`;
+    const root = tree({
+      'vitest.config.ts': planted,
+      'docs/demo.ts': planted,
+      'fixtures/site/demo.js': planted,
+      'folder.mjs/notes.txt': 'a folder named like a source file\n',
+    });
+    const { status, output } = run(root);
+    expect(status).toBe(1);
+    expect(output).toContain('Comment check: 1 file gained findings against the baseline.');
+    expect(output).toContain('vitest.config.ts: em-dash, 0 in the baseline and 1 now');
+  });
+
   it('passes a clean tree, and the inputs that must not trip it', () => {
     const root = tree({
       [SHIPPED]: [
