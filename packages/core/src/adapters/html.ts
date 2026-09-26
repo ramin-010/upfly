@@ -1,9 +1,10 @@
 /**
  * The HTML adapter.
  *
- * Finds image references in attributes (`src`, `srcset`, `poster`, icon `href`) and in
- * the CSS that HTML carries: `<style>` elements and `style=""` attributes, both handed to
- * the CSS adapter's scanner. See "The six that exist" in ARCHITECTURE.md.
+ * Finds image references in the attributes `url-attributes.ts` lists (`src`, `srcset`,
+ * `poster`, icon `href` and the rest), the list the JSX reader shares, and in the CSS that
+ * HTML carries: `<style>` elements and `style=""` attributes, both handed to the CSS
+ * adapter's scanner. See "The six that exist" in ARCHITECTURE.md.
  *
  * parse5 parses by the HTML specification, so an `<img>` inside a comment is a comment
  * node, never an element, and every attribute comes with its exact source range, which is
@@ -26,54 +27,10 @@ import {
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
+import { urlPosition } from './url-attributes.js';
 
 type ParsedNode = DefaultTreeAdapterMap['node'];
 type ParsedElement = DefaultTreeAdapterMap['element'];
-
-function attrs(...pairs: readonly (readonly [string, ShapeId])[]): ReadonlyMap<string, ShapeId> {
-  return new Map(pairs);
-}
-
-/**
- * Attributes holding exactly one URL, by tag name, each with the shape it produces.
- *
- * The shape lives in this map rather than in a second table keyed the same way, so a tag
- * cannot be added to one and forgotten in the other.
- */
-const SINGLE_URL_ATTRIBUTES: ReadonlyMap<string, ReadonlyMap<string, ShapeId>> = new Map([
-  ['img', attrs(['src', 'html.img.src'])],
-  ['source', attrs(['src', 'html.source.src'])],
-  ['video', attrs(['src', 'html.video.src'], ['poster', 'html.video.poster'])],
-  ['audio', attrs(['src', 'html.audio.src'])],
-  ['embed', attrs(['src', 'html.embed.src'])],
-  ['input', attrs(['src', 'html.input.src'])],
-  ['object', attrs(['data', 'html.object.data'])],
-  ['track', attrs(['src', 'html.track.src'])],
-
-  // Inline SVG. An `<svg>` inside an HTML document is not an `.svg` file, so no SVG adapter
-  // would cover these elements. Both attribute spellings count: `href` is the SVG 2 form,
-  // and `xlink:href` the SVG 1.1 form that most shipped markup still uses.
-  //
-  // Keys are lowercase because `collectFromElement` lowercases tag names. The HTML parser
-  // spells the element `feImage` (the specification's table for adjusting SVG tag names),
-  // so a key written that way would never match.
-  ['image', attrs(['href', 'html.svg.image.href'], ['xlink:href', 'html.svg.image.xlink'])],
-
-  // Both `feImage` spellings share one shape, where `<image>` has one each: the coverage
-  // tree holds too few `feImage` entries to fill two rows.
-  ['feimage', attrs(['href', 'html.svg.feimage'], ['xlink:href', 'html.svg.feimage'])],
-]);
-
-// `<use>` is left out on purpose. Its commonest form, `<use href="#icon">`, names an element
-// in the same document, not a file. `<use href="/sprite.svg#icon">` does name a file, but a
-// vector that Upfly neither converts nor deletes, so linking it gains nothing, while every
-// fragment-only `<use>` would first need filtering out.
-
-/** Attributes holding a comma-separated candidate list, by tag name. */
-const SRCSET_ATTRIBUTES: ReadonlyMap<string, readonly string[]> = new Map([
-  ['img', ['srcset']],
-  ['source', ['srcset']],
-]);
 
 /**
  * Which srcset row a candidate belongs to.
@@ -239,7 +196,12 @@ function collectFromAttribute(input: {
     return;
   }
 
-  if ((SRCSET_ATTRIBUTES.get(tagName) ?? []).includes(name)) {
+  const position = urlPosition(tagName, name, {
+    attribute: (other) => attributeValue(element, other),
+  });
+  if (position === null) return;
+
+  if (position.html === 'srcset') {
     if (entityEscaped) {
       escaped(true);
       return;
@@ -256,49 +218,11 @@ function collectFromAttribute(input: {
     return;
   }
 
-  const single = SINGLE_URL_ATTRIBUTES.get(tagName)?.get(name);
-  if (single !== undefined) {
-    if (entityEscaped) {
-      escaped();
-      return;
-    }
-    addAttributeReference(raw, start, context, single);
+  if (entityEscaped) {
+    escaped();
     return;
   }
-
-  if (tagName === 'link' && name === 'href') {
-    // A `<link>` with neither claim, such as a stylesheet or a web manifest, names a real
-    // file Upfly does not index (`html.link.href.other`), so nothing is emitted for it.
-    const claim = linkImageClaim(element);
-    if (claim === null) return;
-    if (entityEscaped) {
-      escaped();
-      return;
-    }
-    addAttributeReference(raw, start, context, claim);
-  }
-}
-
-/**
- * How a `<link>` claims to point at an image, or `null` if it does not.
- *
- * Covers every icon spelling (`icon`, `shortcut icon`, `apple-touch-icon`, `mask-icon`)
- * and `rel="preload" as="image"`, which is how modern pages preload a hero image and is
- * as much a reference as an `<img>`.
- *
- * It returns which claim rather than a boolean because the two branches fail separately:
- * each has its own shape, so a break in one cannot hide behind the other.
- */
-function linkImageClaim(element: ParsedElement): ShapeId | null {
-  const relation = attributeValue(element, 'rel');
-  if (relation === undefined) return null;
-
-  const tokens = relation.toLowerCase().split(/\s+/);
-  if (tokens.some((token) => token.includes('icon'))) return 'html.link.href.icon';
-  if (tokens.includes('preload') && attributeValue(element, 'as')?.toLowerCase() === 'image') {
-    return 'html.link.href.preload';
-  }
-  return null;
+  addAttributeReference(raw, start, context, position.html);
 }
 
 function attributeValue(element: ParsedElement, name: string): string | undefined {

@@ -118,10 +118,10 @@ export const SHAPES = [
   { id: 'html.embed.src', label: 'embed@src', emission: 'engine' },
   { id: 'html.input.src', label: 'input@src', emission: 'engine' },
   { id: 'html.track.src', label: 'track@src', emission: 'engine' },
-  // Three `<link href>` rows. `linkImageClaim` in `html.ts` claims icons and preloaded
-  // images in two independent branches, so each can break without the other, and what it
-  // refuses is a third row. Each is named for what the link asserts, not for what its
-  // entries hold.
+  // Three `<link href>` rows. `linkImageClaim` in `url-attributes.ts` claims icons and
+  // preloaded images in two independent branches, so each can break without the other, and
+  // what it refuses is a third row. Each is named for what the link asserts, not for what
+  // its entries hold.
   {
     id: 'html.link.href.icon',
     label: 'link@href asserted as an icon',
@@ -133,9 +133,9 @@ export const SHAPES = [
     emission: 'engine',
     why:
       'A `<link rel="preload" as="image">`, the usual way a page preloads its hero image, ' +
-      'claimed by the preload branch of `linkImageClaim` in `html.ts`. The coverage tree holds ' +
-      'one instance rather than the usual three, because links written only to fill the row ' +
-      'would add no new case.',
+      'claimed by the preload branch of `linkImageClaim` in `url-attributes.ts`. The coverage ' +
+      'tree holds one instance rather than the usual three, because links written only to ' +
+      'fill the row would add no new case.',
   },
   {
     id: 'html.link.href.other',
@@ -659,8 +659,9 @@ export const SHAPES = [
     emission: 'engine',
     why:
       'An `<image href>` or `<feImage href>` in inline SVG inside JSX, read by ' +
-      '`collectFromJsxSvgImage`. The coverage tree tests the HTML version (`html.svg.*`) but ' +
-      'has no JSX instance, so nothing measures this one.',
+      '`collectFromJsxElement` from the positions `url-attributes.ts` lists. The coverage ' +
+      'tree tests the HTML version (`html.svg.*`) but has no JSX instance, so nothing ' +
+      'measures this one.',
   },
 ] as const satisfies readonly ShapeDeclaration[];
 

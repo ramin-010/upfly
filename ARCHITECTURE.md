@@ -656,9 +656,20 @@ produce exactly the silent corruption this design exists to prevent.
 | `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, `<style>`, `style=""` | `parse5` |
-| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster`, CSS-in-JS | `@babel/parser` |
+| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | regex over masked text; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
+
+An attribute names a file in JSX exactly where it does in HTML, because both adapters read one
+list, `URL_POSITIONS` in `url-attributes.ts`. A position is a tag, an attribute and, where those
+two do not decide, a claim read from the rest of the element: a `<link href>` names an image only
+when its `rel` says it is an icon or a preloaded image (`linkImageClaim`). Each row names the shape
+each adapter gives its reference, so a row added to the list is read in both, and
+`url-attributes.test.ts` checks that the same markup yields the same paths at the same offsets in
+a page and in a component. JSX keeps one rule of its own beside the list: `src`, `srcSet` and
+`poster` are read on any element, because a component such as `<Image>` hands them on to an
+`<img>`. The JSX reader decides each attribute at the element, and every attribute is either read
+or declined, never neither.
 
 The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
 template's markup in a separate fragment, and that markup is live: a script clones it into the

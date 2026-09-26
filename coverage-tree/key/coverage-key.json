@@ -6932,6 +6932,22 @@
           "column": 11
         }
       ]
+    },
+    {
+      "path": "apps/web/src/components/FaviconLink.tsx",
+      "entries": [
+        {
+          "raw": "/favicon.png",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute",
+          "expect": "resolved",
+          "why": "An icon link names a file wherever it is written, and the HTML adapter reads this element in index.html. A layout component that writes the page head in JSX holds the same link, so the icon is as used here as it is there.",
+          "target": "apps/web/public/favicon.png",
+          "offset": 164,
+          "line": 3,
+          "column": 33
+        }
+      ]
     }
   ]
 }

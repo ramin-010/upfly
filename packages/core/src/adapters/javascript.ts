@@ -2,10 +2,11 @@
  * The JavaScript, TypeScript and JSX adapter.
  *
  * Finds static `import`s, `require()`, dynamic `import()`, the bundler form
- * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster`, inline-SVG
- * `<image href>`, and `url()` inside CSS-in-JS template literals. Path-shaped strings,
- * templates and `+` chains outside those constructs become speculative candidates, except
- * as the value of a JSX attribute that names no file, such as `alt`.
+ * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and
+ * every attribute position the HTML adapter reads (`url-attributes.ts`), and `url()` inside
+ * CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside those
+ * constructs become speculative candidates, except as the value of a JSX attribute that
+ * names no file, such as `alt`.
  *
  * It parses with `@babel/parser`, never a regular expression: a regex would find
  * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
@@ -44,6 +45,7 @@ import {
   splitPathSuffix,
   staticExtensionOf,
 } from './reference-path.js';
+import { type ClaimedElement, urlPosition } from './url-attributes.js';
 
 /**
  * Which Babel plugins each extension needs.
@@ -66,22 +68,23 @@ const PLUGINS_BY_EXTENSION: ReadonlyMap<string, readonly string[]> = new Map([
   ['.tsx', [...TYPESCRIPT_PLUGINS, 'jsx']],
 ]);
 
-/** JSX attributes that hold an asset path, matched case-insensitively. */
-const JSX_URL_ATTRIBUTES: ReadonlySet<string> = new Set(['src', 'srcset', 'poster']);
+/**
+ * JSX attributes read on any element whatever its tag, matched case-insensitively, with the
+ * shape each gives: a component such as `<Image>` hands them on to an `<img>`, so its name
+ * says nothing. Every other position comes from the list the HTML adapter reads.
+ */
+const COMPONENT_URL_ATTRIBUTES: ReadonlyMap<string, ShapeId> = new Map([
+  ['src', 'js.jsx.attribute'],
+  ['srcset', 'js.jsx.srcset'],
+  ['poster', 'js.jsx.attribute'],
+]);
 
 /**
- * Inline-SVG elements whose `href` names a file, keyed by lowercased tag name.
- *
- * Scoped to the tag, unlike `JSX_URL_ATTRIBUTES`: a bare `href` there would make every
- * `<a href>` a candidate, including `<a href="/report.pdf">`, while the `href` of `<image>`
- * and `<feImage>` is always a file. `xlinkhref` is React's `xlinkHref` lowercased, and
- * `xlink:href` arrives as a `JSXNamespacedName`: both spell SVG 1.1's `xlink:href`, which
- * shipped markup still commonly uses.
+ * React's spellings, lowercased, of attributes whose markup name differs. `xlinkHref` is
+ * SVG 1.1's `xlink:href`, which shipped markup still commonly uses; written as markup
+ * writes it, it arrives as a namespaced name and needs no entry.
  */
-const JSX_SVG_HREF_ELEMENTS: ReadonlyMap<string, readonly string[]> = new Map([
-  ['image', ['href', 'xlinkhref', 'xlink:href']],
-  ['feimage', ['href', 'xlinkhref', 'xlink:href']],
-]);
+const REACT_SPELLINGS: ReadonlyMap<string, string> = new Map([['xlinkhref', 'xlink:href']]);
 
 /**
  * Tag functions whose template literal contains CSS.
@@ -354,11 +357,7 @@ function collectFromNode(node: BabelNode, context: Context): void {
       }
       return;
     case 'JSXOpeningElement':
-      collectFromJsxSvgImage(node, context);
-      declineNonFileAttributes(node, context);
-      return;
-    case 'JSXAttribute':
-      collectFromJsxAttribute(node, context);
+      collectFromJsxElement(node, context);
       return;
     case 'TaggedTemplateExpression':
       collectFromTaggedTemplate(node, context);
@@ -768,43 +767,72 @@ function isBundlerUrlConstruction(node: BabelNode): boolean {
   );
 }
 
-function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
-  const value = node.value;
-  if (value === null || value === undefined) return;
-
-  // Every string attribute value is recorded as examined, including the ones declined
-  // below: `alt="/not.png"` is display text, and the speculative string rule would
-  // otherwise link and rewrite it.
-  if (value.type === 'StringLiteral' && typeof value.start === 'number') {
-    context.handled.add(value.start + 1);
-  }
-  if (value.type === 'JSXExpressionContainer' && value.expression.type === 'StringLiteral') {
-    const literal = value.expression;
-    if (typeof literal.start === 'number') context.handled.add(literal.start + 1);
-  }
-
-  const name = node.name.type === 'JSXIdentifier' ? node.name.name : '';
-  if (!JSX_URL_ATTRIBUTES.has(name.toLowerCase())) return;
-
-  // `srcSet` holds a candidate list, not a path. Left unsplit it produces two false
-  // positives at once: the whole string resolves to nothing, and every image in it
-  // but the first gains no reference and looks dead.
-  const isSrcSet = name.toLowerCase() === 'srcset';
-
-  addJsxAttributeValue(
-    value,
-    context,
-    isSrcSet ? 'js.jsx.srcset' : 'js.jsx.attribute',
-    `JSX ${name}`,
-    isSrcSet,
+/**
+ * Read or decline every attribute of one JSX element, never neither.
+ *
+ * An attribute is read when the component rule or a position in `url-attributes.ts` claims
+ * it, the list the HTML adapter reads, so a component names a file exactly where a page
+ * does. Every other value is recorded as examined, however it is written:
+ * `` alt={`/hero.png`} `` is display text as much as `alt="/hero.png"` is. Decided at the
+ * element, because a claim such as a `<link>`'s `rel` reads the attributes beside the one
+ * it judges.
+ */
+function collectFromJsxElement(node: JSXOpeningElement, context: Context): void {
+  const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
+  const attributes = node.attributes.filter(
+    (attribute): attribute is JSXAttribute => attribute.type === 'JSXAttribute',
   );
+  const element: ClaimedElement = {
+    attribute: (name) => {
+      const found = attributes.find((attribute) => markupName(attribute) === name);
+      return found === undefined ? undefined : jsxStringValue(found.value);
+    },
+  };
+
+  for (const attribute of attributes) {
+    const name = markupName(attribute);
+    const component = COMPONENT_URL_ATTRIBUTES.get(name);
+    const shape = component ?? urlPosition(tag, name, element)?.jsx;
+    if (shape === undefined) {
+      const value = attribute.value;
+      declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
+      continue;
+    }
+
+    const written = jsxAttributeName(attribute);
+    addJsxAttributeValue(
+      attribute.value,
+      context,
+      shape,
+      component === undefined ? `JSX <${tag}> ${written}` : `JSX ${written}`,
+      // `srcSet` holds a candidate list, not a path. Left unsplit it produces two false
+      // positives at once: the whole string resolves to nothing, and every image in it but
+      // the first gains no reference and looks dead.
+      shape === 'js.jsx.srcset',
+    );
+  }
+}
+
+/** An attribute's name as markup spells it, lowercased, with React's spellings mapped. */
+function markupName(attribute: JSXAttribute): string {
+  const name = jsxAttributeName(attribute).toLowerCase();
+  return REACT_SPELLINGS.get(name) ?? name;
+}
+
+/** A JSX attribute's value when it is a plain string, written bare or in braces. */
+function jsxStringValue(value: JSXAttribute['value']): string | undefined {
+  if (value?.type === 'StringLiteral') return value.value;
+  if (value?.type === 'JSXExpressionContainer' && value.expression.type === 'StringLiteral') {
+    return value.expression.value;
+  }
+  return undefined;
 }
 
 /**
  * Emit a reference for a JSX attribute value, whatever shape it takes.
  *
- * Shared by the `src`/`srcSet`/`poster` reader and the inline-SVG `href` reader, so both
- * read every kind of value the same way.
+ * Every position the element pass reads comes through here, so each kind of value is read
+ * the same way wherever it sits.
  */
 function addJsxAttributeValue(
   value: JSXAttribute['value'],
@@ -840,40 +868,6 @@ function jsxAttributeName(attribute: JSXAttribute): string {
   const name = attribute.name;
   if (name.type === 'JSXIdentifier') return name.name;
   return `${name.namespace.name}:${name.name.name}`;
-}
-
-/**
- * `<image href>` and `<feImage href>` inside JSX, read at the element because `href`
- * alone does not say whether it names a file. An inline `<svg>` in a component is not an
- * `.svg` file, so an SVG adapter would never reach these.
- */
-function collectFromJsxSvgImage(node: JSXOpeningElement, context: Context): void {
-  const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
-  const attributes = JSX_SVG_HREF_ELEMENTS.get(tag);
-  if (attributes === undefined) return;
-
-  for (const attribute of node.attributes) {
-    if (attribute.type !== 'JSXAttribute') continue;
-    if (!attributes.includes(jsxAttributeName(attribute).toLowerCase())) continue;
-    addJsxAttributeValue(attribute.value, context, 'js.jsx.svg', `JSX <${tag}> href`, false);
-  }
-}
-
-/**
- * Mark the value of every attribute here that names no file as examined, however it is
- * written: `` alt={`/hero.png`} `` is display text as much as `alt="/hero.png"` is.
- * Decided at the element, because an attribute cannot see its tag.
- */
-function declineNonFileAttributes(node: JSXOpeningElement, context: Context): void {
-  const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
-  const hrefs = JSX_SVG_HREF_ELEMENTS.get(tag) ?? [];
-  for (const attribute of node.attributes) {
-    if (attribute.type !== 'JSXAttribute') continue;
-    const name = jsxAttributeName(attribute).toLowerCase();
-    if (JSX_URL_ATTRIBUTES.has(name) || hrefs.includes(name)) continue;
-    const value = attribute.value;
-    declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
-  }
 }
 
 /**

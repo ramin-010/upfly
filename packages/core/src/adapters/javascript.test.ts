@@ -216,6 +216,42 @@ describe('javascriptAdapter', () => {
       expect(find('<img src="/hero.png" />')[0]?.ceiling).toBe('high');
     });
 
+    // The positions the HTML adapter reads, from the list both adapters share, so a layout
+    // component that writes the page head names its icon as index.html does.
+    const shared: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+      ['an object data', '<object data="/img/chart.png" />', ['/img/chart.png']],
+      ['an icon link', '<link rel="icon" href="/favicon.png" />', ['/favicon.png']],
+      [
+        'a preloaded image',
+        '<link rel="preload" as="image" href="/img/hero.jpg" />',
+        ['/img/hero.jpg'],
+      ],
+      [
+        'an icon link whose rel is in braces',
+        '<link rel={"icon"} href="/favicon.png" />',
+        ['/favicon.png'],
+      ],
+    ];
+
+    it.each(shared)('reads %s, as the HTML adapter does', (_name, source, expected) => {
+      expect(paths(source)).toEqual([...expected]);
+      expect(slices(source)).toEqual([...expected]);
+    });
+
+    it('gives each shared position the JSX shape the list names for it', () => {
+      expect(find('<object data="/img/chart.png" />')[0]?.shape).toBe('js.jsx.attribute');
+      expect(find('<link rel="icon" href="/favicon.png" />')[0]?.shape).toBe('js.jsx.attribute');
+      expect(find('<svg><image href="/a/hero.png" /></svg>')[0]?.shape).toBe('js.jsx.svg');
+    });
+
+    it('declines a link whose rel claims no image, whatever its value names', () => {
+      // The claim decides, not the extension: guessed, each of these would link an image.
+      expect(find('<link rel="stylesheet" href="/img/sprite.png" />')).toEqual([]);
+      expect(find('<link rel="preload" as="font" href="/img/glyphs.png" />')).toEqual([]);
+      expect(find('<link href="/img/mystery.png" />')).toEqual([]);
+      expect(find('<link rel={kind} href={`/img/${name}.png`} />')).toEqual([]);
+    });
+
     it('finds the import and the JSX attribute independently', () => {
       const source = [
         'import logo from "./logo.png";',
