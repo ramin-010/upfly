@@ -1,19 +1,14 @@
 /**
  * The JSON adapter.
  *
- * This is the adapter the `speculative` flag exists for. A JSON file has no syntax
- * that says "this is an image" — `"icons/logo.png"` might be an asset path, a
- * translation key, a CSS class or an example in a schema, and telling those apart
- * would mean resolving the string, which an adapter may not do.
- *
- * So it is deliberately generous: every string *value* that carries a file
- * extension becomes a candidate, marked `asserted: false`. The resolver keeps the
- * ones that point at a real asset and discards the rest into a counted bucket. That
- * is why an unresolved candidate here is never a `broken` finding — otherwise every
- * `package.json`, lockfile and i18n bundle in the world would produce dozens.
- *
- * Being generous is the right bias: a discarded candidate costs a number in a
- * report, while a missed one costs a broken build after the image is rewritten.
+ * JSON has no syntax that says "this is an image": `"icons/logo.png"` might be an asset
+ * path, a translation key or an example in a schema, and telling them apart would mean
+ * resolving the string. So every string value that carries a file extension becomes a
+ * speculative candidate (`asserted: false`). The resolver keeps the ones that name a real
+ * asset and discards the rest into a counted bucket, never a `broken` finding. Erring wide
+ * is the right bias: a discarded candidate costs a number in the report, a missed one a
+ * broken build once the image is rewritten. See "Asserted versus speculative" in
+ * ARCHITECTURE.md.
  */
 
 import { extensionOf } from '../paths.js';
@@ -22,14 +17,13 @@ import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
 
-/** A JSON string literal, including its quotes. The `d` flag gives exact offsets. */
+/** A JSON string literal, including its quotes. */
 const STRING = /"(?:[^"\\]|\\.)*"/dg;
 
 export const jsonAdapter: Adapter = defineAdapter({
   id: 'json',
-  // `.webmanifest` is JSON, and a web app manifest is mostly icon paths — measured
-  // on shadcn-ui, whose `site.webmanifest` lists three icons that were otherwise
-  // swept as an *unread* file and hedged rather than linked.
+  // `.webmanifest` is JSON, and a web app manifest is mostly icon paths. Left unread,
+  // its icons could only be reported as possibly dead rather than linked.
   extensions: ['.json', '.webmanifest'],
 
   findReferences({ file, text }): RawReference[] {
@@ -69,17 +63,15 @@ function isObjectKey(text: string, afterString: number): boolean {
 }
 
 /**
- * Which row a JSON candidate belongs to.
+ * Which shape a JSON candidate gets.
  *
- * ⚠️ **The tree distinguishes a webmanifest `icons[]` entry from a `screenshots[]` one,
- * and this scanner cannot.** It walks string literals with a regex and has no idea which
- * array it is inside — deliberately, because structure-aware JSON parsing would be a
- * second implementation of a format the resolver already handles generously. So every
- * path in a manifest gets the `icon` row, and the distinction stays the key's alone.
- * Measured and raised rather than papered over; see R84.
+ * Every path in a manifest gets `json.webmanifest.icon`, screenshots included: the scanner
+ * walks string literals with a regex and does not know which array one sits in. Parsing
+ * the structure would be a second JSON implementation for a distinction that only changes
+ * the label, so `json.webmanifest.other` lists this shape in `adapterEmitsAs`.
  */
 function shapeOf(path: string, file: string): ShapeId {
-  // A glob names a SET, not a file — R78 Q3's objection in a config file.
+  // A glob names a set of files, not one file.
   if (path.includes('*')) return 'json.config.glob';
 
   const name = file.toLowerCase();
@@ -96,9 +88,9 @@ function addCandidate(raw: string, start: number, file: string, references: RawR
   const { path } = splitPathSuffix(raw);
   if (path === '') return;
 
-  // Anything with a file extension is a candidate. This keeps the generosity
-  // bounded without the adapter deciding what an *asset* extension is — that
-  // policy lives in the resolver, in one place, for all five adapters.
+  // Anything with a file extension is a candidate. That bounds the guessing without the
+  // adapter deciding which extensions are assets, which the resolver decides for every
+  // adapter in one place.
   if (extensionOf(path) === '') return;
 
   references.push({
@@ -110,7 +102,6 @@ function addCandidate(raw: string, start: number, file: string, references: RawR
     kind: 'json',
     shape: shapeOf(path, file),
     ceiling: 'high',
-    // The whole point: the syntax does not assert this is an asset reference.
     asserted: false,
     note: 'a path-shaped string in JSON; kept only if it resolves to an asset',
   });

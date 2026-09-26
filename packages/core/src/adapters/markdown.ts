@@ -1,22 +1,12 @@
 /**
  * The Markdown / MDX adapter.
  *
- * Finds `![alt](path)` images, ordinary `[text](path)` links, link reference
- * definitions, and any raw HTML the document contains.
- *
- * Regular expressions are acceptable here — §3.2 allows them for Markdown — but only
- * after the text has been masked. Code fences, inline code spans and HTML comments
- * are blanked out first, because a `![](old.png)` inside a fenced example is
- * documentation, not a reference, and rewriting it would corrupt the prose.
- *
- * Masking replaces those regions with spaces of exactly the same length, so every
- * offset still points at the real file. The raw HTML is then handed to the HTML
- * adapter rather than matched with more regular expressions: Markdown allows any
- * HTML, and `<picture>` blocks with `srcset` turn up in real READMEs.
- *
- * An MDX document's top-level `import`/`export` blocks are JavaScript, and they go to
- * the JavaScript adapter the same way (R167) — see `readMdxEsm` for how MDX itself
- * decides where one starts and ends.
+ * Finds `![alt](path)` images, ordinary `[text](path)` links, link reference definitions,
+ * and any raw HTML the document contains. Its regular expressions run only over masked
+ * text, where code fences, code spans and HTML comments are blanked to spaces of the same
+ * length. Raw HTML goes to the HTML adapter, and an MDX document's top-level
+ * `import`/`export` blocks to the JavaScript adapter (`readMdxEsm` finds where MDX starts
+ * and ends one). See "The six that exist" in ARCHITECTURE.md.
  */
 
 import { UpflyError } from '../errors.js';
@@ -34,7 +24,7 @@ import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './refe
  * Ordinarily it runs to the first space or paren, but a template expression is
  * allowed to contain spaces: `![Logo]({{ site.baseurl }}/logo.png)` is how Jekyll,
  * Hugo and Eleventy all write a path, and stopping at the first space would find
- * nothing at all there. Missing it entirely is the worse failure — the image then
+ * nothing at all there. Missing it entirely is the worse failure: the image then
  * looks unreferenced, and a later rewrite breaks the page with nothing reported.
  */
 const BARE_DESTINATION = String.raw`(?:\{\{[^}]*\}\}|\{%[^%]*%\}|[^\s()])+`;
@@ -42,8 +32,8 @@ const BARE_DESTINATION = String.raw`(?:\{\{[^}]*\}\}|\{%[^%]*%\}|[^\s()])+`;
 /**
  * `![alt](destination "title")`, and the same without the `!` for a plain link.
  *
- * A link to an image file is as real a reference as an embed — following it fetches
- * the file — and the resolver drops anything that is not a tracked asset anyway, so
+ * A link to an image file is as real a reference as an embed (following it fetches
+ * the file), and the resolver drops anything that is not a tracked asset anyway, so
  * capturing both costs nothing and misses less. The `d` flag gives exact capture
  * offsets, which is what makes this safe to rewrite.
  */
@@ -55,13 +45,13 @@ const LINK = new RegExp(
 /**
  * Does this document contain anything parse5 could find a reference in?
  *
- * `<` followed by an ASCII letter is exactly HTML's own tag-open condition, so this is
- * the boundary the parser uses rather than a guess at one. `< img` is text to parse5 and
- * text to this test; `<IMG` is a tag to both.
+ * `<` followed by an ASCII letter is what starts a tag in the HTML spec's tag open state,
+ * so this is the boundary the parser uses rather than a guess at one. `< img` is text to
+ * parse5 and text to this test; `<IMG` is a tag to both.
  */
 const MARKUP_OPENER = /<[a-zA-Z]/;
 
-/** `[label]: destination "title"` — a link reference definition. */
+/** `[label]: destination "title"`, a CommonMark link reference definition. */
 const DEFINITION = new RegExp(
   String.raw`^ {0,3}\[[^\]]+\]:[ \t]*(?:<([^>\n]*)>|(${BARE_DESTINATION}))`,
   'gdm',
@@ -75,48 +65,33 @@ export const markdownAdapter: Adapter = defineAdapter({
     const isMdx = extensionOf(file) === '.mdx';
     const inactive = maskInactiveRegions(text, { indentedCode: !isMdx });
 
-    // 🔴 R167 group A: MDX's top-level `import`/`export` lines are JavaScript, and until
-    // this they were read by nothing — `import hero from './hero.png'` in a post named an
-    // asset the graph never saw, so the asset looked unreferenced. They go to the
-    // JavaScript adapter exactly as an Astro fence does, and are then blanked out of what
-    // the Markdown and HTML readers see, so one line is never read by two languages.
+    // MDX's top-level `import`/`export` blocks are JavaScript, and name assets
+    // (`import hero from './hero.png'`). They go to the JavaScript adapter as an Astro
+    // fence does, and are then blanked from what the Markdown and HTML readers see, so no
+    // line is read by two languages.
     const esm = isMdx ? readMdxEsm(file, text, inactive) : null;
     const masked = esm === null ? inactive : blankRanges(inactive, esm.blocks);
     const references: RawReference[] = [...(esm?.references ?? [])];
 
-    // A use site and a definition are different rows: `![alt](x.png)` carries the path
-    // where it is used, `[label]: x.png` carries it somewhere else entirely, and the
-    // second is what makes `md.image.reference-style` a row nothing can fill.
+    // A use site and a definition are different shapes. In `![alt][label]` the path lives
+    // in the `[label]: x.png` definition, reported once as `md.reference-definition`, so
+    // the use site itself (`md.image.reference-style`) emits nothing.
     collectMatches(LINK, masked, file, references, 'md.image');
     collectMatches(DEFINITION, masked, file, references, 'md.reference-definition');
 
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
     //
-    // 🔴 **R124: ~20% of the graph build was parse5 reading markdown for HTML that was
-    // not there.** Every `.md` and `.mdx` paid a full parse5 parse, and parse5 is 73–78%
-    // of this adapter's cost on all three trees measured. A document with no element in
-    // it cannot yield an attribute reference, because every path the HTML adapter can
-    // find lives in a tag — `img/source/video/audio/embed/input/track` `src`, `link`
-    // `href`, or a `style` attribute, all of which require one.
-    //
-    // ⚠️ **The test is on the MASKED text, which is the whole subtlety.** Real markdown
-    // keeps its tags inside fenced code blocks — astro-docs holds 2,604 documents at 19.6
-    // tags each and **not one** where dropping this pass loses a reference — and masking
-    // blanks a fence before parse5 sees it. Testing the raw text would skip almost
-    // nothing on real repositories; testing the masked text skips exactly the documents
-    // where the pass had nothing to find.
-    //
-    // ⚠️ **`<` followed by a letter, deliberately coarser than the question being asked.**
-    // It matches `<span>` and `<!-- -->` alike and every unknown component, so it
-    // over-approximates: it can only skip a document with no element-like construct at
-    // all. A tighter test — looking for `img` or `src` — would be the kind of narrowing
-    // that turns a safe optimisation into a silent loss.
+    // parse5 is most of this adapter's cost, and every reference the HTML adapter finds
+    // sits in a tag, so the pass is skipped when the masked text holds no tag opener.
+    // Testing the masked text is what makes this pay: Markdown keeps most of its tags in
+    // code fences, which masking has already blanked. The test is coarser than the question
+    // on purpose: it matches any tag, known or not, and narrowing it to `img` or `src`
+    // would risk skipping a real reference.
     if (MARKUP_OPENER.test(masked)) {
-      // R20: it can throw — a `<style>` block whose CSS will not parse reaches the CSS
-      // adapter through it — and everything collected above is correct regardless. The
-      // failure still propagates, so `scan` still reports the file as unparseable and
-      // rule 9 holds; what rides along is the references that were already found.
+      // A `<style>` block whose CSS will not parse makes this throw. Everything collected
+      // above is still correct, so it rides along with the failure, and `scan` still
+      // reports the file as unparseable.
       try {
         references.push(
           ...htmlAdapter
@@ -129,7 +104,7 @@ export const markdownAdapter: Adapter = defineAdapter({
     }
 
     // An ESM block MDX itself would refuse is reported only now, so every reference the
-    // rest of the document holds rides along with it (R20) rather than being lost to it.
+    // rest of the document holds rides along with it rather than being lost to it.
     if (esm?.failure) throw withPartial(esm.failure, references);
 
     return references.sort((a, b) => a.start - b.start);
@@ -137,11 +112,9 @@ export const markdownAdapter: Adapter = defineAdapter({
 });
 
 /**
- * Re-throw an adapter failure carrying everything already found beside it (R20).
- *
- * ⚠️ **The diagnostic is carried too.** The version of this inlined above dropped it, so
- * PostCSS's own text for a `<style>` block inside Markdown never reached the diagnostic
- * channel that R60 built for exactly that text.
+ * An adapter failure rebuilt to carry everything already found beside it, for the caller
+ * to throw. The diagnostic is kept, so the parser's own text still reaches the diagnostic
+ * channel.
  */
 function withPartial(error: unknown, references: readonly RawReference[]): unknown {
   if (!(error instanceof UpflyError)) return error;
@@ -186,31 +159,16 @@ interface MdxEsm {
 /**
  * Every top-level `import`/`export` block of an MDX document, read as JavaScript.
  *
- * 🔴 **THE BLOCK BOUNDARIES ARE MDX's, READ FROM ITS SOURCE — NOT GUESSED.** From
- * `micromark-extension-mdxjs-esm`:
+ * The boundaries are MDX's own, from `micromark-extension-mdxjs-esm`. An opener is `import`
+ * or `export` and one space at column 1 (so never in a list or block quote), at the start
+ * of the body or after a blank line: ESM cannot interrupt a paragraph, so a prose line that
+ * begins "export and option." stays text. A block ends at a blank line unless the code so
+ * far is an unfinished prefix (`javaScriptParseOutcome`), in which case MDX reads on. An
+ * opener straight after a heading or a JSX line, which MDX accepts, is not recognised here,
+ * because telling those from a paragraph line needs a block parser.
  *
- * - **`return self.interrupt ? nok : start`** — ESM can never interrupt a paragraph. A
- *   prose line that happens to begin *"export and option."* is paragraph text, and
- *   shadcn-ui's docs hold three exactly like that; reading them as code made all three
- *   parse failures on the first measurement. So an opener counts only at the start of
- *   the body or straight after a blank line — which, on 2,905 real MDX files, is every
- *   one of the 1,665 blocks that parse (1,193 directly under the frontmatter).
- * - **`if (self.now().column > 1) return nok`** — column 1 only, so never inside a list
- *   or a block quote.
- * - **the keyword is followed by exactly one space.**
- * - **a block ends at a blank line, unless the code so far is an unfinished prefix**,
- *   in which case MDX swallows the blank line and continues. `javaScriptParseOutcome`
- *   is that test.
- *
- * ⚠️ **The opener is found in the MASKED text and the block is read from the SOURCE.**
- * Masked, because an `import` inside a code fence is an example and must stay inert —
- * the fence is blank there, so it can never open a block. Source, because the mask also
- * blanks backtick spans, and a template literal inside an `export` is code, not a span.
- *
- * ⚠️ **Opening straight after a heading or a JSX line is not recognised**, although MDX
- * would accept it: telling those from a paragraph line needs a block parser. It was
- * measured before it was accepted — **zero** such blocks in the 2,905 files — and the
- * cost of the gap is today's behaviour, not a new one.
+ * Openers are found in the masked text, so an `import` in a code fence stays inert; blocks
+ * are read from the source, where a template literal is not blanked as a code span.
  */
 function readMdxEsm(file: string, text: string, masked: string): MdxEsm | null {
   // One regex over the document before any per-line work: most `.mdx` in the bench tree,
@@ -250,9 +208,9 @@ function readMdxEsm(file: string, text: string, masked: string): MdxEsm | null {
 /**
  * One ESM block, from its opener to its end as MDX would find it.
  *
- * Handed to the JavaScript adapter as a full-length copy with everything before the
- * block blanked — the Astro adapter's device — so every offset it returns is already an
- * offset into the `.mdx` file, and a parse error names the file's own line.
+ * Handed to the JavaScript adapter as the file up to the block's end, with everything
+ * before the block blanked (the Astro adapter's device), so every offset it returns is
+ * already an offset into the `.mdx` file, and a parse error names the file's own line.
  */
 function readEsmBlock(
   file: string,
@@ -287,7 +245,7 @@ function readEsmBlock(
       const unfinished = javaScriptParseOutcome(text.slice(start, end), '.jsx') === 'incomplete';
       if (!unfinished || next >= lines.length) {
         // MDX would refuse this document here. The block is still kept away from the
-        // Markdown readers — it is code, however broken — and the failure is reported.
+        // Markdown readers (it is code, however broken), and the failure is reported.
         return { last: firstChunk, references: [], failure: error };
       }
       last = chunkEnd(next);
@@ -300,7 +258,7 @@ function readEsmBlock(
  *
  * The same selection the Astro fence makes, for the same reason: what would take an
  * `import` here out is MDX's block extraction, which no `.js` file exercises, so it is
- * MDX's row. A path-shaped string in an `export const` stays `js.string.literal` — the
+ * MDX's row. A path-shaped string in an `export const` stays `js.string.literal`: the
  * speculative-string rule finds it, and that rule fails identically wherever it runs.
  */
 function asEsmShape(reference: RawReference): RawReference {
@@ -337,16 +295,11 @@ function blankRanges(text: string, ranges: readonly Line[]): string {
 /**
  * Re-stamp a reference the HTML adapter found inside Markdown.
  *
- * 🔴 **Host wins here, and the ladder says why.** What would take these out is not
- * `<img src>` parsing — that is the HTML adapter's, tested by its own rows — it is
- * Markdown's decision to hand raw HTML over at all, plus the masking that decides
- * which regions are live. Those fail together and separately from HTML, so they are
- * Markdown's rows.
- *
- * ⚠️ The distinction the tree draws is between *markup* and a *style attribute*, so a
- * `<style>` element inside Markdown maps to the attribute row rather than inventing a
- * third. Markdown holds no `<style>` elements in the tree and none has been seen in a
- * real repository; if one turns up it is a §8.5 growth item, not a silent mismatch.
+ * The host decides the shape. What would break these references is Markdown handing its
+ * raw HTML over and masking the inactive regions, not `<img src>` parsing, which the HTML
+ * adapter's own shapes cover. CSS from a `<style>` element maps to `md.style-attribute`
+ * too: no Markdown `<style>` element has turned up in the coverage tree or a validation
+ * repository to fill a row of its own.
  */
 function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference {
   if (reference.shape === 'html.style.attribute' || reference.shape === 'html.style.element') {
@@ -421,29 +374,15 @@ function addReference(
 }
 
 /**
- * Blank out every region where Markdown syntax is not active.
+ * Blank out every region of Markdown text where Markdown syntax is not active, so a search
+ * for references cannot match inside code.
  *
- * Newlines survive so that line-anchored patterns still see the right structure,
- * and every other masked character becomes a space so that offsets are unchanged.
- * The returned string has exactly the same length as the input, so an offset into
- * one indexes the other — which is what makes it safe to search the masked text and
- * report positions in the original.
- *
- * Indented (four-space) code blocks are masked only when asked, and only where the
- * masking is CERTAIN — see `maskIndentedCodeBlocks`. They are a CommonMark construct
- * and MDX has none (MDX 2 turned indented code off, because JSX is indented), so the
- * caller says which dialect it holds; the default is the old behaviour, which leaves
- * them alone.
- *
- * ⚠️ **Exported because a masker nobody can reach is a bug generator (R34).** Anything
- * that searches Markdown for a token has to mask first: an `import` or an `<img src>`
- * inside a ``` fence is documentation *about* code, not code. While this was
- * module-private, every consumer either reimplemented the test or skipped it, and
- * skipping it has now produced the same defect three times — in `bench/`'s triage,
- * where a proxy rule mis-explained 5 of 124 hits, and in a Phase 2 probe that counted
- * 25 alias-shaped references where there were 11, the 14 extras being fenced examples
- * naming files that do not exist in the repository. **Call this instead of writing the
- * test again.**
+ * Fenced code, code spans, HTML comments and the opening tag of a raw-text element that is
+ * never closed become spaces. Newlines stay, so the result has the input's length and line
+ * structure, and an offset into one indexes the other. Indented code blocks are blanked
+ * only with `indentedCode: true`, and only where they are certain; MDX has none (MDX 2
+ * turned them off, because JSX is indented). Mask before searching Markdown for any
+ * token: an `import` or `<img src>` inside a fence is documentation, not code.
  */
 export function maskInactiveRegions(
   text: string,
@@ -466,53 +405,31 @@ export function maskInactiveRegions(
 /** A list item's marker, wherever it sits: bullet or ordered, and what follows it. */
 const LIST_MARKER = /^([ \t]*)([-+*]|\d{1,9}[.)])([ \t]+|$)/;
 
-/** `***`, `- - -`, `___` — a thematic break, which is never a list item. */
+/** `***`, `- - -` or `___`: a thematic break, which is never a list item. */
 const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 
 /** An ATX heading: a whole block on one line. */
 const ATX_HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 
 /**
- * CommonMark's HTML block type 1 — the one that does NOT end at a blank line. Its
- * content is HTML until the closing tag, however it is indented.
+ * CommonMark's HTML block type 1, which a blank line does not end: its content is HTML
+ * until the closing tag, however it is indented.
  */
 const RAW_HTML_BLOCK = /^ {0,3}<(script|pre|style|textarea)(?=[\s>]|$)/i;
 
 /**
  * Blank every indented code block, and nothing that only looks like one.
  *
- * 🔴 **THE DANGEROUS DIRECTION IS WHY THIS EXISTS (R167).** An indented block is
- * code shown, not run — exactly like a fence — and it was left live: two `<img>` inside
- * one in the coverage tree were claimed as raw HTML. A claim where the text proves
- * there is no reference is R109's box D, and it sat where no headline could see it.
+ * An indented block is code shown, not run, like a fence. But blanking a line that is not
+ * code loses a real reference, so wherever CommonMark could read it otherwise, it stays live:
+ * - in a list item, even as nested code: telling the two apart needs column arithmetic,
+ *   and a wrong guess blanks a real image;
+ * - after a paragraph line, which it continues. Code needs a blank line, an ATX heading, a
+ *   thematic break, a fence or more code before it; a `===` underline is not recognised;
+ * - in a `<pre>`, `<script>`, `<style>` or `<textarea>` block, which a blank line does not end.
  *
- * 🔴 **AND THE OPPOSITE DIRECTION IS WHY IT WAS LEFT LIVE UNTIL NOW.** Four spaces do
- * not make code on their own. Masking every indented line would blank real references
- * in three places, and each is handled by declining to mask — never by guessing:
- *
- * - **Inside a list item**, an indented line is the item's own content. From a list
- *   marker until a line after a blank that is indented less than the outermost item's
- *   content column, NOTHING is masked — not even code nested inside an item, which is
- *   left exactly as it was, because the column arithmetic that would separate the two
- *   is where a guess would blank a real image.
- * - **Directly after a paragraph line**, an indented line is that paragraph continuing
- *   (CommonMark: indented code cannot interrupt a paragraph). Only a blank line, an ATX
- *   heading, a thematic break (which includes a `---` setext underline), or more code
- *   may come before a code line. A `===` underline is not recognised, so an indented
- *   line straight after one stays live, as it always was.
- * - **Inside `<pre>`, `<script>`, `<style>` or `<textarea>`**, blank lines do not end
- *   the HTML block, so what follows them is still HTML.
- *
- * Everything not provably code stays live, which is the behaviour it had before.
- *
- * 🔴 **THE BLOCK STRUCTURE IS READ FROM THE SOURCE, NEVER FROM THE MASK — AND THE FIRST
- * BUILD GOT THIS WRONG ON REAL CODE.** `eleventy-docs/src/docs/cjs-esm.md` keeps a
- * `<table>` whose rows are tab-indented and some of which are commented out. The mask
- * turns a commented row into spaces, a pass reading the mask saw a blank line there, and
- * a blank line ends CommonMark's HTML block — so the live rows after it were blanked as
- * code. A masked comment is not a blank line; only a blank line is. So blankness and
- * indentation come from `source`, a fence is recognised by comparing `fenced` with it,
- * and the mask is only ever written to.
+ * Structure comes from `source`, never the mask: a masked HTML comment is not a blank line,
+ * and reading it as one would end an HTML block early and blank the live lines after it.
  */
 function maskIndentedCodeBlocks(masked: string, source: string, fenced: string): string {
   const sourceLines = source.split('\n');
@@ -571,7 +488,7 @@ function isIndentedCode(state: BlockState, original: string, fenced: string): bo
 
 /**
  * Open a list at a marker, and close it at the first line after a blank that is indented
- * less than its outermost item's content — never at a line carrying a paragraph on.
+ * less than its outermost item's content, never at a line carrying a paragraph on.
  */
 function trackList(state: BlockState, original: string, indent: number): void {
   const marker = THEMATIC_BREAK.test(original) ? null : LIST_MARKER.exec(original);
@@ -605,8 +522,8 @@ function columnsOf(line: string): number {
 
 /**
  * Where a list item's content starts. One to four columns of space after the marker
- * are part of it; five or more mean the item opens with indented code, and then — as
- * for an empty item — the content column is one past the marker.
+ * are part of it; five or more mean the item opens with indented code, and then, as
+ * for an empty item, the content column is one past the marker.
  */
 function contentColumnOf(marker: RegExpExecArray): number {
   const [, leading = '', symbol = '', spacing = ''] = marker;
@@ -618,34 +535,21 @@ function contentColumnOf(marker: RegExpExecArray): number {
 /**
  * HTML's raw-text elements, which consume everything until their closing tag.
  *
- * `<plaintext>` and `<xmp>` are obsolete and never close at all, which is exactly
- * why they belong here: parse5 implements the real algorithm, not the polite subset.
+ * The obsolete `<xmp>` and `<plaintext>` belong here too (`<plaintext>` never closes at
+ * all): parse5 implements the whole parsing algorithm, not the polite subset.
  */
 const RAW_TEXT_ELEMENTS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
 
 /**
  * Blank a raw-text open tag that never closes.
  *
- * Markdown permits arbitrary HTML, so this adapter hands its text to the HTML
- * adapter — and parse5 is a real HTML parser, which means `<script>` opens a
- * **raw-text element** wherever it appears. Prose that merely *mentions* one, as
- * `shadcn-ui/skills/migrate-radix-to-base/SKILL.md:67` does with *"retargeting onto a
- * base-`<style>` variant"*, therefore swallows the entire rest of the document.
- *
- * Every layer is individually right. The masker correctly leaves prose alone;
- * Markdown correctly permits raw HTML; parse5 correctly implements HTML. The
- * **composition** is what is wrong, and it cost two things:
- *
- * - `<style>` hands the swallowed remainder to the CSS parser, which throws, and
- *   every reference collected so far goes with it;
- * - the other five swallow **silently**, so a raw `<img src>` later in the document
- *   is dropped with no error and nothing in the report. A silent skip is a P0 under
- *   rule 9, and that one is the more serious of the two.
- *
- * An open tag with no matching close cannot be an element the author meant — and
- * CommonMark agrees: a raw-text *block* has to begin the line, while one mentioned
- * mid-sentence is inline HTML. So it is blanked with spaces of identical length, the
- * same device the fences and code spans use, and every offset after it stays exact.
+ * parse5 is a real HTML parser, so a `<script>` or `<style>` opens a raw-text element
+ * wherever it appears, and prose that merely mentions one ("a base-`<style>` variant")
+ * swallows the rest of the document. For `<style>` the swallowed text reaches the CSS
+ * parser, which throws; the others swallow silently, so a later `<img src>` is dropped
+ * with nothing in the report. An open tag with no matching close is not an element the
+ * author meant, and mid-sentence CommonMark agrees: there it is inline HTML, and the text
+ * after it is still Markdown. So it is blanked with spaces of the same length.
  */
 function maskUnclosedRawText(text: string): string {
   let masked = text;
@@ -673,23 +577,10 @@ function maskUnclosedRawText(text: string): string {
 /**
  * Blank every fenced code block.
  *
- * ⚠️ **Two CommonMark rules were missing, and getting them wrong inverts the mask
- * from that point to the end of the file** — so a fenced example becomes a live
- * reference *and* a real reference two paragraphs later is blanked away. A false
- * positive and a false negative from one defect, with no error either way.
- *
- * Found by chasing why `astro-docs`'s unsafe bucket was full of CSP headers: those
- * headers sit inside a ` ```html ` block, and the mask had come out of step 600
- * lines earlier. The report noise was the symptom; this is the cause.
- *
- * - **A closing fence may not carry an info string.** ` ```ts ` can only ever open a
- *   block. Treating it as a close is what desynchronised `api-reference.mdx`, which
- *   opens fences with ` ```astro ` and ` ```ts title="…" ` throughout.
- * - **A closing fence must be at least as long as the opening one**, which is how a
- *   ` ```` ` block quotes a ` ``` ` block — exactly what documentation about Markdown
- *   does constantly.
- *
- * The character rule was already right: a `~~~` block is not closed by ` ``` `.
+ * The closing rules below are CommonMark's, and getting one wrong puts the mask out of
+ * step for the rest of the file: a fenced example turns live and a real reference after
+ * it is blanked, with no error either way. ` ```ts ` can only open a block, and a
+ * ` ```` ` block can quote a ` ``` ` one, as documentation about Markdown often does.
  */
 function maskFencedBlocks(text: string): string {
   const lines = text.split('\n');

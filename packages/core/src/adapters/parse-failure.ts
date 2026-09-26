@@ -1,25 +1,12 @@
 /**
- * One sentence about a parse failure, written by us — and the parser's own words
- * sent somewhere that is not a report.
+ * A parse failure as one sentence of ours for the report, with the parser's own text kept
+ * apart for a diagnostic channel.
  *
- * **R60, applied to the parsers rather than to the imaging library.** The ruling is
- * that a third-party library's error text must never reach a rule-11 artefact: it is
- * not ours, it describes the library rather than describing what Upfly did, and it
- * changes on a dependency upgrade. Measured on `railsgirls-com`, 23 `scan` skips
- * carried PostCSS's wording verbatim — `<css input>:144:13: Unknown word /` — where
- * `<css input>` is PostCSS's placeholder for a file we did in fact name, `Unknown
- * word` is PostCSS's vocabulary, and only the `144:13` was ever any use to a reader.
- *
- * So the position is kept and the wording is replaced. **Kept from the parser's
- * structured fields, never by parsing its message**, which is the whole point: a
- * major version is free to reword `Unknown word` and our sentence does not move.
- *
- * ⚠️ **Both parsers are covered even though only one of them was ever seen.** The
- * JavaScript adapter reaches Babel's raw text through a `?? detail` fallback that the
- * corpus happens never to enter — every JS parse failure across the five repositories
- * is the Nunjucks/Jinja case, which already had a sentence of ours. A defect with no
- * instances is still the defect; this is R63's lesson, where the same wrong answer
- * lived in `plan.ts` and nobody had asked.
+ * A library's error text does not belong in the report: it describes the library rather
+ * than what Upfly did, and it changes when the dependency is upgraded. In PostCSS's
+ * `<css input>:144:13: Unknown word /`, only the position helps a reader, so the position
+ * is kept and the wording replaced. The position comes from the error's structured
+ * fields, never from parsing its message, so a reworded message leaves our sentence alone.
  */
 
 /** What a parse failure becomes: our sentence, and the library's, kept apart. */
@@ -39,12 +26,11 @@ export interface ParseFailure {
 /**
  * Where each parser puts a position, and what its column counts from.
  *
- * ⚠️ **Stated by the caller rather than sniffed from the error, because the two
- * disagree and the disagreement is invisible.** PostCSS puts a 1-based `line` and
- * `column` on the error itself; Babel puts `loc: { line, column }` where the column
- * is **0-based**. Duck-typing would have read Babel's column as PostCSS's and
- * reported every JavaScript failure one column to the left — a wrong number that
- * looks exactly like a right one. Each adapter knows which parser it ran.
+ * The caller states it rather than it being guessed from the error's shape, because the
+ * two differ invisibly: PostCSS puts a 1-based `line` and `column` on the error, and
+ * Babel puts `loc: { line, column }` with a 0-based column. Read the wrong way, every
+ * JavaScript failure would be reported one column to the left, a wrong number that looks
+ * right. Each adapter knows which parser it ran.
  */
 export type PositionStyle = 'postcss' | 'babel';
 
@@ -75,10 +61,9 @@ function positionOf(error: unknown, style: PositionStyle): Position | null {
 /**
  * Our sentence for a parse failure, and the parser's text kept out of it.
  *
- * `dialect` is how the report should name the syntax we tried to read the file as —
- * `css`, `scss`, `less`, `JavaScript`. It names what we attempted rather than what
- * the file is, because when those differ that *is* the finding: a `.css` file holding
- * ERB is not broken CSS, it is a file we read as the wrong thing.
+ * `dialect` names the syntax the file was read as (`css`, `scss`, `less`, `JavaScript`),
+ * not what the file is, because when those differ that is the finding: a `.css` file
+ * holding ERB is not broken CSS but a file read as the wrong thing.
  */
 export function parseFailure(input: {
   readonly error: unknown;

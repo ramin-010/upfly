@@ -1,15 +1,10 @@
 /**
- * The CSS / SCSS / Less adapter.
+ * The CSS, SCSS and Less adapter: finds `url()` and `image-set()` references.
  *
- * Finds `url()` and `image-set()` references. Two parsers do the work, and using
- * them rather than a regex is the whole point: PostCSS tells us which byte ranges
- * are real declarations (so a `url()` inside a comment or a selector is never
- * mistaken for one), and `postcss-value-parser` breaks a declaration value into
- * typed tokens with source offsets, so quoting, nesting and escapes are somebody
- * else's solved problem.
- *
- * Like every adapter this one is pure: it takes text and returns data. It never
- * resolves a path and never asks whether a file exists.
+ * Two parsers do the work rather than a regex. PostCSS says which ranges of the text are
+ * real declarations, so a `url()` in a comment or a selector is never taken for one, and
+ * `postcss-value-parser` splits a value into typed tokens with source offsets, so quoting,
+ * nesting and escapes are handled for us.
  */
 
 import postcss, { type AtRule, type Declaration, type Root } from 'postcss';
@@ -34,11 +29,10 @@ import {
 /**
  * Dialect parsers, by extension.
  *
- * SCSS and Less need their own parser mainly for `//` line comments, which the
- * plain CSS parser does not understand — and a `// url(old.png)` that we mistook
- * for a live reference would be rewritten, corrupting a comment. `.sass`, the
- * indentation-based syntax, is deliberately absent: the only parser for it is
- * unmaintained, and claiming support we cannot test is worse than not claiming it.
+ * SCSS and Less need their own parsers mainly for `//` line comments, which plain CSS
+ * does not have: a `// url(old.png)` taken for a live reference would be rewritten inside
+ * a comment. `.sass`, the indented syntax, is left out: its only parser is unmaintained,
+ * and claiming support we cannot test is worse than not claiming it.
  */
 const PARSERS: ReadonlyMap<string, (css: string) => Root> = new Map([
   ['.css', (css: string) => postcss.parse(css, { from: undefined })],
@@ -53,16 +47,16 @@ function isImageSet(functionName: string): boolean {
 }
 
 /**
- * Find CSS references in a run of stylesheet text.
+ * Find the references in a run of stylesheet text.
  *
- * Exported because CSS turns up inside other formats: an HTML `<style>` element and
- * a `style=""` attribute are both CSS, and they deserve the same comment-aware,
- * interpolation-aware treatment as a `.css` file rather than a second, weaker
- * implementation in the HTML adapter. `baseOffset` is where this text begins inside
- * the file that contains it, so the offsets that come back point into that file.
+ * CSS also appears inside other formats (an HTML `<style>` element or `style=""`
+ * attribute, an `.astro` style block, a CSS-in-JS template), and each gets the same
+ * comment-aware, interpolation-aware reading as a `.css` file. PostCSS parses a bare
+ * declaration list such as `background: url(a.png)` as readily as a stylesheet, so a
+ * `style` attribute needs no wrapping.
  *
- * PostCSS parses a bare declaration list (`background: url(a.png)`) as happily as a
- * full stylesheet, so a `style` attribute needs no wrapping.
+ * @throws {UpflyError} `ADAPTER_PARSE_FAILED` when the text does not parse, or when
+ * `extension` is not `.css`, `.scss` or `.less`.
  */
 export function findCssReferences(input: {
   readonly file: string;
@@ -72,16 +66,11 @@ export function findCssReferences(input: {
   /** Dialect to parse as. Defaults to plain CSS. */
   readonly extension?: string;
   /**
-   * The shape to stamp on a plain `url()` when this CSS is EMBEDDED in something else
-   * — an HTML `<style>` element, a `style=""` attribute, an `.astro` style block, a
-   * CSS-in-JS template. Omitted for a real stylesheet, where the dialect decides.
+   * The shape a plain `url()` gets when this CSS is embedded in something else. Omitted
+   * for a real stylesheet, where the dialect decides.
    *
-   * 🔴 **It is a default, not an override.** A `url()` inside `<style>` is
-   * `html.style.element` because what would take it out is HTML's *extraction*; but an
-   * `image-set()` or an `@font-face` in the same block keeps its own `css.*` shape,
-   * because those break identically in every host. That is the ladder in `shapes.ts`,
-   * and getting it backwards would hide a break in image-set parsing behind whichever
-   * host it happened to be embedded in.
+   * A default, not an override: an `image-set()` or `@font-face` in the same block keeps
+   * its own `css.*` shape, because it breaks the same way in every host.
    */
   readonly hostShape?: ShapeId;
 }): RawReference[] {
@@ -99,16 +88,9 @@ export function findCssReferences(input: {
   try {
     root = parse(text);
   } catch (error) {
-    // A malformed stylesheet is the caller's problem to report, not ours to
-    // swallow: returning [] here would silently claim the file has no references.
-    //
-    // No `${file}`: `scan` records the path in its own field and the report
-    // prints it immediately before this message, so interpolating it here put the
-    // filename on every line twice. R20's scrub in `unscannedFile` stays as the
-    // net for community adapters that do interpolate one.
-    //
-    // R60: the sentence is ours and carries PostCSS's position; PostCSS's wording
-    // goes to the diagnostic channel and never to the report.
+    // Returning [] would claim the file has no references, so the failure is thrown for
+    // `scan` to report. The message leaves out the file name, which the report prints
+    // beside it, and keeps PostCSS's position but not its wording.
     const failure = parseFailure({
       error,
       // What we tried to read it as, which is the dialect the extension claimed.
@@ -123,12 +105,8 @@ export function findCssReferences(input: {
   root.walkDecls((declaration) => {
     collectFromDeclaration(declaration, run);
   });
-  // 🔴 A SECOND WALK, BECAUSE LESS'S VARIABLES ARE A DIFFERENT NODE TYPE. `$hero: '…'` is a
-  // Declaration to postcss-scss and reaches `walkDecls`; `@hero: '…'` is an AT-RULE to
-  // postcss-less — `@` opens an at-rule in CSS's grammar — so it never reaches `walkDecls`
-  // at all and no amount of work inside `collectFromDeclaration` could have found it.
-  // ⚠️ Two mechanisms, and the key already had that right: `scss.url` and `less.url` are
-  // separate rows, and R82's ladder says a thing that fails differently IS a separate row.
+  // A second walk for Less variables. postcss-scss parses `$hero: '…'` as a declaration,
+  // but postcss-less parses `@hero: '…'` as an at-rule, which `walkDecls` never visits.
   if (extension === '.less') {
     root.walkAtRules((atRule) => {
       collectFromVariableAtRule(atRule, run);
@@ -150,9 +128,9 @@ export const cssAdapter: Adapter = defineAdapter({
 });
 
 /**
- * PostCSS keeps the author's original text in `raws.<field>.raw` whenever it differs
- * from the cleaned-up value — a value containing a comment, for instance. We always
- * want the original, because its length is what the source offsets are made of.
+ * PostCSS keeps the author's original text in `raws.<field>.raw` whenever it differs from
+ * the cleaned-up value (a value containing a comment, for instance). The source offsets
+ * are built from the original's length, so that is the one we want.
  */
 function rawTextOf(raw: unknown, fallback: string): string {
   if (typeof raw === 'object' && raw !== null && 'raw' in raw) {
@@ -162,14 +140,7 @@ function rawTextOf(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * What every emission in one stylesheet shares.
- *
- * Collected into an object rather than threaded as five positional arguments: the
- * shape needs the dialect, the host and the declaration all at once, and a chain of
- * `(file, baseOffset, extension, hostShape, references)` is where an argument gets
- * passed in the wrong slot.
- */
+/** What every emission in one stylesheet shares. */
 interface CssRun {
   readonly file: string;
   readonly baseOffset: number;
@@ -185,9 +156,9 @@ interface DeclarationContext {
   /** `@font-face` bodies hold fonts, which are real files the engine never indexes. */
   readonly inFontFace: boolean;
   /**
-   * A preprocessor variable declaration — `$hero: '/img/hero.jpg'` or
-   * `@hero: "/img/hero.jpg"`. A bare quoted string is a PATH here and is not one in an
-   * ordinary declaration, where `content: "note.png"` is text. See
+   * A preprocessor variable declaration, `$hero: '/img/hero.jpg'` or
+   * `@hero: "/img/hero.jpg"`. A bare quoted string is a path here, while in an ordinary
+   * declaration such as `content: "note.png"` it is text. See
    * `collectVariableDeclarationString`.
    */
   readonly isVariableDeclaration: boolean;
@@ -218,9 +189,8 @@ function collectFromDeclaration(declaration: Declaration, run: CssRun): void {
       parent !== undefined &&
       parent.type === 'atrule' &&
       (parent as { name?: string }).name?.toLowerCase() === 'font-face',
-    // `$hero: '…'` reaches `walkDecls` as an ordinary declaration whose property starts
-    // with `$`. Less's `@hero: '…'` does NOT — it is an at-rule, and
-    // `collectFromVariableAtRule` handles it.
+    // `$hero: '…'` reaches `walkDecls` as a declaration whose property starts with `$`.
+    // Less's `@hero: '…'` is an at-rule instead, handled by `collectFromVariableAtRule`.
     isVariableDeclaration: run.extension === '.scss' && property.startsWith('$'),
   };
 
@@ -234,13 +204,10 @@ function collectFromDeclaration(declaration: Declaration, run: CssRun): void {
  * Less's `@hero: '/img/hero.jpg'`, which the declaration walk never sees.
  *
  * postcss-less marks these `variable: true` and puts the text in both `params` and
- * `value`. **The flag is checked rather than the shape of the name**, so `@media`,
- * `@import` and `@font-face` cannot fall in here by resembling one.
- *
- * ⚠️ The offset is computed as `@` + name + `afterName`, which is where postcss-less keeps
- * the colon and the spacing around it. Measured against the source text rather than
- * assumed: `@banner:   "…"` with three spaces lands on the opening quote exactly, and the
- * range invariant `source.slice(start, end) === rawPath` is the thing that must not move.
+ * `value`. The flag is checked rather than the shape of the name, so `@media`, `@import`
+ * and `@font-face` cannot pass for one. The value starts after `@`, the name and
+ * `afterName`, where postcss-less keeps the colon and the spacing around it; a test with
+ * extra spacing checks that `source.slice(start, end) === rawPath` still holds.
  */
 function collectFromVariableAtRule(atRule: AtRule, run: CssRun): void {
   const { variable, name, params } = atRule as AtRule & { variable?: boolean };
@@ -270,15 +237,15 @@ function collectFromVariableAtRule(atRule: AtRule, run: CssRun): void {
 interface ValuePosition {
   /** Inside `image-set()`, and whether it was the vendor-prefixed spelling. */
   readonly imageSet: 'none' | 'standard' | 'webkit';
-  /** Inside some other function — `linear-gradient(url(...))`. */
+  /** Inside some other function, as in `linear-gradient(url(...))`. */
   readonly nested: boolean;
 }
 
 /**
  * Walk the token tree of one declaration value.
  *
- * `insideImageSet` is the only context that matters: a bare string is an image path
- * inside `image-set("a.png" 1x, "b.png" 2x)` and is just a string anywhere else.
+ * A bare string is an image path inside `image-set("a.png" 1x, "b.png" 2x)` and, outside
+ * any function, in a preprocessor variable declaration. Anywhere else it is just a string.
  */
 function collectFromValueNodes(
   nodes: readonly ValueNode[],
@@ -294,9 +261,9 @@ function collectFromValueNodes(
         collectFromUrlFunction(node.nodes, base, run, declaration, position);
         continue;
       }
-      // Recurse into every other function so that a `url()` nested in, say, a
-      // `linear-gradient()` is still found. Anything that is not image-set counts as
-      // nesting, which is its own row: what breaks there is the recursion itself.
+      // Recurse so that a `url()` inside, say, `linear-gradient()` is still found. Any
+      // function but image-set counts as nesting, a shape of its own, because what breaks
+      // there is the recursion itself.
       collectFromValueNodes(node.nodes, base, run, declaration, {
         imageSet: isImageSet(name) ? (name.startsWith('-') ? 'webkit' : 'standard') : 'none',
         nested: position.nested || !isImageSet(name),
@@ -326,39 +293,15 @@ function collectFromValueNodes(
 /**
  * A quoted path parked in a preprocessor variable, which is a reference to that file.
  *
- * 🔴 **THE ASSET IS NOT HEDGED, AND THAT IS WHY THIS MATTERS MORE THAN A MISSING ROW.**
- * `$hero: '/img/hero.jpg'` is invisible today, so the only thing the engine sees is
- * `url($hero)` — which it correctly calls `dynamic`, a hedge that protects the *reference*
- * and says nothing about the *file*. If `/img/hero.jpg` is named nowhere else it looks
- * DEAD, and `optimize --replace` will convert it and leave the declaration pointing at a
- * name that no longer exists. **Silently. That is this product's own failure mode aimed at
- * itself**, and it is the argument for reading the declaration rather than for widening
- * the glob on the use.
+ * Without this, `$hero: '/img/hero.jpg'` goes unread and only `url($hero)` is seen, which
+ * is rightly `dynamic`. That protects the reference but not the file: named nowhere else,
+ * it looks dead, and converting it would leave the variable naming a missing file. Like the
+ * JavaScript adapter's path-shaped string literals, it is a guess (`asserted: false`), so
+ * one that names nothing is `discarded` rather than reported `broken`.
  *
- * ⚠️ **Not a new rule — the JavaScript adapter has had exactly this one for months.**
- * `collectSpeculativeString` treats a path-shaped string literal as a candidate with
- * `asserted: false` and the note *"guessed rather than asserted"*, and the resolver throws
- * away the ones that hit nothing. The CSS adapter had no equivalent, and **that
- * inconsistency is the case for this change on a repository that has never seen our
- * fixtures** — not that our tree happens to hold six of them.
- *
- * 🔴 **MEASURED ACROSS THE FIVE VALIDATION REPOSITORIES, 2026-09-15, AND THE HONEST RESULT
- * IS TWO-SIDED.** 194 `.scss`/`.less` files, **16** quoted-string variable declarations,
- * **0** of them with a file extension, so this rule adds **0 references and 0 false
- * positives** there. That is strong evidence for its SAFETY and **no evidence at all for
- * its frequency** — the pattern simply does not occur in those five. All 16 near-misses are
- * media queries (`$big: "only screen and (min-width : …)"`), and they are rejected by the
- * extension test rather than by luck. ⚠️ The claim that this shape is common in the wild is
- * a belief about Sass conventions and is NOT measured; what is measured is that reading it
- * costs nothing.
- *
- * **Restricted to variable declarations deliberately.** In an ordinary declaration a bare
- * quoted string is text — `content: "note.png"` is a caption, not a file — so widening this
- * to every declaration would manufacture the false positives R49 warns about. A variable is
- * the one place a whole path is conventionally parked for a `url()` later on.
- *
- * ⚠️ `!position.nested`: inside a function the string is an argument, and the functions
- * that take a path (`url`, `image-set`) are already handled above.
+ * Only in variable declarations: elsewhere a quoted string is text (`content: "note.png"`).
+ * Inside a function it is an argument, and the functions that take a path (`url`,
+ * `image-set`) are read separately. See "The six that exist" in ARCHITECTURE.md.
  */
 function collectVariableDeclarationString(
   node: ValueNode & { readonly sourceIndex: number; readonly quote?: string },
@@ -368,9 +311,8 @@ function collectVariableDeclarationString(
   position: ValuePosition,
 ): void {
   const { path } = splitPathSuffix(node.value);
-  // The same bound the JS and JSON adapters use: anything with a file extension is a
-  // candidate, and what counts as an ASSET extension stays with the resolver, which is the
-  // one place that policy lives. `$dir: '/gallery'` fails here and must.
+  // As in the JavaScript and JSON adapters, any file extension makes a candidate, and the
+  // resolver decides which extensions are assets. `$dir: '/gallery'` has none.
   if (path === '' || extensionOf(path) === '' || isExternalUrl(node.value, 'string')) return;
   if (!plausiblePathShape(path)) return;
 
@@ -382,9 +324,6 @@ function collectVariableDeclarationString(
     declaration,
     position,
     quote: node.quote ?? '"',
-    // 🔴 A GUESS, AND IT SAYS SO. `asserted: false` is what lets the resolver drop the ones
-    // that hit nothing as `discarded` rather than reporting them `broken` — the difference
-    // between a hedge and a false positive, and the reason this can be turned on at all.
     asserted: false,
   });
 }
@@ -406,18 +345,19 @@ function collectFromUrlFunction(
     declaration,
     position,
     // The quote character, not just whether there was one: `url('x')` and `url("x")`
-    // are different rows because they are different tokens to the parser.
+    // are different shapes because they are different tokens to the parser.
     quote: argument.type === 'string' ? (argument.quote ?? '"') : '',
   });
 }
 
 /**
- * Which row this url() belongs to.
+ * Which shape this url() is.
  *
- * 🔴 **The order IS the ladder from `shapes.ts`** — narrowest independently-failing
- * thing first. A mechanism CSS owns (interpolation, image-set, a custom property, a
- * nested function) beats the host it is embedded in, because those break identically
- * in a `.css` file and inside a `<style>` element. The host only decides what is left.
+ * The order follows the rule in `shapes.ts`: a shape names the narrowest thing whose
+ * breakage would take out this reference alone. A mechanism CSS owns (interpolation,
+ * image-set, a custom property, a nested function) wins over the host it is embedded in,
+ * because it breaks the same way in a `.css` file and inside a `<style>` element. The host
+ * decides only what is left.
  */
 function shapeOf(input: {
   readonly rawPath: string;
@@ -429,25 +369,17 @@ function shapeOf(input: {
   const { rawPath, run, declaration, position, quote } = input;
   const scss = run.extension === '.scss';
 
-  // 1. Interpolation mechanisms — the path is assembled, whoever is holding the file.
-  //    R78 Q3: a LEADING interpolation varies the directory and a trailing one varies
-  //    the name, which is why they are separate rows.
+  // 1. Interpolation: the path is assembled, whatever host holds it. A leading
+  //    interpolation varies the directory and a trailing one the name, so they are
+  //    separate shapes.
   if (rawPath.includes('#{')) {
     return rawPath.startsWith('#{') ? 'scss.interpolation.leading' : 'scss.interpolation.trailing';
   }
   if (rawPath.includes('@{')) return 'less.interpolation';
-  // ⚠️ THERE IS DELIBERATELY NO `${}` RUNG HERE, and the reason is worth the lines
-  //    because the obvious fix is wrong. B7 measured `js.template.pattern -> js.cssinjs`
-  //    as a misassignment and it is not one: this function NEVER SEES a `${}`.
-  //    `collectFromTaggedTemplate` flattens the template first, substituting each
-  //    interpolation with a same-length comment placeholder so the offsets still point
-  //    into the real file — so what arrives here is `/theme-/*---*/.png`. A rung testing
-  //    for `${` is unreachable code, and adding one changed nothing at all (R89).
-  //    ✅ R167 group B settled what this comment used to argue: the KEY was right —
-  //    `/theme-${mode}.png` names three real files — and the engine was missing the glob
-  //    rule, not this rung. The JavaScript adapter now restores the source text and asks
-  //    `assembledPathIsGlobbable` after this pass returns (`withInterpolationRestored`),
-  //    because only it knows which comments are its own placeholders.
+  //    No `${}` rung: this function never sees one. The JavaScript adapter replaces each
+  //    `${…}` with a same-length comment (`/theme-/*---*/.png`) before passing CSS-in-JS
+  //    here, then restores the text and applies `assembledPathIsGlobbable` itself
+  //    (`withInterpolationRestored`), because only it knows which comments it wrote.
   if (rawPath.startsWith('$')) return 'scss.variable';
   if (rawPath.startsWith('@')) return 'less.variable';
 
@@ -458,7 +390,7 @@ function shapeOf(input: {
   if (declaration.property.startsWith('--')) return 'css.var';
   if (position.nested) return 'css.url.nested';
 
-  // 3. Embedded in something else — the host decides what is left over.
+  // 3. Embedded in something else: the host decides what is left.
   if (run.hostShape !== undefined) return run.hostShape;
 
   // 4. A real stylesheet: the dialect, then the quoting.
@@ -470,57 +402,34 @@ function shapeOf(input: {
 }
 
 /**
- * Markers that mean the path is assembled at compile time, not written literally.
+ * Whether a `#{…}` or `@{…}` path fixes enough to be globbed rather than given up on.
  *
- * ⚠️ **`quoted` is not a nicety: without it a parenthesis in a filename made an image
- * invisible.** `url("/images/quote (blue).svg")` is a literal path — inside quotes a
- * parenthesis is just a character — but the function-call test read it as
- * `map-get($m, k)` and marked the reference `unsafe`. It then linked nothing, the
- * asset had zero references, and it was reported **`dead`**: *safe to delete*, about a
- * file the live site serves. Four of them on `scratch-www`, all in one stylesheet.
- *
- * That is R26's class for the third time — spaces and parentheses are how a
- * non-developer names a file, and every repository maintained by professional JS
- * developers is blind to it by construction. The other markers stay unconditional:
- * SCSS and Less interpolation, and the comment that CSS-in-JS substitution leaves
- * behind, all appear *inside* quotes routinely.
- */
-/**
- * Whether a `#{…}` / `@{…}` path constrains enough to be globbed rather than given up on.
- *
- * 🔴 **R80(b) WAS RULED, THE CONDITION WAS WRITTEN AND SHARED AND TESTED, AND THE CSS
- * ADAPTER NEVER CALLED IT.** `assembledPathIsGlobbable` has governed the JavaScript
- * adapter's template literals since R89; a SCSS interpolation went straight to `unsafe`,
- * and `resolveOne` refuses an unsafe reference outright, so **`resolved-pattern` was
- * reachable only through a JS template literal.** The rule was not missing — it was
- * unwired, which is the pipeline leaking rather than new work.
- *
- * R78 Q3's distinction, unchanged: a **trailing** interpolation varies the NAME inside a
- * fixed directory and can be globbed; a **leading** one varies the directory and cannot,
- * because the glob would sweep in assets nobody referenced.
+ * A trailing interpolation varies the name inside a fixed directory and can be globbed; a
+ * leading one varies the directory, and a glob would sweep in assets nobody referenced.
+ * The rule is `assembledPathIsGlobbable`, shared with the JavaScript adapter.
  */
 function interpolationIsGlobbable(rawPath: string): boolean {
-  // 🔴 NOT `splitPathSuffix` FIRST, AND THE FIRST VERSION OF THIS DID EXACTLY THAT.
-  // `#` opens a URL FRAGMENT in CSS and opens an INTERPOLATION in SCSS, and
-  // `splitPathSuffix` only knows the first meaning — so `/theme-#{$mode}.png` came back
-  // as path `/theme-` with fragment `{$mode}.png`. The globbable test then ran on
-  // `/theme-`, said yes, and the reference was emitted as `/theme-`: no image extension,
-  // dropped at rung 3, **and the matrix went from `dynamic` to `absent`** — a silent skip
-  // introduced by the fix for a silent skip. The interpolation markers are checked on the
-  // written text, before anything interprets a `#`.
   return assembledPathIsGlobbable(interpolationChunks(rawPath));
 }
 
-/** Whether a path carries an interpolation, in any of the three dialects. */
+/** Whether a path carries a SCSS or Less interpolation. */
 function isInterpolated(text: string): boolean {
   return text.includes('#{') || text.includes('@{');
 }
 
+/**
+ * Why a path cannot be read as written, or `null` when it can be looked up or globbed.
+ *
+ * `quoted` matters because inside quotes a `(` is an ordinary character:
+ * `url("/images/quote (blue).svg")` is a literal path, and reading it as a function call
+ * would leave the file with no reference, reported dead. Spaces and parentheses are common
+ * in the names non-developers give files. The other markers apply inside quotes too,
+ * because interpolations and CSS-in-JS placeholders appear there routinely.
+ */
 function dynamicReason(rawPath: string, quoted: boolean): string | null {
-  // ⚠️ The globbable ones return `null` here so that `addReference` gives them a `medium`
-  // ceiling instead of `unsafe`. They are still not literal paths — `matchPattern` is what
-  // decides whether the pattern names anything, and falls back to `dynamic` when it does
-  // not. So this can only ever ADD links; it cannot turn a dynamic reference broken.
+  // Globbable interpolations return `null` so that `addReference` gives them a `medium`
+  // ceiling rather than `unsafe`. `matchPattern` still decides whether the pattern names
+  // any file, so this can add links but never turn a dynamic reference into a broken one.
   if (rawPath.includes('#{')) {
     return interpolationIsGlobbable(rawPath) ? null : `SCSS interpolation: ${NOT_GLOBBABLE_REASON}`;
   }
@@ -534,7 +443,7 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
   }
   // A comment inside a url token is never a literal path. It also stands in for a
   // CSS-in-JS interpolation: the JS adapter replaces every `${...}` with a comment
-  // of exactly the same length, so `url(${bg})` arrives here as `url(/*--*/)`.
+  // of exactly the same length, so `url(${bg})` arrives here as `url(/*-*/)`.
   if (rawPath.includes('/*')) return 'contains a comment or interpolation, not a literal path';
   if (rawPath.includes('\\')) return 'contains a CSS escape sequence';
   return null;
@@ -549,12 +458,10 @@ function addReference(input: {
   /** The quote character the author used, or `''` for an unquoted url token. */
   quote: string;
   /**
-   * Whether the author SAID this was an asset. A `url()` says so; a quoted string parked
-   * in a preprocessor variable only looks like one. Defaults to true, because every
-   * caller but `collectVariableDeclarationString` is a construct that asserts.
-   *
-   * ⚠️ It is what separates a hedge from a false positive: an unasserted path that hits
-   * nothing is `discarded`, an asserted one is reported `broken`.
+   * Whether the author said this is an asset, as a `url()` does. A quoted string parked in
+   * a preprocessor variable only looks like one, so `collectVariableDeclarationString`
+   * passes `false`; every other caller takes the default, `true`. An unasserted path that
+   * names nothing is `discarded`, while an asserted one is reported `broken`.
    */
   asserted?: boolean;
 }): void {
@@ -566,12 +473,9 @@ function addReference(input: {
 
   const shape = shapeOf({ rawPath: text, run, declaration, position, quote });
 
-  // Inside quotes a `(` is an ordinary character, which is what R26's
-  // `url("/images/quote (blue).svg")` turns on.
   const reason = dynamicReason(text, quote !== '');
   if (reason !== null) {
-    // Reported, never rewritten. These are the cases where guessing would corrupt
-    // a file, so the honest answer is to say what we saw and why we left it alone.
+    // Reported with its reason and never rewritten: guessing here could corrupt a file.
     references.push({
       file,
       start,
@@ -586,20 +490,11 @@ function addReference(input: {
     return;
   }
 
-  // 🔴 AN INTERPOLATED PATH IS NOT SPLIT, BECAUSE `#` MEANS TWO THINGS. In CSS it opens a
-  // fragment; in SCSS it opens an interpolation. `splitPathSuffix` knows only the first, so
-  // splitting `/theme-#{$mode}.png` yields the path `/theme-` and throws the rest away as a
-  // fragment. Every interpolated reference here is one the author wrote as a whole.
+  // An interpolated path is kept whole, including any `?query` or `#fragment`;
+  // `matchPattern` removes the suffix before globbing.
   const interpolated = isInterpolated(text);
   const { path, suffix } = interpolated ? { path: text, suffix: '' } : splitPathSuffix(text);
   if (path === '') return; // A bare `?query` names no file.
-
-  // 🔴 A GLOBBABLE INTERPOLATION IS `medium`, NEVER `high` — and getting this wrong would
-  // be worse than the gap it fixes. `dynamicReason` returns `null` for these so they reach
-  // this line, but they are not literal paths: at `high` the resolver would look
-  // `/theme-#{$mode}.png` up verbatim, find nothing, and report a **broken reference the
-  // author never wrote**. `medium` sends it to `matchPattern`, which globs it and falls
-  // back to `dynamic` when the pattern names nothing — so this can only ADD links.
 
   references.push({
     file,
@@ -609,6 +504,8 @@ function addReference(input: {
     rawPath: path,
     kind: 'css-url',
     shape,
+    // An interpolated path is `medium`, never `high`: at `high` the resolver would look
+    // `/theme-#{$mode}.png` up verbatim and report a broken reference nobody wrote.
     ceiling: interpolated ? 'medium' : 'high',
     asserted,
     ...(asserted ? {} : { note: 'a path-shaped string literal, guessed rather than asserted' }),

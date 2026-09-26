@@ -1,16 +1,13 @@
 /**
- * The JavaScript / TypeScript / JSX adapter.
+ * The JavaScript, TypeScript and JSX adapter.
  *
- * Finds static `import`s, `require()`, dynamic `import()`, the Vite-style
- * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster`, and `url()`
- * inside CSS-in-JS template literals.
+ * Finds static `import`s, `require()`, dynamic `import()`, the bundler form
+ * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster`, inline-SVG
+ * `<image href>`, and `url()` inside CSS-in-JS template literals. Path-shaped strings,
+ * templates and `+` chains outside those constructs become speculative candidates.
  *
- * This adapter is parsed with `@babel/parser` and never with a regular expression,
- * and that rule is not stylistic. A regex finds `'./logo.png'` inside a comment,
- * inside an unrelated string, and inside code that was deleted months ago — and
- * then the rewrite stage edits those positions. That is the silent corruption this
- * whole project exists to prevent, so the one place it would be easiest to cut the
- * corner is the one place we do not.
+ * It parses with `@babel/parser`, never a regular expression: a regex would find
+ * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
  */
 
 import { parse } from '@babel/parser';
@@ -47,11 +44,11 @@ import {
 } from './reference-path.js';
 
 /**
- * Which babel plugins each extension needs.
+ * Which Babel plugins each extension needs.
  *
- * `.ts` and `.tsx` differ for a real reason: in a `.ts` file `<string>value` is a
- * type assertion, and in a `.tsx` file it opens a JSX element. Enabling `jsx`
- * everywhere would make valid TypeScript unparseable.
+ * `.ts` and `.tsx` differ: in a `.ts` file `<string>value` is a type assertion, and in a
+ * `.tsx` file it opens a JSX element. Enabling `jsx` everywhere would make valid
+ * TypeScript unparseable.
  */
 const TYPESCRIPT_PLUGINS: readonly string[] = ['typescript', 'decorators-legacy'];
 const JAVASCRIPT_PLUGINS: readonly string[] = ['jsx', 'decorators-legacy'];
@@ -71,17 +68,13 @@ const PLUGINS_BY_EXTENSION: ReadonlyMap<string, readonly string[]> = new Map([
 const JSX_URL_ATTRIBUTES: ReadonlySet<string> = new Set(['src', 'srcset', 'poster']);
 
 /**
- * Inline-SVG elements whose `href` names a file, keyed by lowercased tag name (R26).
+ * Inline-SVG elements whose `href` names a file, keyed by lowercased tag name.
  *
- * ⚠️ **Tag-scoped, unlike `JSX_URL_ATTRIBUTES`, and that is the whole point.** Adding a
- * bare `href` to the set above would have made every `<a href>` a candidate — including
- * `<a href="/report.pdf">`, where the resolver would then have to decide what a link to
- * a non-image means. `<image>` and `<feImage>` are unambiguous: their `href` is always a
- * file.
- *
- * `xlinkhref` is the React spelling of SVG 1.1's `xlink:href`, and `xlink:href` itself
- * arrives as a `JSXNamespacedName` — both are still overwhelmingly what shipped markup
- * contains, so both are here.
+ * Scoped to the tag, unlike `JSX_URL_ATTRIBUTES`: a bare `href` there would make every
+ * `<a href>` a candidate, including `<a href="/report.pdf">`, while the `href` of `<image>`
+ * and `<feImage>` is always a file. `xlinkhref` is React's `xlinkHref` lowercased, and
+ * `xlink:href` arrives as a `JSXNamespacedName`: both spell SVG 1.1's `xlink:href`, which
+ * shipped markup still commonly uses.
  */
 const JSX_SVG_HREF_ELEMENTS: ReadonlyMap<string, readonly string[]> = new Map([
   ['image', ['href', 'xlinkhref', 'xlink:href']],
@@ -114,15 +107,14 @@ export const javascriptAdapter: Adapter = defineAdapter({
 /**
  * Parse JavaScript or TypeScript and collect its image references.
  *
- * Exported for the same reason `findCssReferences` is: another adapter needs to hand
- * this one a *region* of a file it owns. The Astro adapter's frontmatter fence is
- * TypeScript inside a `.astro` file, and `file` must stay the real `.astro` path so
- * every reference cites where a reader will actually find it — which is why the
- * dialect is a parameter here rather than being re-derived from the extension.
+ * Exported for adapters that hold JavaScript inside another format, such as an `.astro`
+ * frontmatter fence or the `import`/`export` blocks of an `.mdx` file. `file` stays the
+ * host file's path, so every reference cites where a reader will find it, and `extension`
+ * names the dialect to parse. Offsets index `text`, so a caller that blanks the rest of the
+ * file with spaces, rather than slicing out the region, gets offsets into the original file.
  *
- * Offsets are absolute in `text`, so a caller that pads a region with spaces rather
- * than slicing it gets file-absolute ranges for free and the range invariant
- * (`source.slice(start, end) === rawPath`) keeps holding against the original file.
+ * @throws {UpflyError} `ADAPTER_PARSE_FAILED` when `extension` is not a JavaScript
+ * dialect or the text does not parse.
  */
 export function findJavaScriptReferences(input: {
   readonly file: string;
@@ -144,24 +136,15 @@ export function findJavaScriptReferences(input: {
     try {
       ast = parseWith(text, plugins);
     } catch (error) {
-      // Returning [] would report a file we could not read as having no references,
-      // which is a silent skip and a P0 bug under rule 9.
-      // R60. The template sentence was already ours and stays first, because it says
-      // something Babel's position cannot: the file is not JavaScript at all, so a
-      // column number would point into the wrong language. Everything else used to
-      // fall through to Babel's raw text -- `Unexpected token (1:6)` -- which is the
-      // same defect as PostCSS's and reaches the report the same way.
-      //
-      // ⚠️ Zero instances in the corpus, because every JS parse failure across the
-      // five repositories is the template case. Fixed anyway: a construction that
-      // emits a library's wording is the defect, and whether the corpus happens to
-      // enter it is not evidence about the code. That is R63, where the same wrong
-      // answer sat in `plan.ts` and nobody had asked.
+      // Returning [] would report a file we could not read as having no references, a
+      // silent skip. The template sentence comes first because it says what a position
+      // cannot: the file is not JavaScript at all. Otherwise the sentence is ours with
+      // Babel's position, and Babel's own wording goes to the diagnostic, never the report.
       const template = templateSourceReason(text);
       const failure = parseFailure({ error, dialect: 'JavaScript', position: 'babel' });
       throw new UpflyError(
         'ADAPTER_PARSE_FAILED',
-        // No `${file}` — see the note in `css.ts`. The report already names it.
+        // No file name: the report already prints the path before this message.
         template === null ? failure.message : `Could not parse: ${template}`,
         [],
         failure.diagnostic,
@@ -179,10 +162,9 @@ export function findJavaScriptReferences(input: {
     };
     walk(ast, (node) => collectFromNode(node, context));
 
-    // A speculative string whose range a real construct already claimed is that
-    // construct's reference, not a second one. Filtering afterwards rather than
-    // during the walk keeps this independent of visit order, which `walk` does not
-    // promise.
+    // A guess whose range a construct already claimed is that construct's reference,
+    // not a second one. Filtering after the walk keeps this independent of visit order,
+    // which `walk` does not promise.
     const claimed = new Set(context.references.map((reference) => reference.start));
     const guesses = context.speculative.filter(
       (reference) =>
@@ -202,35 +184,25 @@ export function findJavaScriptReferences(input: {
  */
 function parseWith(text: string, plugins: readonly string[]): BabelNode {
   return parse(text, {
+    // `unambiguous` reads both ESM and CommonJS without being told which a file is,
+    // which no build config reliably says.
     sourceType: 'unambiguous',
-    // `unambiguous` lets one adapter read both ESM and CommonJS without being
-    // told which a file is, which no build config reliably tells us anyway.
     allowReturnOutsideFunction: true,
     plugins: [...plugins] as never,
   });
 }
 
 /**
- * Whether `text` parses, and when it does not, whether it failed because it STOPPED
- * EARLY rather than because it is wrong.
+ * Whether `text` parses, and when it does not, whether it stopped early rather than
+ * being wrong.
  *
- * 🔴 **Exists for MDX's top-level ESM (R167 group A), whose extent is not a syntax
- * fact.** MDX ends an `import`/`export` block at the first blank line — unless the code
- * up to that line is an unfinished prefix, in which case it swallows the blank line and
- * carries on (`micromark-extension-mdxjs-esm`, `atEnd`: *if the parse failed and
- * `result.swallow`, continue*). A caller that ended every block at a blank line would
- * report `export const meta = {` + blank line + `title: 'x' }` as a parse failure in a
- * document MDX compiles without complaint.
- *
- * ⚠️ **Babel does not say "incomplete" the way acorn does, and the difference was
- * measured, not assumed.** acorn raises an unfinished template, comment or JSX body at
- * the END of the input (`raisedAt`), which is what MDX tests. Babel positions the same
- * three errors at the construct's START and says what it was instead — `pos` 18 of 20
- * for `` export const a = `x `` — so "the error is at the end" alone would miss them.
- * Both signals are therefore read: a plain unexpected token at the very end, or one of
- * those three `reasonCode`s. **An unterminated STRING is deliberately not among them:**
- * a string cannot cross a line, so no amount of further text completes it, and acorn
- * does not swallow it either.
+ * MDX ends a top-level `import`/`export` block at the first blank line, unless the code so
+ * far is an unfinished prefix, in which case it swallows the blank line and carries on
+ * (`micromark-extension-mdxjs-esm`). MDX parses with acorn, which reports an unfinished
+ * template, comment or JSX body at the end of the input. Babel reports those where the
+ * construct starts, so two signals are read: an unexpected token at the very end, or one
+ * of `UNFINISHED_REASON_CODES`. An unterminated string is not among them: a string cannot
+ * cross a line, so no further text completes it.
  */
 export function javaScriptParseOutcome(
   text: string,
@@ -258,19 +230,15 @@ const UNFINISHED_REASON_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether a file that will not parse is a **template** wearing a code extension.
+ * Whether a file that will not parse is template source wearing a code extension: the
+ * sentence saying so, or `null`.
  *
- * `eleventy-docs/src/_includes/snippets/pagination/**` are ten `.js` and `.cjs`
- * files that open with `{% raw %}` — Nunjucks source, carrying a JavaScript
- * extension because Eleventy includes them as text. Failing to parse them is
- * correct. Saying **"Unexpected token (1:1)"** is not: it tells a reader their
- * JavaScript is broken, when the file was never JavaScript.
+ * Eleventy includes snippets as text, so a `.js` file can hold Nunjucks that opens with
+ * `{% raw %}`. Failing to parse it is correct, but "Unexpected token (1:1)" would tell the
+ * reader their JavaScript is broken when the file was never JavaScript.
  *
- * Deliberately only consulted **after** the parser has already failed, and only on
- * the first non-blank line. Anything looser would start second-guessing Babel about
- * files that parse perfectly well — a `.js` file may legitimately contain `{%` in a
- * string, and it is not this function's business unless the parse has already
- * failed on it.
+ * Asked only after the parse has failed, and only of the first non-blank line: a `.js`
+ * file that parses may legitimately hold `{%` in a string.
  */
 function templateSourceReason(text: string): string | null {
   const firstLine =
@@ -300,27 +268,29 @@ interface Context {
   readonly text: string;
   readonly references: RawReference[];
   /**
-   * Path-shaped string literals no known construct claimed.
+   * Guesses: path-shaped strings, templates and `+` chains that no construct claimed.
    *
-   * Kept separate until the walk finishes so they can be filtered against what the
-   * real constructs found — see `findReferences`.
+   * Kept apart until the walk finishes, so `findJavaScriptReferences` can drop any whose
+   * range a construct claimed.
    */
   readonly speculative: RawReference[];
   /**
-   * Offsets of string literals a construct examined and *declined*.
+   * Offsets of literals a construct has examined, whether it emitted a reference or
+   * declined. A decline is a decision, not an absence: `alt="/not.png"` is display text,
+   * and the speculative rules must not overturn it.
    *
-   * A decline is a decision, not an absence — `alt="/not.png"` is display text. The
-   * speculative string rule must not overturn it.
+   * A string is recorded at the offset after its opening quote and a template literal at
+   * its own start, which is what the speculative rules compare against.
    */
   readonly handled: Set<number>;
   /**
-   * The value of a same-file constant a path is assembled from, or `null` (R175). See
+   * The value of a same-file constant a path is assembled from, or `null`. See
    * `sameFileConstants` for the one condition under which a name is read through.
    */
   readonly constantNamed: (name: string) => string | null;
   /**
    * The inner `+` nodes of every chain already read. A chain nests down its left side, so
-   * the walk meets each inner node after its outer one — and must not read it again as a
+   * the walk meets each inner node after its outer one, and must not read it again as a
    * second, shorter chain.
    */
   readonly chainParts: Set<BabelNode>;
@@ -404,24 +374,11 @@ function collectFromNode(node: BabelNode, context: Context): void {
 }
 
 /**
- * A path-shaped string literal that no construct above claimed.
- *
- * The adapter reads `import`, `require`, `import()`, JSX attributes, CSS-in-JS and
- * `new URL(…, import.meta.url)`. Everything else was invisible — and that produced a
- * **false `dead`** on astro-docs, where an asset is referenced by
- * `path: './src/pages/open-graph/_images/docs-logo.png'` in an object literal. The
- * sweep could not rescue it either: that file was read successfully and simply
- * yielded no reference, so neither of its haystacks covered it.
- *
- * The asymmetry was indefensible on its own terms. `{ "file": "x.png" }` in
- * `data.json` is a candidate; the identical string in `data.ts` was invisible.
- *
- * So these are emitted **speculative**, exactly as the JSON adapter emits its
- * strings: one that resolves becomes a real link — which is strictly better than a
- * hedge, because Phase 2 can then act on it — and one that does not is `discarded`
- * silently, which is already the ruled behaviour for a guess.
+ * A path-shaped string literal that no construct above claimed, such as
+ * `path: './_images/logo.png'` in an object literal. Emitted as a guess, as the JSON adapter
+ * emits its strings: one that resolves becomes a link, and one that does not is discarded
+ * and counted in the report. See "The six that exist" in ARCHITECTURE.md.
  */
-
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
   const candidate = speculativeStringPath(node, context.text);
   if (candidate === null) return;
@@ -433,18 +390,12 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
     end: start + path.length,
     rawPath: path,
     kind: 'string',
-    // 🔴 NOT `path.bare-specifier`, AND THIS WAS MEASURED THE HARD WAY. R88(b) reads the
-    // tree's three bare-specifier entries — an import, a require() and a plain `const` —
-    // as one row on the argument that all three fail together. Two of them do. The plain
-    // string does not: inside `import`/`require` a bare string IS module-resolution
-    // syntax, while in an ordinary string `src/assets/hero.png` is just a relative path
-    // nobody prefixed with `./`. The two are syntactically identical.
-    // Asserting the disposition here labelled 351 references across the corpus as
-    // packages — `loading...`, `bs.button`, `v2.0.0`, `berryhouse.ca` on railsgirls-com
-    // and eleventy-docs. Telling `some-ui-kit/dist/x.png` from `src/assets/x.png` needs
-    // to know whether the first segment is installed, which is node_modules and therefore
-    // the resolver's (R87). The key keeps all three entries and `path.bare-specifier`
-    // declares `adapterEmitsAs` for this one.
+    // Not `path.bare-specifier`, even for a bare string. Inside `import` or `require()` a
+    // bare string is module-resolution syntax, but in an ordinary string
+    // `src/assets/hero.png` is a relative path written without `./`, and a prefix test
+    // would call `v2.0.0` and `bs.button` packages. Telling `some-ui-kit/dist/x.png` from
+    // `src/assets/x.png` needs to know what is installed, which an adapter cannot see, so
+    // `path.bare-specifier` lists this shape in `adapterEmitsAs`.
     shape: 'js.string.literal',
     ceiling: 'high',
     asserted: false,
@@ -453,11 +404,10 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
 }
 
 /**
- * Where a string literal names a complete path ON ITS OWN, or `null`.
+ * Where a string literal names a complete path on its own, or `null`.
  *
- * Split out of `collectSpeculativeString` so the chain reader asks the very same question
- * rather than a copy of it (R175): a `+` chain containing a literal that is already a
- * complete path is left to that literal, and "complete path" must mean one thing in both.
+ * Shared with the chain reader, which leaves a `+` chain to any literal in it that is
+ * already a complete path, so "complete path" means the same thing in both.
  */
 function speculativeStringPath(
   node: StringLiteral,
@@ -473,28 +423,19 @@ function speculativeStringPath(
   if (raw !== node.value) return null;
 
   const { path } = splitPathSuffix(raw);
-  // Anything with a file extension is a candidate — the same bound the JSON adapter
-  // uses. Deciding what an *asset* extension is stays with the resolver, which is
-  // the one place that policy lives.
+  // Anything with a file extension is a candidate, the same bound the JSON adapter uses.
+  // Which extensions are assets is decided in one place, the resolver.
   if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return null;
   if (!plausiblePathShape(path)) return null;
   return { start, path };
 }
 
 /**
- * A path-shaped template literal that no construct above claimed.
+ * A path-shaped template literal that no construct above claimed, emitted as a guess.
  *
- * The sibling of `collectSpeculativeString`, and it was missed on the first pass —
- * which cost two false `dead` findings on astro-docs. `` `./_images/background-${dir}.png` ``
- * in an object property is not a string literal, so the speculative string rule did
- * not see it, and no basename sweep ever could: the text `background-ltr.png` does
- * not exist anywhere.
- *
- * But the right machinery already existed. A template carries a `medium` ceiling,
- * the resolver globs it, and `resolved-pattern` links **every** match — so both
- * files link, by a path built weeks earlier. The lesson is worth more than the fix:
- * when one mechanism cannot reach a case, check whether a different existing one
- * already does before calling the limit fundamental.
+ * Like any template it can carry a `medium` ceiling, so the resolver globs
+ * `` `./_images/background-${dir}.png` `` and links every file it matches. No basename
+ * sweep could find those files, because their names never appear in the source.
  */
 function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;
@@ -512,50 +453,25 @@ function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): vo
 }
 
 /**
- * Whether assembled static text looks like a path with a file extension — the bound on
- * every guess made about a template or a `+` chain in no asserting position.
+ * Whether assembled static text looks like a path with a file extension: the bound on
+ * every guess about a template or a `+` chain. `${x} items` is not a candidate.
  *
- * Bound the same way the string rule is bounded: the static text has to look like a path
- * with a file extension. `${x} items` is not a candidate.
- *
- * ⚠️ The holes become `*` rather than being deleted, which is how the resolver globs them
- * — and joining the quasis *without* a placeholder silently lost the commonest templated
- * path there is. `` `./images/${name}.png` `` concatenated to `./images/.png`, whose last
- * segment is a **dotfile**, so `extensionOf` returned `''` and the reference was dropped.
- * Every `` `/images/${slug}.png` `` in a gallery or CMS data object went with it — and
- * since no basename exists for the sweep to find either, those assets were reported
- * **confidently dead**. It only ever worked when the hole was not the whole filename stem,
- * which is why R14-1b's `background-${dir}.png` and the plan's own `${base}/img/hero.png`
- * both pass and the plan's other example, `./images/${name}.png`, did not.
- *
- * The same shape test as the string rule, and for the same reason (R26): a template that
- * builds `/gallery/Firing Practice ${n}.webp` is a path, not a sentence. Sharing the
- * predicate is what keeps the speculative collectors from disagreeing about what a path
- * looks like — and since R175 there are three of them, because a `+` chain is read by this
- * rule too.
- *
- * 🔴 **R176: THE EXTENSION MUST BE IN THE STATIC TEXT, NOT IN A HOLE.** The `*` placeholder
- * made `extensionOf` read `report.${type}` as `report.*` — extension `.*` — so a hole after a
- * dot passed as a file extension. On the five repositories that let through 39 template
- * references and not one image among them: version strings (`v1.2.0-beta.${n}`), i18n
- * keys, IP formats, and `layout.${ext}` naming `.tsx` source. Reading `+` chains the same
- * way then added 20 more — `eventIn + '.' + this.type`, a regex, a date format — which is
- * how guard 2 found it. `staticExtensionOf` already answers the right question, and says
- * so: in `hero.${ext}` *"the hole IS the extension"*, so the text shows none. That is the
- * standing `/gallery/${name}` already has — the extension may be in the hole, and a GUESS
- * does not assume it is. ⚠️ Only the speculative bound: an asserting position (`<img
- * src={`hero.${ext}`}>`) is read without it, exactly as before.
+ * The extension must be in the static text. In `report.${type}` the hole is the
+ * extension, and guessing there admits version strings and translation keys rather than
+ * images. An asserting position such as `` <img src={`hero.${ext}`}> `` is not held to
+ * this bound. For the shape test each hole is written `*`, which `plausiblePathShape`
+ * accepts inside a path. See "Assembled paths in JavaScript" in ARCHITECTURE.md.
  */
 function pathShaped(chunks: readonly string[]): boolean {
   return staticExtensionOf(chunks.join(HOLE)) !== '' && plausiblePathShape(chunks.join('*'));
 }
 
 /**
- * A template literal's static chunks — the text between its unknown segments — with every
- * hole a same-file constant fills written in (R175).
+ * A template literal's static chunks (the text between its unknown segments), with every
+ * hole a same-file constant fills written in.
  *
- * `traced` is whether any hole was filled, which is exactly when the path the text proves
- * differs from the text itself, and so when a reference needs an `assembledPath`.
+ * `traced` is whether any hole was filled, which is when the path the text proves differs
+ * from the text itself, and so when a reference needs an `assembledPath`.
  */
 function templateChunks(
   template: TemplateLiteral,
@@ -582,30 +498,16 @@ function templateChunks(
 }
 
 /**
- * A path assembled with `+` (R175, R167 group C).
+ * A path assembled with `+`, read as its template twin is read:
+ * `'/srcset/' + 'card-' + String(width) + '.jpg'` gets the same bound, globbing rule and
+ * `addReference` tests as `` `/srcset/card-${width}.jpg` ``, all asked of the assembled text.
  *
- * 🔴 **Read EXACTLY as its template twin is read, because R175 found no property of the
- * spelling that justifies anything else.** `'/srcset/' + 'card-' + String(width) + '.jpg'`
- * and `` `/srcset/card-${width}.jpg` `` are one path: the same bound (`pathShaped`), the
- * same globbing rule (`assembledPathIsGlobbable`, R80(b)), and — in `addReference` — the
- * same external-URL and R108 tests, all asked of the ASSEMBLED text. A pattern is never an
- * edit in either spelling (`plan.ts`'s `collectRewrite`), so the chain having no single
- * range a rewrite could replace changes nothing.
- *
- * ⚠️ **The one difference, and it favours the chain: where a literal operand is ALREADY a
- * complete path, that literal stays the reference.** `'/img/hero.jpg' + '?v=' + v` is read
- * today as `resolved` on its first literal, and a rewrite edits exactly that literal —
- * correct, with the query after it. Its template twin is an unrewritable pattern. So a
- * chain holding such a literal is not read as a chain at all: this ends a silence, and
- * re-reads nothing that was already being read.
- *
- * ⚠️ **Emitted as a GUESS (`asserted: false`) wherever it sits**, including inside a JSX
- * `src` — so it carries the speculative bound there too, where a template in that position
- * does not. That difference is R175's named out-of-scope, not an oversight.
- *
- * The range runs from the first operand to the last with their outer quotes excluded, as a
- * template's excludes its backticks, so `rawPath` is always source text and the range
- * invariant holds; what the text PROVES the path is travels as `assembledPath`.
+ * Where one operand is already a complete path (`'/img/hero.jpg' + '?v=' + v`), that
+ * literal stays the reference and the chain is not read, so a rewrite can still edit the
+ * literal. A chain is a guess wherever it sits, a JSX `src` included. The range runs from
+ * the first operand to the last without their outer quotes, so `rawPath` is source text,
+ * and the assembled path travels as `assembledPath`. See "Assembled paths in JavaScript"
+ * in ARCHITECTURE.md.
  */
 function collectFromChain(node: BinaryExpression, context: Context): void {
   if (context.chainParts.has(node)) return;
@@ -651,16 +553,18 @@ function collectFromChain(node: BinaryExpression, context: Context): void {
   });
 }
 
-/** How an unknown segment is written in an `assembledPath` — one of `INTERPOLATIONS`. */
+/**
+ * How an unknown segment is written in an `assembledPath`. It must match one of
+ * `INTERPOLATIONS`, which is how the resolver finds the unknown segments to glob.
+ */
 const HOLE = '${}';
 
 /**
  * A chain's operands, left to right.
  *
- * `a + b + c` nests down its LEFT side, so that is the only side followed. ⚠️ **A
- * parenthesised `+` is ONE operand**, not more of the chain: in `'/img/' + (i + 1) +
- * '.png'` the brackets may add numbers, and reading `i` and `1` as two pieces of a path
- * would write the digit into it.
+ * `a + b + c` nests down its left side, so only that side is followed. A parenthesised
+ * `+` is one operand, not more of the chain: in `'/img/' + (i + 1) + '.png'` the brackets
+ * may be adding numbers.
  */
 function chainOperands(node: BinaryExpression, parts: Set<BabelNode>): BabelNode[] {
   const operands: BabelNode[] = [node.right];
@@ -689,9 +593,9 @@ function standsAlone(operand: BabelNode, context: Context): boolean {
 /**
  * What an operand contributes to the path's static text, or `null` for an unknown.
  *
- * A template with holes is ONE unknown here, deliberately: it is read by the template rule
- * in its own right, and splitting it again inside the chain would only ever make the chain
- * more globbable than its template twin is.
+ * A template with holes is one unknown here. The template rule reads it on its own, and
+ * splitting it again inside the chain could only make the chain more globbable than its
+ * template twin.
  */
 function operandText(operand: BabelNode, context: Context): string | null {
   if (operand.type === 'StringLiteral') return operand.value;
@@ -708,23 +612,17 @@ function isQuoted(node: BabelNode): boolean {
 }
 
 /**
- * Same-file string constants a path may be read through (R175), resolved on first use.
+ * Same-file string constants a path may be read through, looked up on first use:
+ * `const ASSET_BASE = '/gallery'` makes `` `${ASSET_BASE}/${name}.png` `` a pattern.
  *
- * 🔴 **R100 filed a module constant as "statically knowable, we cannot see it yet — OUR
- * GAP"**, and `const ASSET_BASE = '/gallery'` seven lines above
- * `` `${ASSET_BASE}/${name}.png` `` is exactly that. This reads it.
+ * A name is read only if it has exactly one binding anywhere in the file and that binding
+ * is a top-level `const` initialised with a string. A top-level binding is visible
+ * throughout the module, so with no other binding every use of the name is that constant,
+ * and no scope analysis is needed. `let` and `var` are never read: their first value
+ * proves nothing about a later use. See "Assembled paths in JavaScript" in ARCHITECTURE.md.
  *
- * ✅ **The one condition, and it is what makes this sound without scope analysis: the name
- * has EXACTLY ONE binding anywhere in the file, and that binding is a top-level `const`
- * initialised with a string.** A top-level binding is visible throughout the module, so
- * with no other binding of the name, every use of it is that constant. A parameter, a
- * nested declaration, a catch clause or a second top-level name → more than one binding,
- * and the name stays an unknown, as it always was. `let` and `var` are never read: their
- * first value proves nothing about a later call.
- *
- * ⚠️ Both halves are lazy, because most files never ask: the top-level scan runs only
- * when a hole or operand is an identifier at all, and the whole-file binding count only
- * when that identifier names such a constant.
+ * Both lookups are lazy, because most files never ask: the top-level scan runs only when a
+ * hole or operand is an identifier, the binding count only when it names such a constant.
  */
 function sameFileConstants(program: Program): (name: string) => string | null {
   let declared: ReadonlyMap<string, string> | undefined;
@@ -756,9 +654,9 @@ function topLevelStringConstants(program: Program): ReadonlyMap<string, string> 
 /**
  * How many times each name is bound anywhere in the file.
  *
- * ⚠️ **Over-counting is the safe direction** — it can only refuse a trace — so anything
- * that binds a name in ANY scope counts. Imports are not visited: a name imported cannot
- * also be a top-level `const`, which the parser rejects as a redeclaration.
+ * Over-counting can only refuse a trace, so bindings in every scope count. Imports are not
+ * visited: an imported name cannot also be a top-level `const`, which the parser rejects
+ * as a redeclaration.
  */
 function bindingCounts(program: Program): ReadonlyMap<string, number> {
   const counts = new Map<string, number>();
@@ -871,10 +769,9 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
   const value = node.value;
   if (value === null || value === undefined) return;
 
-  // Every JSX attribute value is *examined* here, even one this function declines.
-  // `alt="/not.png"` is display text, and the speculative string rule would
-  // otherwise link and rewrite it — turning a deliberate decision into noise.
-  // Recording the examination is how a later pass knows not to second-guess it.
+  // Every string attribute value is recorded as examined, including the ones declined
+  // below: `alt="/not.png"` is display text, and the speculative string rule would
+  // otherwise link and rewrite it.
   if (value.type === 'StringLiteral' && typeof value.start === 'number') {
     context.handled.add(value.start + 1);
   }
@@ -903,9 +800,8 @@ function collectFromJsxAttribute(node: JSXAttribute, context: Context): void {
 /**
  * Emit a reference for a JSX attribute value, whatever shape it takes.
  *
- * Extracted so the tag-scoped inline-SVG handler below reads values identically to
- * `src`/`srcSet`/`poster`. A second copy would have been a second place for a template
- * literal in an attribute to stop being understood.
+ * Shared by the `src`/`srcSet`/`poster` reader and the inline-SVG `href` reader, so both
+ * read every kind of value the same way.
  */
 function addJsxAttributeValue(
   value: JSXAttribute['value'],
@@ -930,8 +826,9 @@ function addJsxAttributeValue(
     if (expression.type === 'TemplateLiteral') {
       addTemplateReference(expression, context, 'attr', templateShape(expression, context), label);
     }
-    // Anything else — an identifier, a call, a conditional — is a value, not a
-    // path. The import that produced it was already captured on its own.
+    // Anything else (an identifier, a call, a conditional) is not read as a path here.
+    // Literals inside it still reach the speculative rules, and an import behind it is
+    // read on its own.
   }
 }
 
@@ -943,13 +840,9 @@ function jsxAttributeName(attribute: JSXAttribute): string {
 }
 
 /**
- * `<image href>` and `<feImage href>` inside JSX — R26's second defect.
- *
- * ⚠️ **Handled at the element rather than the attribute, because `href` alone is not
- * enough to know.** ARCHITECTURE.md recorded this as a known gap *"for `.svg` files"*,
- * which is why nobody looked: an inline `<svg>` in a JSX component is not an `.svg`
- * file, so no future SVG adapter would ever have reached it. One of R26's eight misses
- * was this, and the HTML adapter had the identical hole.
+ * `<image href>` and `<feImage href>` inside JSX, read at the element because `href`
+ * alone does not say whether it names a file. An inline `<svg>` in a component is not an
+ * `.svg` file, so an SVG adapter would never reach these.
  */
 function collectFromJsxSvgImage(node: JSXOpeningElement, context: Context): void {
   const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
@@ -982,7 +875,7 @@ function collectFromModuleSource(
 }
 
 function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Context): void {
-  // Claimed here, whatever this decides: a `styled.div` body is CSS, not a path.
+  // Claimed whatever the tag, CSS or not: the body is the tag's input, not a path.
   if (typeof node.quasi.start === 'number') context.handled.add(node.quasi.start);
   if (!CSS_IN_JS_TAGS.has(rootIdentifierName(node.tag) ?? '')) return;
 
@@ -995,12 +888,10 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
         file: context.file,
         text: flattened.text,
         baseOffset: flattened.start,
-        // SCSS rather than plain CSS: styled-components nest like SCSS, and the
-        // `#{…}` placeholders standing in for interpolations are native SCSS.
+        // SCSS rather than plain CSS, because styled-components nest rules as SCSS does.
         extension: '.scss',
-        // Host wins over the dialect it is parsed AS: what would take these out is
-        // the template flattening, not SCSS parsing. A real .scss file's rows are
-        // measured by .scss files.
+        // The host shape wins over the dialect: what would break these is the template
+        // flattening, not SCSS parsing.
         hostShape: 'js.cssinjs',
       }).map((reference) => withInterpolationRestored(reference, context.text)),
     );
@@ -1022,22 +913,14 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
 }
 
 /**
- * Give a CSS-in-JS `url()` back the path the FILE holds, and let the shared glob rule
+ * Give a CSS-in-JS `url()` back the path the file holds, and let the shared glob rule
  * decide what an interpolated one is.
  *
- * 🔴 **R167 group B, and R106's shape one adapter over.** The CSS pass reads the flattened
- * template, where every `${…}` is a same-length comment, so it saw
- * `url('/theme-/*---*\/.png')`, called any `/*` "not a literal path", and emitted it
- * `unsafe`. `assembledPathIsGlobbable` — ruled (R80(b)), shared, and already governing
- * every JS template literal and every SCSS/Less interpolation — was never asked. So
- * `/theme-${mode}.png` resolved as a pattern in a `.ts` string and not in a `css` block
- * in the same file.
- *
- * ⚠️ **And the reference carried the PLACEHOLDER as its path**, while its range covers
- * `${mode}` in the source — the range invariant (`source.slice(start, end) === rawPath`)
- * broken, harmless only because an `unsafe` reference is never rewritten. The source text
- * goes back in whether or not it globs, which is also what lets the resolver's pattern
- * matcher read the `${…}` at all.
+ * The CSS pass reads the flattened template, where each `${…}` is a comment, and calls
+ * such a `url()` dynamic. Only this adapter knows which comments are its own placeholders,
+ * so it puts the source text back as `rawPath` whether or not the path globs: that keeps
+ * `source.slice(start, end) === rawPath` and lets the resolver read the `${…}`. It then
+ * asks `assembledPathIsGlobbable`, as for every template literal in the file.
  */
 function withInterpolationRestored(reference: RawReference, text: string): RawReference {
   const source = text.slice(reference.start, reference.end);
@@ -1048,8 +931,8 @@ function withInterpolationRestored(reference: RawReference, text: string): RawRe
   if (chunks.length < 2 || !assembledPathIsGlobbable(chunks)) return restored;
   return {
     ...restored,
-    // The pattern rule is now the narrowest thing that can fail here, as it is for a
-    // template literal anywhere else in the file.
+    // Shaped as a template pattern: the glob rule is what can fail here, as for any
+    // template literal in the file.
     shape: 'js.template.pattern',
     ceiling: 'medium',
     note: 'CSS-in-JS url() with a static prefix; the resolver decides whether it names exactly one asset',
@@ -1077,27 +960,16 @@ function rootIdentifierName(node: BabelNode): string | null {
 }
 
 /**
- * Turn a template literal into a single run of text whose offsets still line up
- * with the file.
+ * Turn a template literal into one run of text whose offsets still line up with the file.
  *
- * Every `${…}` is replaced by a CSS comment of exactly the same length, so the CSS
- * stays parseable and the offsets of everything after it are unchanged. The shortest
- * possible expression is `${x}` at four characters, and the shortest comment `/**​/`
- * is also four, so this never has to shorten anything.
- *
- * A comment rather than a SCSS interpolation because an interpolation is only valid
- * where a value is expected. `styled.div` templates routinely open with a mixin at
- * statement level:
- *
- *     styled.div`
- *       ${baseStyles}
- *       background: url(/hero.png);
- *     `
- *
- * `#{…}` there fails to parse and would cost us the real `url()` below it, whereas a
- * comment is valid both at statement level and inside a value. The CSS scanner
- * already treats a `url()` containing `/*` as dynamic, so an interpolated path stays
- * unsafe rather than being mistaken for a literal one.
+ * Every `${…}` becomes a CSS comment of the same length, so the CSS stays parseable and
+ * every offset after it is unchanged. The shortest expression, `${x}`, is four characters,
+ * and so is the shortest comment, so nothing ever has to shrink. A comment rather than a
+ * SCSS interpolation, because a mixin such as `${baseStyles}` at statement level is common
+ * and `#{…}` fails to parse there. The CSS adapter treats a `url()` holding `/*` as
+ * dynamic, so an interpolated path is never taken for a literal one, and
+ * `withInterpolationRestored` then decides whether it globs. See "The six that exist" in
+ * ARCHITECTURE.md.
  */
 function flattenTemplate(
   template: TemplateLiteral,
@@ -1134,19 +1006,12 @@ function placeholderOfLength(length: number): string {
 }
 
 /**
- * Which row a module specifier belongs to: the bare-specifier disposition, or the
- * construct it was written as.
+ * The shape of a module specifier: `path.bare-specifier` for a package, otherwise the
+ * construct it was written in.
  *
- * ⚠️ **It cannot tell a MAPPED alias from an UNMAPPED one, and must not pretend to.**
- * Whether `~/img/hero.png` resolves depends on the `tsconfig` paths table, which is
- * the resolver's knowledge and arrives long after this adapter has run. An adapter
- * that guessed would be asserting something it cannot see — the shape of every bug
- * this project has paid for. Both alias rows therefore stay the key's alone, declared
- * as `adapterEmitsAs` on each of them (R87).
- *
- * 🔴 The ruling reference here read **R84** until R87 was written, and R84 is the
- * byte-versus-code-unit finding — nothing to do with aliases. A comment is an assertion
- * about code and so is the ruling number attached to it (R85).
+ * It cannot tell a mapped alias from an unmapped one: whether `~/img/hero.png` resolves
+ * depends on the `tsconfig` paths table, which only the resolver has. Both alias shapes
+ * list the construct shapes in `adapterEmitsAs` instead.
  */
 function moduleSourceShape(source: BabelNode | null | undefined, construct: ShapeId): ShapeId {
   const value =
@@ -1155,50 +1020,32 @@ function moduleSourceShape(source: BabelNode | null | undefined, construct: Shap
 }
 
 /**
- * Whether a module specifier names a PACKAGE rather than a file in this project.
+ * Whether a module specifier names a package rather than a file in this project.
  *
- * 🔴 **A disposition, so it beats the construct (R88(b)).** `some-ui-kit/dist/logo.png`
- * is out of scope — R32: the file exists inside a dependency and is not ours to rewrite
- * — and that is a fact about the string, not about whether somebody wrote `import`,
- * `require()` or a plain `const`. All three fail together if this predicate breaks and
- * nothing else fails with them, which is what makes them one matrix row.
- *
- * ⚠️ **`@` stays alias-shaped, and that is not an oversight.** `@scope/pkg/x.png` and a
- * `@img/*` tsconfig alias are the same syntax; the table that would separate them is the
- * resolver's. Treating `@` as a package here would assert something this layer cannot
- * see, so it is left to the construct and the key keeps both alias rows (R87).
- *
- * ⚠️ **And it must NOT be applied to `new URL(x, import.meta.url)`.** There a bare
- * `'img.png'` is a path relative to the module, not a package — the same spelling, the
- * opposite meaning, decided entirely by the construct.
+ * This beats the construct: `some-ui-kit/dist/logo.png` is a file inside a dependency, out
+ * of scope and not ours to rewrite, whether it was imported or required. `@` stays
+ * alias-shaped, because `@scope/pkg/x.png` and an `@img/*` tsconfig alias are the same
+ * syntax and only the resolver has the table that separates them. It is not applied to
+ * `new URL(x, import.meta.url)`, where a bare `'img.png'` is relative to the module.
  */
 function isBareSpecifier(value: string): boolean {
   if (value === '') return false;
   // Relative or root-relative: an ordinary reference to a file in this project.
   if (value.startsWith('.') || value.startsWith('/')) return false;
-  // Alias-shaped. Which alias row it is depends on a table we cannot see.
+  // Alias-shaped: which alias it is depends on a table only the resolver has.
   if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) return false;
   return true;
 }
 
 /**
- * Whether a template literal is still globbable, or nothing static is left.
+ * The shape of a template literal: `js.template.pattern` while `assembledPathIsGlobbable`
+ * accepts it, `js.template.dynamic` otherwise.
  *
- * **Two conditions, and this function had only the first until R89.** R78 Q3: a pattern
- * must fix the DIRECTORY, because location is what makes an asset unique.
- * `/theme-${mode}.png` fixes it and varies the name; `${base}/hero.png` does the reverse
- * and is not globbable.
- *
- * 🔴 **R80(b) added the second and it was never implemented: a pattern needs a fixed
- * directory AND enough of a fixed name that the glob cannot sweep in strangers. One
- * unknown segment in the name is a pattern; two is a guess.** `/icons/${theme}-${size}.png`
- * passes the directory test and was therefore called a pattern, while the key — ruled —
- * says `dynamic`, because globbing it would claim `icon-192.png` and `icon-512.png` on a
- * pattern that constrains almost nothing. The ruling existed for a day before the code
- * agreed with it.
- *
- * ⚠️ **Counted per NAME, not per template**, which is why a `/` in a later chunk resets
- * the count: in `/img/${dir}/hero.png` the two unknowns are not both in the name.
+ * A pattern needs a fixed directory before its first unknown segment, because location is
+ * what makes an asset unique, and at most one unknown segment in the file name, or the glob
+ * sweeps in strangers. `/theme-${mode}.png` is a pattern; `${base}/hero.png` and
+ * `/icons/${theme}-${size}.png` are dynamic. Only the file name's unknowns count, so
+ * `/img/${dir}/${name}.png` is a pattern.
  */
 function templateShape(template: TemplateLiteral, context: Context): ShapeId {
   return assembledPathIsGlobbable(templateChunks(template, context).chunks)
@@ -1263,10 +1110,10 @@ function addLiteralReference(
 /**
  * A template literal used as a path.
  *
- * With no expressions it is just a string. With expressions it has a static prefix
- * and holes, which is the `medium` tier: the resolver decides whether the pattern
- * picks out exactly one asset, and must never fall one of these through to `broken`
- * — nobody typed a path that points at nothing.
+ * With no expressions it is just a string. With expressions it is `medium` when
+ * `assembledPathIsGlobbable` accepts it, so the resolver globs it and links every match,
+ * and `unsafe` otherwise. A template that matches nothing is `dynamic`, never `broken`:
+ * nobody typed a path that points at nothing.
  */
 function addTemplateReference(
   template: TemplateLiteral,
@@ -1281,21 +1128,11 @@ function addTemplateReference(
 
   const hasExpressions = template.expressions.length > 0;
   const raw = context.text.slice(flattened.start, flattened.start + flattened.text.length);
-  // 🔴 THE CEILING IS WHAT THE RESOLVER ACTUALLY READS, NOT THE SHAPE (R89). `resolveOne`
-  // globs on `medium` and refuses on `unsafe`; it never looks at `shape`. So R80(b) —
-  // *a pattern needs a fixed directory AND enough of a fixed name that the glob cannot
-  // sweep in strangers* — has to be applied HERE or it is applied nowhere.
-  //
-  // ⚠️ Correcting `templateShape` alone relabelled the row and changed no behaviour:
-  // `/icons/${theme}-${size}.png` went on claiming `icon-192.png` and `icon-512.png`
-  // while its matrix row read `dynamic`. Measured, not reasoned — the shape agreed with
-  // the key and the outcome did not, which is the more dangerous half of the pair
-  // because the label is what a reader checks.
-  //
-  // 🔴 AND THE CHUNKS ARE THE TRACED ONES (R175): a hole a same-file constant fills is not
-  // an unknown, so `${ASSET_BASE}/${name}.png` is judged as the `/gallery/${name}.png` the
-  // text proves it is. When anything was traced, that path travels as `assembledPath`,
-  // because `rawPath` must stay the source text.
+  // The ceiling is what the resolver reads: it globs `medium`, refuses `unsafe`, and never
+  // looks at `shape`. So the glob rule has to set the ceiling here; `templateShape` alone
+  // would change only the label. The chunks are the traced ones, so
+  // `${ASSET_BASE}/${name}.png` is judged as the `/gallery/${name}.png` the text proves,
+  // and that path travels as `assembledPath` because `rawPath` must stay the source text.
   const { chunks, traced } = templateChunks(template, context);
   const globbable = hasExpressions && assembledPathIsGlobbable(chunks);
 
@@ -1324,9 +1161,9 @@ function addReference(input: {
   end: number;
   rawPath: string;
   /**
-   * What the text PROVES the path is, when that is not `rawPath` itself: a `+` chain, or a
-   * template with a same-file constant written in (R175). Every test below that asks what
-   * the path IS reads this; the range stays on `rawPath`.
+   * What the text proves the path is, when that is not `rawPath` itself: a `+` chain, or a
+   * template with a same-file constant written in. Every test below that asks what the
+   * path is reads this; the range stays on `rawPath`.
    */
   assembledPath?: string;
   kind: ReferenceKind;
@@ -1354,27 +1191,14 @@ function addReference(input: {
   const into = asserted ? context.references : context.speculative;
   const provenPath = assembledPath ?? rawPath;
 
-  // Above the `skipPathChecks` branch, not inside it (R21). That flag means *suffix
-  // splitting would be wrong on this text* — which is what its own comment says —
-  // and it was also skipping the external-URL test, so every templated URL in the
-  // codebase became an `unsafe` reference. On `astro-docs` that bucket, which §1.1
-  // shows users as "references I couldn't safely rewrite", contained
-  // `https://${previewBranch}.previews.docs.astro.build/` and an npm registry call
-  // and no images at all.
-  //
-  // A URL is external whatever its holes interpolate to: `https://${branch}.x.com/`
-  // is hosted somewhere we do not manage, and `` `${base}/hero.png` `` still starts
-  // with a hole rather than a scheme, so it is untouched.
-  //
-  // ⚠️ Asked of the ASSEMBLED path (R175): `CDN + '/hero.png'` with `const CDN =
-  // 'https://…'` is another server's file however its source text begins.
+  // Above the `skipPathChecks` branch, which means only that suffix splitting would be
+  // wrong on this text. A URL is external whatever its holes hold: `https://${branch}.x.com/`
+  // is hosted elsewhere, while `${base}/hero.png` starts with a hole, not a scheme. Asked
+  // of the assembled path, so `CDN + '/hero.png'` with `const CDN = 'https://…'` is external.
   if (isExternalUrl(provenPath, kind)) return;
 
-  // R108, and it belongs beside the external-URL test for exactly the reason R21 gives
-  // above: `skipPathChecks` means *suffix splitting would be wrong on this text*, and
-  // every time a question has been put INSIDE that branch it has stopped being asked of
-  // the references that need it most. A path that ends in `/` is a directory whether or
-  // not its middle is a hole.
+  // Beside the external-URL test for the same reason: a path that ends in `/` names a
+  // directory whether or not its middle is a hole.
   if (provablyNotAFile(provenPath) !== null) return;
 
   if (skipPathChecks) {
@@ -1400,7 +1224,7 @@ function addReference(input: {
     file: context.file,
     start,
     // The range covers the path alone, so a rewrite preserves any `?raw` or `?v=2`
-    // suffix — which in a Vite project changes what the import actually returns.
+    // suffix, which in a Vite project changes what the import returns.
     end: start + path.length,
     rawPath: path,
     kind,
