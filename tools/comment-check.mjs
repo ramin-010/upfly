@@ -53,8 +53,8 @@ const SOURCE_EXTENSION = /\.(?:ts|mts|cts|js|mjs|cjs)$/;
 const SKIPPED_DIRS = new Set(['node_modules', 'dist', '__snapshots__']);
 
 // URLs are removed before looking for references, so nothing inside a link counts as one.
-const URL_PATTERN = /\bhttps?:\/\/[^\s)>\]'"`]+/g;
-const INTERNAL_REFERENCE = new RegExp(
+export const URL_PATTERN = /\bhttps?:\/\/[^\s)>\]'"`]+/g;
+export const INTERNAL_REFERENCE = new RegExp(
   [
     String.raw`\bR\d+\b`,
     '§',
