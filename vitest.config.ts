@@ -7,8 +7,7 @@ export default defineConfig({
       // Tests resolve `upfly-core` to its source, never to `packages/core/dist`. A test that
       // reached the package by name would otherwise run whatever build was made last, and
       // could pass against code that has since changed; coverage would measure the build.
-      // `packages/core/test/smoke.test.ts` imports the built entry point by path instead,
-      // so the package's exports map is still exercised.
+      // `packages/core/test/smoke.test.ts` loads the built entry point by file path instead.
       'upfly-core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
     },
   },
