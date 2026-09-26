@@ -221,16 +221,17 @@ describe('a lock its holder did not survive', () => {
     );
   });
 
-  it('clears a lock that cannot be read at all', async () => {
-    // A half-written lock from a power cut names no holder, so it cannot prove one is
-    // alive. Refusing on the strength of nothing would brick the directory for a file
-    // that means nothing.
+  it('refuses a lock that cannot be read, and says which file to delete', async () => {
+    // It may be one another run has created and not finished writing. Clearing it would
+    // let two runs hold the lock; a lock cut short by a power cut costs one deletion.
     const { files, store } = memoryStore();
     files.set(LOCK_PATH, '{ this is not json');
 
-    await expect(commit([], store, contextFor('run-b'))).resolves.toMatchObject({
-      state: 'committed',
+    await expect(commit([], store, contextFor('run-b'))).rejects.toMatchObject({
+      code: 'TRANSACTION_LOCKED',
+      message: expect.stringContaining(`delete ${LOCK_PATH}`),
     });
+    expect(files.get(LOCK_PATH)).toBe('{ this is not json');
   });
 
   it('does not treat a live holder as stale just because this process is the holder', async () => {

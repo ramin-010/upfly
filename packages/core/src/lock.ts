@@ -82,7 +82,18 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
     return { reentered: false, release: () => releaseIfOwner(store, runId, pid, isAlive) };
   }
 
-  const current = await readLockHolder(store);
+  const current = await readLock(store);
+
+  // Not cleared: the exclusive create and the write of the holder are two steps, so a lock
+  // this run cannot read may be one another run is writing at this moment. Clearing it
+  // would let both runs hold the lock. A lock cut short by a crash stays until removed by
+  // hand, which the message says how to do.
+  if (current === 'unreadable') {
+    throw new UpflyError(
+      'TRANSACTION_LOCKED',
+      `${LOCK_PATH} exists but does not yet name a run, so another run may be starting at this moment. If no Upfly run is going, delete ${LOCK_PATH} and try again.`,
+    );
+  }
 
   // Ours already: `optimize` is holding it around a `commit` that is now asking too. The
   // process must match as well as the run: an undo in another process reads the same run
@@ -93,17 +104,15 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
 
   // A process that died mid-run leaves its lock behind, and that must not block the project
   // for good. Stale means the holder's process is gone: an age limit would only guess, and
-  // a long run looks the same as a stuck one to a clock.
-  const stale = current === null || !isAlive(current.pid);
-  if (!stale) {
+  // a long run looks the same as a stuck one to a clock. `null` means the lock was released
+  // between the create above and this read.
+  if (current !== null && isAlive(current.pid)) {
     throw new UpflyError(
       'TRANSACTION_LOCKED',
       `Another Upfly run is in progress (run ${current.runId}, process ${current.pid}, started ${current.startedAt}). Wait for it to finish and try again.`,
     );
   }
 
-  // `current === null` also covers a lock file that will not parse, such as one cut short
-  // by a power loss. It names no holder that could be alive, so it is cleared too.
   await store.remove(LOCK_PATH);
   if (await store.createExclusive(LOCK_PATH, `${JSON.stringify(holder, null, 2)}\n`)) {
     return { reentered: false, release: () => releaseIfOwner(store, runId, pid, isAlive) };
@@ -137,19 +146,33 @@ async function releaseIfOwner(
 /**
  * Who holds the project's lock, or `null` when nobody does or the file cannot be read.
  *
+ * `null` does not mean the lock is free: a file that cannot be read may be one another run
+ * is writing, and `acquireLock` refuses it.
+ *
  * @param store the project's file store
  */
 export async function readLockHolder(store: FileStore): Promise<LockHolder | null> {
+  const current = await readLock(store);
+  return current === 'unreadable' ? null : current;
+}
+
+/**
+ * The lock's holder, `null` when there is no lock file, or `'unreadable'` when there is one
+ * that does not name a holder: being written, or cut short.
+ */
+async function readLock(store: FileStore): Promise<LockHolder | null | 'unreadable'> {
   if ((await store.hash(LOCK_PATH)) === null) return null;
   try {
     const parsed: unknown = JSON.parse(await store.readText(LOCK_PATH));
-    if (typeof parsed !== 'object' || parsed === null) return null;
+    if (typeof parsed !== 'object' || parsed === null) return 'unreadable';
     const { pid, startedAt, runId } = parsed as Partial<LockHolder>;
     if (typeof pid !== 'number' || typeof startedAt !== 'string' || typeof runId !== 'string') {
-      return null;
+      return 'unreadable';
     }
     return { pid, startedAt, runId };
-  } catch {
-    return null;
+  } catch (error) {
+    // Gone between the hash and the read: released, which is no lock at all.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    return 'unreadable';
   }
 }

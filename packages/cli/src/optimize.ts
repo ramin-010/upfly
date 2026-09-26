@@ -8,6 +8,7 @@
 
 import { resolve } from 'node:path';
 import {
+  LOCK_PATH,
   type Manifest,
   type OptimizationPlan,
   type OptimizeProjectResult,
@@ -188,6 +189,15 @@ async function unfinishedRun(root: string): Promise<Refusal | null> {
       code: EXIT_CODES.ABORTED,
       reason: 'TRANSACTION_LOCKED',
       message: `Another Upfly run is in progress (run ${holder.runId}, process ${holder.pid}, started ${holder.startedAt}). Wait for it to finish, then run this again.`,
+    };
+  }
+  // A lock file naming no run may be one another run is writing now; the engine refuses it
+  // too, but only after reading and measuring the whole project.
+  if (holder === null && (await store.hash(LOCK_PATH)) !== null) {
+    return {
+      code: EXIT_CODES.ABORTED,
+      reason: 'TRANSACTION_LOCKED',
+      message: `${LOCK_PATH} exists but does not yet name a run, so another run may be starting at this moment. If no Upfly run is going, delete ${LOCK_PATH} and run this again.`,
     };
   }
   let manifest: Manifest | null = null;

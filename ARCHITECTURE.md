@@ -1436,9 +1436,14 @@ A queued run would stall silently behind a long one, and an editor would look fr
 names the run holding the lock, its process and when it started, so the user can tell whether
 anything is still running.
 
-A lock whose process is gone is stale and is cleared, and so is a lock file that cannot be read,
-since neither names a holder that could be alive. Staleness is decided by whether the holding
+A lock whose process is gone is stale and is cleared. Staleness is decided by whether the holding
 process is alive, not by the lock's age: to a clock, a long run looks the same as a stuck one.
+
+A lock file that cannot be read is refused, not cleared. The exclusive create and the write of the
+holder are two steps, so an empty or half-written lock may be one another run is writing at that
+moment, and clearing it would let both runs hold the lock. The cost falls on a lock cut short by a
+crash, which stays until someone deletes it; the refusal names the file and says to delete it if no
+run is going. The CLI makes the same check before it reads the project.
 Clearing is tried once. If another run takes the lock in between, this one is refused rather than
 retrying in a loop. On the way out, a run removes the lock only if it still names that run and
 process, so a run whose lock was cleared as stale cannot delete its successor's.

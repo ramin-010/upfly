@@ -256,6 +256,17 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
       message: expect.stringContaining('run-other'),
     });
 
+    // A lock another run has created and not yet written: refused before the project is
+    // read, so nothing is staged.
+    write(root, '.upfly/lock', '');
+    const starting = upfly(['optimize', root, '--apply', '--json']);
+    expect(starting.status).toBe(3);
+    expect(result(starting.stdout)).toMatchObject({
+      reason: 'TRANSACTION_LOCKED',
+      message: expect.stringContaining('delete .upfly/lock'),
+    });
+    expect(existsSync(join(root, '.upfly/runs'))).toBe(false);
+
     rmSync(join(root, '.upfly/lock'));
     write(
       root,

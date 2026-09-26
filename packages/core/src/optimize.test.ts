@@ -437,6 +437,26 @@ describe('the lock covers the gap between staging and committing', () => {
   });
 });
 
+describe('a lock file its creator is still writing', () => {
+  it('is taken as held, so a second run cannot start beside the first', async () => {
+    // What a reader sees between the creator's exclusive create and its write: nothing yet,
+    // or part of the holder.
+    for (const partial of ['', '{"pid": 4']) {
+      const project = harness({
+        'src/App.jsx': SOURCE,
+        'src/logo.png': 'PNG',
+        [LOCK_PATH]: partial,
+      });
+
+      await expect(optimize(inputFor(project))).rejects.toMatchObject({
+        code: 'TRANSACTION_LOCKED',
+      });
+      expect(project.tree.get(LOCK_PATH)).toBe(partial);
+      expect(project.tree.get('src/App.jsx')).toBe(SOURCE);
+    }
+  });
+});
+
 describe('replace refuses to delete an original a mention would outlive', () => {
   /**
    * A served asset, one reference the engine found, and whatever else is on disk.
