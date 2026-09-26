@@ -199,9 +199,9 @@ what exists) without adding another module that touches a filesystem.
 The exception is rung 5's fallback: a file excluded by a *file-level* ignore rule such as
 `*.png` leaves no pruned directory to match against, so the only way to tell "excluded" from
 "missing" is to look. That is an injected `exists` port, the same shape as the `ImageProbe`, and
-it is consulted only for references that did not resolve, once per candidate path. It is a
-required option rather than an optional one, because a default would let a call site keep the
-false `broken` silently.
+it is consulted only for references that did not resolve, once per candidate path of each
+spelling (see "Percent-encoded and entity-encoded paths"). It is a required option rather than
+an optional one, because a default would let a call site keep the false `broken` silently.
 
 ### Ask `isLinked`, never `resolution === 'resolved'`
 
@@ -483,7 +483,9 @@ The reference keeps the text as written. `rawPath` is always the source text, so
 what the author typed. Decoded forms are never stored. `spellingsOf` lists them and the resolver
 tries each one: its extension filter passes a path if any spelling ends in a tracked extension,
 and its lookup tries the spellings in order, recording on the resolved reference the spelling
-that matched.
+that matched. Rung 5 asks about the same spellings in the same order, so an encoded path to a
+file an ignore rule excludes, or into a directory the walk pruned, is `out-of-scope` rather than
+`broken`: `unindexed%20photo.png` names the ignored `unindexed photo.png`.
 
 The literal spelling is tried first. `enc%20name.png` can be a real file whose name contains a
 percent sign, while `hero%20image.png` reaches a file called `hero image.png`, and as text the two

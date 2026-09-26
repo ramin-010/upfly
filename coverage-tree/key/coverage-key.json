@@ -681,6 +681,14 @@
       "height": 480
     },
     {
+      "path": "apps/docs/public/img/unindexed photo.png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
+    },
+    {
       "path": "apps/docs/public/logo.png",
       "bytes": 7195,
       "sha256": "f22977f30785aad6",
@@ -6874,6 +6882,22 @@
           "offset": 173,
           "line": 6,
           "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/ignored-encoded.md",
+      "entries": [
+        {
+          "raw": "/img/unindexed%20photo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "out-of-scope",
+          "why": "The picture is on disk, and the tree's .upflyignore excludes it by name, so it is not an indexed asset: out of scope, not broken. Only the percent-decoded spelling names it. A resolver that asked the disk about the text as written would find nothing there and report a picture that is there as broken.",
+          "decoded": "/img/unindexed photo.png",
+          "offset": 203,
+          "line": 6,
+          "column": 13
         }
       ]
     }

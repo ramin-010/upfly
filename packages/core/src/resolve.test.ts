@@ -547,13 +547,19 @@ describe('resolveReferences', () => {
         relative: 'legacy',
         reason: "the ignore rule 'legacy/'",
       },
+      {
+        path: join(ROOT, 'old site'),
+        relative: 'old site',
+        reason: "the ignore rule 'old site/'",
+      },
     ];
 
     function resolveWithExclusions(
       rawPath: string,
       exists: (path: string) => boolean = () => false,
+      kind: RawReference['kind'] = 'css-url',
     ) {
-      return resolveReferences([raw({ rawPath, kind: 'css-url' })], {
+      return resolveReferences([raw({ rawPath, kind })], {
         root: ROOT,
         assets: ASSETS,
         servingRoots: CONVENTIONAL_SERVING_ROOTS,
@@ -601,8 +607,31 @@ describe('resolveReferences', () => {
       expect(resolveWithExclusions('./nowhere.png')?.resolution).toBe('broken');
     });
 
+    const cafe = `caf${String.fromCodePoint(0xe9)}.png`;
+    it.each([
+      ['percent-encoding', './hidden%20image.png', 'css-url', 'src/hidden image.png'],
+      ['a character reference', './caf&eacute;.png', 'attr', `src/${cafe}`],
+      // Only a Markdown destination reads a backslash escape, so this one also needs the kind.
+      ['a Markdown escape', './hidden\\_x.png', 'md', 'src/hidden_x.png'],
+    ] as const)('finds an ignored file spelled with %s', (_name, rawPath, kind, onDisk) => {
+      const target = toPosix(join(ROOT, onDisk));
+      const reference = resolveWithExclusions(rawPath, (path) => path === target, kind);
+
+      const excluded = expectResolution(reference, 'out-of-scope');
+      expect(excluded.resolvedPath).toBe(target);
+      expect(excluded.exclusionReason).toBe('resolved outside the indexed asset set');
+    });
+
+    it('finds an excluded directory whose name the path writes percent-encoded', () => {
+      const reference = resolveWithExclusions('../old%20site/logo.png');
+
+      const excluded = expectResolution(reference, 'out-of-scope');
+      expect(excluded.exclusionReason).toBe("the ignore rule 'old site/'");
+      expect(excluded.resolvedPath).toBe(toPosix(join(ROOT, 'old site/logo.png')));
+    });
+
     it('consults the filesystem only for a reference about to be called broken', () => {
-      // One stat per would-be-broken reference, never per reference.
+      // The two references that resolve never reach the disk.
       const asked: string[] = [];
       resolveReferences(
         [
@@ -622,6 +651,24 @@ describe('resolveReferences', () => {
       );
 
       expect(asked).toEqual([toPosix(join(ROOT, 'src/missing.png'))]);
+    });
+
+    it('asks once per spelling of an encoded path, the path as written first', () => {
+      const asked: string[] = [];
+      resolveReferences([raw({ rawPath: './missing%20photo.png' })], {
+        root: ROOT,
+        assets: ASSETS,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        exists: (path) => {
+          asked.push(path);
+          return false;
+        },
+      });
+
+      expect(asked).toEqual([
+        toPosix(join(ROOT, 'src/missing%20photo.png')),
+        toPosix(join(ROOT, 'src/missing photo.png')),
+      ]);
     });
 
     it('takes precedence over the alias bucket', () => {

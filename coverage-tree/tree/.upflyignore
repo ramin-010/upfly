@@ -1,0 +1,2 @@
+# A picture that stays on disk but is kept out of the index on purpose.
+apps/docs/public/img/unindexed*

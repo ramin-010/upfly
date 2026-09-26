@@ -155,14 +155,13 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   }
 
   const { path } = splitPathSuffix(raw.rawPath);
+  // Rungs 3, 4 and 5 ask about the same spellings. Without the kind, `spellingsOf` would not
+  // read a Markdown destination's backslash escapes.
+  const spellings = spellingsOf(path, raw.kind);
 
   // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
   //    not only the written one: `hero%2Epng` shows its extension only once decoded.
-  if (
-    !spellingsOf(path, raw.kind).some(({ path: candidate }) =>
-      isImageExtension(extensionOf(candidate)),
-    )
-  ) {
+  if (!spellings.some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))) {
     return null;
   }
 
@@ -170,7 +169,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    file with a percent sign in its name, while `hero%20image.png` can name
   //    `hero image.png`. Only literal-then-decoded gets both right, and the coverage tree
   //    holds the pair so the order is tested.
-  for (const { spelling, path: candidate } of spellingsOf(path, raw.kind)) {
+  for (const { spelling, path: candidate } of spellings) {
     const found = index.lookup(candidate, raw, root, publicDirs);
     if (found === null) continue;
     return {
@@ -188,8 +187,8 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   const viaAlias = resolveThroughAlias(path, raw, context);
   if (viaAlias !== null) return viaAlias;
 
-  // 5. Points at a real file we deliberately do not index.
-  const excluded = outOfScope(path, raw, context);
+  // 5. Points at a real file we deliberately do not index, in any spelling.
+  const excluded = outOfScope(path, spellings, raw, context);
   if (excluded !== null) return excluded;
 
   // 6. Alias-shaped and no declared alias matched. `unresolved-alias` is a final outcome,
@@ -217,14 +216,21 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 }
 
 /**
- * Whether this path lands on a file the engine chose not to index: under a directory the
- * walk pruned, reported with the rule responsible, or failing that on a file that exists
- * anyway because a file-level ignore rule such as `*.png` excluded it. The fallback costs a
- * `stat` per candidate path of a reference that did not resolve, which is cheap against a
- * false `broken`. A Windows drive path outside the project is out of scope with no `stat`:
- * whether one machine holds that file says nothing about the project.
+ * Whether this path, in any of its spellings, lands on a file the engine chose not to index:
+ * under a directory the walk pruned, reported with the rule responsible, or failing that on
+ * a file that exists anyway because a file-level ignore rule such as `*.png` excluded it. The
+ * spellings are the ones rung 4 looked up, in its order, so `unindexed%20photo.png` finds an
+ * ignored `unindexed photo.png`. The fallback costs a `stat` per candidate path of each
+ * spelling of a reference that did not resolve, which is cheap against a false `broken`. A
+ * Windows drive path outside the project is out of scope with no `stat`: whether one machine
+ * holds that file says nothing about the project.
  */
-function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
+function outOfScope(
+  path: string,
+  spellings: ReturnType<typeof spellingsOf>,
+  raw: RawReference,
+  context: ResolveContext,
+): Reference | null {
   if (isDrivePath(path) && drivePathInProject(path, context.root) === null) {
     return {
       ...raw,
@@ -236,7 +242,10 @@ function outOfScope(path: string, raw: RawReference, context: ResolveContext): R
     };
   }
 
-  for (const { path: candidate } of candidatePaths(path, raw, context.root, context.publicDirs)) {
+  const candidates = spellings.flatMap(({ path: spelled }) =>
+    candidatePaths(spelled, raw, context.root, context.publicDirs),
+  );
+  for (const { path: candidate } of candidates) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
       if (!candidate.startsWith(prefix)) continue;
