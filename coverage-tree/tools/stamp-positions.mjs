@@ -1,21 +1,15 @@
 /**
- * Fills the DERIVED half of the answer key: byte offset, line and column for every
- * reference, and byte size and hash for every asset.
+ * Fills the derived half of the answer key: byte offset, line and column for every
+ * reference, byte size and hash for every asset. It never invents a reference or touches
+ * an `expect`; it does the arithmetic a person cannot do reliably by hand.
  *
- * 🔴 It never invents a reference and never touches an `expect`. What it fills in is
- * arithmetic a human cannot do by hand accurately — hand-typing 300 byte offsets
- * produces a key that fails for reasons that are not the engine's.
+ * It can turn a red self-check green without anyone re-reading what changed in the tree,
+ * so it prints every change it makes, and writes nothing if a `raw` cannot be found. Read
+ * the diff: a `raw` that moved by more than whitespace needs a person to check its entry.
+ * It imports only `node:` modules.
  *
- * ⚠️ THE WEAK SEAM IN THIS WHOLE INSTRUMENT. Somebody edits the tree, the self-check goes
- * red, and re-running this turns it green again without anybody re-reading what changed.
- * That is a drifted key wearing a passing check — exactly what R75 says a key does. So it
- * PRINTS EVERY CHANGE IT MAKES and refuses to run when the key does not already parse.
- * Read the diff. If a `raw` moved by more than whitespace, the key needed a person.
- *
- * Imports nothing from upfly-core. Imports nothing at all beyond node's standard library.
- *
- * Usage:  node tools/stamp-positions.mjs [--root DIR] [--key PATH] [--check]
- *         --check exits non-zero if anything WOULD change, and writes nothing.
+ * Usage: node tools/stamp-positions.mjs [--root DIR] [--key PATH] [--check]
+ * `--check` writes nothing and exits non-zero if anything would change.
  */
 
 import { createHash } from 'node:crypto';
@@ -35,7 +29,7 @@ export function nthOccurrence(buf, raw, n) {
   return { offset: -1, found: 0 };
 }
 
-/** 1-based line, and 1-based column counted in BYTES. */
+/** 1-based line, and 1-based column counted in bytes. */
 export function positionOf(buf, offset) {
   let line = 1;
   let lineStart = 0;

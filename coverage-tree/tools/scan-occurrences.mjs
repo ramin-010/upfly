@@ -1,14 +1,13 @@
 /**
- * An AUTHORING AID, not a check. It lists every asset-shaped token in the tree so that a
- * human can attach a meaning to each one.
+ * Lists every asset-shaped token in the tree with its position, so a person can decide what
+ * each one means. It finds where; the key's `expect` values come from a person, since a
+ * scanner cannot know whether a path in a log message is a reference. `check-key.mjs` runs
+ * the same scan to prove the key lists every occurrence.
  *
- * The division matters: this file finds WHERE, and a person supplies WHAT IT MEANS. The
- * key's `expect` values are never produced here, and never could be — a scanner cannot
- * know whether a path in a log message is a reference.
+ * It imports only `node:` modules, because the self-check imports it and must not be able
+ * to reach the engine.
  *
- * It imports nothing from upfly-core, and nothing at all.
- *
- * Usage:  node tools/scan-occurrences.mjs [--root DIR] [--file SUBSTRING] [--json]
+ * Usage: node tools/scan-occurrences.mjs [--root DIR] [--file SUBSTRING] [--json]
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -39,22 +38,15 @@ export const ASSET_EXTENSIONS = [
 ];
 
 /**
- * A path-shaped token ending in an asset extension.
- *
- * ⚠️ Deliberately NOT anchored to quotes or attributes. The point is to find text that
- * merely LOOKS like an asset, including in prose and comments, because those are the
- * occurrences a key is most likely to forget.
- *
- * ⚠️ Known limits, stated rather than discovered later:
- *   - a space or a parenthesis inside a filename stops the match early, so
- *     `/gallery/hero image.png` is found as `image.png`. The checker resolves that by
- *     CONTAINMENT — a hit inside a listed reference's span counts as accounted for.
- *   - parentheses are EXCLUDED from the character class on purpose. With them in, a
- *     markdown `](/img/hero.jpg)` and a CSS `url(/img/hero.jpg)` both match one byte
- *     EARLY, at the bracket, and the containment rule then reports a correctly listed
- *     reference as unaccounted for.
- *   - source extensions (.css, .ts, .json) are not scanned, so a reference to a
- *     stylesheet added without a key entry would not be caught here.
+ * A path-shaped token ending in an asset extension. It is not anchored to quotes or
+ * attributes, so it also finds text that only looks like an asset, in prose and comments:
+ * the occurrences a key is most likely to forget. Its limits:
+ *   - a space or a parenthesis in a filename stops the match early (`/gallery/hero image.png`
+ *     is found as `image.png`); the checker accepts a hit inside a listed reference's span.
+ *   - parentheses are kept out of the character class, or `](/img/hero.jpg)` and
+ *     `url(/img/hero.jpg)` would match from before the path and fall outside that span.
+ *   - source extensions (.css, .ts, .json) are not scanned, so an unlisted reference to a
+ *     stylesheet is not caught.
  */
 export const TOKEN_RE = new RegExp(
   String.raw`[A-Za-z0-9_@%&.~+\-/]*\.(?:${ASSET_EXTENSIONS.join('|')})(?![A-Za-z0-9])`,

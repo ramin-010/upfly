@@ -1,16 +1,13 @@
 /**
- * 🔴 PROVES THE SELF-CHECK CAN FAIL.
+ * Proves the self-check can fail. A check that has never failed is not known to work, so
+ * each class of damage `check-key.mjs` claims to catch is applied here, and the check must
+ * go red and say why.
  *
- * A guard that has never failed is not known to work. This project has shipped four
- * guards that never fired once, and a fixture's premise is the first thing an innocent
- * edit destroys — so the checker is not trusted until it has been watched going red for
- * each class of damage it claims to catch.
+ * Every mutation is applied to a copy in the system temp directory. The tree is read-only
+ * ground truth, and anything that writes works on a copy.
  *
- * Every mutation is applied to a COPY in the system temp directory. The real tree is
- * never written to, which is spec §6: the tree is read-only ground truth, and anything
- * that writes works on a copy.
- *
- * Usage:  node tools/prove-can-fail.mjs [--keep]
+ * Usage: node tools/prove-can-fail.mjs [--keep]
+ * `--keep` leaves each damaged copy in place and prints its path.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -22,9 +19,9 @@ const here = resolve(process.argv[1], '..', '..');
 const keep = process.argv.includes('--keep');
 
 /**
- * Each case damages the copy in one specific way and names the words the checker must
- * say. Asserting on the MESSAGE and not merely on the exit code is the point: a checker
- * that fails for the wrong reason is as useless as one that passes.
+ * Each case damages the copy in one way and names words the checker's output must contain.
+ * The message is asserted as well as the exit code, because a checker that fails for the
+ * wrong reason is as useless as one that passes.
  */
 const cases = [
   {
@@ -171,8 +168,9 @@ const cases = [
           seen += 1;
           return seen === 1;
         });
-        // Removing entries leaves their occurrences unlisted, which is a different
-        // failure; allowlist them so the shape rule is what actually fires.
+        // Removing entries can also leave their occurrences unlisted, a different failure.
+        // This line does not allowlist them, it only makes sure the list exists, so the case
+        // relies on the output holding the shape rule's message beside any other.
         key.unreferencedOccurrences = key.unreferencedOccurrences ?? [];
       }),
     expect: 'asks for three to five',
@@ -192,10 +190,8 @@ const cases = [
     },
     expect: 'dynamic import that is not node',
   },
-  // ⚠️ These two INTRODUCE the UNDECIDED entry rather than relying on one being in the
-  // key. R78 ruled all fourteen open questions at once, and the moment the last one was
-  // answered both cases stopped firing — a proof that quietly depended on the state of
-  // the thing it was proving. They must hold whether the key has open questions or none.
+  // These two create their UNDECIDED entry rather than relying on the key to hold one, so
+  // they hold whether the key has open questions or none.
   {
     name: 'an UNDECIDED entry, under --strict',
     damage: (root) =>
@@ -222,19 +218,12 @@ const cases = [
 ];
 
 /**
- * Remove a field from a key entry, as a mutation that damages the key.
+ * Removes a field from a key entry. It has to be `delete`: assigning `undefined` is only
+ * equivalent while `editKey` writes through `JSON.stringify`, which drops undefined values.
  *
- * ⚠️ **It has to be `delete`, and `field = undefined` is not the same thing** even
- * though `editKey` writes through `JSON.stringify`, which happens to drop
- * undefined-valued keys. That equivalence lives in a different function and would
- * stop holding the moment the key is written by anything else. These mutations mean
- * *the field is gone*, so they say so.
- *
- * Biome's `noDelete` is a performance rule about deoptimising hot objects, and it flagged
- * all three call sites when they each said `delete`. This is a one-shot edit to a parsed
- * copy in a temp directory, so the cost it guards against does not apply. Routing them
- * through here answers the rule honestly rather than by suppression — it does not fire on
- * computed access — and puts the reason in one place instead of three.
+ * Biome's `noDelete` is a performance rule about deoptimising hot objects, which does not
+ * apply to a one-off edit of a parsed copy. It does not fire on computed access, so the
+ * three mutations share this function instead of each suppressing the rule.
  */
 function removeField(object, field) {
   delete object[field];
@@ -279,8 +268,8 @@ if (baseline.status !== 0) {
       for (const dir of ['tree', 'key', 'tools']) {
         cpSync(join(here, dir), join(root, dir), { recursive: true });
       }
-      // A mutation that throws is a BROKEN PROOF CASE, not a passing one. Reported as a
-      // miss rather than left to crash the run and take the other cases with it.
+      // A mutation that throws is a broken proof case, not a passing one. It is reported as
+      // a miss rather than left to crash the run and take the other cases with it.
       try {
         testCase.damage(root);
       } catch (error) {

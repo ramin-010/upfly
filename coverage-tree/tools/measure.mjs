@@ -1,36 +1,16 @@
 /**
- * Run the engine over the coverage tree and render the matrix. R75's other half.
+ * Runs the engine over the coverage tree and renders the matrix.
  *
- * 🔴 **IT RUNS `check-key.mjs --strict` FIRST AND REFUSES TO MEASURE IF THAT FAILS.** A
- * matrix built on a key that does not match the tree is measuring nothing, and it reads
- * exactly like a matrix that is measuring something. A key/tree disagreement is a broken
- * instrument, not a finding — so this exits before producing a single number.
+ * It runs `check-key.mjs --strict` first and refuses to measure if that fails: a key that
+ * disagrees with the tree would measure the disagreement, not the engine. The judging is in
+ * `matrix.mjs`, which imports nothing; this file is the part that touches a subprocess, the
+ * disk and the built engine. The scan is resolved twice, under the key's declared serving
+ * roots and under no configuration, and each run's figure is reported on its own.
+ * See "Measuring the engine against the tree" in ARCHITECTURE.md.
  *
- * ⚠️ **The arithmetic and the rendering are not here.** They are in `matrix.mjs`, which
- * imports nothing at all, so `matrix.test.ts` can hand it damaged instruments and watch
- * every row go the wrong way. This file is the part that touches the world: a subprocess,
- * a filesystem, and the built engine. Keeping it thin is what makes the other file
- * provable.
- *
- * 🔴 **R86 — A THROW IS A THIRD OUTCOME, and the real pipeline is what makes that
- * honest.** `scanSources` catches every adapter throw and records an `UnscannedFile`
- * rather than returning `[]`, so a file that would not parse is *distinguishable* from a
- * file the adapters correctly found nothing in. B7's probe called `findReferences`
- * directly under `catch { emitted = [] }` and lost that distinction for ~150 of 436
- * entries. Reading the pipeline's own bookkeeping is not a workaround for that bug; it is
- * the reason the pipeline has the bookkeeping.
- *
- * 🔴 **R179 — TWO RUNS, TWO NUMBERS, NEVER ADDED TOGETHER.** The same scan is resolved
- * twice and every claimed entry is judged on each: under the key's stated serving roots
- * (run 1), and under no configuration at all — `decideServingRoots`, detection ∪
- * inference, the path a stranger's first run takes (run 2). Until R179 one matrix judged
- * 328 entries on the first setup and 2 on a detection-only run, a blend R174 ruled
- * unquotable. Each number now measures ONE configuration.
- *
- * Usage:  node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
- *         --skip-strict is for debugging the harness itself and prints a loud warning.
- *         It must never be used to produce a number anybody quotes.
- *         Needs `pnpm build`, which `pnpm coverage-tree:measure` runs first.
+ * Usage: node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
+ * `--skip-strict` is for debugging the harness, and its numbers must not be quoted.
+ * It needs `pnpm build`, which `pnpm coverage-tree:measure` runs first.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -59,7 +39,7 @@ function arg(name, fallback) {
 const root = resolve(arg('--root', join(TREE_ROOT, 'tree')));
 const keyPath = resolve(arg('--key', join(TREE_ROOT, 'key', 'coverage-key.json')));
 
-// ---- the gate ------------------------------------------------------------------
+// ---- the key check -------------------------------------------------------------
 if (process.argv.includes('--skip-strict')) {
   process.stdout.write(
     '⚠️  --skip-strict: the key was NOT verified against the tree. Every number below is\n' +
@@ -140,26 +120,22 @@ const resolveUnder = (servingRoots) =>
     exists: (path) => existsSync(path),
   });
 
-// RUN 1 — THE KEY'S OWN `servingRoots`, DECLARED. 🔴 And this was a real bug in the first
-// run of this harness: auto-detection matches directories NAMED `public` or `static`, and
-// the key declares four roots of which `sites/root-served` is R63's shape — a site whose OWN
-// directory is the serving root. No name-based detector can find it, so four references
-// came out `broken` and the matrix reported them as engine defects. **The engine was
-// misconfigured by the instrument measuring it** — R49's cost, arriving inside the thing
-// built to measure correctness, and the reason the key states its configuration at all.
-// ⚠️ `declared: true` deliberately: the key IS the project stating this. And
-// `notServingRoots` is honoured by omission: `docs-examples/public` is named `public` and
-// serves nothing, so detection would claim it and the key says it must not be claimed.
+// Run 1: the key's own serving roots, declared, since the key is the project stating its
+// configuration. A name-based detector cannot find a root like `sites/root-served`, a site
+// whose own directory is the serving root, so without them the run would report its own
+// misconfiguration as engine defects. The key's `notServingRoots` needs no code here: the
+// declared list leaves them out.
 const declaredRoots = {
   dirs: key.servingRoots.map((entry) => entry.path),
   declared: true,
 };
 const referencesDeclared = resolveUnder(declaredRoots);
 
-// RUN 2 — NO CONFIGURATION: exactly what `engine-run.ts` hands the resolver when nobody has
-// declared anything, which is what a stranger's first run gets. Detection ∪ inference, NOT
-// detection alone: inference is what reaches R63's shape, and a run that left it out would
-// report a miss the product does not have.
+// Run 2: no configuration. `decideServingRoots` is what `servingRootsFor` in `pipeline.ts`
+// falls back to when a project declares no roots, so this is what a first run on a new
+// project gets. It is detection and inference together: inference is what finds a root
+// like `sites/root-served`, and a run without it would report a miss the product does not
+// have.
 const decision = decideServingRoots({
   root: discovery.root,
   directories: discovery.directories,
@@ -172,15 +148,11 @@ const referencesUnconfigured = resolveUnder(decision.servingRoots);
 
 // ---- one observation per keyed file, per run -----------------------------------
 //
-// 🔴 The THREW set comes from the pipeline, not from a try/catch of our own. `unscanned`
-// carries `parse-failed` (an adapter threw) and `unreadable` (the file could not be
-// read); both produce silence, and silence is also what a correct refusal produces.
-// ⚠️ `unclaimed-extension` IS NOT A THROW, and conflating them made this harness's first
-// run report 37 `unread.*` entries as crashes. Nothing claims a `.vue` or an `.erb`: that
-// is a GAP — the row is zero and the key's `knownGap` says which ruling explains it —
-// whereas `parse-failed` means an adapter took the file and could not read it. They
-// produce identical silence and mean opposite things, which is R86's point restated one
-// reason-code along. Only the latter two are misses.
+// The files that threw come from the pipeline's own record, not a try/catch here:
+// `parse-failed` (an adapter threw) and `unreadable` (the file could not be read). Both
+// are as silent as a correct refusal, so they are named apart. `unclaimed-extension` is
+// not a throw: no adapter reads a `.vue` or an `.erb` file, which is a gap the key records
+// in `knownGap`, while `parse-failed` means an adapter took the file and failed on it.
 const threwBy = new Map();
 for (const file of [...discovery.unscannedFiles, ...scanned.unscanned]) {
   if (file.reason === 'unclaimed-extension') continue;
@@ -201,8 +173,7 @@ function groupByFile(resolved) {
       shape: reference.shape,
       resolution: reference.resolution,
       rawPath: reference.rawPath,
-      // The engine's own words about its decision. R90: a divergence is a question until
-      // both sides have stated their case, and this is the engine's half.
+      // The engine's own words about its decision, printed beside the key's `why`.
       note: reference.note ?? '',
     });
   }
@@ -214,9 +185,9 @@ const byFileUnconfigured = groupByFile(referencesUnconfigured);
 const observedDeclared = new Map();
 const observedUnconfigured = new Map();
 for (const group of key.files) {
-  // R84. The key counts BYTES and the engine counts UTF-16 CODE UNITS. They agree on
-  // ASCII and diverge silently otherwise — one em dash shifts every later offset by 2 —
-  // so the key's offsets are converted here, before any join, and never the reverse.
+  // The key counts bytes and the engine counts UTF-16 code units. They agree on ASCII and
+  // drift apart after any other character (an em dash is three bytes and one code unit), so
+  // the key's offsets are converted here, before any join.
   const bytes = readFileSync(join(root, group.path));
   for (const entry of group.entries) entry.offset = toCodeUnits(bytes, entry.offset);
 
@@ -234,15 +205,10 @@ for (const group of key.files) {
 }
 
 /**
- * 🔴 R96 — WHICH MECHANISMS EACH RUN USES, STATED PER RUN.
- *
- * Run 1 states its roots, so `serving-root-detection` is not part of its setup at all. A
- * gap naming detection is judged there on its OUTCOME (R179's `outOfConfiguration`) and is
- * never retired by it: before R96, two `docs-examples/public/example.html` entries came
- * out `broken` on this run, matched their `expect`, and the matrix printed "the gap is
- * closed" about a defect that fires on every unconfigured run.
- * Run 2 IS detection (∪ inference), so it exercises the mechanism on its own observations:
- * it is the run that confirms such a gap, or retires it.
+ * Which mechanisms each run uses. Run 1 declares its roots, so detection is outside its
+ * configuration: an entry whose gap is about detection is judged there on its outcome, and
+ * the gap is never retired. Run 2 uses detection and inference, so it exercises detection
+ * on its own observations and is the run that confirms such a gap or retires it.
  */
 const DETECTION = 'serving-root-detection';
 const emissionOf = (id) => shapeById(id)?.emission;
@@ -293,9 +259,9 @@ process.stdout.write(
 );
 
 /**
- * Every claimed entry a run did not meet, by name, with why. 🔴 Not the findings list: an
- * entry in `knownGap` is unmet and deliberately produces no finding, so a result that
- * pointed at the findings would drop exactly the misses that have a ruling behind them.
+ * Every claimed entry a run did not meet, by name, with the reason. Not the findings list:
+ * an entry in `knownGap` is unmet and produces no finding, so the findings would leave out
+ * every known gap.
  */
 function missLines(misses) {
   return misses.map((miss) => {
@@ -304,11 +270,11 @@ function missLines(misses) {
   });
 }
 
-// Exit non-zero on anything RUN 1 says is a defect, so this can gate as well as report. A
-// knownGap is not a defect; a STALE one is, because the debt was settled and the record
-// still claims it. ⚠️ Run 2's misses do not fail this command: each is a named line in the
-// published result (R179), and a gate that is red by design is a gate people route around.
-// A stale gap on run 2 DOES, because it is the one run that can retire a detection gap.
+// Exit non-zero on anything run 1 reports as a defect, so this can fail a build as well as
+// report. An open knownGap is not a defect; a stale one is, because the gap closed and the
+// record still claims it. Run 2's misses do not fail the command: each is already a named
+// line in the result, and a check that is red by design gets routed around. A stale gap in
+// run 2 does, because run 2 is the run that can retire a detection gap.
 const defects =
   run1.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length +
   run1.unkeyed.length +

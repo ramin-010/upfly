@@ -1,55 +1,23 @@
 /**
- * The coverage matrix: what the engine did, against what the key says a correct engine
- * should do, one row per reference shape.
+ * The coverage matrix: what the engine did against what the answer key says a correct
+ * engine does, one row per reference shape.
  *
- * 🔴 **PURE, AND THAT IS THE DESIGN DECISION THIS FILE IS BUILT AROUND.** It imports
- * nothing — not the engine, not `node:fs` — and takes both instruments as arguments. So
- * `matrix.test.ts` can hand it a deliberately damaged pair and watch every row go the
- * wrong way, which is the only thing that makes a green matrix mean anything. This
- * project has shipped four guards that never fired; a measuring instrument nobody has
- * seen fail is the fifth waiting to happen.
- *
- * ⚠️ **It is NOT B7's audit probe grown up.** That probe is kept at
- * `notes/validation/probes/shape-audit.throwaway.mjs` as the evidence for R84 and R85
- * (R86), and inheriting a throwaway's design is R48/R49/R51's error, which this project
- * has made three times. Four things here are deliberately unlike it:
- *
- *   1. **It measures OUTCOMES, not shapes.** The probe compared `shape` against `shape`,
- *      which answers "does the engine label this the way the key does" — a real question,
- *      but not the one R75 asks. The key's `expect` is an *outcome*, so the matrix reads
- *      resolution. Shape disagreement is its own column and never a miss.
- *   2. **A THROW IS A THIRD OUTCOME (R86).** The probe wrapped `findReferences` in
- *      `catch { emitted = [] }`, making a crashing adapter indistinguishable from a
- *      correct refusal — R20's shape inside the instrument that measured the tree. Here a
- *      file the scanner could not read is a `threw` miss, named, and never merged into a
- *      refusal.
- *   3. **It joins in BOTH directions.** The probe joined on key position only, so a
- *      reference the engine emits where the key lists nothing was invisible to it.
- *   4. **NO TOTAL ROW (R75).** A single number over heterogeneous shapes is the thing
- *      that gets quoted out of context, and the matrix's whole value is being unquotable.
- *
- * ## What it cannot see, and this belongs in the report rather than in a backlog
- *
- * 🔴 **A CLASSIFICATION DEFECT IS INVISIBLE TO IT.** It joins two instruments and reports
- * where they differ. Where they AGREE and are both wrong it reports nothing — which is
- * exactly how R80(a) sat unapplied for a day: engine and key both called a partial
- * pattern `js.template.pattern`, so no join could have raised it. `blindSpots()` returns
- * this as prose so it cannot be left out of a rendering.
+ * It imports nothing, not the engine and not `node:fs`, and takes the key and the engine's
+ * observations as arguments, so `coverage-matrix.test.ts` can feed it damaged inputs and
+ * check that each row goes the wrong way. It judges outcomes, not shapes: a shape that
+ * differs from the key's is listed apart and is never a miss. A file the scanner could not
+ * read is its own outcome, never a refusal. The join runs both ways, and there is no total.
+ * See "Measuring the engine against the tree" in ARCHITECTURE.md.
  */
 
 /**
- * Which engine outcomes satisfy one `expect` value.
+ * Which engine outcomes satisfy one `expect` value. `absent` means the engine produced no
+ * reference at that position.
  *
- * 🔴 **Two of the seven accept EMITTING NOTHING as well as an outcome, and the key says so
- * in its own `expectSemantics`** — `discarded` because a `url()` in a comment is never
- * collected while a path-shaped guess that misses is collected and discarded, and
- * `out-of-scope` because an absolute URL is dropped by `isExternalUrl` before it is ever
- * a reference while a real `.mp4` becomes one the engine declines to index. ⚠️ **The key
- * records that these were written as situations rather than as behaviours, and that 12
- * entries would have read as misses for correct behaviour.** Encoding it here rather than
- * in the renderer is what stops the next instrument re-deriving it wrongly.
- *
- * `absent` is the sentinel for "the engine produced no reference at this position".
+ * `discarded` and `out-of-scope` also accept silence, as the key's `expectSemantics` says: a
+ * `url()` in a comment is never collected, while a path-shaped guess that misses is collected
+ * and discarded; an absolute URL is dropped by `isExternalUrl` before it is a reference, while
+ * a real `.mp4` becomes one the engine declines to index.
  */
 export const ACCEPTS = {
   resolved: ['resolved'],
@@ -57,46 +25,26 @@ export const ACCEPTS = {
   dynamic: ['dynamic'],
   broken: ['broken'],
   'unresolved-alias': ['unresolved-alias'],
-  // See the note above: both of these accept silence.
   discarded: ['discarded', 'absent'],
   'out-of-scope': ['out-of-scope', 'absent'],
 };
 
 /**
- * Outcomes that must NEVER satisfy `discarded` or `out-of-scope`, spelled out rather than
- * left to `ACCEPTS`' omissions.
- *
- * ⚠️ A permissive list plus silence is one typo away from accepting everything, and it
- * would accept it QUIETLY. The key's own wording is *"it must NOT accept a resolved,
- * broken or rewritten outcome"*, so that sentence is executable here and
- * `matrix.test.ts` proves it refuses each one.
+ * Outcomes that must never satisfy `discarded` or `out-of-scope`, the two expects that also
+ * accept silence. `coverage-matrix.test.ts` checks that the matrix refuses each of them.
  */
 export const NEVER_ACCEPTABLE_AS_SILENCE = ['resolved', 'resolved-pattern', 'broken'];
 
-/** Byte offset → UTF-16 code-unit offset (R84). The one line worth keeping from the probe. */
+/** Byte offset to UTF-16 code-unit offset: the key counts bytes, the engine code units. */
 export function toCodeUnits(bytes, byteOffset) {
   return bytes.subarray(0, byteOffset).toString('utf8').length;
 }
 
 /**
- * Every bucket an entry can land in — **declared ONCE, and the columns are derived from
- * it.**
- *
- * 🔴 **THIS LIST EXISTS BECAUSE THE TABLE PRINTED A SUM THAT DID NOT CLOSE, AND THE
- * COMMENT TWENTY LINES BELOW ALREADY NAMED THAT EXACT FAILURE.** `reconcile` summed six
- * buckets; `rowTable` printed five, dropping `staleGap` from a column headed `gap`. Seven
- * entries vanished between the check and the page — `html.img.src` read `27/29 miss 0`,
- * `js.import.alias.mapped` read `0/5 miss 0` — and the instrument's own arithmetic line
- * said ✅ the whole time, because **the check verified the data structure and nothing
- * verified the rendering.**
- *
- * ⚠️ Fixed structurally rather than by adding the missing column: both the check and the
- * table now iterate this array, so a bucket cannot gain an entry without gaining a column.
- * A second enumeration of the same set is the defect; one more column would have been the
- * same defect waiting for the next bucket.
- *
- * `emitsFinding` is here for the same reason — `reconcile` cross-checks the bucket counts
- * against the finding list, and that pairing was a third hand-written enumeration.
+ * Every bucket an entry can land in, declared once. `reconcile` sums these and the table
+ * prints a column for each, so a bucket cannot hold entries that no column shows.
+ * `emitsFinding` says whether an entry in the bucket produces a finding, which `reconcile`
+ * checks against the findings list.
  */
 export const BUCKETS = Object.freeze([
   { key: 'met', label: 'met', emitsFinding: false },
@@ -108,60 +56,39 @@ export const BUCKETS = Object.freeze([
 ]);
 
 /**
- * The mechanisms a `knownGap` can name, and the vocabulary a key entry may declare.
- *
- * 🔴 **R96. A GAP'S TEXT IS A SPECIFICATION OF THE INSTRUMENT THAT CAN RETIRE IT.** A gap
- * whose text says *"detection climbs ancestors looking for a directory named `public` and
- * will misresolve this"* cannot be retired by a run that feeds declared roots — detection
- * never ran. Before R96 the two `docs-examples/public/example.html` entries came out
- * `broken`, matched their `expect`, and printed **"the gap is closed"** for a defect that
- * is entirely live in the product.
- *
- * ⚠️ **This is the third variant of R86's family in two days and it is the worst of them.**
- * A throw read as a decline and a scope decision read as a defect both make the engine
- * look WORSE than it is, and someone chasing a phantom finds nothing wrong. This one makes
- * it look BETTER: it retires a live defect, and the record that would have told the next
- * reader about it is the thing that gets deleted.
- *
- * Declared per entry rather than inferred from the prose, because inferring it means
- * pattern-matching English and being wrong in the direction that deletes debts.
+ * The mechanisms a `knownGap` can name, and so the values a key entry's `gapMechanism` may
+ * take. A gap about a mechanism can only be retired by a run that used it: a run with
+ * declared serving roots never runs detection, so its agreeing with the key says nothing
+ * about a detection gap. Declared per entry rather than read from the gap's prose, because
+ * matching English would fail in the direction that deletes a live gap.
+ * See "Measuring the engine against the tree" in ARCHITECTURE.md.
  */
 export const GAP_MECHANISMS = Object.freeze([
-  // The resolver's ancestor climb for a conventionally-named serving root. Bypassed
-  // whenever a caller supplies `servingRoots.declared`, which `measure.mjs` does on
-  // purpose (R92) — correct for measuring resolution, disqualifying for retiring this.
+  // Finding serving roots by directory name (`detectServingRoots`). It never runs when the
+  // caller declares its roots, as `measure.mjs` does for its first run.
   'serving-root-detection',
 ]);
 
 /**
- * Compare the two instruments.
+ * Compares the answer key with what the engine produced, entry by entry.
  *
  * @param key the parsed answer key.
  * @param observed one entry per keyed file:
  *   `{ path, threw: string | null, references: [{ start, shape, resolution }] }`
  *   where `start` is a UTF-16 code-unit offset and `threw` is the reason the scanner
- *   could not read the file at all. A file absent from this map is itself a defect —
- *   reported, not skipped, because a silently missing file is how a matrix reads green
- *   over work it never did.
- * @param exercises R96: the `GAP_MECHANISMS` this run actually puts through their paces.
- *   A `knownGap` naming a mechanism outside this set can be neither confirmed nor retired
- *   by the run, and lands in `notExercised` rather than being read as closed. The default
- *   is EMPTY, which is the safe direction: a gap stays on the books until a caller states
- *   that it ran the thing the gap is about.
- * @param observedUnder `{ [mechanism]: Map }` — a SEPARATE run, made with that mechanism
- *   switched on, which is what an entry naming it is judged against. 🔴 **Without it, an
- *   entry naming an exercised mechanism is judged on `observed` — which is only honest if
- *   `observed` itself ran the mechanism.** `measure.mjs`'s main run feeds declared roots, so
- *   claiming `serving-root-detection` there and judging on the main run would read the
- *   declared run's `broken` as "the gap is closed": R96 exactly. It supplies the detection
- *   run here instead.
- * @param outOfConfiguration R179: mechanisms this run's CONFIGURATION does not use at all —
- *   not "switched off by the harness", but absent from the setup being measured, as
- *   detection is when the key states its serving roots. An entry whose gap names one is
- *   judged on its outcome under this configuration, `met` or `missed`, because the gap
- *   describes a setup this run is not. 🔴 **It never RETIRES the gap** — R96's hazard is
- *   agreement read as closure, and this reads agreement as agreement under a stated
- *   setup and nothing more; the run that uses the mechanism judges the gap. Listed in
+ *   could not read the file at all. A keyed file missing from this map is reported as
+ *   `not-observed`, never skipped, so a run that measured nothing cannot read as clean.
+ * @param exercises the `GAP_MECHANISMS` this run uses. A `knownGap` naming a mechanism
+ *   outside this set and outside `outOfConfiguration` can be neither confirmed nor retired
+ *   by the run, and lands in `notExercised`. The default is empty, so a gap stays open
+ *   until a caller states that it ran the mechanism the gap is about.
+ * @param observedUnder `{ [mechanism]: Map }`: a separate run, made with that mechanism in
+ *   use, on which an entry whose gap names it is judged. Without one, such an entry is
+ *   judged on `observed`, which is only sound if `observed` used the mechanism too.
+ * @param outOfConfiguration mechanisms this run's configuration does not use at all, as
+ *   detection is unused when the key states its serving roots. An entry whose gap names one
+ *   is judged on its outcome, `met` or `missed`, and its gap is never retired: the run that
+ *   uses the mechanism judges the gap. These entries are listed in
  *   `result.outOfConfiguration` so the page can say so.
  */
 export function buildMatrix(
@@ -198,8 +125,8 @@ export function buildMatrix(
       const run = runFor(entry, exercises, observedUnder) ?? observed;
       const verdict = classify(entry, run.get(group.path), exercises, outOfConfiguration);
       row[verdict.bucket] += 1;
-      // Every entry's bucket, so a run can NAME what it did not meet (R179). The findings
-      // list cannot: a `knownGap` entry is unmet and deliberately produces no finding.
+      // Every entry's bucket, so a run can name each entry it did not meet. The findings
+      // list cannot: a `knownGap` entry is unmet and produces no finding.
       verdicts.push({
         file: group.path,
         line: entry.line,
@@ -235,32 +162,16 @@ export function buildMatrix(
   };
 }
 
-/**
- * Every `gapMechanism` the key names must be in the vocabulary, and so must every
- * mechanism the caller claims to exercise.
- *
- * 🔴 **It THROWS rather than reporting, because both mistakes fail in the direction that
- * looks fine.** A misspelled `gapMechanism` matches nothing in `exercises`, so the entry
- * becomes permanently `not exercised` — a gap nobody can ever retire, which reads as
- * caution. A misspelled `exercises` entry matches no gap, so the run silently claims less
- * than it does. Neither produces a red row; both produce a quietly wrong table, and R75's
- * first rule is that a matrix built on a broken instrument reads exactly like one that is
- * not. `measure.mjs` already refuses to run on a key/tree disagreement for the same reason.
- */
-/** The separate run an entry is judged on, when its gap names a mechanism that has one. */
+/** The separate run an entry is judged on, when its gap names a mechanism this run exercises. */
 function runFor(entry, exercises, observedUnder) {
   if (entry.gapMechanism === undefined || !exercises.has(entry.gapMechanism)) return undefined;
   return observedUnder[entry.gapMechanism];
 }
 
-/**
- * What a caller says about its runs must hang together before any entry is read (R96, R179).
- * Split from the vocabulary check below when the complexity rule fired on the two together
- * — answered, not silenced (R81's precedent).
- */
+/** What a caller says about its runs must hang together before any entry is read. */
 function assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration) {
-  // A run supplied for a mechanism the caller does not claim to exercise would sit there
-  // looking like evidence and judge nothing — the same slip as a misspelled claim.
+  // A run supplied for a mechanism the caller does not exercise would look like evidence
+  // and judge nothing.
   for (const mechanism of Object.keys(observedUnder)) {
     if (!exercises.has(mechanism)) {
       throw new Error(
@@ -268,8 +179,8 @@ function assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration) {
       );
     }
   }
-  // R179. A configuration either uses a mechanism or it does not. Claiming both would let
-  // one call judge a gap on its outcome AND retire it, which is R96 by another door.
+  // A configuration either uses a mechanism or it does not, so a mechanism named as both is
+  // a mistake in the caller.
   for (const mechanism of outOfConfiguration) {
     if (exercises.has(mechanism)) {
       throw new Error(
@@ -279,6 +190,13 @@ function assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration) {
   }
 }
 
+/**
+ * Every `gapMechanism` the key names, and every mechanism the caller names, must be in
+ * `GAP_MECHANISMS`. It throws rather than reporting, because a misspelling would show no
+ * red row, only a quietly wrong table: a misspelled `gapMechanism` would leave its entry
+ * not exercised forever, and a misspelled `exercises` entry would make the run claim less
+ * than it did.
+ */
 function assertMechanismsAreDeclared(key, exercises, outOfConfiguration = new Set()) {
   const known = new Set(GAP_MECHANISMS);
   const unknown = new Set();
@@ -289,8 +207,7 @@ function assertMechanismsAreDeclared(key, exercises, outOfConfiguration = new Se
           `key ${group.path}:${entry.line} declares gapMechanism "${entry.gapMechanism}"`,
         );
       }
-      // A mechanism on an entry with no gap has nothing to retire and is a transcription
-      // slip, not a policy: it would sit there looking meaningful and doing nothing.
+      // A mechanism on an entry with no gap has nothing to retire, so it is a slip in the key.
       if (entry.gapMechanism !== undefined && entry.knownGap === undefined) {
         unknown.add(`key ${group.path}:${entry.line} declares a gapMechanism but has no knownGap`);
       }
@@ -310,29 +227,18 @@ function assertMechanismsAreDeclared(key, exercises, outOfConfiguration = new Se
 }
 
 /**
- * Does the matrix's own arithmetic close?
+ * Whether the matrix's own arithmetic closes. A table that does not add up still prints.
  *
- * 🔴 **A TABLE THAT DOES NOT ADD UP STILL PRINTS, and it prints confidently.** Every
- * entry lands in exactly one bucket, so per row `met + missed + threw + knownGap +
- * staleGap` must equal `expected`, and the row totals must equal the number of entries
- * the key holds. Nothing else in this file would notice if a verdict started
- * double-counting or went to a bucket name that does not exist — `row[verdict.bucket] +=
- * 1` would happily create one.
- *
- * ⚠️ **This exists because I tried to check it from OUTSIDE, by parsing the rendered
- * table, and my regex silently matched only the 62 rows that had no direction label —
- * then reported a one-entry discrepancy that was entirely my parser's.** An instrument
- * that can only be verified by scraping its own output is an instrument nobody will
- * verify twice.
+ * Every entry lands in exactly one bucket, so per row the buckets must sum to `expected`,
+ * and the rows must account for every entry the key holds. Nothing else would notice a
+ * verdict counted twice or sent to a bucket that does not exist: `row[verdict.bucket] += 1`
+ * would create one.
  */
 export function reconcile(rows, key, findings) {
   const problems = [];
   let expected = 0;
   for (const row of rows) {
-    // Summed over `BUCKETS`, which is also what the table prints. Before R96 this summed a
-    // hand-written list of six while the table printed a hand-written list of five, and
-    // the discrepancy was invisible from here: this loop closed, the table did not, and
-    // only the ✅ was on the page.
+    // Summed over `BUCKETS`, the list the table's columns come from.
     const parts = BUCKETS.reduce((total, bucket) => total + row[bucket.key], 0);
     if (parts !== row.expected) {
       problems.push(`${row.shape}: buckets sum to ${parts}, expected ${row.expected}`);
@@ -343,9 +249,8 @@ export function reconcile(rows, key, findings) {
   if (expected !== entries) {
     problems.push(`rows account for ${expected} entries, the key holds ${entries}`);
   }
-  // Every finding belongs to exactly one bucket that declares `emitsFinding`, so the two
-  // counts must agree — and which buckets those are is read from `BUCKETS` rather than
-  // listed again here.
+  // Every finding comes from an entry in a bucket that declares `emitsFinding`, so the two
+  // counts must agree.
   const accounted = rows.reduce(
     (total, row) =>
       total + BUCKETS.reduce((sum, bucket) => sum + (bucket.emitsFinding ? row[bucket.key] : 0), 0),
@@ -358,19 +263,10 @@ export function reconcile(rows, key, findings) {
 }
 
 /**
- * One divergence, carrying BOTH sides' reasoning.
- *
- * 🔴 **A DIVERGENCE IS A QUESTION UNTIL SOMEBODY HAS OPENED BOTH SIDES (R90), so the
- * output opens them.** The key's `why` is the tree author's claim about what a correct
- * engine does; the engine's `note` is what it says about its own decision. Printing
- * `expected resolved, engine said absent` and stopping makes every one of these a
- * separate investigation with a separate probe — and there are dozens.
- *
- * ⚠️ **The reason this is worth the width: a row reading `0 of 4` MAY MEAN THE KEY IS
- * WRONG.** Six key occurrence defects were corrected in one session, and then the seventh
- * `0 of 4` row was read as an engine P0 and labelled "not a judgement call" — it was a
- * key defect too (R90). As the tree gets measured, the tree gets corrected. Whichever side
- * is wrong, the two claims side by side are what settle it.
+ * One divergence, carrying both sides' reasoning: the key's `why`, the tree author's claim
+ * about what a correct engine does, and the engine's `note` about its own decision. A
+ * divergence can mean the key is wrong as easily as the engine, and the two claims side by
+ * side are what settle which.
  */
 function finding(group, entry, kind, detail, engineNote) {
   return {
@@ -383,32 +279,22 @@ function finding(group, entry, kind, detail, engineNote) {
     // Both sides' own words, so a reader can adjudicate without opening two files.
     keyWhy: entry.why ?? '',
     keyGap: entry.knownGap ?? '',
-    // R96: which mechanism this entry's gap names, when it names one. Carried on the
-    // finding so the renderer can say WHICH instrument would have to run, rather than
-    // only that some instrument did not.
+    // The mechanism the entry's gap names, if any, so the page can say which mechanism a
+    // run would have to use to judge the gap.
     gapMechanism: entry.gapMechanism ?? '',
     engineNote: engineNote ?? '',
   };
 }
 
 /**
- * Kinds that are NOT defects: reported for visibility, never counted against the run.
- *
- * ⚠️ `gap-not-exercised` is here **and it is not a concession.** It says "this instrument
- * cannot answer this question", which is a fact about the harness, not a fault in the
- * engine — and gating on it would make the run permanently red for a configuration
- * `measure.mjs` chose on purpose. A permanently-red gate is a gate people route around,
- * and that is how the pre-commit hook nearly died. It is printed under its own heading
- * instead, with a count, so it cannot be mistaken for a clean row.
+ * Finding kinds reported for visibility and never counted against the run.
+ * `gap-not-exercised` says this run cannot judge the gap, a fact about the harness rather
+ * than a fault in the engine. Counting it would keep the run red for a configuration
+ * `measure.mjs` chooses on purpose, and a check that is always red gets routed around.
  */
 export const NON_DEFECT_KINDS = ['threw-expected-silence', 'gap-not-exercised'];
 
-/**
- * What one keyed entry turned out to be. Split out of `buildMatrix` rather than
- * suppressed when the complexity rule fired on it (R81's precedent: answer the rule,
- * never silence it) — and the four outcomes read as a ladder here, which the inlined
- * version did not.
- */
+/** What one keyed entry turned out to be. */
 function classify(entry, observation, exercises = new Set(), outOfConfiguration = new Set()) {
   // A file we never observed is not evidence of anything. Reported per entry, so the
   // row's `expected` still counts it rather than the group vanishing.
@@ -422,22 +308,14 @@ function classify(entry, observation, exercises = new Set(), outOfConfiguration 
 
   const found = observation.references.find((reference) => reference.start === entry.offset);
 
-  // R86. Silence is what a correct refusal produces AND what a crashed adapter produces,
-  // so the two are separated here, named, and never folded together.
-  //
-  // ⚠️ THE ORDER MATTERS AND I HAD IT WRONG. Checking `threw` first credited a partially
-  // read file with nothing — and R20's fix is precisely that a throw CARRIES the
-  // references already collected, so `scanSources` records the skip and keeps them. A
-  // file can legitimately be both partly measured and recorded unscanned. Testing for the
-  // reference first means the throw explains only the entries actually missing, which is
-  // also the only way this harness can show whether R20's preservation works.
+  // A crashed adapter is as silent as a correct refusal, so a throw is its own outcome and
+  // never counts as a refusal. The reference is looked up first: `scanSources` keeps the
+  // references an adapter found before it threw, so a file can be partly measured and still
+  // recorded as unscanned, and the throw explains only the entries actually missing.
   if (found === undefined && observation.threw !== null) {
-    // 🔴 R86 AND R90 MEET HERE, and collapsing either way would be wrong. R86: a throw is
-    // never merged into a refusal, because silence from a crash and silence from a correct
-    // decline are indistinguishable and mean opposite things. R90: where the key's expect
-    // ACCEPTS silence, the throw is the mechanism by which the right thing happened — so
-    // it is reported, named, and NOT a defect. `entity.html`'s four swallowed entries are
-    // exactly this: the file cannot be parsed, and a browser renders nothing there either.
+    // Where the expect accepts silence, the throw brought about the right outcome, as when
+    // an unclosed `<style>` swallows text a browser does not render either. It is still
+    // named as a throw, under its own kind, and is not a defect.
     const silenceIsRight = (ACCEPTS[entry.expect] ?? []).includes('absent');
     return {
       bucket: 'threw',
@@ -466,16 +344,15 @@ function classify(entry, observation, exercises = new Set(), outOfConfiguration 
 }
 
 /**
- * The verdict on an entry that carries a `knownGap`: judged on its outcome where the run's
- * configuration does not use the gap's mechanism (R179), `not exercised` where the run
- * switched it off (R96), and otherwise confirmed or stale. Split from `classify` when the
- * complexity rule fired — answered, not silenced (R81's precedent).
+ * The verdict on an entry that carries a `knownGap`. Where the run's configuration does not
+ * use the gap's mechanism, the entry is judged on its outcome; where the run does not say it
+ * exercised the mechanism, the entry is not exercised; otherwise the gap is confirmed or
+ * found stale.
  */
 function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfiguration) {
-  // R179: the gap describes a setup this run is not — detection, under a configuration
-  // that states its serving roots — so the entry is judged on what this setup produced.
-  // `met` here says "right under the stated configuration" and nothing about the gap,
-  // which stays on the books for the run that uses the mechanism.
+  // The gap is about a setup this run does not have, such as detection under declared
+  // serving roots, so the entry is judged on what this setup produced. `met` here says
+  // nothing about the gap, which stays open for the run that uses the mechanism.
   if (entry.gapMechanism !== undefined && outOfConfiguration.has(entry.gapMechanism)) {
     return agrees
       ? { bucket: 'met', kind: null, detail: '', note }
@@ -486,13 +363,9 @@ function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfigurati
           note,
         };
   }
-  // 🔴 R96, AND IT IS CHECKED BEFORE `agrees` RATHER THAN AFTER. A gap naming a mechanism
-  // this run does not exercise cannot be retired by this run, and — this is the whole
-  // point — it is *agreement* that would retire it. The two
-  // `docs-examples/public/example.html` entries expect `broken`, the engine under
-  // declared roots says `broken`, they agreed, and the matrix printed "the gap is
-  // closed" about a defect that fires on every real invocation. Reading the agreement
-  // first and the mechanism second is the version of this that shipped.
+  // Checked before `agrees`, because agreement is what would retire the gap, and a run
+  // that did not use the mechanism cannot retire it: under declared roots, an entry whose
+  // gap is about detection can agree with its `expect` for reasons unrelated to the gap.
   if (entry.gapMechanism !== undefined && !exercises.has(entry.gapMechanism)) {
     return {
       bucket: 'notExercised',
@@ -503,9 +376,8 @@ function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfigurati
       note,
     };
   }
-  // A knownGap that has been closed must be REMOVED, not left standing. Same hazard as
-  // a growth-list shape that quietly gained coverage: a debt nobody settles the record
-  // of goes on being printed as a debt, and a reader learns to discount the column.
+  // A gap the engine now closes is reported as stale so its record gets removed, rather
+  // than printed as an open gap that readers learn to discount.
   return agrees
     ? {
         bucket: 'staleGap',
@@ -517,17 +389,13 @@ function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfigurati
 }
 
 /**
- * The other direction: a reference the engine emits where the key lists nothing.
+ * The other direction: references the engine resolved where the key lists nothing. This is
+ * the more dangerous of the two, since a miss is a gap in coverage while an unkeyed emission
+ * is the engine claiming a link nobody sanctioned, and a rewrite acts on what it claims.
  *
- * 🔴 **The probe could not see these at all**, because it joined on key positions. An
- * unkeyed emission is the more dangerous direction of the two: a miss is a gap in
- * coverage, an unkeyed emission is the engine claiming something nobody sanctioned — and
- * `--replace` rewrites what the engine claims.
- *
- * ⚠️ Scoped to the files the key lists and to references that resolved to an asset. The
- * tree holds fonts, video and package imports the key deliberately does not enumerate,
- * and counting those would bury the signal in a list nobody reads — which is R75's
- * complaint about a row a reader learns to ignore, one level up.
+ * Only the files the key lists, and only references that resolved to an asset: the tree
+ * holds fonts, video and package imports the key does not enumerate, and listing those
+ * would bury the signal.
  */
 export function unkeyedEmissions(key, observed) {
   const out = [];
@@ -552,15 +420,9 @@ export function unkeyedEmissions(key, observed) {
 }
 
 /**
- * Where the engine's SHAPE differs from the key's, and whether that is a defect.
- *
- * 🔴 **It is a defect only when the shape declares no `adapterEmitsAs` containing the
- * engine's shape (R87).** Some shapes are distinctions only the resolver can draw — a
- * `decoy.typo` cannot be told from a real path without checking the disk — and for those
- * the adapter correctly emits something broader. **The harness reads that declaration; it
- * does not keep a list of its own.** A hand-written roster of exemptions rots the first
- * time a shape moves layer, and rots silently, because an exemption that is no longer
- * needed still suppresses.
+ * Where the engine's shape differs from the key's, and whether the difference is explained:
+ * it is when the key's shape lists the engine's in `adapterEmitsAs`, because only the
+ * resolver can draw that distinction. See "Which layer decides" in ARCHITECTURE.md.
  *
  * @param declarationOf `(shapeId) => { adapterEmitsAs?: string[] } | undefined`, supplied
  *   by the caller so this module stays free of the engine it measures.
@@ -587,11 +449,9 @@ export function shapeDisagreements(key, observed, declarationOf = () => undefine
 }
 
 /**
- * What this instrument cannot tell you, as prose, so a rendering cannot omit it.
- *
- * ⚠️ **Returned rather than written into the renderer** because the renderer is the part
- * somebody will rewrite, and a caveat that lives in the thing being rewritten is a caveat
- * with a half-life. Every number this harness prints is bounded by all three.
+ * What this instrument cannot tell you, as text any rendering can print. Returned rather
+ * than written into the renderer, which is the part most likely to be rewritten. Every
+ * number the harness prints is bounded by all three.
  */
 export function blindSpots() {
   return [
@@ -607,16 +467,10 @@ export function blindSpots() {
 }
 
 /**
- * Render the matrix.
- *
- * 🔴 **NO TOTAL ROW, AND NOT AS AN OVERSIGHT (R75).** A single number over heterogeneous
- * shapes is exactly what escapes into a README, and the matrix's value is that it names
- * *where to add an adapter next* rather than scoring anything. The per-row counts are the
- * product; there is deliberately nothing to quote.
- *
- * ⚠️ A `declined`-class row reads BACKWARDS — for `discarded` and `out-of-scope` a
- * non-zero `missed` means the engine CLAIMED something it should have refused. The
- * heading says so rather than leaving a reader to infer the direction per row.
+ * Renders the matrix. There is no total row: one figure over unlike shapes is what gets
+ * quoted out of context, and the rows are there to show where an adapter is missing. A
+ * `declined` row reads backwards, since a miss there means the engine claimed text it should
+ * have refused, and the heading says so. See "What a zero means" in ARCHITECTURE.md.
  */
 export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
   const width = Math.max(28, ...result.rows.map((row) => row.shape.length));
@@ -633,11 +487,6 @@ export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
     ...blindSpotList(),
   ].join('\n');
 }
-
-// Each section below was inlined in `renderMatrix` until the complexity rule fired on it
-// at 35 — the highest in the repository. Split rather than suppressed (R81's precedent:
-// answer the rule), and the sections are now individually readable, which the 90-line
-// version was not.
 
 function heading() {
   return [
@@ -666,9 +515,8 @@ function arithmeticLine(result) {
 }
 
 /**
- * 🔴 **THE HONEST DENOMINATOR (R92): the shapes we CLAIM are the only population where a
- * miss is a bug.** Per direction, and never one figure across all four — the whole value
- * of this table is that there is nothing to quote out of context.
+ * One line per population, never one figure across them. The claimed population is the only
+ * one where a miss is a bug.
  */
 function populations(result, emissionOf) {
   const buckets = tally(result, emissionOf);
@@ -681,11 +529,9 @@ function populations(result, emissionOf) {
 }
 
 /**
- * The `claimed` population's `met` of `expected` — the one figure R167 publishes, per run.
- *
- * Exported so `measure.mjs` states each run's number from the SAME tally the table prints,
- * rather than re-deriving which rows are `claimed`: two derivations of one population are
- * how a headline and its table come to disagree.
+ * The `claimed` population's `met` of `expected`, the figure each run publishes, and every
+ * claimed entry it did not meet. Exported so `measure.mjs` takes each run's figure from the
+ * tally the table prints, rather than deciding again which rows are claimed.
  */
 export function claimedPopulation(result, { emissionOf = () => undefined } = {}) {
   const bucket = tally(result, emissionOf).get('claimed');
@@ -695,7 +541,7 @@ export function claimedPopulation(result, { emissionOf = () => undefined } = {})
   return { met: bucket?.met ?? 0, expected: bucket?.expected ?? 0, misses };
 }
 
-/** Which population a shape's row belongs to — one rule, for the table and the headline. */
+/** Which population a shape's row belongs to: one rule, for the table and the headline. */
 function populationOf(shape, emissionOf) {
   const emission = emissionOf(shape) ?? 'engine';
   return emission === 'engine' ? 'claimed' : emission;
@@ -703,9 +549,9 @@ function populationOf(shape, emissionOf) {
 
 /**
  * Everything but the per-shape table: the arithmetic, the populations, the notes, and every
- * finding with both sides' reasoning. For a SECOND run over the same key (R179), where the
- * question is which entries it misses and why, and a second full table would bury the
- * answer under three hundred rows that match the first.
+ * finding with both sides' reasoning. For a second run over the same key, where the question
+ * is which entries it misses and why, and a second full table would bury the answer under
+ * rows that match the first.
  */
 export function renderSummary(result, { emissionOf = () => undefined } = {}) {
   return [
@@ -721,10 +567,8 @@ export function renderSummary(result, { emissionOf = () => undefined } = {}) {
 function tally(result, emissionOf) {
   const buckets = new Map();
   for (const row of result.rows) {
-    // ⚠️ `gap` is its OWN population and is deliberately not folded into `claimed`. A gap
-    // is an acknowledged debt with a ruling behind it, so counting its 47 entries against
-    // the claimed figure would drag that number down for a reason that is not a defect —
-    // and `claimed` has to mean exactly "a miss here is a bug" or it means nothing at all.
+    // `gap` is its own population, not part of `claimed`: a gap is a known missing reader,
+    // and `claimed` must hold only the rows where a miss is a bug.
     const direction = populationOf(row.shape, emissionOf);
     const bucket = buckets.get(direction) ?? { rows: 0, expected: 0, met: 0, missed: 0 };
     bucket.rows += 1;
@@ -737,11 +581,10 @@ function tally(result, emissionOf) {
 }
 
 /**
- * 🔴 **R96, stated on the page rather than only in a column.** An entry counted here is
- * one the harness is NOT QUALIFIED to judge: its `knownGap` names a mechanism this run
- * switched off, so both a match and a mismatch would be an artefact of the configuration.
- * The `n/x` column carries the number; this paragraph carries the reason, because a reader
- * scanning for zeroes will read a column as "nothing to see".
+ * The entries this run cannot judge, with the reason: each one's `knownGap` names a
+ * mechanism the run did not use, so a match and a mismatch alike come from the
+ * configuration. The `n/x` column carries the count and this paragraph the reason, because
+ * a reader scanning for zeroes reads a column alone as nothing to see.
  */
 function notExercisedNote(result) {
   const items = result.findings.filter((item) => item.kind === 'gap-not-exercised');
@@ -759,9 +602,9 @@ function notExercisedNote(result) {
 }
 
 /**
- * R179, stated on the page as R96 is: which entries carrying a gap were judged on their
- * outcome because this configuration does not use the mechanism the gap names. Without
- * it, a reader could take their `met` for the gap being closed.
+ * Which entries carrying a gap were judged on their outcome, because this configuration
+ * does not use the mechanism the gap names. Without it, a reader could take their `met` for
+ * the gap being closed.
  */
 function outOfConfigurationNote(result) {
   const items = result.outOfConfiguration ?? [];
@@ -795,13 +638,9 @@ function reading(direction, bucket) {
 const NON_MET_BUCKETS = BUCKETS.filter((bucket) => bucket.key !== 'met');
 
 /**
- * The numbers this row actually PRINTS, in print order.
- *
- * 🔴 **The renderer and the check now read the same function.** The bug R96 was found
- * through was two independent enumerations of one bucket set — `reconcile` summed six and
- * the table printed five — so the table under-reported seven entries while the arithmetic
- * line said ✅. Deriving the cells from `BUCKETS` means a new bucket appears as a column
- * whether or not anybody remembers to add one.
+ * The numbers this row prints, in print order. The table and its balance check in
+ * `rowTable` both read this, and it comes from `BUCKETS`, so a new bucket appears as a
+ * column without anyone adding one.
  */
 function cellsOf(row) {
   return NON_MET_BUCKETS.map((bucket) => row[bucket.key]);
@@ -821,9 +660,8 @@ function rowTable(result, emissionOf, width) {
     const counts = `${num(row.met)}/${num(row.expected)}  ${cells}`;
     lines.push(`${pad(row.shape)}  ${counts}  ${directionOf(emissionOf(row.shape))}`);
   }
-  // 🔴 THE PRINTED TABLE, CHECKED AS PRINTED. `reconcile` proves the data structure adds
-  // up; this proves the PAGE does. They were the same proof until they silently were not,
-  // and the gap between them was where seven entries lived for a day.
+  // The table checked as printed: `reconcile` proves the data adds up, and this proves the
+  // printed columns do.
   const unbalanced = result.rows.filter(
     (row) => row.met + cellsOf(row).reduce((total, cell) => total + cell, 0) !== row.expected,
   );

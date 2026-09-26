@@ -1,28 +1,16 @@
 /**
- * THE SELF-CHECK. Run it BEFORE anything measures this tree.
+ * The self-check: proves the answer key describes the tree, before anything measures it. A
+ * disagreement is a broken instrument, not a finding, so it exits non-zero. It uses text
+ * search and path arithmetic only, never upfly-core: a key certified by the engine it
+ * measures would share that engine's blind spots.
  *
- * 🔴 It uses plain text search and path arithmetic, and NOTHING ELSE. It does not import
- * upfly-core, does not call the resolver, and does not know that an engine exists.
- * Certifying the answer key with the engine the key exists to measure is R72 — the
- * instrument confirming its own blind spots — and it is the single defect that would make
- * this whole tree worthless while still reading green.
+ * Its numbered sections check that it cannot reach the engine (0), listed assets match the
+ * disk (1, 2), each `raw` sits at its recorded offset, line and column (3, 4), `expect` and
+ * `target` fit (5), relative paths reach their targets (6), no references overlap (6b), the
+ * key lists every occurrence (7), and each shape is declared, with instances or a reason (8).
  *
- * A key/tree disagreement is a BROKEN INSTRUMENT, not a finding. This exits non-zero and
- * the suite stops before it measures anything.
- *
- * What it proves:
- *   1. every asset the key lists exists, at the recorded byte size and hash
- *   2. every asset on disk is listed
- *   3. every reference's `raw` is present at the recorded byte offset, exactly
- *   4. the recorded line and column agree with the offset
- *   5. `expect` is a known outcome, and `target` is present exactly when it should be
- *   6. a RELATIVE reference expecting `resolved` actually lands on its declared target,
- *      by path arithmetic alone
- *   7. every occurrence in the tree is accounted for by the key
- *   8. every shape has instances, or says in writing why it has none
- *
- * Usage:  node tools/check-key.mjs [--root DIR] [--key PATH] [--strict] [--quiet]
- *         --strict also fails on UNDECIDED entries. The measuring suite runs strict.
+ * Usage: node tools/check-key.mjs [--root DIR] [--key PATH] [--strict] [--quiet]
+ * `--strict` also fails on UNDECIDED entries; the measuring suite runs it.
  */
 
 import { createHash } from 'node:crypto';
@@ -83,8 +71,8 @@ for (const tool of ['check-key.mjs', 'scan-occurrences.mjs']) {
   for (const [lineNo, line] of offending) {
     fail(`${tool}:${lineNo}`, `the self-check may only import node: and ./ — found ${line.trim()}`);
   }
-  // A mention of the engine in a comment is fine and is in fact the point. A dynamic
-  // import or require of it is not, and would slip past the static-import check above.
+  // Naming the engine in a comment is fine. A dynamic import or require of it is not, and
+  // would slip past the static-import check above.
   for (const [lineNo, line] of source.split('\n').map((l, i) => [i + 1, l])) {
     if (/\b(require|import)\s*\(\s*['"`]/.test(line) && !/['"`](node:|\.\/)/.test(line)) {
       fail(`${tool}:${lineNo}`, `a dynamic import that is not node: or ./ — ${line.trim()}`);
@@ -152,13 +140,11 @@ for (const group of key.files ?? []) {
       );
     }
 
-    // 3b. And it really is the nth occurrence, so two entries cannot share one.
+    // 3b. And it is the nth occurrence, so two entries cannot share one.
     //
-    // ⚠️ Occurrence indices must INCREASE, but they need not start at 1 or run
-    // consecutively. A raw that is a substring of a longer path elsewhere in the file
-    // legitimately begins at occurrence 3 — `logo.png` is inside two longer paths above
-    // it before it appears in a sentence of its own. Requiring 1, 2, 3 here would reject
-    // a correct key for being honest about that.
+    // Occurrence indices must increase, but need not start at 1 or run consecutively. A
+    // raw that also appears inside longer paths earlier in the file first stands alone at
+    // a later occurrence: `logo.png` can sit inside two longer paths before its own entry.
     const n = entry.occurrence ?? 1;
     const previous = seenRaw.get(entry.raw);
     if (previous !== undefined && n <= previous) {
@@ -237,12 +223,10 @@ for (const group of key.files ?? []) {
 /* -------------------------------------------------------------------------------------
  * 6b. No two references may overlap.
  *
- * ⚠️ This one is not obvious and it closes a real hole. When one raw is a substring of
- * another — `../../../x.png` inside `../../../../x.png`, or `/img/hero.jpg` inside
- * `/img/hero.jpg?v=3` — an occurrence index that is one too low makes the stamper record
- * a position INSIDE the longer reference. Every other check passes: the bytes match, the
- * line matches, and the containment rule counts the hit as accounted for. Only the
- * overlap is visible.
+ * When one raw is a substring of another (`../../../x.png` inside `../../../../x.png`, or
+ * `/img/hero.jpg` inside `/img/hero.jpg?v=3`), an occurrence index one too low makes the
+ * stamper record a position inside the longer reference. Every other check still passes:
+ * the bytes and the line match, and the containment rule counts the hit as accounted for.
  * ----------------------------------------------------------------------------------- */
 for (const [rel, spans] of spansByFile) {
   const sorted = [...spans].sort((a, b) => a[0] - b[0]);

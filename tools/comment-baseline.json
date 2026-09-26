@@ -1,49 +1,5 @@
 {
   "files": {
-    "coverage-tree/tools/check-key.mjs": {
-      "internal-reference": 1,
-      "em-dash": 5,
-      "emoji": 3,
-      "long-comment": 10
-    },
-    "coverage-tree/tools/matrix.d.mts": {
-      "internal-reference": 14,
-      "em-dash": 7,
-      "emphasis": 2,
-      "emoji": 2
-    },
-    "coverage-tree/tools/matrix.mjs": {
-      "internal-reference": 57,
-      "em-dash": 46,
-      "emphasis": 21,
-      "emoji": 35,
-      "long-comment": 33
-    },
-    "coverage-tree/tools/measure.mjs": {
-      "internal-reference": 16,
-      "em-dash": 13,
-      "emphasis": 4,
-      "emoji": 11,
-      "long-comment": 17
-    },
-    "coverage-tree/tools/prove-can-fail.mjs": {
-      "internal-reference": 2,
-      "em-dash": 4,
-      "emphasis": 2,
-      "emoji": 3,
-      "long-comment": 1
-    },
-    "coverage-tree/tools/scan-occurrences.mjs": {
-      "em-dash": 2,
-      "emoji": 2,
-      "long-comment": 4
-    },
-    "coverage-tree/tools/stamp-positions.mjs": {
-      "internal-reference": 1,
-      "em-dash": 2,
-      "emoji": 2,
-      "long-comment": 3
-    },
     "packages/core/src/shapes.ts": {
       "output-reference": 4
     }

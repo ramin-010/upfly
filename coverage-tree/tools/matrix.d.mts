@@ -1,33 +1,27 @@
 /**
- * Types for `matrix.mjs`, so the harness's proofs typecheck instead of being cast.
+ * Types for `matrix.mjs`, so the tests that import it typecheck without casts. A
+ * `@ts-expect-error` on the import would stop applying whenever the formatter wraps the
+ * import differently; a declaration does not depend on line wrapping.
  *
- * ⚠️ **This exists because a `@ts-expect-error` on the import did not survive the
- * formatter.** Biome reflowed the import across four lines, the directive stopped
- * applying to the line that errors, and the suppression then failed as *unused* while the
- * real error came back — a suppression whose correctness depends on line wrapping. Rule 1
- * forbids `any` in an API and rule 17's test typechecking is what caught a bad fixture
- * once already; a declaration is the answer that does not rot.
- *
- * 🔴 **`matrix.mjs` stays plain JavaScript deliberately.** It is measuring instrument, not
- * shipped code: it must not live inside `packages/core/src`, where it would be published
- * with the engine and counted by the coverage gate. A `.d.mts` beside it is the seam.
+ * `matrix.mjs` stays plain JavaScript outside `packages/core/src` because it measures the
+ * engine and must not ship with it.
  */
 
-/** One shape's row. There is deliberately no total (R75). */
+/** One shape's row. There is no total row. */
 export interface MatrixRow {
   readonly shape: string;
   readonly expected: number;
   readonly met: number;
   readonly missed: number;
-  /** A file the scanner could not read (R86). Named, never merged into a refusal. */
+  /** Entries in a file the scanner could not read, never counted as refusals. */
   readonly threw: number;
   readonly knownGap: number;
   /** A `knownGap` whose entry now agrees: the debt was settled and the record was not. */
   readonly staleGap: number;
   /**
-   * R96: a `knownGap` naming a mechanism this run did not exercise. **Never `staleGap`,
-   * whatever the engine said** — agreement reached with the mechanism switched off is an
-   * artefact of the configuration, and reading it as closure retires a live defect.
+   * A `knownGap` naming a mechanism this run did not exercise. Never `staleGap`, whatever
+   * the engine said: agreement reached without the mechanism is an artefact of the
+   * configuration, and reading it as closure would retire a live gap.
    */
   readonly notExercised: number;
 }
@@ -42,7 +36,7 @@ export interface Bucket {
 
 export declare const BUCKETS: readonly Bucket[];
 
-/** The vocabulary a key entry's `gapMechanism` may name (R96). */
+/** The vocabulary a key entry's `gapMechanism` may name. */
 export declare const GAP_MECHANISMS: readonly string[];
 
 export interface MatrixFinding {
@@ -58,10 +52,10 @@ export interface MatrixFinding {
     | 'gap-not-exercised'
     | 'not-observed';
   readonly detail: string;
-  /** The tree author's claim about what a correct engine does. R90: both sides speak. */
+  /** The tree author's claim about what a correct engine does, printed beside the engine's. */
   readonly keyWhy: string;
   readonly keyGap: string;
-  /** Which mechanism this entry's gap names, when it names one (R96). */
+  /** Which mechanism this entry's gap names, when it names one. */
   readonly gapMechanism: string;
   /** The engine's own words about its decision. */
   readonly engineNote: string;
@@ -92,8 +86,8 @@ export interface Arithmetic {
 }
 
 /**
- * R179: an entry whose gap names a mechanism the run's configuration does not use, and
- * the bucket its outcome under that configuration put it in. Never a retired gap.
+ * An entry whose gap names a mechanism the run's configuration does not use, and the
+ * bucket its outcome under that configuration put it in. Never a retired gap.
  */
 export interface JudgedOnOutcome {
   readonly file: string;
@@ -104,8 +98,8 @@ export interface JudgedOnOutcome {
 }
 
 /**
- * R179: every key entry and the bucket it landed in. The findings list cannot name every
- * miss — an entry in `knownGap` is unmet and deliberately produces no finding.
+ * Every key entry and the bucket it landed in. The findings list cannot name every miss:
+ * an entry in `knownGap` is unmet and produces no finding.
  */
 export interface Verdict {
   readonly file: string;
@@ -127,7 +121,7 @@ export interface MatrixResult {
   readonly verdicts: readonly Verdict[];
 }
 
-/** One reference as the engine produced it, at a UTF-16 code-unit offset. */
+/** What the engine produced for one keyed file, each reference at a UTF-16 code-unit offset. */
 export interface Observation {
   readonly path: string;
   /** Why the scanner could not read the file, or `null`. */
@@ -147,10 +141,10 @@ export const ACCEPTS: Readonly<Record<string, readonly string[]>>;
 /** Outcomes that must never satisfy an expect that also accepts silence. */
 export const NEVER_ACCEPTABLE_AS_SILENCE: readonly string[];
 
-/** Finding kinds reported for visibility and never counted against the run (R90). */
+/** Finding kinds reported for visibility and never counted against the run. */
 export const NON_DEFECT_KINDS: readonly string[];
 
-/** Byte offset to UTF-16 code-unit offset (R84). */
+/** Byte offset to UTF-16 code-unit offset: the key counts bytes, the engine code units. */
 export function toCodeUnits(bytes: Uint8Array, byteOffset: number): number;
 
 export function buildMatrix(
@@ -159,9 +153,9 @@ export function buildMatrix(
   options?: {
     readonly declarationOf?: (id: string) => { adapterEmitsAs?: readonly string[] } | undefined;
     /**
-     * R96: the `GAP_MECHANISMS` this run actually exercises. A `knownGap` naming anything
-     * outside it lands in `notExercised` and can never be retired by this run. Defaults to
-     * EMPTY — the safe direction, because the alternative deletes a debt nobody tested.
+     * The `GAP_MECHANISMS` this run exercises. A `knownGap` naming anything outside it and
+     * outside `outOfConfiguration` lands in `notExercised` and cannot be retired by this run.
+     * Defaults to empty, so a gap stays open until a run states that it used the mechanism.
      */
     readonly exercises?: ReadonlySet<string>;
     /**
@@ -171,9 +165,9 @@ export function buildMatrix(
      */
     readonly observedUnder?: Readonly<Record<string, ReadonlyMap<string, Observation>>>;
     /**
-     * R179: mechanisms this run's CONFIGURATION does not use — detection, when the key
+     * Mechanisms this run's configuration does not use, as detection is unused when the key
      * states its serving roots. An entry whose gap names one is judged `met` or `missed` on
-     * its outcome and its gap is never retired. Naming a mechanism here AND in `exercises`
+     * its outcome, and its gap is never retired. Naming a mechanism here and in `exercises`
      * throws.
      */
     readonly outOfConfiguration?: ReadonlySet<string>;
@@ -186,8 +180,8 @@ export function renderMatrix(
 ): string;
 
 /**
- * R179: everything but the per-shape table — arithmetic, populations, notes, findings,
- * unkeyed emissions. For a second run over the same key, where the misses are the answer.
+ * Everything but the per-shape table: arithmetic, populations, notes, findings and unkeyed
+ * emissions. For a second run over the same key, where the misses are the answer.
  */
 export function renderSummary(
   result: MatrixResult,
@@ -196,7 +190,7 @@ export function renderSummary(
 
 /**
  * The `claimed` population's `met` of `expected`, from the tally the table prints, and
- * every claimed entry it did not meet — each a named line in a published result (R179).
+ * every claimed entry it did not meet, so each can be named in a published result.
  */
 export function claimedPopulation(
   result: MatrixResult,
@@ -210,5 +204,5 @@ export function reconcile(
   findings: readonly unknown[],
 ): Arithmetic;
 
-/** What the instrument cannot tell you, as prose a rendering cannot omit. */
+/** What the instrument cannot tell you, as text any rendering can print. */
 export function blindSpots(): readonly string[];
