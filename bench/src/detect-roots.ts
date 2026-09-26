@@ -1,18 +1,13 @@
 /**
- * Does serving-root detection agree with the lists somebody tuned by hand?
+ * Whether serving-root detection finds the serving roots the validation corpus lists by
+ * hand. Accuracy is measured with those hand-tuned lists and a first run has none, so this
+ * checks that detection finds the same roots. It reads the same `REPOS` table as
+ * `validate.ts`, so the two cannot drift apart, and it reports differences rather than
+ * asserting agreement.
  *
- * Every entry in the validation corpus carries hand-written `publicDirs`, which is a
- * claim that the tuned value is what a user has. Nobody had checked it: the engine's
- * zero-false-`broken` figure was measured five times against configuration no first
- * run produces. This is the control for that, and it reads the same `REPOS` table
- * the harness runs, so the two cannot drift apart.
- *
- * Reports differences rather than asserting agreement. A difference is the finding.
- *
- * `--delta` goes further and resolves every reference twice, once under each set of
- * roots, because agreeing on a list of directories is a weaker claim than resolving
- * references the same way. It is the half of the experiment that says whether a
- * disagreement costs anything.
+ * `--delta` also resolves every reference under each set of roots, since agreeing on the
+ * directories is weaker than resolving the references the same way; it shows whether a
+ * disagreement costs anything. See "Serving roots" in ARCHITECTURE.md.
  */
 
 import { existsSync } from 'node:fs';
@@ -53,8 +48,8 @@ interface Comparison {
  *
  * The configured entry says so by naming the root; detection says so by finding no
  * conventional directory and leaving the resolver to its project-root rung. Treating
- * them as a difference would report a disagreement that does not exist, and R48
- * measured identical findings either way.
+ * them as a difference would report a disagreement that does not exist: on
+ * `railsgirls-com` the two give identical findings.
  */
 function normalise(dirs: readonly string[]): readonly string[] {
   return dirs.filter((dir) => dir !== '');
@@ -80,7 +75,7 @@ async function compare(repo: RepoSpec, names: readonly string[] | undefined): Pr
   };
 }
 
-/** Every reference resolved twice, once per set of serving roots. */
+/** Every reference resolved under each set of serving roots, compared with the configured run. */
 async function delta(repo: RepoSpec, names: readonly string[] | undefined): Promise<string[]> {
   const root = join(VALIDATION_ROOT, repo.name);
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -111,22 +106,16 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
 
   const configured = resolveWith({ dirs: repo.publicDirs, declared: true });
 
-  // 🔴 The frozen convention guess, and it is here because `validate.ts` still uses it for
-  // its `unconfigured` entries — the runs that are supposed to show *how a stranger meets
-  // this repository*. A stranger's run today gets detection, so that column has been
-  // simulating a behaviour the engine stopped having. This is the fourth column that says
-  // what replacing it would cost or buy, before it is replaced.
+  // The single `['public']` convention guess, kept as a baseline: it shows what detection
+  // and inference gain over it.
   const guess = resolveWith(CONVENTIONAL_SERVING_ROOTS);
   const auto = resolveWith(detectServingRoots(discovery, names));
 
-  // 🔴 R132's third column: detection UNIONED with what the references actually resolve.
-  // The question `detected` cannot answer is `eleventy-docs`, which serves from `src/` —
-  // a root no name-based rule reaches, because `src` is a source directory by convention.
-  // ⚠️ The comparison that matters is `inferred` against `configured`, not against
-  // `detected`: the hand-tuned column is the answer, and the only reason to add a root is
-  // to move a run closer to it. A root that resolves references the configured run also
-  // resolves is a gain; one that relinks a reference the configured run resolved elsewhere
-  // is the expensive failure R132's floors are sized against, and `changed` names it.
+  // Detection plus inference, as `decideServingRoots` gives a first run. Inference exists
+  // for roots no naming rule reaches, such as `eleventy-docs`' `src/`. Measure it against
+  // `configured`, the answer: a root that resolves what the configured run resolves is a
+  // gain, and one that relinks a reference elsewhere is the expensive failure that
+  // `MIN_ROOT_REFERENCES` and `MIN_ROOT_RESOLUTION_RATE` guard against, which `changed` names.
   const decision = decideServingRoots({
     root: discovery.root,
     directories: discovery.directories,
@@ -138,12 +127,9 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
   });
   const inferred = resolveWith(decision.servingRoots);
 
-  // Both counts, because they are different numbers and only one of them is the
-  // denominator of this table: the resolver returns a reference per path it was
-  // asked about, and the scan raises many more strings than it ends up asking about.
-  // The real function rather than the same sum written out again here. The floor it
-  // reports against is chosen from exactly these numbers, so a second implementation
-  // could put the threshold on one side of a line and the product on the other.
+  // The engine's own `resolutionHealth`, not the same sum written out again. Its floor was
+  // chosen from these numbers, and a second copy could put this table and the product on
+  // opposite sides of it.
   const health = (references: readonly Reference[]): string => {
     const graph = buildGraph({
       root: discovery.root,
@@ -169,16 +155,17 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
 `;
 
   return [
+    // Both counts, because they differ: the resolver leaves out references to files the
+    // engine does not track, such as fonts, and the tables below count what it returns.
     `${repo.name}: ${scanned.references.length} scanned, ${configured.length} resolved against`,
-    // A progression, and it is meant to be read downwards: each row is a better answer to
-    // the same question than the one above it, and `configured` is the answer itself.
+    // Read downwards from `guess`: each row answers the same question better than the one
+    // above it, and `configured`, on top, is the answer itself.
     `  configured: ${health(configured)}   <- the hand-tuned list, i.e. the ANSWER`,
     `  guess:      ${health(guess)}   <- frozen ['public'], what validate.ts still does`,
     `  detected:   ${health(auto)}`,
     `  inferred:   ${health(inferred)}`,
-    // 🔴 Printed even when it is zero. An inference that added nothing and an inference
-    // that was never given a denominator produce the same empty answer, and only this
-    // line tells them apart.
+    // Printed even when nothing was added: an inference that added nothing and one that had
+    // no references to score give the same empty answer, and only the count tells them apart.
     `  R132 added: ${added}   (from ${decision.assetReferences} root-relative asset references)`,
     ties,
     '  GUESS against configured:',
@@ -233,11 +220,11 @@ function pathOf(reference: Reference): string | null {
 }
 
 /**
- * The references the two configurations disagree about, named rather than counted.
+ * The references the two runs disagree about, named rather than counted.
  *
- * A bucket delta says how many moved; this says which, and whether the path the
- * detected run now calls broken is a file that is actually there. A false `broken`
- * is the cheap failure and a false link is the expensive one, so the two have to be
+ * A bucket delta says how many moved; this says which, and whether the file the configured
+ * run linked is on disk, which makes a `broken` in the other run a false one. A false
+ * `broken` is the cheap failure and a false link the expensive one, so the two have to be
  * told apart by looking, not by totalling.
  */
 function changed(configured: readonly Reference[], auto: readonly Reference[]): string[] {
@@ -249,8 +236,8 @@ function changed(configured: readonly Reference[], auto: readonly Reference[]): 
     if (now === undefined) continue;
 
     // Same bucket, different file. Counts alone cannot see this, and it is the
-    // expensive direction: a reference that still resolves but resolves somewhere
-    // else is a false link, and in this phase a false link rewrites a file.
+    // expensive direction: a reference that still resolves, but somewhere else, is a
+    // false link, and a rewrite would act on it.
     if (now.resolution === before.resolution) {
       const wasPath = pathOf(before);
       const nowPath = pathOf(now);
@@ -300,8 +287,8 @@ function render(comparisons: readonly Comparison[]): string {
 async function main(): Promise<void> {
   const flags = argv.slice(2);
   const only = flags.find((flag) => flag.startsWith('--repo='))?.slice('--repo='.length);
-  // The unconfigured duplicates carry no hand-tuned list to compare against; they
-  // exist to show what a first run produces, which is what detection replaces.
+  // The unconfigured entries have no hand-tuned list to compare with: they show what a
+  // first run produces.
   const subjects = REPOS.filter(
     (repo) => repo.unconfigured !== true && (only === undefined || repo.name === only),
   );

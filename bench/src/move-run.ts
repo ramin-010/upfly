@@ -1,21 +1,15 @@
 /**
  * Move a real repository's images and check the tree still resolves.
  *
- * 🔴 **The one question `relocate`'s tests cannot answer.** The planner is proven
- * against fixtures, and a fixture is a tree whose every reference the graph finds — by
- * construction, because we wrote it. **R39 is about the references the graph MISSES**,
- * and only a repository nobody designed for this engine has those. A move acts on what
- * the graph knows, so a reference it did not find becomes a dangling reference **we
- * caused** rather than one we found.
+ * `relocate`'s tests use fixtures, where the graph finds every reference because the
+ * fixtures were written for it. A move acts on what the graph knows, so a reference the
+ * graph misses becomes a broken reference the move caused, and only a repository nobody
+ * wrote for this engine has those. So this counts broken references before and after the
+ * move, and searches the text for old paths that survived. See "Moving an asset" in
+ * ARCHITECTURE.md.
  *
- * So the check that matters is not *"did it move the file"* — it is **broken before
- * versus broken after**, measured by the same engine over the tree it just wrote. Any
- * reference broken now is one this run broke.
- *
- * ⚠️ **Everything happens on a COPY**, made by `copyRepository`, and `relocateTree`
- * refuses the validation corpus before it reads anything (R52). Every measurement in
- * this project is stated against those pinned commits, and a run that wrote inside one
- * would invalidate all of them while the numbers still looked plausible.
+ * Every run works on a copy: `relocateTree` refuses the pinned validation corpus, which
+ * every measurement in this project is stated against.
  *
  * Usage: `pnpm --filter upfly-bench run move-run -- --repo=<name> [--keep]`
  */
@@ -28,7 +22,10 @@ import { type Move, checkMoveRegression, findSurvivingPaths } from 'upfly-core';
 import { relocateTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 
-/** Outside the workspace, for the same reason the corpus is. */
+/**
+ * Beside the corpus, outside the workspace: the v2 extension converts the images in any
+ * `public/` folder there and deletes the originals.
+ */
 const RUN_ROOT = join(VALIDATION_ROOT, '..', 'upfly-move-runs');
 
 /** Never copied: they are large, and nothing the engine reads lives in them. */
@@ -52,8 +49,8 @@ async function copyRepository(name: string): Promise<string> {
 
 async function removeTree(root: string): Promise<void> {
   // libvips holds a handle on every file it has read for the life of the process, which
-  // on Windows makes them undeletable by that process. Dropping the cache is the fix;
-  // lengthening a retry is folklore.
+  // on Windows makes them undeletable by that process. Dropping the cache releases them;
+  // a longer retry would not.
   sharp.cache(false);
   try {
     await rm(root, { recursive: true, force: true });
@@ -65,16 +62,16 @@ async function removeTree(root: string): Promise<void> {
 /**
  * The moves to try, chosen from what the repository actually contains.
  *
- * ⚠️ **Derived from the tree rather than written down.** A hardcoded path would rot the
- * moment the pinned commit changed, and — worse — a path that no longer exists would
- * make this print a clean `not-an-asset` refusal and look like it had run.
+ * Derived from the tree rather than written down: a hardcoded path would go stale with the
+ * pinned commit, and a missing one would print a clean `not-an-asset` refusal that looks
+ * like a run.
  *
- * Two moves, of DIFFERENT assets, chosen to exercise both halves of R70 on real code:
- *   1. one moved **within its own world**, which must proceed and repoint every reference
- *   2. one moved **across** the serving boundary, which must be refused
+ * Two moves, of different assets, one for each outcome of the serving boundary check:
+ *   1. one within its own world, which must proceed and repoint every reference
+ *   2. one across the serving boundary, which must be refused as `crosses-serving-boundary`
  *
- * Different assets rather than the same one twice, because moving one file to two
- * places is itself refused (`source-claimed-twice`) and would prove nothing about R70.
+ * Moving one asset twice would be refused as `source-claimed-twice` instead, and would test
+ * nothing about the boundary.
  */
 function movesFor(assets: readonly string[], servingDirs: readonly string[]): Move[] {
   const served = (path: string) =>
@@ -137,10 +134,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     const { plan, manifest } = await relocateTree(root, moves);
 
     stdout.write(
-      // `files` dropped rather than agreed: it read `1 files rewritten` on every
-      // single-file move, which is every run this instrument makes, and the other three
-      // counters on this line never carried a noun in the first place. A word that is
-      // not there cannot disagree. Found by reading the output, not by a test.
+      // No noun after any count, so a count of 1 never reads `1 files`.
       `  plan      ${plan.moves.length} moved, ${plan.rewrites.length} rewritten, ${plan.refused.length} refused, ${plan.declined.length} declined\n`,
     );
     stdout.write(`  manifest  ${manifest?.state ?? 'none written'}\n`);
@@ -160,26 +154,21 @@ async function run(name: string, keep: boolean): Promise<boolean> {
       stdout.write(`    ... and ${plan.declined.length - 5} more declined\n`);
     }
 
-    // 🔴 The check that matters, and R72 is what it cannot do. The same engine over
-    // the tree it just wrote, so any reference broken now is one this run broke — but
-    // the graph doing the counting is the graph that missed whatever it missed.
-    // `checkMoveRegression` carries the limit with the number, so this cannot print
-    // the one without the other.
+    // The same engine over the tree it just wrote, so a reference broken now is one this
+    // run broke. But the graph doing the counting missed whatever it missed, so
+    // `checkMoveRegression` returns its limits with the count, and both are printed.
     const after = await runEngine(root, undefined, false);
     const check = checkMoveRegression({
       before: before.graph,
       after: after.graph,
       excludedRoots: after.discovery.excludedRoots,
     });
-    // A blank line stays blank: indenting it leaves trailing whitespace, which the
-    // byte-identical-output rule (rule 11) has no patience for.
+    // A blank line stays blank, so the output carries no trailing whitespace.
     for (const line of check.lines) stdout.write(line === '' ? '\n' : `  ${line}\n`);
 
-    // 🔴 R72 part 2, and it runs on the moves that were ACCEPTED — searching for a path
-    // that never moved would report the asset still sitting where it always was, which is
-    // true and useless. The file list comes from the walk, not from the graph's reference
-    // resolution: source files AND unscanned ones, which is strictly more than anything
-    // was ever parsed from.
+    // The check that reads no graph: a text search for each moved asset's old path. Only
+    // accepted moves are searched, since a refused move's asset is still at its old path.
+    // The files come from the walk, scanned and unscanned alike, not from the graph.
     stdout.write('\n');
     const survived = await findSurvivingPaths({
       moves: plan.moves,

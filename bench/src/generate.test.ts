@@ -1,25 +1,15 @@
 /**
- * The bench tree must be able to REFUTE the optimisation it is used to justify.
+ * The bench tree must be able to refute the optimisation it is used to justify: skipping
+ * the markdown adapter's parse5 pass. A tree whose markdown never held a tag would show
+ * the skip as safe whatever it lost.
  *
- * 🔴 **R126, and it is the reason this file exists.** Until 2026-09-17 the tree's
- * markdown could not contain an angle bracket by construction — the head emitted
- * `# Title`, `![alt]()` and `[link]()`, the filler emitted `## heading` plus prose.
- * So *"skipping the parse5 pass is safe on 2,640 of 2,640 documents"* was a property
- * of `generate.ts`, not a measurement, and ~20% of the graph build was parse5 looking
- * for HTML that could never be there. **A corpus that can confirm but not refute is
- * not evidence (R117).**
+ * The assertions are bands, not exact counts. The rates are drawn per document from a
+ * seeded generator, so an exact count would describe this seed rather than the tree; a
+ * band still catches a class going to zero.
  *
- * ⚠️ **These assertions are bands, not equalities, and they are deliberately loose.**
- * The rates are drawn per document from a seeded PRNG, so an exact count would be a
- * snapshot of this seed rather than a statement about the tree. What matters is that
- * each class is NON-EMPTY and roughly where the real corpus puts it; a band catches
- * the failure this was written for — a class silently going to zero — without
- * breaking every time a draw order changes.
- *
- * ⚠️ **And the refuting assertion is made through the ENGINE, not against a regex.**
- * Asking *"does the text contain `<img`"* would pass on a document the adapter cannot
- * actually read. The question is whether the markdown adapter finds a reference whose
- * shape is HTML-born, because that is exactly the reference a skip would lose.
+ * The refuting check goes through the markdown adapter rather than a regex. A document
+ * can contain `<img` and still hold no reference the adapter reads, and what a skip would
+ * lose is a reference the adapter finds.
  */
 
 import { defaultAdapters } from 'upfly-core';
@@ -50,17 +40,9 @@ function rng(seed: number): () => number {
 const IMAGES = ['public/img/a.png', 'public/img/b.jpg', 'public/img/c.webp'];
 
 /**
- * 🔴 **vitest's default timeout is 5 s and these tests were measured at 4,708 ms.**
- *
- * They build and parse thousands of documents on purpose — the refuting class is ~1% of
- * markdown, so a sample of 100 would pass or fail on a single draw. That sample size is
- * the point and is not being reduced. What has to go is the silence: at 94% of the default
- * budget these pass on an idle machine and fail on a busy one, and a gate that fails
- * without explanation trains `[wip]`, which kills it while the suite still looks
- * protected. Twice tonight a run failed here and passed on a re-run minutes later.
- *
- * So the budget is explicit and generous, and says out loud that these are measurements
- * rather than unit tests.
+ * These build and parse thousands of documents, which takes close to vitest's 5-second
+ * default on an idle machine, so the default would fail them on a busy one. The budget is
+ * explicit and generous because these are measurements rather than unit tests.
  */
 const BUDGET_MS = 60_000;
 const ANY_TAG = /<[a-zA-Z][^>]*>/;
@@ -87,8 +69,8 @@ function sampleMarkdown(extension: string, count: number, seed: number): Sample 
     const text = buildFileText(extension, 'src/a/b/c/d', IMAGES, random);
     if (ANY_TAG.test(text)) withTag++;
 
-    // R86: a throw is a third outcome. Swallowing one here would silently shrink the
-    // very class this file exists to prove is non-empty.
+    // A throw is a third outcome, and it is counted: swallowing one would silently shrink
+    // the very class this file exists to prove is non-empty.
     let born = 0;
     try {
       born = markdown
@@ -110,9 +92,8 @@ describe('the generated tree can refute a markdown optimisation', () => {
   it(
     '🔴 contains documents where skipping the parse5 pass LOSES a reference',
     () => {
-      // 1,200 of each, because the real rate is ~1% and a sample of 100 would be
-      // expected to contain one — a test that passes or fails on a single draw is a
-      // coin flip wearing an assertion's clothes.
+      // 1,200 of each: the real rate is about 1%, so a sample of 100 would hold about one
+      // such document, and the test would pass or fail on a single draw.
       const md = sampleMarkdown('.md', 1_200, 0xbeef_0001);
       const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0002);
 
@@ -131,9 +112,9 @@ describe('the generated tree can refute a markdown optimisation', () => {
       const mdx = sampleMarkdown('.mdx', 1_200, 0xbeef_0004);
       const rate = (md.refuting + mdx.refuting) / (md.documents + mdx.documents);
 
-      // 🔴 The band matters in BOTH directions. Too low and the tree cannot refute;
-      // too high and the tree overstates what a skip would cost, which would argue
-      // against an optimisation on evidence the corpus invented.
+      // The band matters in both directions. Too low and the tree cannot refute; too high
+      // and it overstates what the skip would cost, arguing against an optimisation on
+      // evidence the tree invented.
       expect(rate).toBeGreaterThan(0.003);
       expect(rate).toBeLessThan(0.03);
     },
@@ -170,9 +151,8 @@ describe('the generated tree is written in the language its extension claims', (
   it(
     '🔴 emits `.js` that parses as JavaScript',
     () => {
-      // 128 of the tree's 160 `.js` files were TypeScript and Babel rejected every one,
-      // so their measured parse cost was the cost of FAILING (R124). The engine was
-      // right about them; the measurement was not.
+      // Babel rejects TypeScript in a `.js` file, and a rejected file's parse cost is the
+      // cost of failing, so a `.js` file with type annotations would skew the timing.
       const javascript = defaultAdapters.find((adapter) => adapter.id === 'javascript');
       if (javascript === undefined) throw new Error('javascript adapter missing');
 

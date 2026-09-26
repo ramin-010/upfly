@@ -1,23 +1,14 @@
 /**
- * Can the R71 instrument return **no**?
+ * Whether the root-inference instrument can report a wrong root winning.
  *
- * 🔴 **R128 rests on this file.** The five validation repositories produced *zero* cases
- * where a wrong serving root outscored the right one, at every volume floor tested — and
- * a zero from an instrument that has only ever seen inputs it gets right is not a result,
- * it is an instrument that agrees (R117). The coverage tree is the corpus built to hold
- * traps, and it holds the one that matters here: **`docs-examples/public` is a directory
- * named `public` that serves nothing.**
+ * On the five validation repositories a wrong serving root never outscores the right one,
+ * at every volume floor tried, and an instrument that has only seen inputs it gets right
+ * has not shown it can disagree. The coverage tree holds the trap: `docs-examples/public`
+ * is a directory named `public` that serves nothing.
  *
- * ⚠️ **Until now that demonstration was a command somebody had to remember to run.** It is
- * an assertion now, so it runs on every `pnpm check` and a change that quietly made the
- * instrument incapable of disagreeing would fail here instead of being discovered by the
- * next person who happened to re-read the ruling.
- *
- * ⚠️ **These assertions are about the instrument's BEHAVIOUR, not about the exact numbers
- * in R128.** A gap of −78.9 points is a fact about today's coverage tree, and the tree is
- * meant to grow (R110). What must not change is the direction: a wrong truth must come
- * back negative, the right truth must come back positive, and the impostor must be
- * visible at a low volume floor and gone at a higher one.
+ * The assertions pin directions, not numbers, because the tree grows: a wrong truth gives a
+ * negative gap, the right one a positive gap, and the impostor shows at a low volume floor
+ * and is gone at a higher one.
  */
 
 import { join } from 'node:path';
@@ -26,21 +17,13 @@ import { type DirectoryVerdict, type RepoResult, measureRepoAt } from './root-in
 
 const TREE = join(import.meta.dirname, '..', '..', 'coverage-tree', 'tree');
 
-/** The key's own serving roots. Used as the ANSWER to score against, never as input. */
+/** The serving roots the tree's answer key lists: the answer to score against, not an input. */
 const TRUTH = ['apps/web/public', 'apps/docs/public', 'sites/root-served', 'legacy/public'];
 
 /**
- * 🔴 **These tests do real filesystem work and vitest's default timeout is 5 s.**
- *
- * Measured: one `measureRepoAt` over the coverage tree costs ~0.5–1.1 s idle, and **5,069
- * ms under load** — which is how it failed once in the pre-commit hook while passing in
- * isolation and in a full `pnpm check` minutes earlier. A test that sits at 94% of its
- * timeout is not passing, it is waiting to flake, and a flaky gate trains `[wip]`, which
- * kills the gate while the suite still looks protected.
- *
- * Two fixes, both preferred to raising the limit alone: the three tests that ask the same
- * question share one measurement, and what remains carries an explicit, generous budget
- * that says out loud this is a measurement rather than a unit test.
+ * These tests walk and scan the whole coverage tree. One `measureRepoAt` takes about a second
+ * on an idle machine and has taken over 5 s under load, past vitest's default timeout, so the
+ * tests share the measurements made once in `beforeAll`, under a generous budget.
  */
 const BUDGET_MS = 60_000;
 
@@ -58,7 +41,7 @@ function weightedGap(directories: readonly DirectoryVerdict[]): number {
   return directories.reduce((sum, v) => sum + v.gap * v.references, 0) / references;
 }
 
-describe('the R71 instrument can disagree', () => {
+describe('the root-inference instrument can disagree', () => {
   it('🔴 returns a NEGATIVE gap when handed a truth that is wrong', () => {
     // The project root serves nothing in this tree; its real roots are four directories
     // below it. If this comes back positive the instrument is not measuring anything.
@@ -76,9 +59,8 @@ describe('the impostor the acceptance bar exists to reject', () => {
   it('🔴 `docs-examples/public` beats every true root on its own references', () => {
     const impostor = correct.directories.find((v) => v.dir === 'docs-examples/public');
 
-    // A directory named `public` that serves nothing, scoring perfectly — which is why
-    // an acceptance bar phrased as a RESOLUTION RATE takes it and rejects the genuine
-    // roots, whose rates on this tree run 45.8% to 80.0%.
+    // A directory named `public` that serves nothing scores a perfect rate, higher than the
+    // genuine roots score on this tree, so a bar made of a resolution rate alone takes it.
     expect(impostor).toBeDefined();
     expect(impostor?.gap).toBeLessThan(0);
     expect(impostor?.bestWrong?.rate).toBe(1);
@@ -86,8 +68,8 @@ describe('the impostor the acceptance bar exists to reject', () => {
   });
 
   it('is excluded by VOLUME, which is what the bar is actually made of', () => {
-    // Measured: the impostor carries 2 references, and at a floor of 3 the two
-    // populations separate completely — every true root above 45%, every wrong one at 0.
+    // The impostor has two references, so a floor of three drops it, and in every directory
+    // that passes the floor a true root ranks first.
     expect(correct.directories.find((v) => v.dir === 'docs-examples/public')?.references).toBe(2);
 
     const floored = correct.directories.filter((v) => v.references >= 3);

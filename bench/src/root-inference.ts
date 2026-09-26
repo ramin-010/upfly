@@ -1,60 +1,22 @@
 /**
- * R71-b: can a serving root be INFERRED by resolution rate, and is there daylight?
+ * Whether a serving root can be inferred from how many references it resolves. For each
+ * source directory it scores every candidate on that directory's references, and reports the
+ * gap between the best root `repos.ts` lists and the best wrong one. An acceptance bar has to
+ * sit inside that gap: a winner at 100% means nothing if a wrong root does as well.
  *
- * 🔴 **The number this exists to produce is the GAP** — what the hand-verified root
- * scores against what the best WRONG candidate scores, **on the same references**. Not
- * the winner's score. A winner at 100% means nothing if a wrong directory also reaches
- * 100%, and the gap is what an acceptance bar would have to sit inside, exactly the way
- * R51's 25% floor was set by finding daylight between two measured populations.
+ * Candidates are where the resolver would look, at any name: at each ancestor of the
+ * directory, the ancestor and its child directories, never a sibling. They are checked
+ * against the in-memory asset set, not the disk, which would cost a lookup per candidate per
+ * reference. See "Inference: what the references resolve against" in ARCHITECTURE.md.
  *
- * ⚠️ **If there is no daylight, R71 does not ship, and that is an expected outcome, not
- * a failure of this instrument.** Two of R71's three levers have already died under
- * examination. This one is allowed to die too, in writing, with its number.
- *
- * **What the walk is.** The resolver already climbs a file's ancestors looking for a
- * directory *named* `public` or `static`. This is that same walk **with the name filter
- * removed and a resolution test put in its place** (R71-b's constraint): at every
- * ancestor `A` of a directory, both `A` itself and each of `A`'s child directories is a
- * candidate serving root. `A` itself is what makes `railsgirls-com`'s `''` reachable;
- * the child rung is what makes `shadcn-ui`'s `templates/next-app/public` reachable from
- * a file in `templates/next-app/src/`, which an ancestors-only walk never reaches.
- *
- * 🔴 **EVERY CANDIDATE IS SCORED ON ONE DIRECTORY'S REFERENCES AT A TIME, AND THIS IS
- * THE CORRECTION THAT MATTERS.** The first version of this file scored each candidate
- * across the whole repository, so `<project root>` was measured over all 769 of
- * `shadcn-ui`'s references while `templates/next-app/public` was measured over the
- * handful beneath it. Two rates over different denominators are not comparable, and
- * subtracting them is not a gap. Per directory, every candidate answers the same
- * question about the same references, and the subtraction means something.
- *
- * ⚠️ **Candidates are tested against the IN-MEMORY asset set, never the disk** — R71-b's
- * other constraint. `existsSync` per candidate per reference is tens of millions of
- * syscalls and would make a cheap experiment expensive.
- *
- * ⚠️ **Ancestors only, and never a sibling.** Resolving against a sibling app's public
- * directory is what produced 93 false `broken` findings in `shadcn-ui`, and the
- * restraint that fixed it is preserved here rather than re-litigated.
- *
- * ✅ **The control is real**, which is the only reason the experiment is worth running:
- * five repositories carry hand-verified serving roots in `repos.ts`, including
- * `eleventy-docs`' `src/`, which no name-matching rule can find, and `shadcn-ui`'s
- * twelve.
- *
- * Read-only. Never writes inside the corpus (R52).
- *
- * Usage:
- *   pnpm --filter upfly-bench run root-inference
- *   pnpm --filter upfly-bench run root-inference -- --repo=eleventy-docs --verbose
+ * Read-only. Usage: `pnpm --filter upfly-bench run root-inference [-- --repo=<name> --verbose]`
  */
 
 import { readFile } from 'node:fs/promises';
 import { argv, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
-// 🔴 ONE copy of the denominator. This instrument's first version counted every
-// root-relative reference, not only the ones that could name an asset, and made
-// astro-docs' `public` score 0.1% — the ranking stayed right and the rates were nonsense.
-// The filter it grew afterwards is now shared with the wiring in `serving-root-decision.ts`,
-// because a second implementation of a denominator is how the two silently disagree.
+// `isRootRelative` and `looksLikeAsset` are the engine's own filters, so this scores the same
+// references `decideServingRoots` does.
 import {
   type Adapter,
   type RawReference,
@@ -69,17 +31,13 @@ import { REPOS, VALIDATION_ROOT } from './repos.js';
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 /**
- * A directory needs this many root-relative asset references before its gap counts.
+ * How many root-relative asset references a directory needs before its gap counts, set with
+ * `--min=`. A rate over a handful is not a measurement: the coverage tree's
+ * `docs-examples/public` serves nothing, yet resolves both of its own references, and a bar
+ * reading the rate alone would take it for a serving root.
  *
- * 🔴 **This is the `docs-examples/public` lesson as a constant.** The coverage tree
- * holds a directory named `public` that serves nothing: a genuine root resolves many
- * references against it, that one resolves exactly ONE — and one-for-one is 100%. A rate
- * computed over a single reference is not a rate, and an acceptance bar reading only the
- * percentage would take that directory for a serving root.
- *
- * ⚠️ **Both populations are reported**, thin directories included and excluded, because
- * the floor is a choice and burying it in the result would make the gap look like a
- * property of the data rather than partly a property of this number.
+ * Both populations are reported, thin directories included and excluded, because the floor
+ * is a choice, and the gap should not look like a property of the data alone.
  */
 const MIN_REFERENCES = Number(
   argv.find((a) => a.startsWith('--min='))?.slice('--min='.length) ?? 5,
@@ -98,7 +56,7 @@ export interface DirectoryVerdict {
   readonly candidates: number;
   readonly bestTruth: Scored | undefined;
   readonly bestWrong: Scored | undefined;
-  /** `bestTruth.rate - bestWrong.rate`, in points. Negative means a wrong root wins. */
+  /** `bestTruth.rate - bestWrong.rate`, from -1 to 1. Negative means a wrong root wins. */
   readonly gap: number;
   /** Did the highest-scoring candidate turn out to be a hand-verified root? */
   readonly argmaxCorrect: boolean;
@@ -155,9 +113,8 @@ export async function measureRepoAt(
   const found = await discover({ root, adapters: ADAPTERS });
   const assets = new Set(found.assets.map((asset) => asset.relative));
 
-  // Every directory holding at least one asset, at any depth. A candidate holding no
-  // asset cannot resolve anything, so including it would pad the candidate count
-  // without ever competing for the gap.
+  // Every directory with an asset somewhere beneath it. Any other candidate resolves
+  // nothing, so it would pad the candidate count without ever competing for the gap.
   const assetDirs = new Set<string>();
   for (const asset of found.assets) {
     for (const dir of ancestors(dirOf(asset.relative))) assetDirs.add(dir);
@@ -256,10 +213,8 @@ function summarise(verdicts: readonly DirectoryVerdict[], label: string): string
   const argmax = verdicts.filter((v) => v.argmaxCorrect).length;
   const unreachable = verdicts.filter((v) => v.truthUnreachable);
 
-  // 🔴 THE TWO POPULATIONS, which is how R51's 25% floor was set: not by choosing a
-  // number that felt safe, but by scoring the things that should pass and the things
-  // that should fail and looking for air between them. A bar is only defensible if
-  // these two distributions do not overlap.
+  // True and wrong roots' rates as two populations. A bar is defensible only where the two
+  // do not overlap, which is also how `RESOLUTION_FLOOR` was chosen.
   const truthRates = verdicts
     .filter((v) => v.bestTruth !== undefined)
     .map((v) => v.bestTruth?.rate ?? 0)
@@ -278,12 +233,10 @@ function summarise(verdicts: readonly DirectoryVerdict[], label: string): string
     `    🔴 GAP, median directory        : ${median >= 0 ? '+' : ''}${pct(median)} points`,
     `    worst / best directory gap      : ${pct(gaps[0] ?? 0)} / ${pct(gaps[gaps.length - 1] ?? 0)}`,
     `    directories with NO daylight    : ${noDaylight.length} (${noDaylightRefs} refs)`,
-    // 🔴 The two ways a gap can be zero are NOT the same finding, and collapsing them
-    // would hide the one that matters. "Nothing resolves anywhere" is a directory with
-    // no signal — the inference has nothing to go on and declines, which is correct.
-    // "A tie above zero" is a directory where a WRONG root resolves exactly as much as
-    // the right one: real ambiguity, and the only case where an acceptance bar could
-    // silently choose wrong.
+    // No daylight has two causes that must stay apart. When nothing resolves, inference has
+    // nothing to go on and declines, which is correct. When a wrong root resolves at least
+    // as much as a true root that resolves something, the ambiguity is real, and that is
+    // where a bar could choose wrong without anyone seeing.
     `      ...of those, tie above zero  : ${noDaylight.filter((v) => (v.bestTruth?.rate ?? 0) > 0).length}`,
     `      ...of those, nothing resolves: ${noDaylight.filter((v) => (v.bestTruth?.rate ?? 0) === 0 && (v.bestWrong?.rate ?? 0) === 0).length}`,
     `    directories where a WRONG root WINS: ${verdicts.filter((v) => v.gap < 0).length}`,
@@ -306,12 +259,10 @@ async function main(): Promise<void> {
     (repo) => repo.unconfigured !== true && (only === undefined || repo.name === only),
   );
 
-  // 🔴 `--tree=` and `--truth=` exist for ONE reason: to point this instrument at a
-  // corpus where the answer should be NO. An instrument that has only ever been run on
-  // inputs it gets right has not been shown to be able to get anything wrong (R117),
-  // and the run below reports `worst directory gap: 0.0` across all five repositories —
-  // never once a wrong root winning. That is either a property of the corpus or a
-  // property of this file, and only a refuting input can tell the two apart.
+  // `--tree=` and `--truth=` measure any directory against a stated answer, so the
+  // instrument can be shown an input where a wrong root should win. On the five
+  // repositories none ever does, and only such an input tells whether that is the corpus
+  // or this file. `root-inference.test.ts` does the same on every test run.
   const tree = argv.find((a) => a.startsWith('--tree='))?.slice('--tree='.length);
   if (tree !== undefined) {
     const declared = (argv.find((a) => a.startsWith('--truth='))?.slice('--truth='.length) ?? '')
@@ -377,14 +328,8 @@ AD-HOC TREE: ${tree}
 }
 
 /**
- * Run only when invoked as the entry point, so a test can import the measurement.
- *
- * ⚠️ **`bench/`'s convention is that entry points carry a top-level `main()` and are not
- * importable** — `samples.ts` says so, and a test that imported one would run it. This is
- * the standard ESM main-module check rather than an exception to that rule: under vitest
- * `process.argv[1]` is the test runner, so `main()` does not fire and the file behaves as
- * a library. **The reason it matters here is R117.** This instrument's ability to return
- * *no* was demonstrated by a command somebody has to remember to run; an assertion that
- * runs on every `pnpm check` is the version that survives.
+ * Runs only as the entry point, so `root-inference.test.ts` can import the measurement.
+ * Other `bench/` entry points run `main()` on import. Under vitest `process.argv[1]` is the
+ * test runner, so this standard ESM check keeps `main()` from firing.
  */
 if (import.meta.url === pathToFileURL(argv[1] ?? '').href) await main();

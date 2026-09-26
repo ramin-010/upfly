@@ -3,9 +3,8 @@
  * one serves its root-relative paths from.
  *
  * Its own module so that reading the table costs nothing. `validate.ts` ends in a
- * top-level `await main()`, so importing the table from there would run the entire
- * validation as a side effect, and two concurrent runs writing the same output
- * directory is a failure this project has already had once.
+ * top-level `await main()`, so importing the table from there would run the whole
+ * validation, and write its output directory, as a side effect.
  */
 
 import { resolve, sep } from 'node:path';
@@ -15,21 +14,14 @@ export const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
 /**
  * Refuse to let a writing run point at the pinned corpus.
  *
- * The corpus is 394 images across five repositories pinned at specific commits, and
- * every measurement this project quotes is stated against those pins. Converting one
- * of those images would invalidate all of it SILENTLY: a converted image still reads
- * as an image and the pinned commit still checks out, so the first anyone would know
- * is a number that stopped reproducing days later.
+ * Every measurement this project quotes is stated against the pinned commits. A
+ * converted image still reads as an image, so converting one would invalidate them with
+ * no error: the first sign would be a number that no longer reproduces.
  *
- * This has already happened once in a different form. The v2 extension converted 19
- * fixture images in place seconds after they were generated and nobody noticed for a
- * day, which is why the corpus lives outside the workspace at all. That kill switch
- * protects it from the extension. This protects it from us.
- *
- * A run against a real repository works on a copy, and this exists because a workflow
- * is followed until the night it is not. Callers that only read are not the hazard and
- * do not call this: `validate.ts` writes reports into an output directory and never
- * touches the tree.
+ * Keeping the corpus outside the workspace protects it from the v2 VS Code extension,
+ * which converts images in place. This protects it from the bench's own writing runs,
+ * which must work on a copy. Callers that only read do not call it: `validate.ts` writes
+ * reports into an output directory and never touches the tree.
  */
 export function refuseValidationCorpus(root: string): void {
   const target = normaliseForCompare(root);
@@ -61,16 +53,17 @@ export interface RepoSpec {
   /**
    * Every directory a root-relative `/hero.png` may be served from.
    *
-   * A list because a monorepo has one per app — shadcn-ui has six, and resolving
-   * against a single one produced 93 false `broken` findings (R13).
+   * A list because a monorepo has one per app: resolving every reference against a
+   * single one reports the other apps' references as `broken`.
    */
   readonly publicDirs: readonly string[];
   /**
    * Run this entry with no configuration at all, as a first-time user would.
    *
-   * `publicDirs` is then ignored and the convention guess applies, marked as a guess.
-   * Added because every other entry in this list is hand-tuned, so the corpus could
-   * not see what a stranger's first run produces.
+   * The engine then ignores `publicDirs` and decides the serving roots as a first run
+   * does, reporting them as not declared; only the independent check in `verify.ts`
+   * still reads it. The other entries are hand-tuned, so without these the corpus would
+   * never see what a stranger's first run produces.
    */
   readonly unconfigured?: boolean;
 }
@@ -92,10 +85,9 @@ export const REPOS: readonly RepoSpec[] = [
   {
     name: 'shadcn-ui',
     sha: '3ba91b1cc83e1bbe4ab35a422ff2a694849c5048',
-    // Every `public/` in the workspace, as auto-detection would find them. There
-    // are twelve, not the six a `-maxdepth 3` search turns up — the fixture apps
-    // under `packages/` have their own, and leaving those out reports their
-    // references broken.
+    // Every `public/` in the workspace, as detection finds them: twelve, not the six a
+    // `-maxdepth 3` search turns up. The fixture apps under `packages/` have their own,
+    // and leaving those out reports their references broken.
     publicDirs: [
       'apps/v4/public',
       'packages/shadcn/test/fixtures/frameworks/remix-indie-stack/public',
@@ -112,47 +104,40 @@ export const REPOS: readonly RepoSpec[] = [
     ],
   },
   {
-    // The monorepo, met the way a stranger meets it. The convention guess is a single
-    // `public/` at the workspace root, which this repository does not have: its public
-    // directories live under `apps/*`, `packages/*` and `templates/*`.
-    //
-    // This is the repository where resolving a reference against a SIBLING app's
-    // public directory produced 93 false `broken` findings. The ancestor-only
-    // restraint that fixed it was built and measured against declared directories and
-    // has never been exercised against a guess, on the repository where that class of
-    // mistake actually happened.
+    // The monorepo, met the way a stranger meets it: twelve public directories under
+    // `apps/*`, `packages/*` and `templates/*`. A root-relative reference resolves only
+    // against the serving roots of the app its file belongs to, because another app's can
+    // link it to an asset its own app does not serve. This checks that restraint when the
+    // roots were worked out rather than declared.
     name: 'shadcn-ui',
     sha: '3ba91b1cc83e1bbe4ab35a422ff2a694849c5048',
     publicDirs: [],
     unconfigured: true,
   },
   {
-    // R27/R28: chosen for how its files are NAMED, not for its stack. Hand-written
-    // static HTML with no build step, so the project root itself is the serving root
-    // — `['']` rather than a public directory, which is the case `project-root`
-    // resolution exists for and the one R36 measured at 1,267 asserted references.
+    // Chosen for how its files are named, not for its stack. Hand-written static HTML
+    // with no build step, so the project root itself is the serving root: `['']` rather
+    // than a public directory, the case `project-root` resolution exists for.
     name: 'railsgirls-com',
     sha: 'fa2b63c48381a04f354d976efe2fdd1d35078b9e',
     publicDirs: [''],
   },
   {
     // The same repository, met the way a stranger meets it. Hand-written static HTML
-    // with no `public/` directory, so the convention guess matches nothing and every
+    // with no `public/` directory, so detection finds no serving root and every
     // root-relative path falls through to the project root. That is the bucket the
-    // configured entry above cannot produce, and it is the one a first run always
-    // hits, because a first run has no configuration by definition.
+    // configured entry above cannot produce, and the one a first run here always hits.
     name: 'railsgirls-com',
     sha: 'fa2b63c48381a04f354d976efe2fdd1d35078b9e',
     publicDirs: [''],
     unconfigured: true,
   },
   {
-    // R27/R28's other half: messy filenames reached through JSX and SCSS rather than
-    // raw HTML, which is the shape R26 was. Webpack serves `static/` at `/`.
+    // Messy filenames again, reached through JSX and SCSS rather than raw HTML. Webpack
+    // serves `static/` at `/`.
     //
-    // ⚠️ No saving percentage may ever be quoted off this repo: 91 of its 132 messy
-    // images are `.svg`, which Upfly never converts, so it is a reference-graph
-    // subject rather than a conversion one (06-validation-repos.md).
+    // Quote no saving from it: 91 of its 132 messy images are `.svg`, which Upfly does
+    // not convert, so it tests the reference graph rather than conversion.
     name: 'scratch-www',
     sha: '8025bf2c0cbb5bdaff1272ed888e38deb7fae9ed',
     publicDirs: ['static'],

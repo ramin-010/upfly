@@ -1,17 +1,13 @@
 /**
- * The §5.1 validation protocol, run against real repositories nobody designed the
- * engine for.
+ * The validation protocol, run against real repositories nobody designed the engine for.
  *
- * Everything above this file is unit-tested in isolation. This is the part that
- * decides whether the engine is *right*, and the parts it can automate are (a),
- * (b), (f) and (g). Parts (c) and (d) need a person — every broken finding opened,
- * every dead asset grepped — so this writes a worksheet rather than a verdict.
+ * Everything else is unit-tested in isolation; this decides whether the engine is right.
+ * It automates the checks the summary labels (a), (b), (f) and (g). The review of each
+ * finding, (c) and (d), needs a person, so it writes a worksheet rather than a verdict,
+ * after `verify.ts` has checked what a machine can.
  *
- * The repositories live **outside the workspace** with a kill-switch config, because
- * all three contain image directories and the v2 extension converts what it finds in
- * one, in place, deleting the original. It did that to 19 fixture images. Cloned
- * inside the workspace it would invalidate the entire validation while the numbers
- * still looked plausible.
+ * The repositories live outside the workspace with the v2 VS Code extension's kill
+ * switch, because that extension converts images in place, deleting the originals.
  */
 
 import type { Dirent } from 'node:fs';
@@ -76,27 +72,23 @@ interface RepoResult {
   /** Whatever proved the absolute-path check wrong, so a failure names itself. */
   readonly absolutePathEvidence: string[];
   readonly unaccounted: Triaged[];
-  /** §5.1(d), the automated half: a verdict per finding, from an independent oracle. */
+  /** The review's automated half: a verdict per finding, from an independent oracle. */
   readonly verified: VerifyResult;
   readonly report: Report;
   readonly human: string;
   /**
    * What libvips said about the files it could not read.
    *
-   * Kept out of the report and written beside it. The report is the artefact rule 11
-   * promises to be byte-identical for identical inputs, and this text is not: the same
-   * four corrupt SVGs give the full message on some reads and a truncated one on
-   * others. Losing it altogether would make a genuinely unreadable file harder to
-   * diagnose, so it goes in a file nothing compares.
+   * Kept out of the report, which is byte-identical for the same input, because libvips
+   * words the same failure differently from one read to the next. It is written beside
+   * the report, in a file nothing compares, so an unreadable file can still be diagnosed.
    */
   readonly diagnostics: readonly ProbeDiagnostic[];
   /**
-   * What PostCSS and Babel said, here for the same reason as the above.
+   * What PostCSS and Babel said, kept out of the report for the same reason.
    *
-   * R60 applied to the parsers. `railsgirls-com` carried 23 of these in the report
-   * itself, reading `<css input>:144:13: Unknown word /` — PostCSS's placeholder for a
-   * file we did name, PostCSS's vocabulary for the fault, and a position that was the
-   * only part worth reading. The position is in the report now; the wording is here.
+   * A message such as `<css input>:144:13: Unknown word /` is in the parser's own terms.
+   * The report carries the position and Upfly's own classification; the wording is here.
    */
   readonly scanDiagnostics: readonly ScanDiagnostic[];
 }
@@ -117,11 +109,9 @@ async function main(): Promise<void> {
     stdout.write(summarise(result));
   }
 
-  // ⚠️ **A partial run must not leave behind something that looks complete.** `--repo=` and
-  // `--no-probe` each produce results that are true but are not the gate, and SUMMARY.md is
-  // the file a number gets quoted from. It used to be rewritten with only the row that ran,
-  // silently discarding the others — so a one-repo run left an artefact that read as a full
-  // validation of a suite with one repo in it, and nothing on the page said otherwise.
+  // A partial run must not leave behind something that looks complete. `--repo=` and
+  // `--no-probe` each produce results that are true but not the whole validation, and
+  // SUMMARY.md is the file numbers get quoted from, so a partial run says so at its top.
   const partial = only !== undefined || !probed;
   await writeFile(
     join(outDir, 'SUMMARY.md'),
@@ -135,12 +125,10 @@ async function main(): Promise<void> {
 }
 
 /**
- * What SUMMARY.md says when the run was not the whole gate.
+ * What SUMMARY.md says when the run was not the whole validation.
  *
- * Keeps the table, because the rows that ran are real — and puts the limitation above it
+ * Keeps the table, because the rows that ran are real, and puts the limitation above it
  * rather than in a footnote, because a limitation below the numbers is one nobody reads.
- * §3.5 says which tier to run for which change; this is what stops the cheap tier being
- * mistaken for the expensive one afterwards.
  */
 function partialSummary(
   results: readonly RepoResult[],
@@ -175,46 +163,13 @@ function partialSummary(
 }
 
 /**
- * Every stage, run for real, from a cold start.
- *
- * It is a function rather than inline code because §5.1(f) asks whether *two runs*
- * agree, and the first version of this file answered that by calling `buildReport`
- * twice on one set of in-memory objects. That proves `buildReport` is pure and
- * nothing else: with `Math.random()` sorting the references it still reported
- * `deterministic: true` while the written JSON differed by 318 lines. Determinism
- * has to be measured over the whole pipeline or it is not measured at all.
- */
-/**
  * The serving roots one run resolves against.
  *
- * Every repository here has hand-tuned serving roots, which means the corpus has
- * validated the CONFIGURED experience five times and the unconfigured one never. A
- * first run always has no configuration, so the unconfigured case is what everybody
- * meets first. `unconfigured` runs a repo the way a stranger would meet it.
- *
- * 🔴 **AND UNTIL NOW IT RAN IT THE WAY A STRANGER WOULD HAVE MET IT IN JUNE.** This
- * returned `CONVENTIONAL_SERVING_ROOTS` — the frozen `['public']` — while a real first run
- * has gone through `detectServingRoots` since B3 and through R132's inference since R144.
- * **So the entry whose whole purpose is *"what does a stranger see"* was simulating a
- * behaviour the engine had stopped having**, and every §5.1 number taken from it described
- * a version of Upfly nobody could install.
- *
- * ✅ **Measured before it was changed** (`detect-roots --delta`, four columns, all five
- * repositories), against the hand-tuned list as the answer:
- *
- * | | frozen `['public']` | detection ∪ inference |
- * |---|---|---|
- * | `shadcn-ui` | **0 of 115**, `SERVING ROOT UNKNOWN` | **164 of 183 — identical to hand-tuned** |
- * | `scratch-www` | **0 of 615**, `SERVING ROOT UNKNOWN` | identical to hand-tuned |
- * | `eleventy-docs` | **0 of 14**, `SERVING ROOT UNKNOWN` | identical to hand-tuned |
- * | `railsgirls-com` | identical (nothing matches, so it falls to the project root) | identical |
- * | `astro-docs` | identical | identical |
- *
- * ⚠️ **The cost of the change is that the unconfigured entries now nearly DUPLICATE their
- * configured twins**, because the gap they were built to show has closed. That is the
- * result, not a defect — but it means this class is close to empty and the next chat should
- * know it, because R137 is exactly what happens when a fixture rests on a class that a fix
- * empties. **What still differs is `declared: false`**, which the report words differently.
+ * A configured entry uses its hand-tuned list, declared. An `unconfigured` entry decides
+ * them exactly as a first run does, so the corpus also measures what a stranger meets.
+ * Detection and inference reproduce the hand-tuned lists on these repositories, so an
+ * unconfigured report mostly repeats its configured twin; what still differs is
+ * `declared: false`, which the report words differently.
  */
 function servingRootsFor(
   repo: RepoSpec,
@@ -223,8 +178,8 @@ function servingRootsFor(
 ): ServingRoots {
   if (repo.unconfigured !== true) return { dirs: repo.publicDirs, declared: true };
 
-  // The same call `engine-run.ts` makes, because "what a stranger sees" has to be the code
-  // a stranger runs. Anything else is a simulation of our own guess about ourselves.
+  // The decision the engine's `servingRootsFor` makes when nothing is declared, because
+  // what a stranger sees has to come from the code a stranger runs.
   return decideServingRoots({
     root: discovery.root,
     directories: discovery.directories,
@@ -236,21 +191,17 @@ function servingRootsFor(
 }
 
 /**
- * One repository, through the shared pipeline, then rendered.
+ * One repository, every stage run for real from a cold start, then rendered.
  *
- * The engine wiring lives in `pipeline.ts` and is the same code `optimize` runs
- * against. It used to live here in its own copy, which is how the headline accuracy
- * figure and the write path came to describe two different pipelines (R55).
+ * A function because determinism is checked over whole runs: calling `buildReport` twice
+ * on the same objects only proves `buildReport` pure. The pipeline is the engine's own,
+ * the one `optimize` runs, so the numbers here describe the shipped engine.
  *
- * The sweep and the audit are given the directories the resolver actually resolved
- * against, rather than the table's column. Those were once two different values, so on
- * an unconfigured entry the resolver used the convention guess while the audit was
- * told there were no public directories at all. Every dead asset under one then
- * carried `inPublicDir: false`, wrong by the resolver's own view, and the caveat
- * warning that an unreferenced public image may be linked from outside the repository
- * was suppressed entirely, on the run a first-time user gets, which is the run where
- * that warning is worth most. A configured entry is unaffected, because there the
- * declared list and the resolved list are the same list.
+ * The sweep and the audit get the directories the resolver resolved against, not the
+ * table's `publicDirs`, which an unconfigured entry does not use and may leave empty.
+ * Told that no directory is served, the audit would mark every dead public asset
+ * `inPublicDir: false` and drop the caveat that it may be linked from outside the
+ * repository.
  */
 async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineResult> {
   const output = await enginePipeline({
@@ -260,9 +211,10 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     probeOptions: probed ? { formats: ['webp'], maxEncodedAssets: 100 } : null,
   });
 
-  // `includeUnusedVectors` so §5.1(d) can still verify what R22 demotes. It changes
-  // only whether `unusedVectors.assets` is populated, never a finding or a count, so
-  // the determinism comparison and every number in the artefacts are unaffected.
+  // `includeUnusedVectors` lists the unreferenced vectors kept out of `findings`, so the
+  // oracle can still check them. It changes only whether `unusedVectors.assets` is
+  // populated, never a finding or a count, so the determinism comparison and every number
+  // in the artefacts are unaffected.
   const report = buildReport({
     graph: output.graph,
     audit: output.audit,
@@ -271,9 +223,9 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     servingRoots: output.servingRoots,
     ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeUnusedVectors: true,
-    // R64: the report names the file this run writes the libraries' own words to.
-    // A bare name rather than a path, because the report must read the same from
-    // any checkout — `writeArtifacts` puts it beside the report it belongs to.
+    // The report names the file this run writes the libraries' own words to. A bare name
+    // rather than a path, because the report must read the same from any checkout;
+    // `writeArtifacts` puts the file beside the report it belongs to.
     diagnosticsFile: `${labelOf(repo)}.diagnostics.txt`,
   });
 
@@ -291,20 +243,11 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
 }
 
 /**
- * The part of a report a determinism claim is about.
+ * Whether two reports are the same, byte for byte: a determinism claim covers all of it.
  *
- * It is now the whole report, and the narrowing is the point. `skipped` used to be
- * excluded on the grounds that a file briefly unreadable under load has not changed
- * what the engine concluded, only what it managed to look at. That reason is sound and
- * it covered a second case it was never argued for: an asset that failed identically
- * in both runs, where only the third-party sentence describing the failure changed.
- * The engine's own conclusion was stable and the check could not see that the artefact
- * was not, so a live violation of the byte-identical promise sat behind a green tick.
- *
- * The library's wording no longer reaches the report, so there is nothing left in
- * `skipped` that is outside Upfly's control, and the exclusion has nothing left to
- * protect. An entry that still appears in one run and not the next is a finding to
- * investigate rather than a reason to stop looking.
+ * That includes `skipped`. The libraries' wording is kept out of the report, so nothing
+ * left in `skipped` is outside Upfly's control, and an entry that appears in one run and
+ * not the next is a finding to investigate rather than noise to excuse.
  */
 function sameReport(a: Report, b: Report): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -313,9 +256,8 @@ function sameReport(a: Report, b: Report): boolean {
 /**
  * Entries that appeared in one run's `skipped` list and not the other's.
  *
- * Quoted in full rather than counted: *"one more skip"* is not actionable, and the
- * whole reason this is separated from the determinism verdict is so it can be read
- * and judged rather than silently tolerated.
+ * Quoted in full rather than counted, because "one more skip" is not actionable: naming
+ * the entry is what lets a person judge it rather than tolerate it.
  */
 function skippedDifferences(a: Report, b: Report): string[] {
   const key = (entry: Report['skipped'][number]) => `${entry.stage} ${entry.what}: ${entry.reason}`;
@@ -375,26 +317,18 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
 
   // --- (f) determinism: two whole runs -------------------------------------------
   //
-  // A claim about every byte of the report, which it did not used to be. `skipped`
-  // was held out so that a file briefly unreadable under load could not look like a
-  // correctness failure. That reason was sound, and it silently covered a second case
-  // nobody argued for: the same asset failing identically in both runs with only the
-  // imaging library's sentence about it changing. Upfly's own wording is what reaches
-  // the report now, so there is nothing left in `skipped` outside its control.
-  //
-  // `environmentNotes` below still quotes any entry that differs, because naming the
-  // asset is what makes a red verdict actionable. It reports; it no longer excuses.
+  // Every byte of the report, `skipped` included. `environmentNotes` quotes any
+  // `skipped` entry that differs, because naming the asset is what makes a red verdict
+  // actionable, and `determinismDiff` says where the reports differ, since a bare `false`
+  // on a 24,000-line report cannot be acted on.
   const second = await runPipeline(repo, probed);
   const deterministic = sameReport(first.report, second.report);
-  // A boolean that says `false` and nothing else cannot be acted on. This says WHERE,
-  // which on a 24,000-line report is the whole difference.
   const determinismDiff = deterministic ? [] : firstDifferences(first.report, second.report);
   const environmentNotes = skippedDifferences(first.report, second.report);
 
   // --- (f) and a third run from a different working directory ----------------------
-  // §5.1(f) asks for this by name. `Reference.file` is absolute and four upstream
-  // types carry an absolute path beside their relative one, so a cwd the output
-  // depends on is a real risk rather than a theoretical one.
+  // `Reference.file` is absolute, and four upstream types carry an absolute path beside
+  // their relative one, so output that depends on the working directory is a real risk.
   const originalCwd = cwd();
   chdir(tmpdir());
   const elsewhere = await runPipeline(repo, probed);
@@ -412,7 +346,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
   // --- (b) the false-negative sweep -----------------------------------------------
   const unaccounted = await falseNegativeSweep(root, first.graph, first.references);
 
-  // --- (d) every broken opened, every dead grepped, by something that is not us ----
+  // --- (d) every broken opened, every dead grepped, by an oracle that is not the engine
   const verified = await verifyFindings(root, first.report, repo.publicDirs);
 
   return {
@@ -443,16 +377,12 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
 }
 
 /**
- * §5.1(f): no absolute path reaches the output.
+ * That no absolute path reaches the output.
  *
- * The first version searched the serialised JSON for the root spelled with forward
- * slashes. `JSON.stringify` escapes a native Windows path to `E:\\PERSONAL…`, so
- * that needle could not match the one spelling the leak actually takes: with 81
- * absolute paths deliberately leaked into the report it still answered "clean".
- *
- * So this checks what `report.test.ts` checks on the fixtures — an escaped
- * backslash, or a drive letter — plus the root in both spellings, and it returns
- * what it found so a failure names itself instead of being one boolean.
+ * `JSON.stringify` escapes a native Windows path to `E:\\PERSONAL…`, so the root is
+ * searched for in both its escaped and its POSIX spelling, alongside any Windows
+ * absolute path or drive letter. It returns what it found, so a failure names itself
+ * instead of being one boolean.
  */
 function checkNoAbsolutePath(
   report: Report,
@@ -470,11 +400,9 @@ function checkNoAbsolutePath(
 
   // A Windows absolute path, which always opens with a drive letter or a UNC pair.
   //
-  // ⚠️ NOT "any string containing a backslash", which is what this checked first and
-  // what `report.test.ts` still checks on the fixtures. On `shadcn-ui` that fired on a
-  // raw path the engine reported exactly as its author wrote it, in a CSS-in-JS
-  // template — the engine being right. The property is *no absolute path*, and a lone
-  // backslash is not evidence of one. It survives on the fixtures only because no
+  // Not any string containing a backslash, which is what `report.test.ts` checks on the
+  // fixtures: a raw path in a CSS-in-JS template on `shadcn-ui` holds one, reported
+  // exactly as its author wrote it. That check holds on the fixtures only because no
   // fixture source contains a backslash.
   const windowsAbsolute = serialised.match(/[A-Za-z]:\\\\/)?.[0];
   if (windowsAbsolute !== undefined) {
@@ -495,10 +423,10 @@ function checkNoAbsolutePath(
 }
 
 /**
- * §5.1(a): `source.slice(start, end) === rawPath`, for every reference.
+ * The range invariant: `source.slice(start, end) === rawPath`, for every reference.
  *
- * One cheap invariant that kills the whole class of offset bugs — the class that
- * silently corrupts a file at rewrite time and is invisible any other way.
+ * One cheap check that catches the whole class of offset bugs, the class that silently
+ * corrupts a file at rewrite time and is invisible any other way.
  */
 async function checkRanges(
   references: readonly { file: string; start: number; end: number; rawPath: string }[],
@@ -527,16 +455,13 @@ async function checkRanges(
 }
 
 /**
- * §5.1(b): the missing half.
+ * The false-negative sweep.
  *
- * Every ruling so far targets false *positives*. A false negative is worse: a
- * reference the adapters miss looks clean in the audit, then the rewrite changes the
- * image without updating it and the build breaks with nothing reported.
- *
- * So: grep the whole repository for every asset's filename, and account for every
- * hit the graph did not link. Each one is either a genuine miss — fix the adapter,
- * add the fixture — or correctly out of scope, and this writes down which so a
- * person only has to look at the ones that are neither.
+ * A reference the adapters miss looks clean in the audit, then the rewrite changes the
+ * image without updating it and the build breaks with nothing reported. So every asset's
+ * filename is searched for across the whole repository, and every hit the graph did not
+ * link is triaged: a genuine miss (fix the adapter, add a fixture) or correctly out of
+ * scope. A person only has to look at the hits triage cannot explain.
  */
 async function falseNegativeSweep(
   root: string,
@@ -643,7 +568,7 @@ function lineText(text: string, offset: number): string {
     .slice(0, 160);
 }
 
-/** Per-repo artefacts: the report, and the worksheet (c) and (d) are worked through. */
+/** Per-repository artefacts: the report, and the worksheet a person reviews it with. */
 async function writeArtifacts(outDir: string, result: RepoResult): Promise<void> {
   const name = labelOf(result.repo);
   await writeFile(
@@ -691,12 +616,10 @@ function diagnosticsLog(result: RepoResult): string {
 }
 
 /**
- * The worksheet for §5.1(c) and (d).
+ * The review worksheet for one repository.
  *
- * Deliberately not a summary, and no longer a list of commands either. §5.1(d) was
- * amended because the first version of this file produced **601 checkboxes with the
- * grep already written out** — so `verify.ts` runs them and this reports the
- * verdicts, expanding only what a person actually has to decide.
+ * Not a summary and not a list of commands: `verify.ts` has already run every check a
+ * machine can, so this reports its verdicts and expands only what a person has to decide.
  */
 function worksheet(result: RepoResult): string {
   const { repo } = result;
@@ -744,9 +667,8 @@ function worksheet(result: RepoResult): string {
   } else {
     for (const group of groupResidue(needsHuman)) {
       lines.push(`### ${group.label}`, '');
-      // Every one of them. The previous version stopped at 60 and said "…and N
-      // more", which is a silent skip inside the pass that exists to find silent
-      // skips; the full list also lives in `<repo>.sweep.md`.
+      // Every one of them: a cap here would be a silent skip inside the pass that exists
+      // to find silent skips. The full list is also in `<repo>.sweep.md`.
       for (const entry of group.entries) {
         lines.push(
           `- [ ] \`${entry.file}:${entry.line}\` → \`${entry.asset}\``,
@@ -769,20 +691,15 @@ function worksheet(result: RepoResult): string {
   return `${lines.join('\n')}\n`;
 }
 
-/** One line saying whether anything failed the gate, before any detail. */
+/** One line saying whether any finding came back false, before any detail. */
 function verdictHeadline(verified: VerifyResult): string {
   const wrong = verified.items.filter((item) => item.verdict === 'confirmed-false').length;
   const unclear = verified.items.filter((item) => item.verdict === 'ambiguous').length;
 
-  // ⚠️ Every branch is in the past tense, and that is deliberate. The middle one read
-  // `${unclear} are ambiguous and need you`, which rendered "1 are ambiguous" on
-  // eleventy-docs — the seventh instance of the verb-agreement bug in this project. The
-  // first read `${wrong} finding(s)`, which dodges agreement by printing a bracket at the
-  // reader. `came back` is invariant for every count, so neither is reachable now.
-  //
-  // The totals are here for a second reason: R22 moved 145 assets out of `findings`, so
-  // the denominator can change without the numerator moving, and a bare "0 confirmed-false"
-  // would not have shown that.
+  // Every branch says `came back`, which agrees with any count, so none can print
+  // "1 are ambiguous" or dodge the agreement with "finding(s)". The total is printed too:
+  // the number of items checked can change without the false count moving, and a bare
+  // "0 confirmed-false" would not show that.
   const headline =
     wrong > 0
       ? `**${wrong} of ${verified.items.length} came back confirmed-false — the gate is not passed.**`
@@ -794,16 +711,12 @@ function verdictHeadline(verified: VerifyResult): string {
 }
 
 /**
- * What the oracle structurally cannot see, stated next to its verdicts.
+ * What the oracle cannot see, stated next to its verdicts.
  *
- * §5.1(d), amended: **independent in implementation is not independent in
- * assumption.** This oracle walks a different tree with a different regex and never
- * touches the engine's resolver — and it still confirmed a false `dead` as genuine,
- * because the engine and the oracle are both *string searchers*. R17 was found by a
- * person reading the output, not by the machine that had just run over it.
- *
- * A "0 confirmed-false" that does not say what it cannot see is the same overclaim
- * as a check that cannot fail, which is what §5.1(f) turned out to be.
+ * Independent in implementation is not independent in assumption. The oracle shares no
+ * code with the engine, but both search for strings, so an asset kept alive by something
+ * that names it nowhere, such as a framework's file convention, fools them both. A
+ * "0 confirmed-false" that does not say so claims more than it checked.
  */
 const BLIND_SPOT = [
   '> ⚠️ **What this pass cannot see.** Every check above searches for a *string*. An asset that is',
@@ -819,10 +732,9 @@ const BLIND_SPOT = [
 /**
  * One finding kind, ordered by how much attention it needs.
  *
- * `confirmed-false` first because one of those fails the gate, then `ambiguous`
- * because those are the actual work, then `confirmed-genuine` collapsed to a list —
- * expanding 120 items a machine already checked is how a worksheet becomes 601
- * checkboxes nobody reads.
+ * `confirmed-false` first, because one of those fails the validation, then `ambiguous`,
+ * which is the actual work, then `confirmed-genuine` collapsed to a short list: expanding
+ * items a machine already checked buries the ones a person has to decide.
  */
 function verdictSection(
   kind: ItemVerdict['kind'],
@@ -906,19 +818,11 @@ interface ResidueGroup {
 /**
  * The residue, collapsed to the decisions it actually contains.
  *
- * Two passes, because one key cannot do it and measuring showed why. Grouping by
- * **citing file** collapses astro-docs' 120 hits — every one of them
- * `src/data/logos.ts` — into a single decision; grouping by **asset** would explode
- * the same 120 back out, since they name 120 different logos. And the reverse holds
- * for the long tail: astro-docs' remaining 14 hits are one sentence in one document
- * translated into fourteen languages, and shadcn-ui's 36 JSON ones are two assets
- * across a generated registry. One hit each, same decision every time.
- *
- * So: files carrying several hits group by file; whatever is left over — one hit per
- * file — groups by the asset and shape those hits share. 228 items become 25
- * questions, and this is the third place in this phase where the fix for "a wall of
- * near-identical items" was to group by what they have in common rather than to cap
- * the list.
+ * Two passes, because one key cannot do it. Many hits in one file, such as a data module
+ * naming a hundred different logos, are one decision, so a file with several hits is one
+ * group. One hit in each of many files, such as a sentence translated into fourteen
+ * languages, is also one decision, so the hits left over group by the asset and shape
+ * they share. Grouping by what items have in common beats capping the list.
  */
 function groupResidue(entries: readonly Triaged[]): ResidueGroup[] {
   const byFile = new Map<string, Triaged[]>();
@@ -969,7 +873,7 @@ function shapesIn(entries: readonly Triaged[]): string {
   return shapes.join(', ');
 }
 
-/** Every hit and what triage made of it — the audit trail for §5.1(b) itself. */
+/** Every sweep hit and what triage made of it: the audit trail for the sweep itself. */
 function sweepLog(result: RepoResult): string {
   const lines = [
     `# ${labelOf(result.repo)} — §5.1(b) sweep, every hit`,

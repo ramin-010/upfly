@@ -1,19 +1,10 @@
 /**
  * Run the engine against a real repository, on a copy, by construction.
  *
- * The planner had never run on a repository nobody wrote for it, and `optimize` had
- * only ever run on fixtures. This is the first thing that points the write path at
- * real code.
- *
- * 🔴 It copies the pinned tree and runs against the copy, and there is no flag that
- * makes it do otherwise. That is R52's first layer: the safe path is the only path,
- * rather than something a person has to remember at two in the morning. The second
- * layer is `refuseValidationCorpus`, which `optimizeTree` calls before it reads
- * anything, so even a caller who bypassed this file would be refused.
- *
- * Every measurement this project quotes is stated against those pinned commits, and a
- * converted image still reads as an image, so the damage would be invisible until a
- * number stopped reproducing days later.
+ * This points the write path at code nobody wrote for Upfly, where fixtures cannot. It
+ * copies the pinned tree and runs against the copy, and no flag makes it do otherwise.
+ * `optimizeTree` also refuses the corpus before it reads anything, so a caller that
+ * bypassed this file would be refused too.
  */
 
 import { existsSync } from 'node:fs';
@@ -29,9 +20,9 @@ import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
  * Where copies are made: a sibling of the corpus, never inside it and never inside
  * the workspace.
  *
- * Same volume as the corpus so the copy is a fast intra-volume operation, and outside
- * the workspace because every one of these repositories has image directories and the
- * v2 extension converts images in an in-repo `public/` in place.
+ * On the corpus's volume so the copy is fast, and outside the workspace because every
+ * one of these repositories has image directories and the v2 VS Code extension converts
+ * images in a workspace `public/` in place.
  */
 const RUN_ROOT = resolve(VALIDATION_ROOT, '..', 'upfly-corpus-runs');
 
@@ -57,17 +48,10 @@ async function copyRepository(name: string): Promise<string> {
 /**
  * Delete a run copy, after letting go of the files this process still has open.
  *
- * 🔴 The handle is ours, and the first version of this got that wrong. A recursive
- * remove failed with EBUSY on a `.webp` the run had just written, so this retried with
- * backoff on the assumption that a scanner or the indexer was holding it briefly.
- * **Six retries over sixteen seconds failed on the same file both times, and a fresh
- * shell deleted it instantly.** A handle nobody is going to release does not care how
- * long you wait.
- *
- * libvips keeps an operation cache of open images, and the re-audit above probes every
- * file the run just wrote, so those stay open for the lifetime of the process.
- * `sharp.cache(false)` drops it. The retry is kept for the genuinely transient case,
- * but it is no longer the mechanism.
+ * libvips caches operations, and a cached operation keeps its input file open for the
+ * life of the process, so on Windows this process cannot delete a file sharp has read,
+ * however long it waits. `sharp.cache(false)` releases them. The retry is for a handle
+ * another program holds briefly, such as a scanner or the indexer.
  */
 async function removeTree(root: string): Promise<void> {
   sharp.cache(false);
@@ -95,20 +79,19 @@ function byReason(declined: readonly { readonly reason: string }[]): [string, nu
 }
 
 /**
- * R66. The absence of this line is what made 374 conversions and 373 deletes read as an
- * arithmetic slip: the behaviour was right and nothing said so.
+ * The originals the run kept, grouped by reason.
  *
- * ⚠️ Grouped by reason since R180. It used to print one fixed sentence — "outside a
- * served directory" — for every kept original, which stopped being true the day R180
- * began keeping served originals that a reference still needs.
+ * Without this, a conversion count higher than the delete count reads as an arithmetic
+ * slip. An original is kept for more than one reason (outside a served directory, or
+ * still needed by a reference), so each kind gets its own line.
  */
 function printKeptOriginals(keptOriginals: readonly { asset: string; reason: string }[]): void {
   if (keptOriginals.length === 0) return;
   stdout.write(
     `  kept      ${keptOriginals.length} original${keptOriginals.length === 1 ? '' : 's'}, by reason\n`,
   );
-  // One line per KIND of reason: the sentence with its quoted specifics — the file, the
-  // text, the count — elided, so the kinds group without this file keeping a second copy
+  // One line per kind of reason: the sentence with its quoted specifics (the file, the
+  // text, the count) elided, so the kinds group without this file keeping a second copy
   // of the planner's wording.
   const kinds = byReason(
     keptOriginals.map((kept) => ({
@@ -128,10 +111,9 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
   stdout.write(`  copy      ${root}\n`);
 
   try {
-    // Measured before anything is written, so "no new broken references" is a
-    // comparison rather than a claim about a number nobody recorded.
-    // No probes: this call reads a broken count, not a measurement. `optimizeTree` below
-    // does its own engine run and DOES need them, uncapped and deliberately so.
+    // Counted before anything is written, so "no new broken references" is a comparison
+    // rather than a claim. No probes: this reads a broken count, and `optimizeTree` below
+    // measures in its own engine run, with no cap.
     const brokenBefore = (await runEngine(root, undefined, false)).graph.byResolution.broken.length;
 
     const started = performance.now();
@@ -161,35 +143,30 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
 
     printKeptOriginals(keptOriginals);
 
-    // R54 asked what this number actually says. Grouped, because 44 lines of the
-    // same sentence tells a reader nothing that one line and a count does not.
+    // Grouped, because many lines of the same sentence tell a reader nothing that one
+    // line and a count do not.
     stdout.write('  declined, by reason\n');
     for (const [reason, count] of byReason(declined)) {
       stdout.write(`    ${String(count).padStart(4)}  ${reason}\n`);
     }
 
-    // The check that matters. Rewriting references is the whole product, so the
-    // question is not whether it ran but whether the tree still resolves after it.
-    // The same engine over the tree it just wrote: any reference broken now is one
-    // this run broke.
-    // Likewise: the re-audit reads the graph, the serving roots and the walk. On
-    // `railsgirls-com` each of these two calls was encoding all 5,370 assets and throwing
-    // every measurement away.
+    // The check that matters: not whether the run finished but whether the tree still
+    // resolves. The same engine over the tree it just wrote, so any reference broken now
+    // is one this run broke. No probes here either: this reads the graph, the serving
+    // roots and the walk.
     const after = await runEngine(root, undefined, false);
     const brokenAfter = after.graph.byResolution.broken.length;
     stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
     stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
 
-    // 🔴 R72 applied to `optimize`, which is the question `move` raised and nobody asked
-    // here. That count above is produced by the same graph that decided which references
-    // exist, so it shows we did not break what Upfly can READ — and on `railsgirls-com`
-    // 23 ordinary `.html` files fail to parse, so their references are invisible to both
-    // the rewrite and the count.
+    // The count above comes from the same graph that decided which references exist, so
+    // it only shows that nothing Upfly can read broke. A file that fails to parse, as some
+    // of `railsgirls-com`'s `.html` files do, hides its references from both the rewrite
+    // and the count, so every file is searched for the old paths.
     //
-    // ⚠️ **Only conversions that DELETED their original are searched for.** With
-    // `keep-original` the source is still on disk, so an unrewritten reference still
-    // resolves and finding one proves nothing. `replacesOriginal` is the discriminator,
-    // and existence on disk is checked rather than trusted.
+    // Only for originals that were deleted: under `keep-original` the source is still on
+    // disk, and an unrewritten reference to it still resolves. `replacesOriginal` says
+    // which, and existence on disk is checked rather than trusted.
     const deleted: { from: string; to: string }[] = [];
     for (const conversion of conversions) {
       if (!conversion.replacesOriginal) continue;
@@ -226,13 +203,11 @@ async function main(): Promise<void> {
   const flags = argv.slice(2);
   const only = flags.find((flag) => flag.startsWith('--repo='))?.slice('--repo='.length);
   const keep = flags.includes('--keep');
-  // The replace policy deletes originals once their references have moved. It is
-  // shipped code that had never been executed, because every runner hardcoded
-  // keep-original, so there was no way to reach it without editing source.
   const replace = flags.includes('--replace');
 
-  // One entry per repository, not one per configuration: the unconfigured duplicates
-  // exist to compare reports and there is nothing different to apply for them.
+  // One run per repository, not one per entry: the unconfigured entries exist to compare
+  // reports, and every run here decides its serving roots the same way, so a second
+  // entry would repeat the same run.
   const names = [...new Set(REPOS.map((repo) => repo.name))].filter(
     (name) => only === undefined || name === only,
   );

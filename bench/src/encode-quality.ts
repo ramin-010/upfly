@@ -1,23 +1,13 @@
 /**
- * Choosing the encode quality by measuring it, on images nobody made for us.
+ * Measures bytes saved and distortion at a grid of qualities, on images from the five
+ * validation repositories, to choose `DEFAULT_ENCODE_QUALITY`.
  *
- * Every saving figure this project holds was computed at sharp's defaults, which for
- * AVIF is quality 50. A 95% saving at quality 50 is not a saving, it is a downgrade
- * wearing a saving's clothes, so a number had to be chosen deliberately and written
- * down before any saving may be quoted again.
- *
- * Bytes alone cannot make that choice. Lower quality always wins on bytes, so a
- * byte-only measurement argues for quality 1. What is needed alongside it is some
- * measure of how far the result has moved from the original, and this uses peak
- * signal-to-noise ratio over the decoded pixels.
- *
- * PSNR is not perceptual quality and this file does not pretend otherwise: it cannot
- * tell a blur a viewer forgives from ringing around text that a viewer notices at a
- * glance. What it does do is respond, reproducibly and without an opinion, to how
- * much the pixels changed, which is enough to rule out the qualities that are
- * obviously too low and to say where the returns stop. `assertMetricResponds` exists
- * because a distortion metric that silently returned a constant would look exactly
- * like a flat curve, and a flat curve is what would argue for the lowest quality.
+ * Bytes alone cannot choose: a lower quality always saves more. So each encode is also
+ * scored on how far its decoded pixels moved, by PSNR and by SSIM. Neither is perceptual
+ * quality, and they fail differently: PSNR is dominated by area, so it misses damaged text
+ * on a mostly flat image, which SSIM over textured windows can see. `assertMetricResponds`
+ * runs first, because a metric stuck at one value would draw a flat curve, and a flat curve
+ * argues for the lowest quality.
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -42,7 +32,7 @@ const SKIP_DIRECTORIES = new Set([
   '__MACOSX',
 ]);
 
-/** The grid. Below 50 is sharp's own default territory and already ruled out. */
+/** The qualities measured, from sharp's AVIF default of 50 upward. */
 const QUALITIES = [50, 65, 75, 80, 85, 90] as const;
 
 /** How many images to measure. Every encode here costs real time, AVIF most of all. */
@@ -53,32 +43,20 @@ const CONCURRENCY = 4;
 /**
  * Which population an image was drawn from.
  *
- * 🔴 **R47's whole finding is that one cohort was standing in for all of them.** The
- * proportional sample is 27 of 30 from `railsgirls-com`, because that repository holds
- * ~5 370 of the corpus's ~7 000 images — so stratifying by extension reproduces one
- * repository's content, and that content is sponsor logos and event photographs.
+ * A proportional sample is mostly `railsgirls-com`, which holds most of the corpus's images,
+ * and those are sponsor logos and event photographs. The text-heavy cohort is named
+ * separately so that screenshots and diagrams are measured at all.
  */
 type Cohort = 'proportional' | 'text-heavy';
 
 /**
- * Screenshots, UI captures and labelled diagrams — named, and verified by LOOKING.
+ * Screenshots, UI captures and labelled diagrams, chosen by looking at them.
  *
- * ⚠️ **An objective selector was tried first and it failed, which is worth more than the
- * list.** Ranking every raster in the corpus by the fraction of pixels with a steep luma
- * gradient put `shadcn-ui` **last of five repositories** (1.1% median) — the one
- * repository that holds every UI capture in the corpus. A screenshot is mostly flat
- * background with small text, so text is a small fraction of its *area*; the top of that
- * ranking was small hard-edged sponsor logos and one 5 KB JPEG whose blocking artefacts
- * read as edges. **A detector blind in the dimension being detected**, which is the shape
- * that has now cost this project four times, R47's own PSNR included. Downscaling first
- * made it worse, for the obvious reason once seen: it blurs away the text.
- *
- * So the cohort is a list, on the same reasoning as `BINARY_EXTENSIONS` — deliberately a
- * list rather than a heuristic, because a wrong heuristic here is invisible. Two were
- * opened and looked at: `tasks-light.png` is a dense table of small labels wall to wall,
- * and `jamstack-2020-results.png` is white text on coloured fills over thin gridlines,
- * which is the harder case because ringing shows worst at high-contrast edges. The rest
- * are siblings of those two, exported by the same tools at the same sizes.
+ * A list, because a detector fails here without showing it. Ranking images by their share of
+ * steep luma gradients puts screenshots near the bottom: a screenshot is mostly flat
+ * background, and its text covers a small part of the area. `jamstack-2020-results.png`, white
+ * text on coloured fills over thin gridlines, is a hard case, since ringing shows worst at
+ * high-contrast edges.
  */
 const TEXT_HEAVY: readonly string[] = [
   // Application UI, light and dark: dark mode is a genuinely different artefact profile,
@@ -122,15 +100,11 @@ interface Measurement {
   /**
    * Structural similarity, 0 to 1. Higher is closer; 1 means identical.
    *
-   * 🔴 **Added because R47 ruled that PSNR is structurally blind to exactly the class
-   * being re-sampled.** PSNR is a mean of squared pixel differences, so it is dominated
-   * by area: a screenshot that is 90% flat background scores well however badly the 10%
-   * carrying the text is mangled. SSIM compares local means, variances and covariance in
-   * a window, so a window containing smeared letterforms loses structure and says so.
-   *
-   * ⚠️ It is not perceptual truth either, and this file does not claim it is. It is a
-   * **second** instrument that fails differently from the first — which is the only
-   * reason it is worth having. Where the two disagree, that disagreement is the finding.
+   * PSNR is a mean of squared pixel differences, so a screenshot that is mostly flat
+   * background scores well however badly its text is damaged. SSIM compares local means,
+   * variances and covariance in each window, so a window of smeared letterforms loses
+   * structure and shows it. It is not perceptual truth either, but it fails differently
+   * from PSNR, and where the two disagree is the finding.
    */
   readonly ssim: number;
   /**
@@ -162,18 +136,12 @@ async function main(): Promise<void> {
 }
 
 /**
- * Two cohorts: the proportional one, and the one R47 found missing from it.
+ * Two cohorts: an even stride over every image, and the named text-heavy list.
  *
- * The proportional half is unchanged and still deterministic — sorted by path, taken at
- * an even stride, so the selection is a property of the repositories rather than of which
- * images happened to look interesting.
- *
- * ⚠️ **Its doc comment used to claim that stratifying by extension "keeps photographs and
- * screenshots both represented". That claim was false and R47 measured it**: extension
- * says how an image is stored, not what is in it, and since `railsgirls-com` holds ~5 370
- * of ~7 000 corpus images, a proportional draw returns that repository's sponsor logos
- * and event photographs whichever extension it stratifies on. **A sample stratified on
- * the wrong axis is not a stratified sample**; it is a proportional one wearing the word.
+ * The stride runs over images sorted by path, so the selection is a property of the
+ * repositories rather than of which images looked interesting. Splitting it between PNG and
+ * JPEG does not make it representative: an extension says how an image is stored, not what
+ * is in it, which is why the text-heavy cohort exists.
  */
 async function chooseSample(): Promise<Source[]> {
   const all: Source[] = [];
@@ -192,10 +160,8 @@ async function chooseSample(): Promise<Source[]> {
     }
   }
 
-  // The named cohort, matched against what the walk actually found rather than read off
-  // disk directly: an entry that no longer exists at the pinned commit must be a loud
-  // failure, not a silently shorter sample. A cohort that quietly shrinks to nothing
-  // would leave every text-heavy conclusion below resting on zero images.
+  // Matched against what the walk found, so an entry missing at the pinned commit fails
+  // loudly instead of quietly shrinking the cohort every text-heavy figure rests on.
   const byLabel = new Map(all.map((source) => [source.label, source]));
   const missing: string[] = [];
   for (const label of TEXT_HEAVY) {
@@ -251,11 +217,9 @@ function toPosix(path: string): string {
  * the numbers are far apart and ordered the right way.
  */
 async function assertMetricResponds(sample: readonly Source[]): Promise<void> {
-  // ⚠️ **Checked on one image from EACH cohort, not just the first.** The original ran on
-  // `sample[0]`, which is a proportional draw and therefore a `railsgirls-com` logo or
-  // photograph. A metric can respond perfectly there and be flat on a screenshot — that is
-  // precisely R47's charge against PSNR — so a control that only ever sees the easy cohort
-  // certifies the instrument on the images it was never doubted for.
+  // One image from each cohort. A metric can respond on a logo or photograph and stay flat
+  // on a screenshot, so a control that saw only the proportional cohort would vouch for
+  // the metric on the images where it was never in doubt.
   const subjects = (['proportional', 'text-heavy'] as const).map((cohort) =>
     sample.find((source) => source.cohort === cohort),
   );
@@ -273,11 +237,9 @@ async function assertMetricResponds(sample: readonly Source[]): Promise<void> {
         `PSNR does not respond to quality: q10 scored ${bad.psnr.toFixed(2)} dB and q95 scored ${good.psnr.toFixed(2)} dB on ${subject.label} (${subject.cohort}). Every number below it would be meaningless.`,
       );
     }
-    // ⚠️ **On the DISTORTION, and relative.** SSIM crowds against 1, so an absolute gap
-    // is the wrong shape: `0.9987 → 0.9996` is a threefold reduction in distortion
-    // wearing a difference of 0.0009. The first version of this guard asked for +0.01 and
-    // failed on exactly that, which is how the diluted all-windows figure was found. What
-    // it must insist on is that the damage at q10 is substantially worse than at q95.
+    // Compared as distortion (1 - SSIM), and as a ratio. SSIM crowds against 1, so an
+    // absolute gap misleads: 0.9987 against 0.9996 is a threefold difference in distortion
+    // but only 0.0009 in SSIM.
     const badDistortion = 1 - bad.ssimTextured;
     const goodDistortion = 1 - good.ssimTextured;
     if (!(badDistortion > goodDistortion * 2)) {
@@ -358,19 +320,11 @@ async function measureLossless(source: Source): Promise<Measurement> {
 /**
  * Peak signal-to-noise ratio between two images, in decibels.
  *
- * Colour is compared premultiplied by alpha, and alpha is compared on its own.
- *
- * ⚠️ The first version compared raw RGBA straight from the decoder and the control
- * caught it: `full-logo-dark.png` scored 31.41 dB at quality 10 and 31.35 dB at
- * quality 95, flat and very slightly inverted. 64,249 of its 94,200 pixels are fully
- * transparent, and the colour stored behind a transparent pixel is arbitrary, so
- * encoders write whatever they like there. The measurement was dominated by noise in
- * pixels nobody can see, and it would have produced a flat curve, which argues that
- * quality costs nothing.
- *
- * Premultiplying weights every colour difference by how visible that pixel is, so a
- * fully transparent pixel contributes nothing however its colour was stored, while
- * damage to the alpha channel itself still registers at full strength.
+ * Colour is compared premultiplied by alpha, and alpha on its own. The colour stored behind
+ * a fully transparent pixel is arbitrary and encoders write whatever they like there, so
+ * raw RGBA would measure noise nobody can see: on a mostly transparent logo that flattens
+ * the curve, which argues that quality costs nothing. Premultiplied, a transparent pixel
+ * contributes nothing, while damage to the alpha channel still counts in full.
  */
 async function psnr(original: Buffer, encoded: Buffer): Promise<number> {
   const [a, b] = await Promise.all([toRaw(original), toRaw(encoded)]);
@@ -403,9 +357,9 @@ async function toRaw(image: Buffer): Promise<Buffer> {
 /**
  * Luma variance above which an 8x8 window is treated as carrying content.
  *
- * A standard deviation of 4 on a 0–255 scale. Deliberately low: the point is to exclude
- * windows that are *flat*, not to select only the busiest ones, and a high threshold
- * would quietly narrow the measurement to the sharpest edges in the image.
+ * A standard deviation of 4 on a 0 to 255 scale. Low, because the point is to exclude flat
+ * windows, not to keep only the busiest: a high threshold would narrow the measurement to
+ * the sharpest edges in the image.
  */
 const TEXTURE_VARIANCE = 16;
 
@@ -417,36 +371,17 @@ interface SsimResult {
 }
 
 /**
- * Structural similarity over luma, in 8x8 windows, averaged.
+ * Structural similarity over luma premultiplied by alpha (for the reason at `psnr`).
  *
- * The standard formula, with the standard stabilising constants for 8-bit data:
+ * The standard formula and stabilising constants for 8-bit data, over disjoint 8x8 windows
+ * rather than the original paper's sliding 11x11 Gaussian, which on a large screenshot
+ * would be tens of millions of windows per encode. So its values compare with each other,
+ * not with published SSIM figures.
  *
- *   SSIM = ((2·mx·my + C1)(2·cov + C2)) / ((mx² + my² + C1)(vx + vy + C2))
- *
- * ⚠️ **Luma is premultiplied by alpha, for the reason the PSNR function was already
- * fixed for.** The colour stored behind a fully transparent pixel is arbitrary, encoders
- * write whatever they like there, and a metric that scores it is measuring noise in
- * pixels nobody can see. That defect produced a *flat* curve last time, which argues
- * that quality is free — the most expensive wrong answer this instrument can give.
- *
- * 8x8 rather than the 11x11 Gaussian of the original paper: the windows are disjoint
- * here rather than sliding, which is the cheap variant, and on a 2668x3044 screenshot a
- * sliding window would be tens of millions of windows per encode. The absolute value is
- * therefore not comparable with a published SSIM figure. It does not need to be — every
- * number here is compared against another number this same function produced.
- *
- * 🔴 **`textured` exists because the first version inherited the exact defect SSIM was
- * added to escape, and the control caught it within one run.** Averaged over *every*
- * window, SSIM on `full-logo-dark.png` moved 0.9987 at q10 to 0.9996 at q95 — a response
- * so small it tripped the guard. The mechanism is the area-dominance that makes PSNR
- * blind: that logo is mostly transparent, so most windows are flat in both images, score
- * a clean 1.0, and drown the few windows that carry the letterforms. **A screenshot is
- * mostly flat background too**, so the all-windows figure would have been nearly as blind
- * on the cohort this whole re-sample exists for.
- *
- * ⚠️ **That is the same image that broke PSNR in R30**, found by the same control, for
- * the same reason one layer along. Both numbers are reported, and **the gap between them
- * is itself the evidence** that area-dominance is real rather than argued.
+ * `textured` averages only the windows with content in the original. Over every window, a
+ * mostly flat image (a transparent logo, a screenshot's background) scores near 1 however
+ * its few windows of text fare: the area bias that blinds PSNR. Both are reported, and the
+ * gap between them shows that bias.
  */
 async function ssim(original: Buffer, encoded: Buffer): Promise<SsimResult> {
   const [a, b] = await Promise.all([toLuma(original), toLuma(encoded)]);
@@ -504,11 +439,9 @@ async function ssim(original: Buffer, encoded: Buffer): Promise<SsimResult> {
       total += score;
       windows++;
 
-      // 🔴 The window only counts toward `textured` if the ORIGINAL had something in it.
-      // Judged on the original rather than on either-or-both, so the set of windows being
-      // averaged is a property of the image and identical across every quality compared —
-      // otherwise a lower quality could flatten a window out of its own denominator and
-      // score better for having destroyed more.
+      // Judged on the original alone, so the same windows are averaged at every quality.
+      // Judged on the encode, a lower quality could flatten a window out of the average and
+      // score better for destroying more.
       if (varianceA > TEXTURE_VARIANCE) {
         texturedTotal += score;
         texturedWindows++;

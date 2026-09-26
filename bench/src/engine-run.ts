@@ -1,10 +1,10 @@
 /**
- * The engine over one tree, and the applied run built on it.
+ * The engine over one tree, and the two runs that write.
  *
- * The pipeline itself lives in `pipeline.ts` and is shared with `validate.ts`. What is
- * here is the part specific to writing: detection rather than a hand-tuned list, no
- * encode cap, pattern targets exempted, and the refusal that keeps all of it away from
- * the pinned corpus.
+ * `runEngine` only reads, deciding serving roots as a first run does. `optimizeTree`
+ * converts images through the same entry point as `upfly optimize --apply`, and
+ * `relocateTree` moves them. Both refuse the pinned validation corpus before anything
+ * else.
  */
 
 import { createHash } from 'node:crypto';
@@ -44,9 +44,9 @@ export interface EngineRun {
   /**
    * What the walk found, for the directories it refused to enter.
    *
-   * R72: a move's regression count cannot see a reference inside a directory nothing
-   * opened, and those files are absent from the unread *count* too. Stating that needs
-   * `excludedRoots`, which only discovery has.
+   * A move's broken-before-and-after count cannot see a reference inside a directory
+   * nothing opened, and those files are missing from the unread count too. Stating that
+   * gap needs `excludedRoots`, which only discovery has.
    */
   readonly discovery: DiscoveryResult;
 }
@@ -54,16 +54,9 @@ export interface EngineRun {
 /**
  * Everything up to the plan: graph, measurements, findings.
  *
- * Serving roots come from detection AND R132's inference rather than from a hand-written
- * list, which is the point: this is the path a first-time user takes, and until R50 the
- * corpus had never measured it.
- *
- * No encode cap, and pattern targets exempted from one anyway. A cap that limits what
- * we report is a convenience; a cap that limits what we can prove makes a pattern
- * permanently undecidable, and this is the path that writes.
- *
- * `declared` is for a project that states its serving root, which is what a real user
- * does once Upfly tells them to. Absent means detection, which is what a first run gets.
+ * Serving roots come from detection and inference, the path a first-time user takes,
+ * unless `declared` states them as a configured project does. Measuring has no encode
+ * cap.
  */
 export async function runEngine(
   root: string,
@@ -71,23 +64,14 @@ export async function runEngine(
   /**
    * Whether to measure every asset by encoding it.
    *
-   * ⚠️ **Default `true`, because the path that WRITES must not lose its measurements** —
-   * see the note above about a cap making a pattern permanently undecidable.
-   *
-   * 🔴 **But a caller that never reads `probes` should pass `false`, and two of them were
-   * paying for it.** `relocate` plans path changes; it does not convert anything, and
-   * neither it nor `move-run` touches the field. On `railsgirls-com` that is **5,370 webp
-   * encodes per call and two calls per run** — over ten thousand encodes discarded
-   * unread, which is why one `move-run` there takes half an hour. Nothing about the graph,
-   * the serving roots or the broken counts changes without them.
+   * A caller that never reads `probes` should pass `false`. Measuring encodes every
+   * image, thousands of them on the larger validation repositories, and the graph, the
+   * serving roots and the broken counts do not depend on it.
    */
   probe = true,
 ): Promise<EngineRun> {
   const output = await runPipeline({
     root,
-    // 🔴 R132, wired. Detection alone asks what a directory is CALLED and cannot reach
-    // `eleventy-docs`, which serves from `src/`. `decideServingRoots` unions detection
-    // with what the references actually RESOLVE, at R132's measured floors.
     servingRoots: servingRootsFor(declared),
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: probe ? { formats: ['webp'] } : null,
@@ -107,10 +91,9 @@ export async function runEngine(
  * Run the engine over `root` and apply what it plans, through the same core entry point
  * as `upfly optimize --apply`.
  *
- * The refusal is the first statement on purpose. This function converts images and
- * rewrites files under whatever path it is handed, and the pinned corpus is an
- * exported constant in this same package, so the distance between a correct call and
- * a catastrophic one is one argument.
+ * The refusal comes first. This converts images and rewrites files under whatever path
+ * it is handed, and the corpus path is an exported constant of this package, one wrong
+ * argument away.
  */
 export async function optimizeTree(
   root: string,
@@ -132,18 +115,12 @@ export async function optimizeTree(
 /**
  * Plan a set of moves over a real tree and carry them out.
  *
- * 🔴 **The instrument for the one question `relocate`'s tests cannot answer.** The
- * planner is proven against fixtures, and a fixture is a tree whose every reference the
- * graph finds — by construction, because we wrote it. **R39 is about the references the
- * graph MISSES**, and only a repository nobody designed for this engine has those. A
- * move acts on what the graph knows, so a reference it did not find becomes a dangling
- * reference **we caused** rather than one we found.
+ * This answers what `relocate`'s tests cannot. A fixture is a tree whose every reference
+ * the graph finds, because it was written for the engine. A move acts on what the graph
+ * knows, so a reference the graph missed becomes a dangling reference the move caused,
+ * and only a repository nobody wrote for Upfly has those.
  *
- * ⚠️ `refuseValidationCorpus` first, exactly as `optimizeTree` does. Every measurement
- * in this project is stated against the pinned commits in `upfly-validation/`, and a
- * run that wrote inside one would invalidate all of them while the numbers still looked
- * plausible. The caller works on a copy; this makes that structural rather than
- * remembered (R52).
+ * It refuses the pinned corpus first, as `optimizeTree` does.
  */
 export async function relocateTree(
   root: string,
@@ -151,8 +128,7 @@ export async function relocateTree(
 ): Promise<{ plan: RelocationPlan; manifest: Manifest | null }> {
   refuseValidationCorpus(root);
 
-  // `false`: a move rewrites paths and converts nothing, so the encodes would be read by
-  // nobody. Measured at over ten thousand of them per `move-run` on `railsgirls-com`.
+  // `false`: a move converts nothing, so nobody would read the measurements.
   const { graph, servingRoots, aliases } = await runEngine(root, undefined, false);
   const store = createNodeFileStore(root);
 
@@ -191,8 +167,8 @@ export async function relocateTree(
     runId,
     runDir,
     now: () => new Date().toISOString(),
-    // Rule 9: a reference the move could not follow is carried into the record that
-    // outlives the run, not just printed once and lost.
+    // Every reference the move could not follow goes into the manifest with its reason,
+    // which outlives the run, rather than being printed once and lost.
     declined: plan.declined,
   });
 

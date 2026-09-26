@@ -1,50 +1,15 @@
 /**
  * Build the repository the benchmark runs against.
  *
- * The shape is fixed by the performance budget: **10 000 files, 2 000 of them
- * images**. Everything about the tree is derived from a seed, so two runs on two
- * machines measure the same work and a number can be compared to last week's.
+ * The shape is the performance budget's: 10,000 files, 2,000 of them images. Everything
+ * is derived from a seed, so two runs on two machines measure the same work. A tree with
+ * the right file count and the wrong content times the wrong work, so file sizes per
+ * extension, the extension mix and the directory depth are measured on `astro-docs`,
+ * `eleventy-docs` and `shadcn-ui`. See "The benchmark tree" in ARCHITECTURE.md.
  *
- * ⚠️ **RECALIBRATED 2026-09-10 against the three §5.1(c) repositories, because the
- * first version was measuring almost nothing.** Its source files averaged **179
- * bytes**. Measured on the real trees:
- *
- * | | source files | mean | median | p90 | total | depth |
- * |---|---|---|---|---|---|---|
- * | `astro-docs` | 2 681 | 6 666 | 2 346 | 16 771 | 17.9 MB | 5.6 |
- * | `eleventy-docs` | 733 | 2 002 | 294 | 4 408 | 1.5 MB | 2.7 |
- * | `shadcn-ui` | 5 406 | 4 704 | 1 850 | 9 146 | 25.4 MB | 5.2 |
- * | **bench, before** | 7 521 | **179** | **181** | **224** | **1.3 MB** | **2.0** |
- *
- * So the tree had the right *file count* and about **1/30th of the bytes**. Since
- * `scan` is ~87% of the budget and reading is most of that, the benchmark was timing
- * seven thousand file opens against almost no content — which is exactly why
- * `shadcn-ui` cost 5.8 s at 5 814 files where this needed 10 000 for the same wall
- * clock. A gate calibrated on it was rule 16 satisfied in letter and broken in
- * spirit.
- *
- * Three things now come from that table rather than from a guess: the **size
- * distribution** (long-tailed, aimed at a ~1 900 median and ~5 000 mean), the
- * **directory depth** (~5, not 2), and the **extension mix**, blended across the
- * three repositories weighted by file count — `.tsx` and `.mdx` dominate, and the
- * old tree contained no `.mdx` at all.
- *
- * The mix keeps a deliberate minimum of `.css`, `.scss`, `.html`, `.vue` and
- * `.yaml` that the blend alone would have dropped: without them the CSS and HTML
- * adapters go unmeasured and the sweep has nothing unread to search, so its cost
- * would read as zero. That deviation is a choice, not an oversight.
- *
- * **It is generated into the OS temp directory, never into the workspace.** The v2
- * VS Code extension watches every folder named `public` inside the workspace and
- * converts what lands there in place, deleting the original — it destroyed 19
- * fixture images that way. The watcher is scoped to the workspace folder, so a tree
- * in `os.tmpdir()` is invisible to it. An `upfly.config.json` kill switch goes in
- * anyway: the cost is one file, and the failure it prevents is silent.
- *
- * Images are real bytes, because the probe has to decode them. They are generated
- * once per size bucket and then copied — encoding two thousand distinct JPEGs would
- * take longer than the benchmark it exists to feed, and a decoder cannot tell the
- * difference between a file and its copy.
+ * It is generated into the OS temp directory, never into the workspace: the v2 VS Code
+ * extension watches every folder named `public` in the workspace and converts what lands
+ * there in place, deleting the original.
  */
 
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -55,12 +20,8 @@ import sharp from 'sharp';
 /**
  * Bumped when the tree's shape changes, so an old one is never silently reused.
  *
- * **v5 (R126, 2026-09-17): markdown gained HTML, and `.js` stopped being TypeScript.**
- * 🔴 **Every performance figure recorded against v4 describes a tree that no longer
- * exists** — §5.1(g)'s miss, the CI ceiling at `run.ts`, and R124's shares. They are
- * labelled with their tree in the notes rather than overwritten, the same habit R123
- * put in the report with `measuredAgainst`. **The tree gets SLOWER at this version and
- * that is the repair working, not a regression.**
+ * A timing measured on one version describes that tree only. A new version can be slower
+ * because the tree is more realistic, which is not a regression in the engine.
  */
 const TREE_VERSION = 5;
 
@@ -70,9 +31,9 @@ export const TOTAL_IMAGES = 2_000;
 /**
  * The image size mix.
  *
- * Deliberately long-tailed rather than uniform: most repositories are mostly icons
- * with a handful of heavy hero images, and the encode cap selects **largest first**,
- * so a uniform tree would make the cap look like it does nothing.
+ * Long-tailed rather than uniform: most repositories are mostly icons with a handful of
+ * heavy hero images, and the encode cap selects the largest first, so a uniform tree
+ * would make the cap look like it does nothing.
  */
 const BUCKETS = [
   { name: 'icon', width: 64, height: 64, format: 'png', count: 1_400 },
@@ -82,19 +43,13 @@ const BUCKETS = [
 ] as const;
 
 /**
- * Source file sizes, **per extension**, as eleven measured quantiles.
+ * Source file sizes per extension: the quantiles p0, p10 … p90 and p99, measured over
+ * the 8,813 source files of `astro-docs`, `eleventy-docs` and `shadcn-ui`. A draw
+ * interpolates between them.
  *
- * ⚠️ A single global distribution was the second calibration error, and it was
- * worse than it looks. Real repositories size files by *kind*: `.tsx` has a 1 718
- * median while `.ts` has 2 482 and `.mdx` 2 861, and the mix is 38% `.tsx`. Applying
- * one curve to all of them gave every `.tsx` file **3.3× too many bytes** — which is
- * why `.tsx` came out as 57% of parse time on the generated tree while real `.tsx`
- * files are the *small* ones.
- *
- * So these are not a model. They are p0, p10 … p90, p99 measured across the three
- * §5.1(c) repositories — 8 813 files — and a draw interpolates between them. A table
- * a reader can check against `notes/validation/` beats a curve that has to be
- * believed.
+ * Per extension because real repositories size files by kind. `.tsx` is the most common
+ * kind and one of the smallest, so one curve for every kind gives it several times its
+ * real bytes and overstates its share of parse time.
  */
 const SIZE_QUANTILES = new Map<string, readonly number[]>([
   // n=3325 mean=4080
@@ -116,9 +71,9 @@ const SIZE_QUANTILES = new Map<string, readonly number[]>([
 /**
  * Kinds the three repositories barely contain, so there is nothing to measure.
  *
- * `.html` has five instances across all three and `.scss`, `.vue` and `.yaml` none
- * at all — they are here for adapter and sweep coverage, not for realism, and
- * borrowing a neighbouring curve is more honest than inventing one.
+ * `.html` has five files across all three, and `.scss`, `.vue` and `.yaml` none at all.
+ * They are here for adapter and sweep coverage, not for realism, and borrowing a
+ * neighbouring curve is more honest than inventing one.
  */
 const BORROWED_QUANTILES = new Map<string, string>([
   ['.scss', '.css'],
@@ -131,8 +86,8 @@ const BORROWED_QUANTILES = new Map<string, string>([
  * Source formats, blended across the three repositories by file count.
  *
  * `astro-docs` is 96% `.mdx`, `shadcn-ui` 61% `.tsx` and 18% `.json`, `eleventy-docs`
- * 47% `.json` and 31% `.md`. The first four weights below are that blend; the rest
- * are the coverage floor described in the header.
+ * 47% `.json` and 31% `.md`. The weights down to `.css` are that blend; the four after
+ * it are a coverage floor.
  */
 const SOURCE_KINDS = [
   { extension: '.tsx', weight: 34 },
@@ -142,15 +97,16 @@ const SOURCE_KINDS = [
   { extension: '.md', weight: 3 },
   { extension: '.js', weight: 2 },
   { extension: '.css', weight: 2 },
-  // Coverage floor. The measured mix has almost none of these, and without them
-  // two adapters go unmeasured and the sweep has nothing unread to search.
+  // Coverage floor. The measured mix has almost none of these, and without them two
+  // adapters go unmeasured and the sweep has nothing unread to search, so its cost would
+  // read as zero.
   { extension: '.scss', weight: 2 },
   { extension: '.html', weight: 2 },
   { extension: '.vue', weight: 2 },
   { extension: '.yaml', weight: 2 },
 ] as const;
 
-/** Measured median depth is 5.2–5.6 on the two large repos; the old tree was 2. */
+/** The median depth measured on `astro-docs` and `shadcn-ui` is 5.2 to 5.6. */
 const DIRECTORY_DEPTH = 5;
 
 export interface GeneratedTree {
@@ -175,7 +131,7 @@ function rng(seed: number): () => number {
  *
  * Reuse is the default because generating it costs more than most of the
  * measurements do, and the version in the path means a shape change cannot quietly
- * reuse a stale tree — the trap the WSL sync fell into.
+ * reuse a stale tree.
  */
 export async function generateTree(options: { fresh?: boolean } = {}): Promise<GeneratedTree> {
   const root = join(tmpdir(), `upfly-bench-v${TREE_VERSION}`);
@@ -188,8 +144,9 @@ export async function generateTree(options: { fresh?: boolean } = {}): Promise<G
   await rm(root, { recursive: true, force: true });
   await mkdir(root, { recursive: true });
 
-  // Belt and braces. The tree is outside the workspace already, so the watcher
-  // cannot see it — but the cost of being wrong about that is silent corruption.
+  // The v2 extension's kill switch. The tree is outside the workspace already, so its
+  // watcher cannot see it, but being wrong about that would corrupt the tree silently,
+  // and the switch costs one file.
   await writeFile(
     join(root, 'upfly.config.json'),
     `${JSON.stringify({ enabled: false, watchTargets: [] }, null, 2)}\n`,
@@ -208,8 +165,9 @@ async function writeImages(root: string): Promise<string[]> {
   const random = rng(0x51ff_ee11);
 
   for (const bucket of BUCKETS) {
-    // One real encode per bucket; the rest are copies. A decoder cannot tell, and
-    // two thousand distinct encodes would cost more than the benchmark measures.
+    // Real bytes, because the probe decodes them, but one real encode per bucket and
+    // copies for the rest: a decoder cannot tell a copy apart, and two thousand distinct
+    // encodes would take longer than the benchmark they feed.
     const master = join(root, 'public', 'img', `_master-${bucket.name}.${bucket.format}`);
     await mkdir(join(root, 'public', 'img'), { recursive: true });
     await writeMaster(master, bucket);
@@ -246,15 +204,15 @@ function extensionFor(format: string): string {
 /**
  * Source files that reference the images.
  *
- * The reference mix is deliberate: most resolve, and a minority land in each of the
- * buckets the resolver has to keep apart, so the benchmark exercises the ladder
- * rather than one rung of it. A slice of images is left unreferenced on purpose —
- * without candidates the sweep does no work and its cost would read as zero.
+ * Most references resolve, and a minority land in each of the buckets the resolver has
+ * to keep apart, so the benchmark exercises the resolver's whole ladder rather than one
+ * rung of it.
  */
 async function writeSources(root: string, images: readonly string[]): Promise<void> {
   const random = rng(0x0bad_c0de);
   const sources = TOTAL_FILES - images.length - 2; // config + completion marker
-  // The last tenth is never referenced, so the sweep has candidates to look for.
+  // The last tenth is never referenced, so the sweep has candidates to look for and its
+  // cost does not read as zero.
   const referenceable = images.slice(0, Math.floor(images.length * 0.9));
 
   const unreferenced = images.slice(Math.floor(images.length * 0.9));
@@ -307,9 +265,9 @@ function targetSize(extension: string, random: () => number): number {
   const quantiles = SIZE_QUANTILES.get(key);
   if (quantiles === undefined) return 1_000;
 
-  // The last point is p99, so the top 1% is drawn from the p90–p99 span rather than
-  // extrapolated past it: the real maxima are single files (one 1.1 MB `.tsx`) and
-  // reproducing them would put a handful of outliers in charge of the median.
+  // The last point is p99, so the top 1% is drawn from the p90 to p99 span rather than
+  // extrapolated past it: the real maxima are single files (one 1.1 MB `.tsx`), and
+  // reproducing them would let a handful of outliers swing the mean.
   const position = random() * (quantiles.length - 1);
   const lower = Math.floor(position);
   const upper = Math.min(lower + 1, quantiles.length - 1);
@@ -322,10 +280,9 @@ function targetSize(extension: string, random: () => number): number {
 /**
  * Grow a file to its target size with content the parser still has to read.
  *
- * ⚠️ Padding with a comment block would be cheaper to parse than real code, and
- * parsing is a sixth of the budget — so filler that the tokeniser skips would put
- * the bytes back while leaving that sixth understated. Each kind is padded with
- * more of what it already is.
+ * Padding with a comment block alone would parse more cheaply than real code, putting
+ * the bytes back while understating the parse. Each kind is padded with more of what it
+ * already is.
  */
 function padTo(
   body: string,
@@ -345,9 +302,9 @@ function padTo(
     unit += 1;
   }
 
-  // JSON is emitted with its object left open so that padding can append members;
-  // it has to be closed here or 14% of the tree becomes `ADAPTER_PARSE_FAILED` and
-  // the benchmark measures the error path instead of the parse path.
+  // `sourceText` leaves a JSON object open so that padding can append members. Closed
+  // here, or every `.json` file fails to parse and the benchmark measures the error path
+  // instead of the parse path.
   if (extension === '.json') parts.push('}');
 
   return `${parts.join('\n')}\n`;
@@ -372,12 +329,11 @@ function filler(
       const prose = `\n## ${word()} ${word()}\n\n${word()} ${word()} ${word()} ${word()} ${word()} ${word()}, ${word()} ${word()} ${word()}.\n`;
       if (!shape.markup) return prose;
 
-      // Real markdown's tags are overwhelmingly INSIDE fenced code blocks — docs
-      // sites showing markup rather than using it — and the adapter masks a fence
-      // before parse5 reads it. So the common case here is fenced: bytes and tags
-      // that cost the parse5 pass its time and can never yield a reference. Roughly
-      // a third is live markup carrying no image, which is the other real shape.
-      // Neither can produce a reference; only `shape.refuting` does that.
+      // Real markdown's tags sit mostly inside fenced code blocks (documentation showing
+      // markup rather than using it), and the adapter masks a fence before parse5 reads
+      // it. So most markup here is fenced: bytes and tags that cost the parse5 pass time
+      // and never yield a reference. About a third is live markup carrying no image.
+      // Neither produces a reference; only `shape.refuting` does.
       const draw = random();
       if (draw < 0.55) return prose;
       if (draw < 0.85) {
@@ -408,16 +364,9 @@ function filler(
         '  );',
         '}',
       ].join('\n');
-    // 🔴 `.js` is NOT `.ts` and shared filler made 128 of the tree's 160 `.js` files
-    // invalid JavaScript (R124, B11). The `default` branch below writes a TypeScript
-    // parameter annotation — `helper0(buffer: number): number` — which Babel rejects
-    // at line 5 column 31 when the file is plain `.js`. The engine handled it
-    // correctly, reporting the file `unscanned` with a reason, so rule 9 never broke;
-    // what broke is the MEASUREMENT. The tree's `.js` parse cost was 80% the cost of
-    // FAILING, and a cost measured over a population that silently excludes four
-    // fifths of itself is not that population's cost.
-    //
-    // Found only because a probe counted throws instead of letting them vanish (R86).
+    // Plain JavaScript, without the type annotations the `default` branch writes. Babel
+    // rejects those in a `.js` file, and the benchmark would then time failed parses
+    // rather than parses.
     case '.js':
     case '.jsx':
     case '.mjs':
@@ -443,18 +392,12 @@ function filler(
 }
 
 /**
- * A line of prose, for filler that has to add **bytes without AST nodes**.
+ * A line of prose, for filler that has to add bytes without syntax nodes.
  *
- * ⚠️ This is the third calibration axis, and it was wrong too. Measured, generated
- * `.tsx` came out at **233.7 AST nodes per KB against real code's 120.3** — so even
- * once the byte counts matched, the tree was handing Babel nearly twice the work per
- * byte. Real components are mostly comments, prose inside JSX, long string literals
- * and blank lines; a wall of tiny declarations is not what a repository looks like.
- *
- * A comment costs bytes and no nodes. A sentence inside JSX is one `JSXText` node
- * however long it runs. Both are how real files get their bytes, so both are how
- * this gets its own — and there is no version of this where the tree is finally
- * "representative": there is only the next axis nobody has checked yet.
+ * Real components get much of their size from comments, prose inside JSX, long strings
+ * and blank lines, so filler made only of declarations hands Babel about twice the nodes
+ * per KB that real code does. A comment costs bytes and no nodes, and a sentence inside
+ * JSX is one `JSXText` node however long it runs, so the filler uses both.
  */
 function sentence(word: () => string): string {
   return `${word()} ${word()} ${word()} ${word()} ${word()} ${word()} ${word()} ${word()}`;
@@ -487,38 +430,20 @@ function expandWeights(): string[] {
 /**
  * What kind of markdown document this is, drawn once per file.
  *
- * 🔴 **R126. Before this, the tree's markdown could not contain an angle bracket BY
- * CONSTRUCTION** — the head emitted `# Title`, `![alt]()` and `[link]()`, the filler
- * emitted `## heading` plus prose, and neither can produce a tag. So the safety of
- * *"skip the parse5 pass when there is no markup"* on 2,640 of 2,640 documents was a
- * property of this generator, not a measurement. **A corpus that can confirm but not
- * refute is not evidence (R117), and that is a cleaner statement of it than any count.**
- *
- * ⚠️ **Both rates are measured, not chosen.** Across the five validation repositories'
- * 3,222 markdown documents:
- *
- * | | real corpus | here |
- * |---|---|---|
- * | documents carrying any HTML tag | **71.5%** | `MARKUP_SHARE` |
- * | documents where dropping the parse5 pass **loses a reference** | **0.9%** | `REFUTING_SHARE` |
- * | tags per document, mean | 19.4 | ~18, from the filler rate |
- *
- * 🔴 **The two rates are 80× apart and the gap is the whole point.** astro-docs has
- * 2,604 markdown documents at 19.6 tags each and **zero** where the skip would lose
- * anything: nearly all of its markup sits inside fenced code blocks, which the adapter
- * masks before parse5 ever sees it. A first measurement of this on RAW text said 7.7%
- * and was wrong by 8× for exactly that reason. The filler below reproduces the shape —
- * most markup fenced, some live, references rare — because a tree that put its tags
- * only in live positions would overstate what the skip can save.
+ * Without documents where skipping the parse5 pass loses a reference, the tree could only
+ * ever confirm that the skip is safe. Both rates below are measured on the five
+ * validation repositories. They are far apart because most markup in documentation sits
+ * inside fenced code blocks, which the adapter masks before parse5 sees it, and the
+ * filler reproduces that. See "The benchmark tree" in ARCHITECTURE.md.
  */
 export interface MarkdownShape {
-  /** This document carries raw HTML at all — fenced, live, or both. */
+  /** This document carries raw HTML: fenced, live, or both. */
   readonly markup: boolean;
-  /** 🔴 This document carries an image reference ONLY the parse5 pass can find. */
+  /** This document carries an image reference that only the parse5 pass can find. */
   readonly refuting: boolean;
 }
 
-/** Measured: 2,305 of 3,222 real markdown documents carry at least one HTML tag. */
+/** Measured: 2,305 of 3,222 markdown documents carry at least one HTML tag. */
 const MARKUP_SHARE = 0.715;
 
 /** Measured: 30 of 3,222 would lose a reference if the parse5 pass were skipped. */
@@ -537,9 +462,8 @@ function markdownShapeFor(extension: string, random: () => number): MarkdownShap
 /**
  * One generated file, head plus padding, exactly as the tree writes it.
  *
- * Exported so `generate.test.ts` can prove the refuting class exists by running **this**
- * rather than a copy of it. A prover that exercises a reimplementation proves something
- * about the reimplementation.
+ * Exported so that `generate.test.ts` proves the refuting class exists by running this
+ * code rather than a copy of it, which would prove something about the copy.
  */
 export function buildFileText(
   extension: string,
@@ -562,9 +486,9 @@ function sourceText(
   /**
    * Images no adapter-read file references.
    *
-   * The unread formats below name some of these on purpose. Without that the sweep
-   * finds nothing, and its measured cost would be the cost of looking rather than
-   * the cost of looking *and* recording — the half that grows with the answer.
+   * The unread formats below name some of these, so that the sweep records hits. Without
+   * them its measured cost would be the cost of looking without the cost of recording,
+   * the half that grows with the answer.
    */
   unreferenced: readonly string[] = [],
   shape: MarkdownShape = { markup: false, refuting: false },
@@ -597,19 +521,13 @@ function sourceText(
       const head = ['# Title', '', `![alt](${up}${pick()})`, '', `[link](${up}${pick()})`];
       if (!shape.refuting) return head.join('\n');
 
-      // 🔴 THE REFUTING INPUT, and the reason this branch exists at all.
+      // The refuting input. The Markdown regexes match only `![alt](path)` and
+      // `[label]: path`, so the `<img src>` and the `background-image` below are found
+      // only by the parse5 pass, and skipping it would lose them. `.md` stamps the tag
+      // `md.raw-html`, `.mdx` stamps it `mdx.jsx`, and the style attribute is
+      // `md.style-attribute`, so all three HTML-born shapes appear.
       //
-      // Every path below is reachable ONLY through the parse5 pass: the Markdown
-      // regexes match `![alt](path)` and `[label]: path` and nothing else, so an
-      // `<img src>` or a `background-image` is invisible to them. Drop the parse5
-      // call and these references stop being found — which is what makes them the
-      // input the old tree could not hold. `.md` stamps them `md.raw-html`, `.mdx`
-      // stamps the same markup `mdx.jsx`, and the style attribute is
-      // `md.style-attribute`, so all three HTML-born shapes are represented.
-      //
-      // ⚠️ Deliberately NOT inside a fence. Fenced markup is masked before parse5
-      // sees it, which is why astro-docs can hold 19.6 tags a document and still
-      // refute nothing.
+      // Outside a fence, because fenced markup is masked before parse5 sees it.
       head.push(
         '',
         `<img src="${up}${pick()}" alt="${extension === '.mdx' ? 'jsx' : 'raw'}">`,
@@ -619,23 +537,19 @@ function sourceText(
       return head.join('\n');
     }
     case '.json':
-      // Opened rather than closed: `padTo` appends `,\n "key": …` members, so the
-      // brace is added by `writeSources` at the end. A malformed JSON file would be
-      // an `ADAPTER_PARSE_FAILED` on 14% of the tree and would measure the error
-      // path instead of the parse path.
+      // Left open: `padTo` appends `,\n "key": …` members and then closes the brace.
       return `{\n  "icon": "/${pick()}",\n  "name": "thing",\n  "main": "./index.js"`;
     case '.vue':
-      // No adapter reads this, so it feeds the sweep rather than the graph — and it
-      // names an image nothing else references, so the sweep actually finds
-      // something. Measuring a sweep that never records a hit would measure the
-      // cost of looking without the cost of finding.
+      // No adapter reads this, so it feeds the sweep rather than the graph, and it names
+      // an image nothing else references, so the sweep records a hit.
       return `<template><img src="/${pickUnreferenced()}"></template>`;
     case '.yaml':
       return `image: /${pickUnreferenced()}\ntitle: thing`;
     case '.tsx':
       return [
         `import hero from '${up}${pick()}';`,
-        // Alias-shaped: `unresolved-alias` until Phase 2, and common in real code.
+        // Alias-shaped and common in real code. The tree declares no alias, so this is
+        // `unresolved-alias`.
         "import logo from '@/assets/logo.png';",
         'export const C = () => <img src={hero} alt="" />;',
         `export const D = () => <img src="/${pick()}" alt="" />;`,

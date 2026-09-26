@@ -1,69 +1,15 @@
 /**
- * The tree's GROWTH LIST, from reality: which shapes a real repository contains that the
- * coverage tree has no instance of.
+ * Lists the shapes that references in the validation repositories carry and the coverage
+ * tree has no instance of: the tree's growth list, taken from real code.
  *
- * 🔴 **WITHDRAWN AS A COVERAGE MEASUREMENT BY R95, AND NARROWED TO THAT ONE PURPOSE.** It
- * was specified as R76b — *what fraction of a real repository falls into shapes the tree
- * tests* — and running it showed the question cannot be answered this way. **Both sides of
- * that fraction come from the same list**, so the instrument could only ever return a high
- * number. R95's test, which this file failed and which now applies to every instrument
- * here: **before specifying any measurement, ask what result would falsify it and whether
- * the instrument can produce that result.**
+ * It does not measure how far the tree's results hold on real repositories. A reference can
+ * only carry a shape the engine declares, and the engine's vocabulary is kept equal to the
+ * tree's, so only shapes already known to be untested can appear here, never one nobody has
+ * named. The false-negative sweep in `validate.ts` can find such a shape, because it searches
+ * the text for filenames and never asks what shape anything is. See "What the tree says about
+ * real repositories" in ARCHITECTURE.md.
  *
- * ✅ **R74's sweep is the transferability evidence**, because it is a plain text search that
- * never asks the engine what shape anything is.
- *
- * **What follows is the original reasoning, kept because it is why the instrument was
- * narrowed rather than deleted.**
- *
- * **The honest limit first, because it is the reason this exists.** A built tree answers
- * *“of the shapes we KNOW about, how many do we handle?”* It cannot answer *“of the shapes
- * that EXIST, how many do we handle?”* — a shape nobody imagined does not appear as a
- * failure, **it appears as nothing, because it is not there.** So *“100% of the tree”* is
- * consistent with 60% of the world.
- *
- * 🔴 **R76 HELD THAT THE GAP IS MEASURABLE THIS WAY, AND RUNNING IT SHOWS IT IS NOT.**
- * The design was: classify every reference by shape, ask which shapes the tree instantiates,
- * and name the remainder. Measured across the five repos, the remainder is **one reference**
- * — and it could never have been much more, because **a reference can only carry a shape an
- * adapter emits**, and the vocabulary is held identical to the tree's by a red test (R76,
- * R82). So the remainder is bounded by the seven shapes already known to have no tree
- * instance: four on `UNTESTED_SHAPE_IDS`, three the key declares unkeyable with a reason.
- *
- * ⚠️ **A shape nobody imagined has no id at all, so it cannot appear in the remainder — it
- * appears as nothing. That is R76's own objection, reproduced inside the measurement built
- * to escape it**, and it is this file's finding rather than a caveat on it.
- *
- * ✅ **The instrument that CAN see an unimagined shape is R74's sweep**, because it is a
- * plain text search that never asks the engine what shape anything is: 3,364 filename
- * mentions the graph did not link, 638 adjudicated, 0 genuine misses. **That is the
- * transferability evidence.** What this file still earns its place for is the GROWTH LIST —
- * which named shapes reality actually contains that the tree does not test — and that list
- * is worth keeping accurate even when it is short.
- *
- * 🔴 **NO SINGLE PERCENTAGE IS PRINTED, and that is a hard rule rather than a style
- * choice (R76).** Coverage of our test shapes is **not** accuracy, and the two are
- * conflated the moment they share a page. This prints counts per shape and a named
- * remainder; there is deliberately no figure to lift out of it.
- *
- * ⚠️ **AND NO AVERAGE ACROSS REPOSITORIES.** One `railsgirls-com` would dominate any mean
- * — it holds more references than the other four together — so an average would describe
- * that repository and be quoted as describing the corpus.
- *
- * ## What it is careful about
- *
- * ⚠️ **It runs with the corpus's DECLARED serving roots, from the table in `repos.ts`.**
- * Auto-detection finds directories *named* `public` or `static`; shadcn-ui has twelve
- * declared, and resolving against a sibling app's public directory once produced 93 false
- * `broken` findings (R13). A transferability figure measured on a misconfigured run
- * describes the misconfiguration. This is the third instrument in one week to need that
- * warning, so it is wired to the table rather than restated.
- *
- * ⚠️ **Read-only.** It runs the scan and resolve path, writes nothing, and never touches
- * the pinned corpus — `refuseValidationCorpus` guards the writing paths, and this is not
- * one of them.
- *
- * Usage: `pnpm --filter upfly-bench run transferability`
+ * Read-only. Usage: `pnpm --filter upfly-bench run transferability`
  */
 
 import { existsSync } from 'node:fs';
@@ -80,7 +26,7 @@ import {
 } from 'upfly-core';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
 
-/** Which shapes the tree has at least one instance of — the numerator's definition. */
+/** The shapes the coverage tree has at least one instance of, read from its answer key. */
 async function testedShapes(): Promise<ReadonlySet<string>> {
   const keyPath = new URL('../../coverage-tree/key/coverage-key.json', import.meta.url);
   const key = JSON.parse(await readFile(keyPath, 'utf8')) as {
@@ -97,7 +43,7 @@ interface RepoResult {
   readonly name: string;
   readonly references: number;
   readonly inTestedShapes: number;
-  /** Shape → count, for shapes the tree has NO instance of. The named remainder. */
+  /** Count per shape, for the shapes the tree has no instance of. */
   readonly remainder: ReadonlyMap<string, number>;
 }
 
@@ -121,14 +67,14 @@ async function classify(root: string, publicDirs: readonly string[]) {
   const references = resolveReferences(scanned.references, {
     root: discovery.root,
     assets: discovery.assets,
-    // Declared, from the table. See the note at the top of this file.
+    // The declared roots from `repos.ts`, as `validate.ts` runs its configured entries.
     servingRoots: { dirs: publicDirs, declared: true },
     excludedRoots: discovery.excludedRoots,
     aliases,
     exists: (path: string) => existsSync(path),
   });
-  // The graph is built so this run matches the one every other instrument reports on,
-  // rather than measuring a pipeline nobody else uses.
+  // Built, though its result is unused, so this run matches the one the other instruments
+  // report on.
   buildGraph({
     root: discovery.root,
     assets: discovery.assets,
@@ -158,8 +104,8 @@ const tested = await testedShapes();
 const results: RepoResult[] = [];
 
 for (const repo of REPOS) {
-  // The unconfigured twins measure root INFERENCE, which is R71's question and a different
-  // instrument's. Including them here would count the same repository twice.
+  // An unconfigured entry is a second run of a repository already in the table, so
+  // including it would count that repository twice.
   if (repo.unconfigured === true) continue;
   const root = `${VALIDATION_ROOT}/${repo.name}`;
   if (!existsSync(root)) {
@@ -170,6 +116,8 @@ for (const repo of REPOS) {
   results.push({ name: repo.name, ...tally(references, tested) });
 }
 
+// Per repository and never averaged: `railsgirls-com` holds more references than the other
+// four together, so a mean would describe that one repository.
 stdout.write('\nR76b — transferability. Per repository, and DELIBERATELY NOT AVERAGED.\n');
 stdout.write(
   '🔴 Coverage of our test shapes is NOT accuracy. These are counts of references whose SHAPE\n' +
@@ -195,11 +143,9 @@ for (const result of results) {
 }
 
 /**
- * The union of every shape the corpus produced that the tree has no instance of.
- *
- * ✅ **This is the growth list R76 promised, arriving from reality rather than from
- * imagination** — and unlike `UNTESTED_SHAPE_IDS`, which lists constructs somebody noticed
- * the engine could emit, every id here is one a real repository actually contains.
+ * Every shape the corpus produced that the tree has no instance of: the growth list. Unlike
+ * `UNTESTED_SHAPE_IDS`, which lists shapes the engine can emit, every id here occurs in a
+ * real repository.
  */
 const union = new Map<string, number>();
 for (const result of results) {

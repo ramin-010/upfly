@@ -1,31 +1,12 @@
 /**
- * R47's cohort, widened from 14 images to every raster image in the corpus.
+ * Compares lossless WebP with webp 80 on every raster image in the validation corpus.
  *
- * 🔴 **Why this exists.** R47 ruled that a text-heavy image should go to lossless WebP —
- * 29.3% saving at perfect fidelity against webp 80's 1.1% — and then deliberately did
- * **not** build it, because the evidence was one hand-picked cohort of 14 and *"a default
- * changed on a thin sample is exactly how R47 started."* This is the widening.
+ * A lossless encode is exact, so when it is also smaller it is better on both counts, and
+ * the choice needs neither a classifier for text-heavy images nor a perceptual metric. This
+ * measures only which encode is smaller, not whether the lossy one looks acceptable. See
+ * "Lossless WebP for PNG sources" in ARCHITECTURE.md.
  *
- * ✅ **AND IT NEEDS NO CLASSIFIER, WHICH IS THE POINT.** The obvious build is *"detect
- * text-heavy images, then choose lossless for them"*, and detection is where this would
- * get expensive and arguable. It is not necessary. **Lossless is exact by definition, so
- * whenever it produces fewer bytes than the lossy encode it is better on BOTH axes and
- * there is nothing left to weigh.** The decision is a byte comparison, per image, and the
- * measurement is the decision. R47's *per image, not per run* falls straight out of that.
- *
- * 🔴 **AND IT NEEDS NO PERCEPTUAL METRIC, WHICH MATTERS MORE.** PSNR inverted this exact
- * question once — it rated text-heavy images *higher* at every quality and would have led
- * a chat to LOWER quality for screenshots. A rule that compares byte counts between an
- * exact encode and a lossy one never consults a perceptual metric at all, so it cannot be
- * fooled by one. That is a stronger guarantee than picking a better metric would be.
- *
- * ⚠️ **What this measures and what it does not.** It measures which encode is smaller. It
- * does not measure whether the lossy encode was acceptable — that is what `avif 75`'s
- * SSIM evidence already covers and is not reopened here.
- *
- * **Writes nothing.** Every encode stays a Buffer in memory: no output directory, no
- * temporary files, nothing inside `upfly-validation/` (R52), and nothing anywhere near a
- * `public/` folder the shipped v2 extension still watches.
+ * Writes nothing: every encode stays in memory, so a run cannot change the pinned corpus.
  *
  * Usage:
  *   pnpm --filter upfly-bench run lossless-cohort
@@ -41,7 +22,7 @@ import { REPOS, VALIDATION_ROOT } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
-/** The lossy default R47 left standing for everything that is not text-heavy. */
+/** The lossy setting lossless competes with: webp's default, `DEFAULT_ENCODE_QUALITY.webp`. */
 const LOSSY_QUALITY = 80;
 
 /** Sources sharp will re-encode. `.svg` is never converted, so it is not a subject. */
@@ -81,9 +62,8 @@ async function main(): Promise<void> {
   );
 
   const rows: Row[] = [];
-  // R86: a throw is a third outcome. An animated GIF, a CMYK JPEG or a truncated file
-  // will throw here, and a silent skip would shrink the cohort invisibly — which is the
-  // exact failure mode this whole exercise is correcting.
+  // A throw is a third outcome, counted rather than skipped: a file sharp cannot decode,
+  // such as a truncated one, would otherwise shrink the cohort unseen.
   const threw: { repo: string; relative: string; why: string }[] = [];
 
   for (const repo of subjects) {
@@ -154,20 +134,18 @@ async function main(): Promise<void> {
     );
   }
 
-  // 🔴 The `.gif` row above is WITHDRAWN and says so on the page, because a number that
-  // is only wrong in a footnote gets quoted from the table. This file calls sharp
-  // without `animated: true`, and 26 of the corpus's 78 GIFs have more than one page —
-  // so for those the comparison is between two FIRST-FRAME encodes, neither of which is
-  // the file. Fixing it means teaching this instrument about animation, which is a
-  // different measurement; the ruling it feeds (R129) does not rest on GIFs.
+  // The `.gif` row is withdrawn in the output, beside the table it would be quoted from.
+  // sharp is called without `animated: true`, so an animated GIF is compared as two
+  // first-frame encodes, neither of which is the file. The probe tries lossless for PNG
+  // sources only, so no decision rests on this row.
   if (rows.some((row) => row.source === '.gif')) {
     stdout.write(
       '\n  ⚠️ the .gif row is WITHDRAWN: 26 of 78 corpus GIFs are animated and this\n     instrument encodes first frames only. Do not quote it. The other rows stand.\n',
     );
   }
 
-  // 🔴 The number the ruling turns on: what does "take the smaller" buy over today's
-  // fixed lossy default, across the WHOLE corpus rather than the class it helps?
+  // What keeping the smaller encode saves over always using webp 80, across the whole
+  // corpus rather than only the images it helps.
   const today = rows.reduce((sum, row) => sum + row.lossyBytes, 0);
   const proposed = rows.reduce((sum, row) => sum + Math.min(row.lossyBytes, row.losslessBytes), 0);
   const original = rows.reduce((sum, row) => sum + row.originalBytes, 0);
@@ -184,14 +162,10 @@ async function main(): Promise<void> {
     `    🔴 what the rule actually buys : ${pct((today - proposed) / today)} beyond today's default\n`,
   );
 
-  // 🔴 Is there a CHEAP TRIGGER? "Encode both and keep the smaller" pays for a second
-  // encode on every image, and lossless measures at 1.30x the lossy one — so the rule as
-  // stated costs ~2.3x today's encode time. R47's own finding suggests a trigger: webp 80
-  // on a text-heavy image saves ~1.1% or grows the file, so the images lossless rescues
-  // should be the ones the LOSSY encode already did badly on. If that holds, the second
-  // encode can be spent only where it can pay, and the rule gets most of its benefit for
-  // a fraction of the cost. If it does not hold, there is no trigger and the honest
-  // version is the expensive one — which is why this is measured rather than assumed.
+  // The bands below look for a cheap trigger. Encoding both costs a second encode on every
+  // image, and a lossless encode costs about 1.3 times a lossy one. webp 80 saves little on
+  // a text-heavy image, or grows it, so if lossless wins cluster where the lossy saving was
+  // poor, the second encode could be spent only there.
   stdout.write('  do the lossless wins concentrate where the LOSSY encode did badly?\n');
   stdout.write('    lossy saving band     images   lossless wins   share\n');
   const bands: [string, (s: number) => boolean][] = [
@@ -211,9 +185,9 @@ async function main(): Promise<void> {
     );
   }
 
-  // ⚠️ The honest counterweight: images where BOTH encodes are larger than the source.
-  // The planner already drops those, so they are not a risk — but leaving them out of
-  // the denominator above would overstate what the corpus has to gain.
+  // Images where both encodes are larger than the source. The planner drops these, so they
+  // are no risk, but they stay in the totals above: leaving them out would overstate what
+  // the corpus has to gain.
   const neither = rows.filter(
     (row) => row.lossyBytes >= row.originalBytes && row.losslessBytes >= row.originalBytes,
   );

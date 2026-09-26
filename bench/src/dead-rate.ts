@@ -1,30 +1,15 @@
 /**
- * §5.1(j): the measured false-`dead` rate.
+ * The false-`dead` rate on any repository: each `dead` and `possibly-dead` finding, or an
+ * even sample, checked by the independent oracle in `verify.ts`. A false `dead` calls a file
+ * in use safe to remove, and a count of false `broken` findings cannot see it. `validate.ts`
+ * runs the same oracle over the five validation repositories; this points it at any
+ * repository. See "Scoring references for accuracy" in ARCHITECTURE.md.
  *
- * **Why this exists.** The Phase 1 exit criterion is *zero false `broken`*, and R26 proved
- * that is necessary without being sufficient. A false `broken` wastes five minutes; a
- * false `dead` says *"safe to remove"* about a file serving on somebody's live site. On a
- * repository outside §5.1(c) the `dead` error rate was **16%**, and §5.1 saw nothing —
- * because it never measured that direction at all. A gate that cannot see the worse
- * failure is not a complete gate.
+ * It is meant for someone's working repository, so it runs the audit only, never an
+ * optimize, and writes nothing but the `--out` file.
  *
- * So this reports a **number**, not a pass or a fail: sample N `dead` findings, verify each
- * with the independent oracle, and print the rate. `validate.ts` already runs the same
- * oracle over the three pinned repos; what this adds is the ability to point it at an
- * arbitrary repository — including a private one — and the rate itself as the output.
- *
- * ⚠️ **Read-only, and that is not incidental.** It is expected to be pointed at somebody's
- * working repository. It runs the audit path only, never `--apply`, writes nothing inside
- * the target, and touches no config there. The v2 extension's destructive
- * `upfly.config.json` exists armed in at least one such repo; this must never become a
- * reason to edit one.
- *
- * Usage:
- *
- * ```
- * pnpm --filter upfly-bench run dead-rate -- --root=D:/path/to/repo --public=public
- * pnpm --filter upfly-bench run dead-rate -- --root=… --sample=50 --out=/tmp/detail.md
- * ```
+ * Usage: `pnpm --filter upfly-bench run dead-rate -- --root=<repo> --public=public`, with
+ * `--sample=50` to check an even sample and `--out=<file>` for every verdict in Markdown.
  */
 
 import { appendFileSync, existsSync } from 'node:fs';
@@ -82,11 +67,8 @@ function parseOptions(): Options {
 }
 
 /**
- * Progress, written synchronously to stderr and to an optional log.
- *
- * ⚠️ Piped stdout is fully buffered, so the first version of this printed nothing for ten
- * minutes and was indistinguishable from a hang — which is how a long check quietly stops
- * being run at all.
+ * Progress, written synchronously to stderr. Written to piped stdout it can stay invisible
+ * until the run ends, and a long run that prints nothing looks like a hang.
  */
 function stage(label: string, since: number): number {
   const now = performance.now();
@@ -203,10 +185,8 @@ function report_(
 }
 
 /**
- * The rate, and the sample it came from.
- *
- * ⚠️ Deterministic sampling — every Nth item over the sorted list, never `Math.random()`.
- * A rate nobody else can reproduce is an anecdote.
+ * The rate, and the sample it came from. The sample is every Nth item of the sorted list,
+ * never a random draw, so anyone can reproduce the rate.
  */
 function print(label: string, items: readonly ItemVerdict[], sample: number): void {
   const ordered = [...items].sort((a, b) => (a.subject < b.subject ? -1 : 1));
@@ -236,7 +216,10 @@ function print(label: string, items: readonly ItemVerdict[], sample: number): vo
   stdout.write('\n');
 }
 
-/** Per-item detail, written wherever the caller asked — never inside the target repo. */
+/**
+ * Every verdict with its evidence, written to `--out`. Nothing checks that the path lies
+ * outside the target repository.
+ */
 async function writeDetail(out: string, items: readonly ItemVerdict[]): Promise<void> {
   const lines = ['# §5.1(j) — every unreferenced-asset verdict', ''];
   for (const item of [...items].sort((a, b) => (a.subject < b.subject ? -1 : 1))) {

@@ -1,31 +1,12 @@
 /**
- * The Phase 2 exit criterion, made executable — and made able to fail first.
+ * The product's central test: `optimize --apply` on every fixture, after which each one
+ * must still build and every local path in the built site must resolve.
  *
- * The build plan's exit criterion reads: *"`optimize --apply` on all fixtures
- * produces a tree whose build still passes — each fixture has a `build` script that
- * runs in CI after optimization. That test is the product's promise."*
- *
- * ⚠️ **It had never run.** The five fixtures declared `build` scripts and **not one
- * declared a dependency**, so `astro build` could not have started; there was no
- * lockfile; and `ci.yml`'s `build` job builds the packages, not the fixtures. A gate
- * that has never run is indistinguishable from a gate that passes (R42).
- *
- * So this harness is deliberately built **before** the transaction it exists to
- * judge, and its first job is not to pass. It is to **fail on demand**: every
- * fixture is checked once untouched, then once per reference class with that class
- * of reference deliberately pointed at a file that does not exist. An instrument
- * that cannot tell those two trees apart is reported as **blind** for that class
- * rather than quietly counted as a pass.
- *
- * That ordering matters for a reason beyond tidiness: the harness is finished and
- * calibrated while there is no `optimize` to tune it against, so it cannot have been
- * shaped — consciously or not — to let our own transaction through.
- *
- * **Nothing here uses the engine.** Not `discover`, not the resolver, not an
- * adapter. The whole value of a framework build as an oracle is that it is somebody
- * else's idea of what a reference is; routing it through ours would reproduce
- * §5.1(j)'s blind instrument, where the thing doing the checking shared the defect
- * it was checking for.
+ * Every fixture is also checked untouched, and once per reference class with one reference
+ * of that class pointed at a file that does not exist. An instrument that cannot tell those
+ * trees apart is reported as blind to that class rather than trusted. The build and the link
+ * check share no code with the engine, so they cannot share its mistakes. See "The fixture
+ * build" in ARCHITECTURE.md.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -36,28 +17,21 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import type { PublicPolicy } from 'upfly-core';
-// The one place this file touches the engine, and it is the subject rather than an
-// instrument. The build and the link check stay engine-free on purpose: the value of
-// a framework build as an oracle is that it is somebody else's idea of a reference.
+// The only engine code this file runs: the subject under test, never part of an instrument.
 import { optimizeTree } from './engine-run.js';
 
 const FIXTURES_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 
 /**
- * Where build trees are materialised: a sibling of the repository, never inside it.
+ * Where build trees are made: `upfly-fixture-builds`, beside the folder that holds the
+ * checkout. Outside it, because the v2 editor extension converts the images in any
+ * `public/` folder of the workspace it watches and deletes the originals.
  *
- * ⚠️ **Not the OS temp directory, and the reason is measured.** On Windows the temp
- * directory is on `C:` while this checkout is on `E:`, and `node_modules` is reached
- * by a junction. Next.js resolves its client entry points as a path *relative* to
- * the build directory — and there is no relative path between two volumes, so it
- * emitted `./E:/…/next/dist/client/next.js` and failed with *"Module not found"* on
- * an untouched tree. Vite, Astro and Eleventy were unaffected, which is exactly how
- * a trap like this survives: four of five instruments say the setup is fine.
- * Same-volume by construction removes it rather than documenting it.
- *
- * ⚠️ **And never inside the workspace**, whatever the volume: every fixture has a
- * `public/` directory, and the v2 extension converts images in any in-repo `public/`
- * in place and deletes the originals. It destroyed 19 fixture files that way.
+ * Not the OS temp directory, which on Windows can be on another drive. A tree reaches
+ * `node_modules` through a junction into the checkout, and Next.js writes its client entry
+ * points as paths relative to the build folder, which cannot cross drives: even an
+ * untouched tree fails to build. Only Next.js is affected, so a trial with another fixture
+ * would pass.
  */
 const BUILD_ROOT = resolve(FIXTURES_ROOT, '../../../upfly-fixture-builds');
 
@@ -67,9 +41,9 @@ const BUILD_TIMEOUT_MS = 180_000;
 /**
  * What an instrument says about a tree.
  *
- * Deliberately not `pass`/`fail`: those words read ambiguously once a *failing*
- * build is the desired outcome. `intact` and `broken` describe the tree, so
- * "the negative control expects `broken`" says what it means.
+ * Not `pass` and `fail`, which read ambiguously when a failing build is the outcome wanted.
+ * `intact` and `broken` describe the tree, so "the negative control expects `broken`" says
+ * what it means.
  */
 type Verdict = 'intact' | 'broken';
 
@@ -80,29 +54,28 @@ interface Outcome {
 }
 
 /**
- * A class of reference, and the column it occupies in the coverage table.
+ * A class of reference, and its column in the report's table.
  *
- * These are the shapes the planner will rewrite, so "can the build see this class?"
- * is the question that decides how much the exit criterion is actually worth.
+ * These are the shapes the planner rewrites, so whether an instrument can see a class
+ * decides how much a passing run proves about it.
  */
 type ReferenceClass =
-  /** `import logo from './logo.png'` — the bundler resolves it. */
+  /** `import logo from './logo.png'`, which the bundler resolves. */
   | 'bundled-import'
   /** `url('./texture.png')` in a stylesheet the bundler processes. */
   | 'bundled-css-url'
   /** `/hero.png`, served from a public directory and copied verbatim. */
   | 'public-root-relative'
-  /** A `srcset`/`image-set` candidate — a path inside a comma-separated list. */
+  /** A `srcset` or `image-set` candidate: a path inside a comma-separated list. */
   | 'srcset-candidate';
 
 /**
  * One deliberate break.
  *
- * ⚠️ `find` must occur **exactly once** in `file` or the mutation throws. Without
- * that check a stale or mistyped `find` would change nothing, the build would
- * correctly stay green, and the harness would record the instrument as *blind* to a
- * class it can in fact see — a wrong answer that looks like a measurement. The
- * assertion is what makes a `blind` verdict mean something.
+ * `find` must occur exactly once in `file`, or the mutation throws. A stale or mistyped
+ * `find` would otherwise change nothing, the tree would stay intact, and the instrument
+ * would be recorded as blind to a class it can see: a wrong answer that looks like a
+ * measurement.
  */
 interface Mutation {
   readonly referenceClass: ReferenceClass;
@@ -117,49 +90,37 @@ interface FixtureSpec {
   /**
    * The `scripts.build` command, or `null` for a tree that is its own output.
    *
-   * `plain-html` is the `null` case and it is not an oversight: a static tree has no
-   * build step to pass, and inventing one would destroy the thing the fixture exists
-   * to represent. R42 condition 2 forbids letting that become a silent exclusion, so
-   * it is checked by the link instrument instead and appears in the table like
-   * everything else.
+   * `plain-html` is the `null` case: a static site has no build step, and inventing one
+   * would change what the fixture represents. The link check alone judges it, and it
+   * appears in the table like every other fixture rather than being left out silently.
    */
   readonly buildScript: string | null;
   /**
    * Where the build emits the shipped site, relative to the tree root.
    *
-   * ⚠️ **The link check runs here and not on the source tree**, and the first run of
-   * this harness is why. Pointed at a framework's *source*, it reported every
-   * baseline BROKEN: in a source tree `/favicon.svg` is served from `public/`, so
-   * resolving it against the tree root finds nothing and every verdict beneath it
-   * becomes meaningless. In the emitted tree `/x` means exactly what it says — the
-   * site root — and the emitted tree is also the only thing a visitor ever loads.
-   *
-   * The baseline control caught this before a single verdict was quoted, which is
-   * the entire argument for running an instrument against a tree you already know
-   * the answer for.
+   * The link check runs here, not on the source tree. In a source tree `/favicon.svg` is
+   * served from `public/`, so resolving it against the tree root finds nothing. In the
+   * emitted tree `/x` means the site root, and the emitted tree is what a visitor loads.
    */
   readonly outputDir: string;
   /**
    * The serving root this project declares, when it declares one.
    *
-   * eleventy is the case. It serves from `src` via `addPassthroughCopy`, which is a
-   * source directory rather than a serving root by convention, so no name-based
-   * detector should claim it and R51 ruled that the answer is to tell the user to
-   * declare it. A real eleventy user declares it once. Leaving this fixture in the
-   * undetected state would spend the only write-path test it has on demonstrating a
-   * failure that unit tests and eleventy-docs already cover.
+   * eleventy is the case. It serves from `src` through `addPassthroughCopy`, and `src` is a
+   * source folder by convention, so no detector should claim it by name; the user is told
+   * to declare it, as a real eleventy user does once. Left undeclared, the fixture's only
+   * write-path test would repeat a failure that unit tests and eleventy-docs already cover.
    */
   readonly publicDirs?: readonly string[];
   readonly mutations: readonly Mutation[];
 }
 
 /**
- * The fixtures, and the exact strings the negative control breaks.
+ * The fixtures, and the exact strings the negative controls break.
  *
- * Every `find` below was chosen by **reading the fixture**, not by asking the engine
- * what it found there. §5.1(i)'s rule — an assertion whose expected value came from
- * the code cannot vouch for the code — applies to a mutation just as much as to an
- * expectation.
+ * Every `find` was chosen by reading the fixture, not by asking the engine what it found
+ * there: a mutation taken from the code under test cannot vouch for that code, any more
+ * than an expected value taken from it can.
  */
 const FIXTURES: readonly FixtureSpec[] = [
   {
@@ -237,9 +198,7 @@ const FIXTURES: readonly FixtureSpec[] = [
       },
       {
         referenceClass: 'public-root-relative',
-        // Qualified by the alt text because `"/hero.png"` itself occurs twice in
-        // this file -- caught by the exactly-once assertion on the first run, which
-        // is the assertion earning its place.
+        // Qualified by the alt text, because `"/hero.png"` alone occurs twice in this file.
         file: 'app/page.tsx',
         find: '"/hero.png" alt="Hero again"',
         replace: '"/hero-broken-by-harness.png" alt="Hero again"',
@@ -256,8 +215,7 @@ const FIXTURES: readonly FixtureSpec[] = [
     name: 'eleventy',
     buildScript: 'eleventy',
     outputDir: '_site',
-    // Declared, because eleventy's `src` is a source directory rather than a serving
-    // root and no name-based detector should claim it (R51).
+    // Declared, for the reason given at `FixtureSpec.publicDirs`.
     publicDirs: ['src'],
     mutations: [
       {
@@ -335,11 +293,8 @@ const NEVER_COPY = new Set([...BUILD_ARTEFACTS, '.git', '.upfly']);
 /**
  * Run the fixture's own build and let its exit code be the verdict.
  *
- * ⚠️ The exit code is read from the spawned process directly. Reading it through a
- * shell pipe returns the *pipe's* status — `vite build | tail` exits 0 on a build
- * that failed — which is the single cheapest way to build a harness that always
- * passes. This was confirmed by hand before the harness was written: vite exits 1
- * on an unresolvable import and 0 through a pipe.
+ * The exit code is read from the spawned process, never through a pipe: `vite build | tail`
+ * exits with the status of `tail`, 0, on a build that failed.
  */
 async function runBuild(root: string, script: string): Promise<Outcome> {
   const binDir = join(root, 'node_modules', '.bin');
@@ -392,18 +347,12 @@ function spawnCapture(script: string, cwd: string, binDir: string): Promise<Spaw
 }
 
 /**
- * Check every local path named by an HTML or CSS file in the tree.
+ * Check every local path named by an HTML, CSS or JavaScript file in the tree.
  *
- * This is the instrument for a tree with no build step, and it is written to be
- * **over-inclusive on purpose**. It scans text for reference shapes rather than
- * parsing a document model, so it may flag something that is not really a
- * reference. That error direction is the right one here and it is the project's
- * standing asymmetry applied to an instrument: a false alarm costs five minutes of
- * reading, while a missed dangling reference is the exact failure the exit
- * criterion exists to detect.
- *
- * It shares no code with the engine, so an engine that cannot see a reference class
- * cannot make this blind to it too.
+ * It runs on every fixture's emitted site, and is the only instrument for a tree with no
+ * build step. It scans text for reference shapes rather than parsing, so it errs toward
+ * flagging something that is not a reference: a false alarm costs a few minutes of reading,
+ * while a missed dangling reference is the failure this file exists to catch.
  */
 async function runLinkCheck(root: string): Promise<Outcome> {
   const dangling: string[] = [];
@@ -425,9 +374,9 @@ function candidatePaths(text: string): string[] {
   const attribute = /\b(?:src|href)\s*=\s*["']([^"']+)["']/gi;
   for (const match of text.matchAll(attribute)) add(found, match[1]);
 
-  // `srcset` and `image-set` are comma-separated candidate lists, where each entry
-  // is a path followed by an optional descriptor. Splitting is what makes the 2x
-  // variant visible at all — checking the attribute whole would resolve nothing.
+  // `srcset` and `image-set` hold comma-separated candidates, each a path and an optional
+  // descriptor, so the capture is split. It stops at the first quote: a `srcset` value is
+  // read whole, but a quoted `image-set("a.png" 1x, "b.png" 2x)` yields only its first path.
   const list = /\b(?:srcset|image-set)\s*[=(]\s*["']?([^"'>)]+)/gi;
   for (const match of text.matchAll(list)) {
     for (const candidate of (match[1] ?? '').split(',')) {
@@ -436,20 +385,9 @@ function candidatePaths(text: string): string[] {
         .split(/\s+/)[0]
         ?.replace(/^["']|["']$/g, '');
 
-      // ⚠️ `image-set()` has two legal spellings and this scanner only reads one of
-      // them. `image-set("a.png" 1x, …)` is a comma-separated list of strings, which
-      // is what the pattern above was written for; `image-set(url("a.png") 1x, …)`
-      // wraps each candidate in `url()`, and against that the capture stops at the
-      // first quote and yields the literal token `url(` — a path that names nothing,
-      // reported as dangling on a tree where nothing is wrong.
-      //
-      // It is skipped rather than parsed because the `url()` scanner below already
-      // reads that spelling completely, so nothing is lost: this drops a tokenizer
-      // artefact, not a reference. Found by the eleventy baseline the moment the
-      // fixture gained an `image-set(url(…))` for R58, which is the loud-and-blocking
-      // behaviour a baseline failure is supposed to have — and because that fixture
-      // now carries the spelling, reverting this fix turns the baseline red again
-      // rather than going unnoticed.
+      // From `image-set(url("a.png") 1x, …)` the capture yields the token `url(`, which
+      // names nothing. The `url()` scanner below reads that spelling in full, so it is
+      // skipped here. The eleventy fixture uses it, so its baseline fails if this goes.
       if (path?.includes('url(')) continue;
 
       add(found, path);
@@ -462,12 +400,7 @@ function candidatePaths(text: string): string[] {
   return found;
 }
 
-/**
- * Every local path named by one file that does not resolve on disk.
- *
- * Split out of {@link runLinkCheck} so each function does one thing: this one knows
- * how a single file names assets, that one knows how to walk a tree.
- */
+/** Every local path named by one file that does not resolve on disk. */
 async function danglingIn(root: string, file: string): Promise<string[]> {
   const extension = file.slice(file.lastIndexOf('.')).toLowerCase();
   const markup = extension === '.html' || extension === '.css';
@@ -493,19 +426,10 @@ async function danglingIn(root: string, file: string): Promise<string[]> {
 /**
  * Asset paths inside an emitted JavaScript bundle.
  *
- * ⚠️ **The first version of this harness had no such scanner, and reported the
- * link check BLIND to `/screenshot.png` and to both `srcset` candidates.** It was
- * not blind — it was looking in the wrong files. A bundler compiles JSX into
- * `assets/index-<hash>.js`, so in the *emitted* tree a reference written in a
- * component no longer lives in any HTML or CSS file. Scanning only markup meant the
- * instrument could not see the single most common shape the planner rewrites.
- *
- * Matching is on the **path shape wherever it appears**, not on whole quoted
- * strings, because a compiled `srcSet` is one string holding two paths and a
- * descriptor (`"/photos/wide.jpg 1x, /photos/wide@2x.jpg 2x"`) — a whole-string
- * match sees neither. Restricting to known asset extensions is what keeps that
- * loose match quiet inside a minified bundle, and it is the same scope the product
- * itself operates in.
+ * A bundler compiles JSX into `assets/index-<hash>.js`, so in the emitted site a reference
+ * written in a component is in no HTML or CSS file. The match is on the path shape wherever
+ * it appears, because a compiled `srcSet` is one string holding two paths and a descriptor.
+ * Limiting it to image extensions keeps that loose match quiet in minified code.
  */
 function bundledAssetPaths(text: string): string[] {
   const found: string[] = [];
@@ -528,10 +452,8 @@ function add(found: string[], candidate: string | undefined): void {
 }
 
 function stripHtmlComments(text: string): string {
-  // Replaced with spaces of identical length so nothing downstream depends on
-  // offsets shifting — the same move the engine's masker makes, arrived at
-  // independently rather than shared, because sharing it would couple this
-  // instrument to the thing it audits.
+  // Blanked to spaces of the same length, as the engine's `maskInactiveRegions` does, but
+  // not shared with it: the instruments take no code from the engine they check.
   return text.replace(/<!--[\s\S]*?-->/g, (match) => ' '.repeat(match.length));
 }
 
@@ -544,18 +466,13 @@ function stripCssComments(text: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Copy a fixture into the OS temp directory and junction its dependencies.
+ * Copy a fixture into a new folder under `BUILD_ROOT`, linking its dependencies.
  *
- * ⚠️ **Never build in the fixture tree itself.** Two independent reasons, both
- * already paid for once: the v2 extension converts images inside any in-repo
- * `public/` and deletes the originals — it destroyed 19 fixture files that way —
- * and `_site/`, eleventy's output, is **not** in `DEFAULT_IGNORED_DIRECTORIES`, so a
- * build left in place would put a second copy of every image into the tree that
- * `fixture-integrity.test.ts` and `fixture-oracle.test.ts` walk.
- *
- * `node_modules` is junctioned rather than copied: pnpm's links are relative into
- * the workspace store, so a copy would arrive broken. Verified before this was
- * written — a junctioned copy builds to byte-identical output hashes.
+ * Never built in place: the fixture sits inside the workspace (see `BUILD_ROOT`), and
+ * eleventy's `_site/` is not in `DEFAULT_IGNORED_DIRECTORIES`, so a build left there would
+ * add a second copy of every image to the trees `fixture-integrity.test.ts` and
+ * `fixture-oracle.test.ts` walk. `node_modules` is joined by a junction rather than copied,
+ * because pnpm's links are relative into the workspace store and a copy would arrive broken.
  */
 async function materialise(fixture: FixtureSpec): Promise<string> {
   await mkdir(BUILD_ROOT, { recursive: true });
@@ -582,7 +499,7 @@ async function copyInto(fixture: FixtureSpec, root: string): Promise<void> {
 /**
  * Apply one break, insisting it actually changed the file.
  *
- * @throws if `find` does not occur exactly once — see {@link Mutation}.
+ * @throws if `find` does not occur exactly once; see {@link Mutation}.
  */
 async function applyMutation(root: string, mutation: Mutation): Promise<void> {
   const path = join(root, mutation.file);
@@ -600,11 +517,10 @@ async function applyMutation(root: string, mutation: Mutation): Promise<void> {
 /**
  * Check a tree with every instrument the fixture has.
  *
- * Order matters: the build runs first because it is what *produces* the tree the
- * link check reads. When the build fails there is no emitted site to check, so the
- * link check is recorded as not run rather than as a verdict — a missing output
- * directory is not evidence that references are fine, and calling it `broken` would
- * double-count a failure the build already reported.
+ * The build runs first, because it produces the tree the link check reads. When it fails
+ * there is no emitted site, so the link check records nothing: a missing output folder is
+ * not evidence that references are fine, and calling it `broken` would count the build's
+ * failure twice.
  */
 async function check(root: string, fixture: FixtureSpec): Promise<Map<string, Outcome>> {
   const outcomes = new Map<string, Outcome>();
@@ -639,14 +555,10 @@ interface Row {
 /**
  * The control: check the untouched tree and report anything it says is wrong.
  *
- * A fixture whose *unmodified* tree does not check out cannot serve as an oracle for
- * anything — an instrument that reports every tree broken would score `sighted` on
- * all four classes while seeing none of them. So a baseline failure is a **harness**
- * failure, loud and blocking, rather than a finding about the fixture.
- *
- * It has already earned that status twice: it caught the link check being pointed at
- * source trees instead of emitted ones, and it caught the eleventy fixture shipping a
- * stylesheet its own config never copied.
+ * A fixture whose unmodified tree does not check out cannot judge anything: an instrument
+ * that reports every tree broken would score `sighted` on every class while seeing none of
+ * them. So a baseline failure fails the run as a fault in the harness, not as a finding
+ * about the fixture.
  */
 async function runBaseline(fixture: FixtureSpec): Promise<string[]> {
   const failures: string[] = [];
@@ -689,22 +601,16 @@ async function runMutation(fixture: FixtureSpec, mutation: Mutation): Promise<Ro
 }
 
 /**
- * The exit criterion itself: optimise a fixture, then check what it produced.
+ * The central test for one fixture: optimize a copy, then check what it produced.
  *
- * R43's rewrite of the criterion is `optimize --apply` on all fixtures followed by
- * BOTH the build passing AND a link check over the emitted tree finding nothing
- * broken. The link check is the primary of the two: measured across the 16
- * (fixture, reference class) pairs, the build sees 3 and the link check sees 13.
+ * After `optimize --apply` the build must pass and the link check over the emitted site must
+ * find nothing broken. The link check matters most: in these fixtures a build fails only on
+ * a bundled import it cannot resolve. Both are the instruments the baseline and the negative
+ * controls use, on trees made the same way, so this is no gentler than the checks that
+ * showed the instruments can fail.
  *
- * The instruments are the ones the baseline and the negative controls already use, on
- * trees materialised the same way, which is R44's condition. Nothing here is a
- * second, gentler check written for our own transaction to pass.
- *
- * Under `replace` the run also deletes originals, and a delete is the one change a build
- * or a link check can vouch for only if it happened. So the deletes are counted from the
- * manifest, each is checked gone from disk, and a fixture that deleted none is reported
- * as not exercised rather than passed: an intact tree where nothing was removed says
- * nothing about removing.
+ * Under `replace`, the deletes are read from the manifest and each is checked gone from
+ * disk. A fixture that deleted nothing is reported as not exercised rather than passed.
  */
 async function runOptimized(fixture: FixtureSpec, policy: PublicPolicy): Promise<Outcomes> {
   const failures: string[] = [];
@@ -731,9 +637,7 @@ async function runOptimized(fixture: FixtureSpec, policy: PublicPolicy): Promise
       `  optimize    ${result.plan.conversions.length} converted, ${result.plan.rewrites.length} rewritten, ${result.plan.declined.length} declined, ${deleted.length} originals deleted\n`,
     );
 
-    // A run that changed nothing cannot demonstrate that changing things is safe, so
-    // it is reported rather than passed. A green criterion over an untouched tree is
-    // the gate-that-never-ran problem R42 exists about.
+    // A run that changed nothing cannot show that changing things is safe, so it fails.
     if (result.plan.conversions.length === 0) {
       failures.push(`${fixture.name}: optimize converted nothing, so this proves nothing`);
     }
@@ -774,7 +678,8 @@ interface Outcomes {
 }
 
 /**
- * The exit criterion over the selected fixtures, under one policy, and the process exit.
+ * The central test over the selected fixtures under one policy, ending the process with its
+ * verdict.
  *
  * Three verdicts, not two. A tree that broke fails. A `replace` run where some fixture
  * deleted nothing is not a failure of safety and not a pass either: every tree may be
@@ -806,7 +711,7 @@ async function runExitCriterion(
 }
 
 // ---------------------------------------------------------------------------
-// The same criterion through the built command-line tool
+// The same test through the built command-line tool
 // ---------------------------------------------------------------------------
 
 const CLI_BIN = resolve(FIXTURES_ROOT, '../packages/cli/dist/bin.js');
@@ -1101,8 +1006,8 @@ async function runCliUndo(fixture: FixtureSpec, policy: PublicPolicy): Promise<s
 }
 
 /**
- * The criterion through the built binary, for each fixture: in a repository of its own, as
- * a folder inside a larger one, and undone with `upfly undo`.
+ * The central test through the built binary, for each fixture: in a repository of its own,
+ * as a folder inside a larger one, and undone with `upfly undo`.
  */
 async function runCliCriterion(
   selected: readonly FixtureSpec[],
@@ -1155,14 +1060,14 @@ async function main(): Promise<void> {
   const rows: Row[] = [];
   const baselineFailures: string[] = [];
 
-  // The exit criterion on its own. The calibration below it, the baseline plus every
-  // negative control, is what makes the criterion mean anything, but it is slow and
-  // does not change between runs, so iterating on the criterion need not repeat it.
-  // `--replace` runs it under the policy that deletes originals.
+  // `--optimize` runs the central test with each fixture's baseline, but not the negative
+  // controls below: they give the test its meaning, but they are slow and do not change
+  // between runs, so iterating on the test need not repeat them. `--replace` runs it under
+  // the policy that deletes originals.
   if (argv.includes('--optimize')) {
     await runExitCriterion(selected, argv.includes('--replace') ? 'replace' : 'keep-original');
   }
-  // `--cli` runs the same criterion through the built binary, with git.
+  // `--cli` runs the same test through the built binary, with git.
   if (argv.includes('--cli')) {
     await runCliCriterion(selected, argv.includes('--replace') ? 'replace' : 'keep-original');
   }
@@ -1183,8 +1088,8 @@ async function main(): Promise<void> {
     exit(1);
   }
 
-  // Every class must be seen by at least one instrument, or the exit criterion has
-  // a hole in exactly the shape of that class and nobody would be told.
+  // Every class must be seen by at least one instrument, or the central test has a hole
+  // the shape of that class and nobody is told.
   const unseen = coverageHoles(rows);
   stdout.write(
     `\n${rows.length} (class, instrument) results across ${selected.length} fixtures.\n`,

@@ -3,15 +3,13 @@
  *
  * A user will run it twice: once to see what it does and once because they forgot, or on
  * every push in CI. So each fixture is copied and optimized twice, under both policies,
- * through `optimizeTree`, the path the exit criterion runs. The second run must convert
- * nothing, rewrite nothing, delete nothing, and leave every byte where the first run put it.
+ * through `optimizeTree` as `fixture-build.ts` runs it. The second run must convert,
+ * rewrite and delete nothing, and leave every byte where the first run put it.
  *
- * What keeps it true is not obvious, which is why the test names it. After a
- * `keep-original` run a converted image exists twice: `logo.png`, which nothing links to
- * any more, and `logo.webp`, which its references now point at. The second run sees a
- * public image nothing links to, and under `keep-original` that is worth converting. It
- * is declined only because `logo.webp` already exists. The converted file is never
- * converted again, because swapping its extension changes nothing.
+ * What keeps it true is not obvious. After a `keep-original` run, `logo.png` stays beside
+ * `logo.webp` with nothing linking to it, which under `keep-original` is worth converting;
+ * it is declined only because `logo.webp` already exists. `logo.webp` is never converted
+ * again, because swapping its extension changes nothing.
  */
 
 import { createHash } from 'node:crypto';
@@ -33,8 +31,8 @@ import { optimizeTree } from './engine-run.js';
 const FIXTURES_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 
 /**
- * The serving roots a fixture declares, where it declares one. The same as the exit
- * criterion's harness and the fixture's own tests: eleventy serves from `src`, which no
+ * The serving roots a fixture declares, where it declares one. The same as in
+ * `fixture-build.ts` and the fixtures' own tests: eleventy serves from `src`, which no
  * detector should claim by name, and the partial-pattern tree has no project file beside
  * its `public` folder, so detection rightly does not claim it.
  */
