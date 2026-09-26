@@ -1,19 +1,14 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Holds source files to the comment standard, counted per file against a committed baseline.
- *
- * A file may lose findings but never gain one, so files written before the standard pass
- * until they are cleaned and new code cannot add any. The baseline is exact: a count that
- * went down fails until `--update` lowers it, so the gain cannot be spent again. `--update`
- * never raises a count.
+ * Holds source files to the comment standard: one finding in any scanned file fails the check.
  *
  * Comments and strings come from the TypeScript parser, so a `//` inside a string or a
  * regular expression is never read as a comment.
  *
- * Usage: `node tools/comment-check.mjs [--update] [--root <dir>] [--baseline <file>]`.
+ * Usage: `node tools/comment-check.mjs [--root <dir>]`.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -22,8 +17,6 @@ import ts from 'typescript';
  * @typedef {'internal-reference' | 'em-dash' | 'emphasis' | 'emoji' | 'long-comment' | 'output-reference'} Rule
  * @typedef {{ rule: Rule, line: number, count: number, text: string }} Finding
  * @typedef {Partial<Record<Rule, number>>} Counts
- * @typedef {{ files: Record<string, Counts> }} Baseline
- * @typedef {{ file: string, rule: Rule, baseline: number, current: number }} Difference
  * @typedef {{ pos: number, end: number, kind: ts.CommentKind }} CommentRange
  */
 
@@ -38,7 +31,7 @@ export const RULES = /** @type {const} */ ({
   'long-comment':
     'lines past the tenth in one comment block, not counting @param, @returns, @throws or @example sections. A design note belongs in ARCHITECTURE.md with a one-line pointer',
   'output-reference':
-    'an internal reference in a string a package ships. Users read these, so they start at zero',
+    'an internal reference in a string a package ships. Users read these; write the fact itself',
 });
 
 /** @type {readonly Rule[]} */
@@ -162,35 +155,6 @@ export function countFindings(findings) {
 }
 
 /**
- * Compares current counts with the baseline. A count above its baseline is gained; one below
- * it, including every count of a file that no longer exists, is stale.
- *
- * @param {Baseline} baseline
- * @param {Record<string, Counts>} current every scanned file, including those with no findings
- * @returns {{ gained: Difference[], stale: Difference[] }}
- */
-export function compareWithBaseline(baseline, current) {
-  /** @type {Difference[]} */
-  const gained = [];
-  /** @type {Difference[]} */
-  const stale = [];
-  const files = [...new Set([...Object.keys(baseline.files), ...Object.keys(current)])].sort(
-    byCodeUnit,
-  );
-  for (const file of files) {
-    const before = baseline.files[file] ?? {};
-    const now = current[file] ?? {};
-    for (const rule of RULE_ORDER) {
-      const b = before[rule] ?? 0;
-      const c = now[rule] ?? 0;
-      if (c > b) gained.push({ file, rule, baseline: b, current: c });
-      else if (c < b) stale.push({ file, rule, baseline: b, current: c });
-    }
-  }
-  return { gained, stale };
-}
-
-/**
  * Lists the files in scope under `root`, as sorted POSIX-relative paths: the source files at
  * the root itself, such as `vitest.config.ts`, and every source file under the scanned
  * directories.
@@ -217,89 +181,48 @@ export function filesInScope(root) {
 }
 
 /**
- * Runs the check, or the baseline update, over a tree.
+ * Runs the check over a tree.
  *
- * @param {{ root: string, baselinePath: string, update: boolean }} options
+ * @param {{ root: string }} options
  * @returns {{ exitCode: number, output: string }}
  */
-export function run({ root, baselinePath, update }) {
-  /** @type {Record<string, Counts>} */
-  const current = {};
-  /** @type {Record<string, Finding[]>} */
-  const findingsByFile = {};
-  for (const file of filesInScope(root)) {
+export function run({ root }) {
+  const files = filesInScope(root);
+  /** @type {{ file: string, findings: Finding[] }[]} */
+  const failing = [];
+  for (const file of files) {
     const findings = analyseSource(readFileSync(path.join(root, file), 'utf8'), file);
-    findingsByFile[file] = findings;
-    current[file] = countFindings(findings);
+    if (findings.length > 0) failing.push({ file, findings });
   }
-  const { gained, stale } = compareWithBaseline(readBaseline(baselinePath), current);
-
-  if (gained.length > 0) {
-    return { exitCode: 1, output: describeGained(gained, findingsByFile, update) };
-  }
-  if (update) {
-    writeBaseline(baselinePath, current);
+  if (failing.length === 0) {
     return {
       exitCode: 0,
-      output: `Comment check: baseline written, ${plural(stale.length, 'count')} lowered.\n`,
+      output: `Comment check: ${plural(files.length, 'file')} checked, no findings.\n`,
     };
   }
-  if (stale.length > 0) {
-    const lines = [
-      `Comment check: ${plural(stale.length, 'count')} went down. Run \`pnpm comments:baseline\` to lower the baseline, so the improvement cannot be spent again:`,
-      ...stale.map(describeDifference),
-    ];
-    return { exitCode: 1, output: `${lines.join('\n')}\n` };
-  }
-  const scanned = Object.keys(current).length;
-  return {
-    exitCode: 0,
-    output: `Comment check: ${plural(scanned, 'file')} checked, none differs from the baseline.\n`,
-  };
+  return { exitCode: 1, output: describeFindings(failing) };
 }
 
 /**
- * @param {readonly Difference[]} gained
- * @param {Record<string, Finding[]>} findingsByFile
- * @param {boolean} update
- */
-function describeGained(gained, findingsByFile, update) {
-  const files = new Set(gained.map((difference) => difference.file)).size;
-  const lines = [`Comment check: ${plural(files, 'file')} gained findings against the baseline.`];
-  for (const difference of gained) {
-    lines.push('', describeDifference(difference));
-    const found = (findingsByFile[difference.file] ?? []).filter(
-      (finding) => finding.rule === difference.rule,
-    );
-    for (const finding of found.slice(0, 20)) {
-      lines.push(`    line ${finding.line}: ${finding.text.trim().slice(0, 120)}`);
-    }
-    if (found.length > 20) lines.push(`    and ${found.length - 20} more`);
-  }
-  if (update) lines.push('', 'The baseline was not changed: --update only ever lowers a count.');
-  return `${lines.join('\n')}\n`;
-}
-
-/**
- * Writes every non-zero count, files and rules in a fixed order so the file diffs cleanly.
+ * Each failing file's findings, grouped by rule, with the lines they are on.
  *
- * @param {string} baselinePath
- * @param {Record<string, Counts>} current
+ * @param {readonly { file: string, findings: Finding[] }[]} failing
  */
-function writeBaseline(baselinePath, current) {
-  /** @type {Baseline} */
-  const next = { files: {} };
-  for (const file of Object.keys(current).sort(byCodeUnit)) {
-    const counts = current[file] ?? {};
-    /** @type {Counts} */
-    const ordered = {};
+function describeFindings(failing) {
+  const lines = [`Comment check: ${plural(failing.length, 'file')} with findings.`];
+  for (const { file, findings } of failing) {
     for (const rule of RULE_ORDER) {
-      const count = counts[rule];
-      if (count) ordered[rule] = count;
+      const found = findings.filter((finding) => finding.rule === rule);
+      if (found.length === 0) continue;
+      const count = found.reduce((sum, finding) => sum + finding.count, 0);
+      lines.push('', `  ${file}: ${rule}, ${count}. ${RULES[rule]}.`);
+      for (const finding of found.slice(0, 20)) {
+        lines.push(`    line ${finding.line}: ${finding.text.trim().slice(0, 120)}`);
+      }
+      if (found.length > 20) lines.push(`    and ${found.length - 20} more`);
     }
-    if (Object.keys(ordered).length > 0) next.files[file] = ordered;
   }
-  writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
+  return `${lines.join('\n')}\n`;
 }
 
 /**
@@ -319,32 +242,22 @@ function scannedDirs(root) {
 
 /**
  * @param {readonly string[]} argv the arguments after the script's path
- * @returns {{ root: string, baselinePath: string, update: boolean } | string} the options, or a usage error
+ * @returns {{ root: string } | string} the options, or a usage error
  */
 export function parseArgs(argv) {
   let root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  /** @type {string | undefined} */
-  let baselinePath;
-  let update = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--update') {
-      update = true;
-    } else if (arg === '--root' || arg === '--baseline') {
+    if (arg === '--root') {
       const value = argv[i + 1];
       if (value === undefined) return `${arg} needs a value`;
-      if (arg === '--root') root = path.resolve(value);
-      else baselinePath = path.resolve(value);
+      root = path.resolve(value);
       i += 1;
     } else {
       return `unknown argument: ${arg}`;
     }
   }
-  return {
-    root,
-    baselinePath: baselinePath ?? path.join(root, 'tools', 'comment-baseline.json'),
-    update,
-  };
+  return { root };
 }
 
 /**
@@ -496,18 +409,6 @@ function matches(text, pattern) {
 /** A package's own source, which ships, as opposed to its tests. @param {string} file */
 function isShipped(file) {
   return /^packages\/[^/]+\/src\//.test(file) && !/\.test\.[cm]?[jt]s$/.test(file);
-}
-
-/** @param {string} baselinePath @returns {Baseline} */
-function readBaseline(baselinePath) {
-  if (!existsSync(baselinePath)) return { files: {} };
-  const parsed = JSON.parse(readFileSync(baselinePath, 'utf8'));
-  return { files: parsed.files ?? {} };
-}
-
-/** @param {Difference} difference */
-function describeDifference({ file, rule, baseline, current }) {
-  return `  ${file}: ${rule}, ${baseline} in the baseline and ${current} now. ${RULES[rule]}.`;
 }
 
 /** @param {number} n @param {string} noun */

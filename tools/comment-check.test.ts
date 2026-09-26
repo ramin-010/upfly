@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { analyseSource, compareWithBaseline, countFindings } from './comment-check.mjs';
+import { analyseSource, countFindings } from './comment-check.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./comment-check.mjs', import.meta.url));
 const SHIPPED = 'packages/demo/src/demo.ts';
@@ -133,32 +133,6 @@ describe('what must not trip it', () => {
   });
 });
 
-describe('comparing with the baseline', () => {
-  it('a count above its baseline is gained, including a new file', () => {
-    const { gained, stale } = compareWithBaseline(
-      { files: { 'a.ts': { 'em-dash': 1 } } },
-      { 'a.ts': { 'em-dash': 2 }, 'new.ts': { emoji: 1 } },
-    );
-    expect(gained).toEqual([
-      { file: 'a.ts', rule: 'em-dash', baseline: 1, current: 2 },
-      { file: 'new.ts', rule: 'emoji', baseline: 0, current: 1 },
-    ]);
-    expect(stale).toEqual([]);
-  });
-
-  it('a count below its baseline is stale, including a file that is gone', () => {
-    const { gained, stale } = compareWithBaseline(
-      { files: { 'a.ts': { 'em-dash': 3 }, 'gone.ts': { emoji: 1 } } },
-      { 'a.ts': { 'em-dash': 2 } },
-    );
-    expect(gained).toEqual([]);
-    expect(stale).toEqual([
-      { file: 'a.ts', rule: 'em-dash', baseline: 3, current: 2 },
-      { file: 'gone.ts', rule: 'emoji', baseline: 1, current: 0 },
-    ]);
-  });
-});
-
 describe('the script itself', () => {
   const trees: string[] = [];
   afterEach(() => {
@@ -178,11 +152,9 @@ describe('the script itself', () => {
   }
 
   function run(root: string, ...args: string[]) {
-    const result = spawnSync(
-      process.execPath,
-      [SCRIPT, '--root', root, '--baseline', join(root, 'baseline.json'), ...args],
-      { encoding: 'utf8' },
-    );
+    const result = spawnSync(process.execPath, [SCRIPT, '--root', root, ...args], {
+      encoding: 'utf8',
+    });
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   }
 
@@ -196,7 +168,8 @@ describe('the script itself', () => {
   ])('fails on one planted %s, naming the rule, the file and the line', (rule, file, text) => {
     const { status, output } = run(tree({ [file]: text }));
     expect(status).toBe(1);
-    expect(output).toContain(`${file}: ${rule}, 0 in the baseline and 1 now`);
+    expect(output).toContain('Comment check: 1 file with findings.');
+    expect(output).toContain(`${file}: ${rule}, 1.`);
     expect(output).toMatch(/line \d+:/);
   });
 
@@ -210,8 +183,8 @@ describe('the script itself', () => {
     });
     const { status, output } = run(root);
     expect(status).toBe(1);
-    expect(output).toContain('Comment check: 1 file gained findings against the baseline.');
-    expect(output).toContain('vitest.config.ts: em-dash, 0 in the baseline and 1 now');
+    expect(output).toContain('Comment check: 1 file with findings.');
+    expect(output).toContain('vitest.config.ts: em-dash, 1.');
   });
 
   it('passes a clean tree, and the inputs that must not trip it', () => {
@@ -225,39 +198,28 @@ describe('the script itself', () => {
     });
     expect(run(root)).toEqual({
       status: 0,
-      output: 'Comment check: 1 file checked, none differs from the baseline.\n',
+      output: 'Comment check: 1 file checked, no findings.\n',
     });
   });
 
-  it('ratchets: a lower count must be written down, and --update never raises one', () => {
+  it('counts every finding of a rule in a file, and reads no baseline that excuses them', () => {
     const file = 'bench/src/old.ts';
-    const root = tree({ [file]: `// a ${EM_DASH} b ${EM_DASH} c\nexport {};\n` });
-    writeFileSync(
-      join(root, 'baseline.json'),
-      JSON.stringify({ files: { [file]: { 'em-dash': 2 } } }),
-    );
-    const baseline = () => JSON.parse(readFileSync(join(root, 'baseline.json'), 'utf8'));
-    expect(run(root).status).toBe(0);
-
-    write(root, file, `// a ${EM_DASH} b, c\nexport {};\n`);
-    const lowered = run(root);
-    expect(lowered.status).toBe(1);
-    expect(lowered.output).toContain('went down');
-    expect(run(root, '--update').status).toBe(0);
-    expect(baseline()).toEqual({ files: { [file]: { 'em-dash': 1 } } });
-    expect(run(root).status).toBe(0);
-
-    write(root, file, `// a ${EM_DASH} b ${EM_DASH} c ${EM_DASH} d\nexport {};\n`);
-    const raised = run(root, '--update');
-    expect(raised.status).toBe(1);
-    expect(raised.output).toContain('only ever lowers a count');
-    expect(baseline()).toEqual({ files: { [file]: { 'em-dash': 1 } } });
-  });
-
-  it('exits 2 on an argument it does not know', () => {
-    expect(run(tree({}), '--nope')).toEqual({
-      status: 2,
-      output: 'comment-check: unknown argument: --nope\n',
+    const root = tree({
+      [file]: `// a ${EM_DASH} b ${EM_DASH} c\nexport {};\n`,
+      'tools/comment-baseline.json': JSON.stringify({ files: { [file]: { 'em-dash': 2 } } }),
     });
+    const { status, output } = run(root);
+    expect(status).toBe(1);
+    expect(output).toContain(`${file}: em-dash, 2.`);
   });
+
+  it.each([['--nope'], ['--update'], ['--baseline']])(
+    'exits 2 on %s, which it does not know',
+    (arg) => {
+      expect(run(tree({}), arg)).toEqual({
+        status: 2,
+        output: `comment-check: unknown argument: ${arg}\n`,
+      });
+    },
+  );
 });

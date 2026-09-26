@@ -55,9 +55,9 @@ it is the only channel between chats and a chat can end at any moment.
     message. Plain text: no bold, italics, emoji or em dashes. A comment over about ten lines is a
     design note for `ARCHITECTURE.md`. Output text (report reasons, messages, CLI output) never
     carries an internal reference. The standard, with examples: `../notes/15-comment-standard.md`.
-    `pnpm comments:check` runs inside `pnpm check` and holds each file to
-    `tools/comment-baseline.json`: a file may lose findings, never gain one. After cleaning a file,
-    run `pnpm comments:baseline` to lower its entry.
+    `pnpm comments:check` runs inside `pnpm check` and fails on any finding in any scanned file:
+    each package's `src` and `test`, `bench/src`, `coverage-tree/tools`, `tools`, and the source
+    files at the repository's root. There is no baseline and no exemption.
 
 ## Two things that decide whether this product is trusted
 
