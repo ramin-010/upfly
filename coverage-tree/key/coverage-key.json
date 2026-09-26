@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "what": "The answer key for the coverage tree. Every reference in tree/, and the outcome the engine SHOULD produce for it.",
+  "what": "The answer key for the coverage tree. Every reference in tree/, and the outcome the engine should produce for it.",
   "authored": "By hand. Positions are stamped by tools/stamp-positions.mjs; meanings are not.",
-  "neverAScore": "This key produces a COVERAGE MATRIX, one row per shape. It has no total, no percentage and no overall row, and it must stay impossible to turn into one (R75).",
+  "neverAScore": "This key produces a coverage matrix, one row per shape. It has no total, no percentage and no overall row, and it must stay impossible to turn into one.",
   "expectSemantics": {
-    "_": "Seven outcomes, matching the engine's Resolution union. `expect` is the outcome a CORRECT engine should produce, NOT what today's engine does — a .vue reference expects to be found, which is what lets the matrix say \"0 of 6, no reader\" out loud. Where today's engine is known to differ, `knownGap` says so.",
+    "_": "Seven outcomes, matching the engine's Resolution union. `expect` is the outcome a correct engine should produce, not what today's engine does: a .vue reference expects to be found, which is what lets the matrix say \"0 of 8, no reader\" out loud. Where today's engine is known to differ, `knownGap` says so.",
     "resolved": "Points at exactly one asset, and `target` names it.",
     "resolved-pattern": "One reference standing for N assets; `target` is the full list.",
     "dynamic": "The path is assembled at runtime. There is no static path to resolve, and nobody typed a wrong one.",
-    "out-of-scope": "An absolute URL, a protocol-relative URL, an npm package specifier, or a real file the engine deliberately does not index (R32). 🔴 LIKE `discarded`, THIS COVERS TWO ENGINE BEHAVIOURS and the measuring harness must accept either: the engine may emit a reference whose resolution is `out-of-scope` (a real .mp4 it can see but will not index), or emit NOTHING AT ALL (an absolute URL, dropped by isExternalUrl before it ever becomes a reference; a link@href the predicate refuses). It must NOT accept a resolved, broken or rewritten outcome. Written down 2026-09-14: the value listed its situations but never its behaviours, so 12 entries would have read as misses for correct behaviour.",
+    "out-of-scope": "An absolute URL, a protocol-relative URL, an npm package specifier, or a real file the engine deliberately does not index. Like `discarded`, this covers two engine behaviours, and the measuring harness must accept either: the engine may emit a reference whose resolution is `out-of-scope` (a real .mp4 it can see but will not index), or emit nothing at all (an absolute URL, dropped by isExternalUrl before it ever becomes a reference; a link@href the predicate refuses). It must not accept a resolved, broken or rewritten outcome.",
     "unresolved-alias": "Alias-shaped, with no rule that maps it.",
     "broken": "A well-formed, asserted reference to a file that does not exist. A finding.",
-    "discarded": "🔴 MUST NOT BE TREATED AS A LIVE REFERENCE. The spec used one word for two engine behaviours, and both satisfy this: the engine may emit nothing at all (a url() inside a comment is never collected), or emit a reference whose resolution is `discarded`. The measuring harness accepts either. It must NOT accept a resolved, broken or rewritten outcome.",
-    "UNDECIDED": "Nobody has ruled which outcome is correct. `candidates` lists the possibilities. These do not fail the integrity check; they fail the measuring suite, which runs --strict, and they are questions for the parent chat rather than measurements."
+    "discarded": "Must not be treated as a live reference. The word covers two engine behaviours, and both satisfy it: the engine may emit nothing at all (a url() inside a comment is never collected), or emit a reference whose resolution is `discarded`. The measuring harness accepts either. It must not accept a resolved, broken or rewritten outcome.",
+    "UNDECIDED": "Nobody has decided which outcome is correct. `candidates` lists the possibilities. These do not fail the integrity check; they fail the measuring suite, which runs --strict, and they are questions for a person rather than measurements."
   },
   "servingRoots": [
     {
@@ -21,11 +21,11 @@
     },
     {
       "path": "apps/docs/public",
-      "why": "Serving root #2. R13: a repo has many public dirs, not one. brand.png, logo.png, img/hero.jpg and the three theme-*.png files exist in BOTH apps and are DIFFERENT pictures, so a reference resolving against the wrong root is visible rather than coincidentally right."
+      "why": "Serving root #2. A repository can have many public directories, not one. brand.png, logo.png, img/hero.jpg and the three theme-*.png files exist in both apps and are different pictures, so a reference resolving against the wrong root is visible rather than coincidentally right."
     },
     {
       "path": "sites/root-served",
-      "why": "R63's shape: the site's own directory is the serving root, so every file beside index.html is web-reachable — templates and partials included. The public-dir caveat applies to everything rather than to one subtree."
+      "why": "The site's own directory is the serving root, so every file beside index.html is web-reachable, templates and partials included. The public-dir caveat applies to everything rather than to one subtree."
     },
     {
       "path": "legacy/public",
@@ -33,13 +33,13 @@
     },
     {
       "path": "sites/vitepress-docs/docs/public",
-      "why": "A VitePress site's served folder: docs/public/, served from the root, beside the config DIRECTORY docs/.vitepress/ — with the site's package.json two levels up, not beside it (R179)."
+      "why": "A VitePress site's served folder: docs/public/, served from the root, beside a config directory (docs/.vitepress/) rather than a config file, with the site's package.json two levels up, not beside it."
     }
   ],
   "notServingRoots": [
     {
       "path": "docs-examples/public",
-      "why": "🔴 A directory named `public` that serves nothing — it holds illustrations for a guide about a project that has a serving root. B2 and B3 both named this as the biggest untested risk, and no repository in the corpus has one. R78 Q4 ruled it is not a serving root. Detection by name alone claimed it (R171); since R179 detection requires a project file beside a `public/`, and docs-examples/ holds none, so it is rejected."
+      "why": "A directory named `public` that serves nothing: it holds illustrations for a guide about a project that has a serving root. None of the five validation repositories has one, so nothing else tests this risk. It is not a serving root. Detection by name alone would claim it; detection also requires a project file beside a `public/`, and docs-examples/ holds none, so it is rejected."
     }
   ],
   "aliases": {
@@ -52,7 +52,7 @@
       "#internal/*"
     ]
   },
-  "imageSizesNote": "R79 (2026-09-13): spec §5's \"a few images small enough that WebP makes them LARGER\" is WITHDRAWN. It was measured and is not achievable with a real photograph — 4 sources x 14 sizes down to 8x8, 56 combinations, WebP smaller in every one, lossless and lossy alike. The property belongs to synthetic placeholders, which the same section forbids, and it is already covered by fixtures/partial-pattern — a CONVERSION fixture. This tree measures REFERENCE DETECTION. Every asset still records its real byte size and hash, which is what §5 says the sizes are for.",
+  "imageSizesNote": "The tree holds no image that WebP makes larger, because real photographs do not have that property: 4 sources at 14 sizes down to 8x8, 56 combinations, all came out smaller as WebP, lossless and lossy alike. The property belongs to synthetic placeholders, and fixtures/partial-pattern covers it as a conversion fixture. This tree measures reference detection. Every asset still records its real byte size and hash, so probe and encode coverage can be added later without rebuilding the tree.",
   "shapes": [
     {
       "id": "html.img.src",
@@ -64,7 +64,7 @@
       "id": "html.rawtext.swallowed",
       "label": "markup swallowed by an unclosed raw-text element",
       "spec": "4a",
-      "motivation": "R20 found this in MARKDOWN, where masking is correct because CommonMark requires a raw-text block to begin a line. 🔴 R90 reversed it for HTML: in a .html file there is no prose, an unclosed <style> opens a raw-text element, and a BROWSER RENDERS NOTHING AFTER IT EITHER. These four exist to read ZERO — a non-zero count means the engine disagrees with the browser about what the page shows. The old id asserted the opposite and the four entries carried expect: resolved."
+      "motivation": "In markdown an unclosed raw-text tag mid-sentence is masked, because CommonMark requires a raw-text block to begin a line. In a .html file there is no prose: an unclosed <style> opens a raw-text element, and a browser renders nothing after it either. These four exist to read zero; a non-zero count means the engine disagrees with the browser about what the page shows."
     },
     {
       "id": "html.img.srcset.single",
@@ -76,7 +76,7 @@
       "id": "html.img.srcset.x",
       "label": "img@srcset, x descriptors",
       "spec": "4a",
-      "motivation": "R75 names srcset as a row that must distinguish 8 of 9 from 9 of 9."
+      "motivation": "A srcset row must distinguish 8 of 9 from 9 of 9."
     },
     {
       "id": "html.img.srcset.w",
@@ -136,32 +136,32 @@
       "id": "html.link.href.icon",
       "label": "link@href asserted as an icon",
       "spec": "4a",
-      "motivation": "ADDED: 4a names link@href \"for icons\" and stops. R83: this row is branch A of linkPointsAtAnImage — any rel token containing \"icon\", which covers icon, shortcut icon, apple-touch-icon and mask-icon."
+      "motivation": "The icon branch of `linkImageClaim`: any rel token containing \"icon\", which covers icon, shortcut icon, apple-touch-icon and mask-icon."
     },
     {
       "id": "html.link.href.preload",
       "label": "link@href asserted as a preloaded image",
       "spec": "4a",
-      "motivation": "R83: branch B of linkPointsAtAnImage — rel=preload AND as=image — which is a separate return from the icon branch and fails separately.",
-      "singleReason": "🔴 ONE INSTANCE, DELIBERATELY NOT PADDED. Manufacturing two more rel=preload links so the table looks right is R67 aimed at the tree instead of at a test: the tree would then be shaped by what makes a row readable rather than by what the world contains. It is a §8.5 growth item and reality will supply them — rel=preload as=image is how a modern page preloads its LCP hero, so it sits beside `new URL(..., import.meta.url)`: not exotic, just untested."
+      "motivation": "The preload branch of `linkImageClaim`, rel=preload with as=image: a separate return from the icon branch, so it fails separately.",
+      "singleReason": "One instance, not padded. Two more rel=preload links added only so the row reads three would shape the tree by what makes a row readable rather than by what real pages contain. Real pages will supply more: rel=preload as=image is how a modern page preloads its LCP hero, so like `new URL(..., import.meta.url)` it is not exotic, just untested."
     },
     {
       "id": "html.link.href.other",
       "label": "link@href the predicate refuses",
       "spec": "4a",
-      "motivation": "ADDED: a stylesheet link and a manifest link sit in the same attribute as an icon and must not be treated alike. R83: this row is what linkPointsAtAnImage REFUSES, so it is homogeneous and a zero is the correct reading — a non-zero would be the failure."
+      "motivation": "A stylesheet link and a manifest link sit in the same attribute as an icon and must not be treated alike. This row is what `linkImageClaim` refuses, so it is homogeneous and a zero is the correct reading; a non-zero count would be the failure."
     },
     {
       "id": "html.object.data",
       "label": "object@data",
       "spec": "4a",
-      "motivation": "ADDED: not in 4a. An object element is an asset position in real documents and nothing in the spec said what to do with it."
+      "motivation": "An object element is an asset position in real documents: object@data is the same position as embed@src, in a different element."
     },
     {
       "id": "html.iframe.src",
       "label": "iframe@src",
       "spec": "4a",
-      "motivation": "ADDED: not in 4a. A path-shaped attribute that must never become a finding — precision, not recall."
+      "motivation": "A path-shaped attribute that must never become a finding: precision, not recall."
     },
     {
       "id": "html.svg.image.href",
@@ -197,13 +197,13 @@
       "id": "path.charref",
       "label": "a path spelled with HTML character references",
       "spec": "4a,4g",
-      "motivation": "Caught in Phase 1 before it could corrupt a file: /gallery/a&amp;b.png is 20 source characters and 16 decoded. R88(a) moved it out of the html.* namespace: a character reference is how the path is SPELLED, so it beats the construct the path sits in, exactly as an absolute URL does. It was named like a host shape and behaved like a disposition, and that hid a rule already written."
+      "motivation": "/gallery/a&amp;b.png is 20 source characters and 16 decoded, and getting that wrong corrupts a file on rewrite. A character reference is how the path is spelled, so it takes precedence over the construct the path sits in, exactly as an absolute URL does."
     },
     {
       "id": "html.percent-encoded",
       "label": "a percent-encoded path",
       "spec": "4a,4h",
-      "motivation": "Two references that look alike and resolve oppositely: one decodes to a file that exists, the other IS a file that exists."
+      "motivation": "Two references that look alike and resolve oppositely: one decodes to a file that exists, the other is the name of a file that exists as written."
     },
     {
       "id": "css.url.bare",
@@ -227,7 +227,7 @@
       "id": "css.url.nested",
       "label": "url() inside another function",
       "spec": "4b",
-      "motivation": "cross-fade and var()'s fallback: the walker has to RECURSE to reach the url. ⚠️ This read \"gradient, cross-fade, and image-set: the url is no longer the whole value\" and that definition is what produced two stray entries (R89) — \"not the whole value\" is not what this shape names, and image-set has its own row."
+      "motivation": "cross-fade and var()'s fallback: the walker has to recurse to reach the url. A url that is merely not the whole value, as after a gradient, is not what this shape names, and image-set has its own row."
     },
     {
       "id": "css.image-set",
@@ -263,7 +263,7 @@
       "id": "css.font-face",
       "label": "@font-face src",
       "spec": "4b",
-      "motivation": "ADDED: a real file the engine does not index, reached through CSS rather than HTML."
+      "motivation": "A real file the engine does not index, reached through CSS rather than HTML."
     },
     {
       "id": "css.fragment",
@@ -275,7 +275,7 @@
       "id": "scss.url",
       "label": "url() in .scss",
       "spec": "4b",
-      "motivation": "The CSS adapter has to mean all three extensions, not the one that was tested."
+      "motivation": "The CSS adapter has to cover all three extensions, not only `.css`."
     },
     {
       "id": "scss.variable",
@@ -323,7 +323,7 @@
       "id": "js.import.alias.mapped",
       "label": "import through a tsconfig paths alias",
       "spec": "4c",
-      "motivation": "Turns the unresolved-alias bucket into real links; Phase 2 owns it."
+      "motivation": "Turns the unresolved-alias bucket into real links."
     },
     {
       "id": "js.import.alias.unmapped",
@@ -335,7 +335,7 @@
       "id": "path.bare-specifier",
       "label": "a bare package specifier",
       "spec": "4c,4g",
-      "motivation": "R32. Out-of-scope rather than unresolved-alias: the file exists, it is just not ours. R88(b) renamed it from js.import.package because the three entries are an import, a require() and a plain string constant — all three fail together if bare-specifier detection breaks, and a row covering all three cannot be called `import`."
+      "motivation": "Out-of-scope rather than unresolved-alias: the file exists, it is just not ours. The row holds an import, a require() and a plain string constant, so it is named for what the path is rather than for `import`."
     },
     {
       "id": "js.require",
@@ -353,7 +353,7 @@
       "id": "pattern.partial",
       "label": "a pattern matching only some of the files it names",
       "spec": "4c,4b",
-      "motivation": "R80(a), applied by R89. A pattern row that only ever saw three-of-three would not notice a two-of-three. 🔴 NO ADAPTER CAN NAME THIS ROW — the distinction is which of the files the pattern names actually exist, which only the resolver can see (R87), so the adapters emit js.template.pattern or scss.interpolation.trailing and the key draws the line."
+      "motivation": "A pattern row that only ever saw three-of-three would not notice a two-of-three. No adapter can name this row: the distinction is which of the files the pattern names actually exist, which only the resolver can see, so the adapters emit js.template.pattern or scss.interpolation.trailing and the key draws the line."
     },
     {
       "id": "js.template.dynamic",
@@ -371,7 +371,7 @@
       "id": "js.concat.pattern",
       "label": "path assembled by concatenation, one unknown segment",
       "spec": "4c",
-      "motivation": "R175: a + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Three instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), and inside a JSX attribute (IconBadge.tsx)."
+      "motivation": "A + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Three instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), and inside a JSX attribute (IconBadge.tsx)."
     },
     {
       "id": "js.string.literal",
@@ -402,7 +402,7 @@
       "label": "![alt][label]",
       "spec": "4d",
       "motivation": "The path is not at the use site; it is in a definition further down.",
-      "absent": "THREE ARE PRESENT IN THE TREE and none can be keyed, because the use site carries no path at all — `![The screenshot][shot]` names a label. The paths live in the definitions at the foot of the file and are keyed as md.reference-definition. A row here would count label lookups, not references. Deliberately empty; the coverage it stands for is md.reference-definition's."
+      "absent": "Three are present in the tree and none can be keyed, because the use site carries no path at all: `![The screenshot][shot]` names a label. The paths live in the definitions at the foot of the file and are keyed as md.reference-definition. A row here would count label lookups, not references. Deliberately empty; the coverage it stands for is md.reference-definition's."
     },
     {
       "id": "md.reference-definition",
@@ -426,7 +426,7 @@
       "id": "md.prose-mention",
       "label": "a path named in prose",
       "spec": "4d",
-      "motivation": "R24. Reported, never rewritten. Rewriting prose corrupts a sentence."
+      "motivation": "Reported, never rewritten. Rewriting prose corrupts a sentence."
     },
     {
       "id": "md.code-fence",
@@ -438,25 +438,25 @@
       "id": "md.indented-code",
       "label": "a path inside an indented code block",
       "spec": "4d",
-      "motivation": "ADDED: the older fence syntax, which a fence-aware masker can still miss."
+      "motivation": "The older fence syntax, which a fence-aware masker can still miss."
     },
     {
       "id": "md.inline-code",
       "label": "a path inside inline code",
       "spec": "4d",
-      "motivation": "ADDED: backticks mid-sentence, which is neither prose nor a fence."
+      "motivation": "Backticks mid-sentence, which is neither prose nor a fence."
     },
     {
       "id": "md.frontmatter.scalar",
       "label": "an image path in YAML frontmatter",
       "spec": "4d",
-      "motivation": "R18. No adapter reads frontmatter today, so these record a known gap rather than a success. Measured scope: 4 instances across the real corpus, all in eleventy-docs."
+      "motivation": "No adapter reads frontmatter yet, so these record a known gap rather than a success. Measured scope: 4 instances across the real corpus, all in eleventy-docs."
     },
     {
       "id": "md.frontmatter.nested",
       "label": "an image path nested inside frontmatter",
       "spec": "4d",
-      "motivation": "R18 again. A different key at a different depth is what makes it a class rather than three files."
+      "motivation": "The same gap, nested. A different key at a different depth is what makes it a class rather than three files."
     },
     {
       "id": "mdx.import",
@@ -492,7 +492,7 @@
       "id": "json.config.glob",
       "label": "a glob in a JSON config",
       "spec": "4e",
-      "motivation": "ADDED: **/*.png is not a path, and must not become one."
+      "motivation": "`**/*.png` is not a path, and must not become one."
     },
     {
       "id": "astro.import.frontmatter",
@@ -511,14 +511,14 @@
       "label": "a path from an expression in the template body",
       "spec": "4f",
       "motivation": "Declared in the fence, used in the body.",
-      "absent": "PRESENT IN THE TREE and keyed under a different row. `<img src={heroPath} />` carries no path — the path is the string constant in the fence, which is keyed as js.string.literal. Counting the use site as well would double-count one reference, and R75's matrix must not do that."
+      "absent": "Present in the tree and keyed under a different row. `<img src={heroPath} />` carries no path: the path is the string constant in the fence, which is keyed as js.string.literal. Counting the use site as well would double-count one reference, which the coverage matrix must not do."
     },
     {
       "id": "decoy.regex",
       "label": "an extension inside a regular expression",
       "spec": "4k.4",
       "motivation": "Source code about images is not a reference to one.",
-      "absent": "PRESENT IN THE TREE at apps/web/src/lib/decoys.ts (`/\\.(png|jpe?g|svg)$/i`) and INVISIBLE TO THE TEXT SCAN, because a regex escapes the dot: the bytes read `\\.(png`, and `.png` never occurs. So the checker cannot demand a key entry for it and one is not given. ⚠️ Stated rather than hidden: this row measures nothing, and an engine that DOES extract a path from a regex would not be caught here."
+      "absent": "Present in the tree at apps/web/src/lib/decoys.ts (`/\\.(png|jpe?g|svg)$/i`) and invisible to the text scan, because a regex escapes the dot: the bytes read `\\.(png`, and `.png` never occurs. So the checker cannot demand a key entry for it, and none is given. This row measures nothing, and an engine that did extract a path from a regex would not be caught here."
     },
     {
       "id": "astro.style.element",
@@ -530,7 +530,7 @@
       "id": "unread.vue",
       "label": "a reference inside .vue",
       "spec": "4j",
-      "motivation": "R72: a reference in an unread file type broke and every instrument reported success."
+      "motivation": "A reference in a file type nothing reads can break while every instrument reports success."
     },
     {
       "id": "unread.svelte",
@@ -614,7 +614,7 @@
       "id": "path.absolute-url",
       "label": "an absolute URL",
       "spec": "4g",
-      "motivation": "R32. Out-of-scope: real, reachable, not ours."
+      "motivation": "Out-of-scope: real, reachable, not ours."
     },
     {
       "id": "path.protocol-relative",
@@ -1165,7 +1165,7 @@
           "shape": "unread.svelte",
           "expect": "resolved",
           "why": "An import, in a file type nothing opens.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "knownGap": "No adapter reads .svelte files.",
           "target": "apps/docs/public/img/avatar.png",
           "offset": 31,
           "line": 2,
@@ -1177,7 +1177,7 @@
           "shape": "unread.svelte",
           "expect": "resolved",
           "why": "A literal in the script block.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "knownGap": "No adapter reads .svelte files.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 110,
           "line": 5,
@@ -1188,8 +1188,8 @@
           "occurrence": 1,
           "shape": "unread.svelte",
           "expect": "resolved",
-          "why": "R13: the docs app's own logo, not the web app's.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "why": "The docs app's own logo, not the web app's.",
+          "knownGap": "No adapter reads .svelte files.",
           "target": "apps/docs/public/logo.png",
           "offset": 175,
           "line": 9,
@@ -1201,7 +1201,7 @@
           "shape": "unread.svelte",
           "expect": "resolved",
           "why": "A relative path in the markup.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "knownGap": "No adapter reads .svelte files.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 355,
           "line": 12,
@@ -1213,7 +1213,7 @@
           "shape": "unread.svelte",
           "expect": "broken",
           "why": "Broken, and today no instrument can see that it is.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "knownGap": "No adapter reads .svelte files.",
           "offset": 418,
           "line": 13,
           "column": 13
@@ -1224,7 +1224,7 @@
           "shape": "unread.svelte",
           "expect": "resolved",
           "why": "A url() in a scoped style block.",
-          "knownGap": "R72 / §4j — no adapter reads .svelte.",
+          "knownGap": "No adapter reads .svelte files.",
           "target": "apps/docs/public/img/hero.jpg",
           "offset": 551,
           "line": 19,
@@ -1290,7 +1290,7 @@
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
           "why": "A `hero:` key in MDX frontmatter.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 32,
           "line": 3,
@@ -1302,7 +1302,7 @@
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
           "why": "An `ogImage:` key, relative rather than root-relative.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/brand.png",
           "offset": 61,
           "line": 4,
@@ -1426,7 +1426,7 @@
           "occurrence": 1,
           "shape": "md.code-fence",
           "expect": "discarded",
-          "why": "R167 group A's refuting input for WHERE an ESM opener is looked for. An import inside a fence, followed by a blank line so it would parse on its own: a reader that looked for openers in the source rather than the masked text would claim it as a resolved mdx.import. The fence makes it an example, exactly as a fenced <img> is.",
+          "why": "Where an ESM opener is looked for: an import inside a fence, followed by a blank line so it would parse on its own. A reader that looked for openers in the source rather than the masked text would claim it as a resolved mdx.import. The fence makes it an example, exactly as a fenced <img> is.",
           "offset": 270,
           "line": 11,
           "column": 22
@@ -1441,7 +1441,7 @@
           "occurrence": 1,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "R167 group A's refuting input for the paragraph rule, and the direction R109 calls box D. The SECOND line of a paragraph, which happens to be valid JavaScript. MDX's ESM construct cannot interrupt a paragraph (micromark-extension-mdxjs-esm: `return self.interrupt ? nok : start`), so this is prose. A blank line follows on purpose: a reader that ignored the paragraph would parse this line cleanly and claim it, rather than failing loudly on the next one.",
+          "why": "The paragraph rule, tested in the direction of the dangerous failure: claiming a reference that is not there. The second line of a paragraph, which happens to be valid JavaScript. MDX's ESM construct cannot interrupt a paragraph (micromark-extension-mdxjs-esm: `return self.interrupt ? nok : start`), so this is prose. A blank line follows on purpose: a reader that ignored the paragraph would parse this line cleanly and claim it, rather than failing loudly on the next one.",
           "offset": 187,
           "line": 8,
           "column": 19
@@ -1456,7 +1456,7 @@
           "occurrence": 1,
           "shape": "js.string.literal",
           "expect": "resolved",
-          "why": "R167 group A: an `export const` whose object spans a blank line. MDX ends an ESM block at a blank line UNLESS the code so far is unfinished, and then carries on (micromark-extension-mdxjs-esm `atEnd`: `result.swallow`). A reader that always stopped at the blank line would report this document as a parse failure and lose the path.",
+          "why": "An `export const` whose object spans a blank line. MDX ends an ESM block at a blank line unless the code so far is unfinished, and then carries on (micromark-extension-mdxjs-esm `atEnd`: `result.swallow`). A reader that always stopped at the blank line would report this document as a parse failure and lose the path.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 189,
           "line": 10,
@@ -1472,7 +1472,7 @@
           "occurrence": 1,
           "shape": "mdx.jsx",
           "expect": "resolved",
-          "why": "R167: indented JSX after a blank line, inside a JSX block. MDX 2 turned indented code OFF, because JSX is indented -- so in .mdx this is live, and a pass that applied CommonMark's rule to MDX would blank it. It must stay live: the indented-code pass may only blank what is provably code.",
+          "why": "Indented JSX after a blank line, inside a JSX block. MDX has no indented code, because JSX is indented, so in .mdx this is live, and a pass that applied CommonMark's rule to MDX would blank it. It must stay live: the indented-code pass may only blank what is provably code.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 69,
           "line": 7,
@@ -1489,7 +1489,7 @@
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
           "why": "Frontmatter, six levels up.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 27,
           "line": 3,
@@ -1522,7 +1522,7 @@
           "occurrence": 1,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "Across the workspace into the OTHER app's serving root — the same basename as the docs app's own hero.jpg, and a different picture.",
+          "why": "Across the workspace into the other app's serving root: the same basename as the docs app's own hero.jpg, and a different picture.",
           "target": "apps/web/public/img/hero.jpg",
           "offset": 353,
           "line": 14,
@@ -1554,7 +1554,7 @@
           "occurrence": 3,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "R24: named in a sentence. Rewriting it would edit prose.",
+          "why": "Named in a sentence. Rewriting it would edit prose.",
           "offset": 559,
           "line": 20,
           "column": 23
@@ -1581,7 +1581,7 @@
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
           "why": "An `image:` key.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/hero.jpg",
           "offset": 76,
           "line": 4,
@@ -1592,8 +1592,8 @@
           "occurrence": 1,
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
-          "why": "A `cover:` key — a different key, which is what makes R18 a class.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "why": "A `cover:` key: a different key, which is what makes frontmatter paths a class.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 97,
           "line": 5,
@@ -1604,8 +1604,8 @@
           "occurrence": 1,
           "shape": "md.frontmatter.scalar",
           "expect": "resolved",
-          "why": "A `thumbnail:` key holding a RELATIVE path.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "why": "A `thumbnail:` key holding a relative path.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/avatar.png",
           "offset": 125,
           "line": 6,
@@ -1617,7 +1617,7 @@
           "shape": "md.frontmatter.nested",
           "expect": "resolved",
           "why": "Nested two levels inside the frontmatter, under socialCard.url.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/brand.png",
           "offset": 175,
           "line": 8,
@@ -1629,7 +1629,7 @@
           "shape": "md.frontmatter.nested",
           "expect": "resolved",
           "why": "A sibling key under the same nested map.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/logo.png",
           "offset": 225,
           "line": 10,
@@ -1640,8 +1640,8 @@
           "occurrence": 1,
           "shape": "md.frontmatter.nested",
           "expect": "resolved",
-          "why": "Inside a LIST of maps — a third shape of nesting again, which is what makes R18 a class rather than a key name.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "why": "Inside a list of maps: a third shape of nesting again, which is what makes frontmatter paths a class rather than a key name.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 253,
           "line": 12,
@@ -1653,7 +1653,7 @@
           "shape": "md.frontmatter.nested",
           "expect": "resolved",
           "why": "The second element of that list. Occurrence 2: the thumbnail path above contains this string.",
-          "knownGap": "R18 — no adapter reads YAML frontmatter today. Expected gap, not a success.",
+          "knownGap": "No adapter reads YAML frontmatter. Expected gap, not a success.",
           "target": "apps/docs/public/img/avatar.png",
           "offset": 308,
           "line": 14,
@@ -1795,7 +1795,7 @@
           "occurrence": 4,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "R24. The identical string to a real reference in this same file, in a sentence.",
+          "why": "The identical string to a real reference in this same file, in a sentence.",
           "offset": 1673,
           "line": 62,
           "column": 25
@@ -1805,7 +1805,7 @@
           "occurrence": 1,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "R24. A path written as prose, not as a link.",
+          "why": "A path written as prose, not as a link.",
           "offset": 1739,
           "line": 63,
           "column": 1
@@ -1942,7 +1942,7 @@
           "occurrence": 1,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "R167 group A: the same line MDX would read as an import, in a plain .md file, where it is a paragraph. A reader that applied MDX's ESM rule to every markdown extension would claim it.",
+          "why": "The same line MDX would read as an import, in a plain .md file, where it is a paragraph. A reader that applied MDX's ESM rule to every markdown extension would claim it.",
           "offset": 45,
           "line": 3,
           "column": 19
@@ -1957,7 +1957,7 @@
           "occurrence": 1,
           "shape": "md.raw-html",
           "expect": "resolved",
-          "why": "R167: indented four spaces under a list item, after a blank line -- the item's own content, not code (CommonMark list items). The refuting input the brief named: a pass that masked every indented line would blind the adapter to images in lists. It must stay live: the indented-code pass may only blank what is provably code.",
+          "why": "Indented four spaces under a list item, after a blank line: the item's own content, not code (CommonMark list items). A pass that masked every indented line would blind the adapter to images in lists. It must stay live: the indented-code pass may only blank what is provably code.",
           "target": "apps/docs/public/img/avatar.png",
           "offset": 113,
           "line": 5,
@@ -1968,7 +1968,7 @@
           "occurrence": 1,
           "shape": "md.indented-code",
           "expect": "discarded",
-          "why": "R167: the same indentation after the list has ENDED (a paragraph at the margin, after a blank line). Code, shown not run. A pass that never closed a list would leave this claimed.",
+          "why": "The same indentation after the list has ended (a paragraph at the margin, after a blank line). Code, shown not run. A pass that never closed a list would leave this claimed.",
           "offset": 288,
           "line": 11,
           "column": 15
@@ -1983,7 +1983,7 @@
           "occurrence": 1,
           "shape": "md.raw-html",
           "expect": "resolved",
-          "why": "R167: indented, but straight after a paragraph line with no blank between -- the paragraph continuing. CommonMark: an indented code block cannot interrupt a paragraph. It must stay live: the indented-code pass may only blank what is provably code.",
+          "why": "Indented, but straight after a paragraph line with no blank between: the paragraph continuing. In CommonMark an indented code block cannot interrupt a paragraph. It must stay live: the indented-code pass may only blank what is provably code.",
           "target": "apps/docs/public/img/diagram.png",
           "offset": 133,
           "line": 4,
@@ -1999,7 +1999,7 @@
           "occurrence": 1,
           "shape": "md.raw-html",
           "expect": "resolved",
-          "why": "R167, found on a REAL repository while this was being built (eleventy-docs src/docs/cjs-esm.md): an HTML table whose rows are indented and one of which is commented out. The mask turns the comment into spaces; a pass that read blank lines from the mask ended the HTML block there and blanked this live row. Only a blank line of the SOURCE ends it. It must stay live: the indented-code pass may only blank what is provably code.",
+          "why": "A shape taken from a real repository (eleventy-docs src/docs/cjs-esm.md): an HTML table whose rows are indented and one of which is commented out. The mask turns the comment into spaces, so a pass that read blank lines from the mask would end the HTML block there and blank this live row. Only a blank line of the source ends it. It must stay live: the indented-code pass may only blank what is provably code.",
           "target": "apps/docs/public/img/hero.jpg",
           "offset": 177,
           "line": 9,
@@ -2015,7 +2015,7 @@
           "occurrence": 1,
           "shape": "md.raw-html",
           "expect": "resolved",
-          "why": "R167: inside <pre>, after a blank line. A <pre> HTML block (CommonMark type 1) ends at </pre>, not at a blank line, so this is still HTML and <img> inside <pre> renders. It must stay live: the indented-code pass may only blank what is provably code.",
+          "why": "Inside <pre>, after a blank line. A <pre> HTML block (CommonMark type 1) ends at </pre>, not at a blank line, so this is still HTML and <img> inside <pre> renders. It must stay live: the indented-code pass may only blank what is provably code.",
           "target": "apps/docs/public/logo.png",
           "offset": 100,
           "line": 6,
@@ -2031,7 +2031,7 @@
           "occurrence": 1,
           "shape": "md.indented-code",
           "expect": "discarded",
-          "why": "R167: indented straight under an ATX heading. A heading is a whole block, so the next line starts a new one, and four spaces there are code -- no blank line is needed.",
+          "why": "Indented straight under an ATX heading. A heading is a whole block, so the next line starts a new one, and four spaces there are code; no blank line is needed.",
           "offset": 54,
           "line": 2,
           "column": 15
@@ -2046,7 +2046,7 @@
           "occurrence": 1,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "R164: the extension is a decimal character reference, so the document holds no literal `.png` anywhere. `resolve.ts` tests every spelling `spellingsOf` produces, so it resolves and the markdown adapter does find it. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "why": "The extension is a decimal character reference, so the document holds no literal `.png` anywhere. `resolve.ts` tests every spelling `spellingsOf` produces, so it resolves and the markdown adapter does find it. One spelling per file, because the substring skip (`couldHoldReference`) decides per file: a file holding several spellings is parsed if any one of them is handled, and cannot show which.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 227,
           "line": 6,
@@ -2062,7 +2062,7 @@
           "occurrence": 1,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "R164: the same picture with the dot percent-escaped. Separate from the entity spelling because the two decode by different code paths, so a fix can close one and miss the other. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "why": "The same picture with the dot percent-escaped. Separate from the entity spelling because the two decode by different code paths, so a fix can close one and miss the other. One spelling per file, because the substring skip (`couldHoldReference`) decides per file: a file holding several spellings is parsed if any one of them is handled, and cannot show which.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 130,
           "line": 5,
@@ -2078,7 +2078,7 @@
           "occurrence": 1,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "R165: the escape covers a LETTER of the extension rather than the dot. 🔴 THIS IS THE ENTRY THAT REFUTES THE NARROW FIX. R164 ruled the token `%2`, which catches an escaped dot and misses this, because `decodePercent` runs `decodeURIComponent` over the whole path and any character may be escaped. With `%2` this row misses; with `%` it is met. 🔴 ONE CLASS PER FILE, AND THAT IS THE POINT: the skip R162 added decides per FILE, so three spellings in one document cannot isolate anything — the first attempt put all three together and the matrix read identically whether the fix handled one class or all of them.",
+          "why": "The escape covers a letter of the extension rather than the dot. A skip token of `%2` catches an escaped dot and misses this, because `decodePercent` runs `decodeURIComponent` over the whole path and any character may be escaped. With `%2` this row misses; with `%` it is met. One spelling per file, because the substring skip (`couldHoldReference`) decides per file: a file holding several spellings is parsed if any one of them is handled, and cannot show which.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 238,
           "line": 6,
@@ -2159,7 +2159,7 @@
           "occurrence": 1,
           "shape": "js.string.literal",
           "expect": "resolved",
-          "why": "R13: resolves against the docs root, and the web app has a different brand.png.",
+          "why": "Resolves against the docs root, and the web app has a different brand.png.",
           "target": "apps/docs/public/brand.png",
           "offset": 341,
           "line": 10,
@@ -2213,7 +2213,7 @@
           "occurrence": 1,
           "shape": "js.template.pattern",
           "expect": "resolved-pattern",
-          "why": "One reference standing for three files that all exist — and for the DOCS three, not the web app's three.",
+          "why": "One reference standing for three files that all exist, and for the docs app's three, not the web app's.",
           "target": [
             "apps/docs/public/theme-light.png",
             "apps/docs/public/theme-dark.png",
@@ -2255,7 +2255,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "dynamic",
-          "why": "R167 group B's refuting input for the Astro half: a braced body value is read as JavaScript now, and two unknowns in one name are not globbable (R80(b)). A reader that globbed every expression would match all three real theme files and claim a resolved-pattern.",
+          "why": "A braced body value is read as JavaScript, and two unknowns in one name are not globbable: one unknown segment in the name is a pattern, two is a guess. A reader that globbed every expression would match all three real theme files and claim a resolved-pattern.",
           "offset": 59,
           "line": 5,
           "column": 12
@@ -2329,7 +2329,7 @@
           "occurrence": 1,
           "shape": "html.percent-encoded",
           "expect": "resolved",
-          "why": "The percent sign is IN THE FILENAME. An engine that always decodes reports this broken. The pair only passes if both are tried.",
+          "why": "The percent sign is in the filename. An engine that always decodes reports this broken. The pair only passes if both are tried.",
           "target": "apps/web/public/gallery/enc%20name.png",
           "offset": 1430,
           "line": 33,
@@ -2340,7 +2340,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "A space and parentheses, unencoded. R26 measured a 16% false-unused rate on this class.",
+          "why": "A space and parentheses, unencoded. An engine that mishandles either reports an image in use as unused.",
           "target": "apps/web/public/gallery/hero (1).png",
           "offset": 1512,
           "line": 34,
@@ -2386,7 +2386,7 @@
           "occurrence": 1,
           "shape": "html.rawtext.swallowed",
           "expect": "discarded",
-          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. The engine correctly produces nothing here, and so does a browser.",
           "offset": 2574,
           "line": 57,
           "column": 15
@@ -2396,7 +2396,7 @@
           "occurrence": 1,
           "shape": "html.rawtext.swallowed",
           "expect": "discarded",
-          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. The engine correctly produces nothing here, and so does a browser.",
           "offset": 2658,
           "line": 58,
           "column": 15
@@ -2406,7 +2406,7 @@
           "occurrence": 1,
           "shape": "html.rawtext.swallowed",
           "expect": "discarded",
-          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. The engine correctly produces nothing here, and so does a browser.",
           "offset": 2747,
           "line": 59,
           "column": 15
@@ -2416,7 +2416,7 @@
           "occurrence": 1,
           "shape": "html.rawtext.swallowed",
           "expect": "discarded",
-          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. 🔴 R90: the engine correctly produces nothing here, and so does a browser. Keyed expect: resolved until the measuring harness made the disagreement visible — the row read 0 of 4 and the KEY was the wrong side.",
+          "why": "Inside the unclosed <style> on line 45, so it is stylesheet text rather than markup. The engine correctly produces nothing here, and so does a browser.",
           "offset": 2838,
           "line": 60,
           "column": 15
@@ -2474,7 +2474,7 @@
           "occurrence": 1,
           "shape": "html.link.href.other",
           "expect": "out-of-scope",
-          "why": "A stylesheet in the same attribute as the icons. It is scanned as a source file, never indexed as an asset. ⚠️ The token scan cannot see this line — .css is not an asset extension — so it is keyed by hand.",
+          "why": "A stylesheet in the same attribute as the icons. It is scanned as a source file, never indexed as an asset. The token scan cannot see this line, because .css is not an asset extension, so it is keyed by hand.",
           "offset": 379,
           "line": 11,
           "column": 34
@@ -2484,7 +2484,7 @@
           "occurrence": 1,
           "shape": "html.link.href.preload",
           "expect": "resolved",
-          "why": "rel=preload as=image. R83: its own shape, because linkPointsAtAnImage claims it through a SECOND, INDEPENDENT branch — delete the icon branch and this still works, delete this branch and icon still works. Two independently-failing things must not share a row.",
+          "why": "rel=preload as=image. Its own shape, because `linkImageClaim` claims it through a second, independent branch: delete the icon branch and this still works, delete this branch and icon still works. Two things that fail independently must not share a row.",
           "target": "apps/web/public/img/hero.jpg",
           "offset": 438,
           "line": 12,
@@ -2516,7 +2516,7 @@
           "occurrence": 1,
           "shape": "html.style.element",
           "expect": "resolved",
-          "why": "Unquoted url() inside that style element. R82: keyed by HOST, as the quoted ones beside it are — what would take all three out is HTML failing to extract the CSS. Unquoted-url PARSING is covered by css.url.bare in .css, where nothing else is in the way.",
+          "why": "Unquoted url() inside that style element. Keyed by host, as the quoted ones beside it are: what would take all three out is HTML failing to extract the CSS. Unquoted-url parsing is covered by css.url.bare in .css, where nothing else is in the way.",
           "target": "apps/web/public/img/texture.png",
           "offset": 660,
           "line": 20,
@@ -2559,7 +2559,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "R13: the web app's brand.png, which is a different picture from the docs app's.",
+          "why": "The web app's brand.png, which is a different picture from the docs app's.",
           "target": "apps/web/public/brand.png",
           "offset": 1009,
           "line": 31,
@@ -2735,7 +2735,7 @@
           "occurrence": 1,
           "shape": "html.img.srcset.w",
           "expect": "broken",
-          "why": "🔴 Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5 — the case R75 names.",
+          "why": "Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5, the partial miss the coverage matrix exists to show.",
           "offset": 2120,
           "line": 61,
           "column": 11
@@ -2866,7 +2866,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32. Real and reachable, and not ours to rewrite.",
+          "why": "Real and reachable, and not ours to rewrite.",
           "offset": 3133,
           "line": 85,
           "column": 19
@@ -2932,7 +2932,7 @@
           "occurrence": 1,
           "shape": "html.video.src",
           "expect": "out-of-scope",
-          "why": "A real file the engine deliberately does not index. Folding this into resolved would let Phase 2 rewrite it and break a video that works.",
+          "why": "A real file the engine deliberately does not index. Folding this into resolved would let a rewrite break a video that works.",
           "offset": 421,
           "line": 14,
           "column": 53
@@ -2972,7 +2972,7 @@
           "occurrence": 1,
           "shape": "html.track.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 692,
           "line": 18,
           "column": 19
@@ -3034,7 +3034,7 @@
           "occurrence": 1,
           "shape": "html.source.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 1119,
           "line": 29,
           "column": 20
@@ -3054,7 +3054,7 @@
           "occurrence": 1,
           "shape": "html.embed.src",
           "expect": "resolved",
-          "why": "embed@src holding an IMAGE, so the outcome depends on the target rather than the tag. Mixed-case extension.",
+          "why": "embed@src holding an image, so the outcome depends on the target rather than the tag. Mixed-case extension.",
           "target": "apps/web/public/gallery/MixedCase.Png",
           "offset": 1277,
           "line": 33,
@@ -3097,7 +3097,7 @@
           "occurrence": 2,
           "shape": "html.object.data",
           "expect": "out-of-scope",
-          "why": "R78 Q1: object@data is a claimed position. A non-image extension filters out exactly as it does for embed@src — a real file the engine does not index.",
+          "why": "object@data is a claimed position. A non-image extension is filtered out exactly as it is for embed@src: a real file the engine does not index.",
           "offset": 1590,
           "line": 39,
           "column": 19
@@ -3107,7 +3107,7 @@
           "occurrence": 2,
           "shape": "html.object.data",
           "expect": "resolved",
-          "why": "R78 Q1: an image target in object@data resolves. This is the entry the ruling actually costs something on — the image is rewritable rather than invisible.",
+          "why": "An image target in object@data resolves. This is the entry where claiming object@data changes the outcome: the image is rewritable rather than invisible.",
           "offset": 1689,
           "line": 40,
           "column": 19,
@@ -3118,7 +3118,7 @@
           "occurrence": 1,
           "shape": "html.object.data",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 1779,
           "line": 41,
           "column": 19
@@ -3169,7 +3169,7 @@
           "occurrence": 1,
           "shape": "html.video.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 2254,
           "line": 48,
           "column": 26
@@ -3179,7 +3179,7 @@
           "occurrence": 1,
           "shape": "html.audio.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 2337,
           "line": 49,
           "column": 26
@@ -3255,7 +3255,7 @@
           "occurrence": 1,
           "shape": "html.audio.src",
           "expect": "resolved",
-          "why": "A third audio@src — and it points at an IMAGE, which is nonsense as a page but is exactly the case where a tag-based guess and a target-based one disagree.",
+          "why": "A third audio@src, and it points at an image, which is nonsense as a page but is exactly the case where a tag-based guess and a target-based one disagree.",
           "target": "shared/assets/img/thumb.png",
           "offset": 2896,
           "line": 60,
@@ -3266,7 +3266,7 @@
           "occurrence": 1,
           "shape": "html.embed.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 2956,
           "line": 61,
           "column": 17
@@ -3276,7 +3276,7 @@
           "occurrence": 1,
           "shape": "html.iframe.src",
           "expect": "discarded",
-          "why": "A third iframe. Still never an asset reference. ⚠️ Invisible to the token scan.",
+          "why": "A third iframe. Still never an asset reference. Invisible to the token scan.",
           "offset": 3049,
           "line": 62,
           "column": 18
@@ -3297,7 +3297,7 @@
           "occurrence": 1,
           "shape": "html.track.src",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 3212,
           "line": 64,
           "column": 19
@@ -3312,7 +3312,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "A file INSIDE the serving root using a root-relative path.",
+          "why": "A file inside the serving root using a root-relative path.",
           "target": "apps/web/public/media/poster.jpg",
           "offset": 131,
           "line": 8,
@@ -3372,7 +3372,7 @@
           "occurrence": 1,
           "shape": "json.webmanifest.icon",
           "expect": "discarded",
-          "why": "R78 Q2: PWA icon sets are routinely GENERATED at build time, so a missing target is normal rather than wrong. Calling it broken would manufacture the R26 false-finding class in a format where absence is the common case. The position is still claimed when it resolves; only the assertion of brokenness is withheld.",
+          "why": "PWA icon sets are routinely generated at build time, so a missing target is normal rather than wrong. Calling it broken would be a false finding, telling someone a reference is broken when it is not, in a format where absence is the common case. The position is still claimed when it resolves; only the assertion of brokenness is withheld.",
           "offset": 523,
           "line": 26,
           "column": 15
@@ -3393,7 +3393,7 @@
           "occurrence": 1,
           "shape": "json.webmanifest.other",
           "expect": "discarded",
-          "why": "A second screenshots entry, pointing at nothing. `discarded` rather than `broken` for the same reason the icons entry above is UNDECIDED — except that nothing asserts a screenshot is required, so the speculative reading is the safe one here.",
+          "why": "A second screenshots entry, pointing at nothing. `discarded` rather than `broken`, as the icons entry above is, and more clearly so: nothing asserts that a screenshot is required, so the speculative reading is the safe one here.",
           "offset": 750,
           "line": 38,
           "column": 15
@@ -3507,7 +3507,7 @@
           "occurrence": 1,
           "shape": "css.url.double",
           "expect": "resolved",
-          "why": "A space in the filename, which only a quoted url() can carry. R26.",
+          "why": "A space in the filename, which only a quoted url() can carry.",
           "target": "apps/web/public/gallery/hero image.png",
           "offset": 1087,
           "line": 46,
@@ -3529,7 +3529,7 @@
           "occurrence": 1,
           "shape": "css.url.double",
           "expect": "resolved",
-          "why": "Spaces AND parentheses AND the word copy.",
+          "why": "Spaces, parentheses and the word copy.",
           "target": "apps/web/public/gallery/hero image (2) copy.png",
           "offset": 1225,
           "line": 54,
@@ -3573,7 +3573,7 @@
           "occurrence": 2,
           "shape": "css.image-set",
           "expect": "resolved",
-          "why": "image-set() with BARE STRINGS rather than url(), which is also valid.",
+          "why": "image-set() with bare strings rather than url(), which is also valid.",
           "target": "apps/web/public/srcset/card-800.jpg",
           "offset": 1533,
           "line": 68,
@@ -3650,7 +3650,7 @@
           "occurrence": 2,
           "shape": "css.url.double",
           "expect": "resolved",
-          "why": "A url() at the TOP LEVEL of a comma-separated list, after a linear-gradient. 🔴 NOT nested, and this entry was keyed css.url.nested until R89 measured it: `nested` is set only when the value walker RECURSES into a function, and nothing recurses to reach this url. It fails with every other plain double-quoted url() and not with the cross-fade pair.",
+          "why": "A url() at the top level of a comma-separated list, after a linear-gradient. It is not nested: `nested` is set only when the value walker recurses into a function, and nothing recurses to reach this url. It fails with every other plain double-quoted url(), not with the cross-fade pair.",
           "target": "apps/web/public/img/banner.png",
           "offset": 2213,
           "line": 89,
@@ -3683,7 +3683,7 @@
           "occurrence": 1,
           "shape": "css.image-set",
           "expect": "resolved",
-          "why": "A url() inside image-set() inside mask-image. ⚠️ Keyed css.url.nested until R89, which contradicted this key's OWN entries 30 lines above: `image-set(url(\"...\") 1x)` is keyed css.image-set there. image-set is what breaks it, and the walker does not even set `nested` for an image-set recursion.",
+          "why": "A url() inside image-set() inside mask-image. Keyed css.image-set, like the `image-set(url(\"...\") 1x)` entries above: image-set is what breaks it, and the walker does not set `nested` for an image-set recursion.",
           "target": "apps/web/public/icons/mask.svg",
           "offset": 2705,
           "line": 104,
@@ -3774,7 +3774,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32.",
+          "why": "An absolute URL to another host: real and reachable, and not ours to rewrite.",
           "offset": 3543,
           "line": 138,
           "column": 26
@@ -3804,7 +3804,7 @@
           "occurrence": 1,
           "shape": "css.font-face",
           "expect": "out-of-scope",
-          "why": "🔴 R92. R78 Q1, QUOTED: \"An image target is resolved or broken; a non-image extension is filtered out exactly as today.\" A non-image target is therefore out-of-scope WHETHER OR NOT IT EXISTS — the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. ⚠️ Keyed `broken` until the matrix measured it, on a `why` that PARAPHRASED R78 Q1 into its opposite while citing it correctly; the citation number made the claim read as verified. Its own siblings in this shape already read out-of-scope for an EXISTING file of the same type.",
+          "why": "An image target is resolved or broken, and a non-image extension is filtered out. A non-image target is therefore out-of-scope whether or not it exists: the extension filter runs before existence is ever checked, so the engine cannot distinguish these two cases and is not asked to. Its siblings in this shape read out-of-scope for an existing file of the same type.",
           "offset": 3845,
           "line": 152,
           "column": 13
@@ -3866,7 +3866,7 @@
           "occurrence": 1,
           "shape": "css.url.nested",
           "expect": "resolved",
-          "why": "Nested inside a custom property's FALLBACK argument — a third recursion mechanism, and deliberately not a second cross-fade. R89 moved two strays out of this row, and padding it with a near-duplicate would have made the row read well rather than measure more.",
+          "why": "Nested inside a custom property's fallback argument: a third recursion mechanism, and deliberately not a second cross-fade. A near-duplicate would make the row read well without measuring more.",
           "target": "apps/web/public/srcset/narrow.jpg",
           "offset": 2641,
           "line": 100,
@@ -3984,7 +3984,7 @@
           "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "The variable stands in for the whole path. Nothing static to resolve, and nobody typed a wrong one. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$hero: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "The variable stands in for the whole path. Nothing static to resolve, and nobody typed a wrong one. Occurrence 2: occurrence 1 is the declaration (`$hero: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 773,
           "line": 28,
           "column": 25
@@ -3994,7 +3994,7 @@
           "occurrence": 1,
           "shape": "scss.interpolation.trailing",
           "expect": "resolved-pattern",
-          "why": "One reference standing for three files that all exist — the fixtures/partial-pattern shape, and the WEB app's three rather than the docs app's.",
+          "why": "One reference standing for three files that all exist: the fixtures/partial-pattern shape, and the web app's three rather than the docs app's.",
           "target": [
             "apps/web/public/theme-light.png",
             "apps/web/public/theme-dark.png",
@@ -4009,7 +4009,7 @@
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 1252,
           "line": 42,
           "column": 26
@@ -4062,7 +4062,7 @@
           "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "A second whole-value variable. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$banner: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "A second whole-value variable. Occurrence 2: occurrence 1 is the declaration (`$banner: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 1673,
           "line": 59,
           "column": 25
@@ -4072,7 +4072,7 @@
           "occurrence": 2,
           "shape": "scss.variable",
           "expect": "dynamic",
-          "why": "A third. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`$crest: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "A third. Occurrence 2: occurrence 1 is the declaration (`$crest: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 1733,
           "line": 63,
           "column": 25
@@ -4082,7 +4082,7 @@
           "occurrence": 1,
           "shape": "scss.interpolation.trailing",
           "expect": "resolved-pattern",
-          "why": "⚠️ A second trailing interpolation that matches TWO files, not three: the @each names 2 and 3, and tile@1x.png does not exist. A pattern row that only ever saw three-of-three would not notice a two-of-two.",
+          "why": "A second trailing interpolation that matches two files, not three: the @each names 2 and 3, and tile@1x.png does not exist. A pattern row that only ever saw three-of-three would not notice a two-of-two.",
           "target": [
             "apps/web/public/srcset/tile@2x.png",
             "apps/web/public/srcset/tile@3x.png"
@@ -4111,7 +4111,7 @@
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 2799,
           "line": 93,
           "column": 26
@@ -4121,7 +4121,7 @@
           "occurrence": 1,
           "shape": "scss.interpolation.leading",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png.",
           "offset": 2875,
           "line": 97,
           "column": 26
@@ -4151,7 +4151,7 @@
           "occurrence": 1,
           "shape": "pattern.partial",
           "expect": "resolved-pattern",
-          "why": "The SCSS spelling of a partial pattern: the @each names 192, 512 and 1024, and icon-1024.png does not exist. ⚠️ Its sibling at scss.interpolation.trailing is a two-of-TWO — complete, with few candidates — which is a different thing and reads the same in a table. That conflation is what left R80(a) unapplied for a day.",
+          "why": "The SCSS spelling of a partial pattern: the @each names 192, 512 and 1024, and icon-1024.png does not exist. Its sibling at scss.interpolation.trailing is a two-of-two, complete with few candidates, which is a different thing that reads the same in a table.",
           "target": [
             "apps/web/public/icons/icon-192.png",
             "apps/web/public/icons/icon-512.png"
@@ -4236,7 +4236,7 @@
           "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "Less's variable syntax for the whole value. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@banner: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "Less's variable syntax for the whole value. Occurrence 2: occurrence 1 is the declaration (`@banner: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 642,
           "line": 29,
           "column": 25
@@ -4246,7 +4246,7 @@
           "occurrence": 1,
           "shape": "less.interpolation",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 726,
           "line": 34,
           "column": 26
@@ -4266,7 +4266,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32, in Less.",
+          "why": "An absolute URL to another host, in Less.",
           "offset": 877,
           "line": 42,
           "column": 26
@@ -4340,7 +4340,7 @@
           "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "A second whole-value Less variable. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@crest: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "A second whole-value Less variable. Occurrence 2: occurrence 1 is the declaration (`@crest: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 1322,
           "line": 58,
           "column": 25
@@ -4350,7 +4350,7 @@
           "occurrence": 2,
           "shape": "less.variable",
           "expect": "dynamic",
-          "why": "A third. ⚠️ occurrence 2: occurrence 1 is the DECLARATION (`@grain: '…'`), where there is no reference at all. Keyed at the declaration until the measuring harness measured it — check-key cannot see this, because the string really is present at both positions and the two do not overlap.",
+          "why": "A third. Occurrence 2: occurrence 1 is the declaration (`@grain: '…'`), where there is no reference at all. check-key cannot catch an entry placed at the declaration, because the string really is present at both positions and the two do not overlap.",
           "offset": 1374,
           "line": 62,
           "column": 25
@@ -4360,7 +4360,7 @@
           "occurrence": 1,
           "shape": "less.interpolation",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 1470,
           "line": 67,
           "column": 26
@@ -4370,7 +4370,7 @@
           "occurrence": 1,
           "shape": "less.interpolation",
           "expect": "dynamic",
-          "why": "R78 Q3: the interpolation is at the FRONT, so the directory is the unknown part — and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
+          "why": "The interpolation is at the front, so the directory is the unknown part, and a pattern must fix the directory, because location is what makes an asset unique. Globbing this would claim assets nobody referenced; this tree holds six files called logo.png. Sass and Less get the same answer.",
           "offset": 1558,
           "line": 71,
           "column": 26
@@ -4429,7 +4429,7 @@
           "occurrence": 2,
           "shape": "js.cssinjs",
           "expect": "broken",
-          "why": "🔴 One `..` short of the file it means. An off-by-one in a relative climb is what `relocate` re-derives its way into, and it is indistinguishable from a typo unless the engine reports it. Occurrence 2 because the correct four-dot form above contains this string.",
+          "why": "One `..` short of the file it means. An off-by-one in a relative climb is what `relocate` re-derives its way into, and it is indistinguishable from a typo unless the engine reports it. Occurrence 2 because the correct four-dot form above contains this string.",
           "offset": 847,
           "line": 28,
           "column": 26
@@ -4449,7 +4449,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32, inside CSS-in-JS.",
+          "why": "An absolute URL to another host, inside CSS-in-JS.",
           "offset": 1030,
           "line": 36,
           "column": 26
@@ -4479,7 +4479,7 @@
           "occurrence": 1,
           "shape": "js.cssinjs",
           "expect": "dynamic",
-          "why": "R167 group B's refuting input for the CSS-in-JS half: two unknowns side by side in the NAME (a theme and a density suffix). R80(b): one unknown in the name is a pattern, two is a guess, so assembledPathIsGlobbable says no and it stays dynamic. A pass that globbed every interpolated url() would read /theme-**.png, match all three real theme files, and claim a resolved-pattern. (A LEADING interpolation cannot refute that pass: the resolver refuses a pattern that opens with a hole on its own -- measured, which is why this input is not one.)",
+          "why": "Two unknowns side by side in the name (a theme and a density suffix). One unknown in the name is a pattern and two is a guess, so assembledPathIsGlobbable says no and it stays dynamic. A pass that globbed every interpolated url() would read /theme-**.png, match all three real theme files, and claim a resolved-pattern. A leading interpolation would not catch such a pass, because the resolver refuses a pattern that opens with a hole on its own.",
           "offset": 449,
           "line": 9,
           "column": 28
@@ -4494,7 +4494,7 @@
           "occurrence": 1,
           "shape": "css.url.single",
           "expect": "resolved",
-          "why": "A CSS module beside its component. This is the THIRD file named logo.png.",
+          "why": "A CSS module beside its component. This is the third file named logo.png.",
           "target": "apps/web/src/components/logo.png",
           "offset": 33,
           "line": 2,
@@ -4527,7 +4527,7 @@
           "occurrence": 1,
           "shape": "css.url.single",
           "expect": "resolved",
-          "why": "Root-relative from a file that is NOT in the serving root.",
+          "why": "Root-relative from a file that is not in the serving root.",
           "target": "apps/web/public/gallery/MixedCase.Png",
           "offset": 269,
           "line": 16,
@@ -4576,7 +4576,7 @@
           "occurrence": 1,
           "shape": "js.import.alias.mapped",
           "expect": "resolved",
-          "why": "~/* maps to shared/*. The FOURTH logo.png.",
+          "why": "~/* maps to shared/*. The fourth logo.png.",
           "target": "shared/assets/img/logo.png",
           "offset": 155,
           "line": 4,
@@ -4618,7 +4618,7 @@
           "occurrence": 1,
           "shape": "path.bare-specifier",
           "expect": "out-of-scope",
-          "why": "R32. A package specifier: the file exists inside a dependency, and it is not ours to rewrite. This is why out-of-scope and unresolved-alias are different buckets.",
+          "why": "A package specifier: the file exists inside a dependency, and it is not ours to rewrite. This is why out-of-scope and unresolved-alias are different buckets.",
           "offset": 335,
           "line": 8,
           "column": 24
@@ -4794,7 +4794,7 @@
           "occurrence": 1,
           "shape": "pattern.partial",
           "expect": "resolved-pattern",
-          "why": "🔴 THE PARTIAL-MATCH ROW (R80(a), applied by R89). tileImage accepts 1|2|3 and tile@1x.png does not exist, so one reference stands for TWO files while its own type promises three. Its own shape rather than a weak js.template.pattern: a partial match is R65 territory, where one sibling failing withdraws the whole pattern and every conversion with it.",
+          "why": "The partial-match row. tileImage accepts 1|2|3 and tile@1x.png does not exist, so one reference stands for two files while its own type promises three. Its own shape rather than a weak js.template.pattern, because a row of complete matches alone would not notice a change in how partial ones are handled.",
           "target": [
             "apps/web/public/srcset/tile@2x.png",
             "apps/web/public/srcset/tile@3x.png"
@@ -4808,7 +4808,7 @@
           "occurrence": 2,
           "shape": "js.concat.pattern",
           "expect": "resolved-pattern",
-          "why": "R175, KEY CHANGE under guard 1 (was: dynamic, js.concat.dynamic, anchored at the const on :23). The chain on :26. ASSET_BASE is a same-file module const, '/gallery' -- R100 files exactly this as 'statically knowable, we cannot see it yet: OUR GAP', not as a runtime value -- so the path is /gallery/*.png: a fixed directory and one unknown in the name, which R80(b) rules a pattern. Anchored where the path is ASSEMBLED, on the chain's own first operand: its template twin on :30 is anchored at its own text, and one definition used by two spellings cannot anchor both. Case-sensitive, as URL paths are: Banner.PNG and MixedCase.Png are not *.png.",
+          "why": "The chain on :26. ASSET_BASE is a same-file module const, '/gallery': statically knowable rather than a runtime value, so leaving it unknown would be the engine's gap. The path is /gallery/*.png: a fixed directory and one unknown in the name, which is a pattern. Anchored where the path is assembled, on the chain's own first operand: its template twin on :30 is anchored at its own text, and one definition used by two spellings cannot anchor both. Case-sensitive, as URL paths are: Banner.PNG and MixedCase.Png are not *.png.",
           "target": [
             "apps/web/public/gallery/a&b.png",
             "apps/web/public/gallery/enc%20name.png",
@@ -4827,7 +4827,7 @@
           "occurrence": 1,
           "shape": "js.template.pattern",
           "expect": "resolved-pattern",
-          "why": "R175, KEY CHANGE under guard 1 (was: dynamic -- 'Both parts are unknown, so there is no prefix to anchor a glob'). ASSET_BASE is not unknown: it is the module const '/gallery' seven lines up, which R100 files as statically knowable -- our gap, not a correct dynamic. Read through, the path is /gallery/*.png, the same pattern as the chain on :26.",
+          "why": "ASSET_BASE is not unknown: it is the module const '/gallery' seven lines up, which is statically knowable, so `dynamic` here would record the engine's own gap as the correct answer. Read through, the path is /gallery/*.png, the same pattern as the chain on :26.",
           "offset": 980,
           "line": 30,
           "column": 11,
@@ -4846,7 +4846,7 @@
           "occurrence": 2,
           "shape": "js.concat.pattern",
           "expect": "resolved-pattern",
-          "why": "R175, KEY CHANGE under guard 1 (was: dynamic -- 'a glob would look plausible and would still be a guess'). That reason was written on 09-13, a day before R80(b) ruled one unknown segment in the name a pattern, and cardImage on :56 is this same path spelled as a template, keyed resolved-pattern. A pattern is never rewritten in either spelling (plan.ts:685), so the chain having no single editable range changes nothing. width: number claims no set of widths, so this is a complete match, not pattern.partial.",
+          "why": "One unknown segment in the name after a fixed directory is a pattern, and cardImage on :56 is this same path spelled as a template, keyed resolved-pattern. A pattern is never rewritten in either spelling (`collectRewrite` in `plan.ts` declines every one), so the chain having no single editable range changes nothing. width: number claims no set of widths, so this is a complete match, not pattern.partial.",
           "offset": 1311,
           "line": 40,
           "column": 11,
@@ -4871,7 +4871,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "dynamic",
-          "why": "A third, with TWO unknown segments after a static prefix.",
+          "why": "A third, with two unknown segments after a static prefix.",
           "offset": 2044,
           "line": 60,
           "column": 11
@@ -4881,7 +4881,7 @@
           "occurrence": 1,
           "shape": "decoy.not-a-path",
           "expect": "discarded",
-          "why": "An extension FRAGMENT in a concatenation. It is not a reference — the reference is the assembled expression, keyed above as dynamic — and an engine that treats a bare extension as a path has started inventing them.",
+          "why": "An extension fragment in a concatenation. It is not a reference: the reference is the assembled expression, keyed above as a pattern, and an engine that treats a bare extension as a path has started inventing them.",
           "offset": 898,
           "line": 26,
           "column": 36
@@ -4934,7 +4934,7 @@
           "occurrence": 1,
           "shape": "js.string.literal",
           "expect": "discarded",
-          "why": "⚠️ A path-shaped STRING that resolves to nothing. It is a guess rather than an assertion, so it is counted and dropped — NOT reported broken. Otherwise every package.json in the world produces findings.",
+          "why": "A path-shaped string that resolves to nothing. It is a guess rather than an assertion, so it is counted and dropped, not reported broken. Otherwise every package.json in the world produces findings.",
           "offset": 2339,
           "line": 69,
           "column": 25
@@ -4977,7 +4977,7 @@
           "occurrence": 2,
           "shape": "js.concat.dynamic",
           "expect": "discarded",
-          "why": "R175, KEY CHANGE under guard 1 (was: dynamic). Its static text is '/gallery', '/' and one unknown, with no extension -- exactly a route's: gallery-route.ts's router.push('/gallery/' + albumId), under the same directory of images. Nothing the text PROVES separates the two (R108); that this argument carries an extension is only its NAME, a suggestion. Its template twin (gallery-file-template.ts) is not collected, by the ruled bound for a template in a neutral position. R167's instruction applied -- if making :78 pass invents references, the key for :78 is what is wrong -- with R172 as the precedent. Invisible to the token scan, which needs an extension: keyed by hand.",
+          "why": "Its static text is '/gallery', '/' and one unknown, with no extension: exactly a route's, as in gallery-route.ts's router.push('/gallery/' + albumId), under the same directory of images. Nothing the text proves separates the two; that this argument carries an extension is only its name, a suggestion. Its template twin (gallery-file-template.ts) is not collected, because a guessed template must show its extension in its static text. A rule that emitted this would emit the route too, so the key says discarded. Invisible to the token scan, which needs an extension: keyed by hand.",
           "offset": 2776,
           "line": 78,
           "column": 11
@@ -4987,7 +4987,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32.",
+          "why": "An absolute URL to another host: real and reachable, and not ours to rewrite.",
           "offset": 2924,
           "line": 82,
           "column": 24
@@ -4997,7 +4997,7 @@
           "occurrence": 1,
           "shape": "path.bare-specifier",
           "expect": "discarded",
-          "why": "A bare-specifier SPELLING in a plain string. KEYED discarded BY R172 (was out-of-scope), on evidence about the reference, not the engine: (1) a plain string is not module syntax, so nothing makes it a package reference -- inside import/require the same text IS one (Header.tsx:8, manifest.cjs:12 stay out-of-scope); (2) this tree installs no package at all -- there is no node_modules -- so \"names a file inside an npm package\" would be a claim about a file nobody looked for, which R97 forbids; (3) the only strings of this shape the five repositories hold are REAL relative paths (img/logo.png, img/favicon.png, dist/lunaria/summary.svg), so a rule that called this one a package would call those packages too. Unresolvable guess: discarded.",
+          "why": "A bare-specifier spelling in a plain string, keyed discarded on evidence about the reference, not the engine: (1) a plain string is not module syntax, so nothing makes it a package reference, while inside import or require the same text is one (Header.tsx:8 and manifest.cjs:12 are out-of-scope); (2) this tree installs no package at all, since there is no node_modules, so \"names a file inside an npm package\" would be a claim about a file nobody looked for; (3) the only strings of this shape in the five validation repositories are real relative paths (img/logo.png, img/favicon.png, dist/lunaria/summary.svg), so a rule that called this one a package would call those packages too. An unresolvable guess: discarded.",
           "offset": 2992,
           "line": 83,
           "column": 26
@@ -5048,7 +5048,7 @@
           "occurrence": 1,
           "shape": "js.concat.dynamic",
           "expect": "discarded",
-          "why": "R167 group C's REFUTING INPUT, added before any group C code exists, as the brief orders. A '+' concatenation whose static prefix names an API route, not a directory of assets, with no image extension anywhere -- the same standing as a plain-code template with no static extension, which is not collected. The tree held no concatenation into a non-asset path, so it could confirm a concatenation rule and never refute one (R117). A rule loose enough to reach paths.ts:78 by shape alone emits this, and R99's phantom population with it.",
+          "why": "A '+' concatenation whose static prefix names an API route, not a directory of assets, with no image extension anywhere: the same standing as a plain-code template with no static extension, which is not collected. Without a concatenation into a non-asset path, the tree could confirm a concatenation rule and never refute one. A rule loose enough to reach paths.ts:78 by shape alone emits this, and phantom references with it.",
           "offset": 150,
           "line": 3,
           "column": 11
@@ -5063,7 +5063,7 @@
           "occurrence": 1,
           "shape": "js.concat.dynamic",
           "expect": "discarded",
-          "why": "R167 group C's second REFUTING INPUT, and the one the five repositories actually hold. B14's census (notes/validation/probes/b14-concat-census.mjs) found 48 root-relative '+' chains across the five repositories: 0 carry an image extension, and the candidate property 'the static prefix names a directory that holds image assets under a serving root' fires on 22 of them -- EVERY ONE a bare '/' + x, because the serving root itself holds images. Twenty-two phantoms. Joining onto the root names no directory of assets; a rule that emits here is R99 again.",
+          "why": "The case the five validation repositories actually hold. They contain 48 root-relative '+' chains, none with an image extension, and the property 'the static prefix names a directory that holds image assets under a serving root' fires on 22 of them, every one a bare '/' + x, because the serving root itself holds images. Joining onto the root names no directory of assets, so a rule that emits here invents references.",
           "offset": 57,
           "line": 2,
           "column": 11
@@ -5078,7 +5078,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "discarded",
-          "why": "R174 step 2(a), R175: the template twin of paths.ts:78, added before any group C code. With its hole as *, the static text is /gallery/* -- no extension -- so collectSpeculativeTemplate does not collect it: the ruled bound for a template in a neutral position. paths.ts:78 is the same path spelled with + and is keyed alike. Under the mutation 'drop the extension bound' this reads resolved-pattern over all nine files in the gallery.",
+          "why": "The template twin of paths.ts:78. With its hole as *, the static text is /gallery/*, with no extension, so collectSpeculativeTemplate does not collect it: a guessed template must show its extension in its static text. paths.ts:78 is the same path spelled with + and is keyed alike. Without the extension bound this would read resolved-pattern over all nine files in the gallery.",
           "offset": 185,
           "line": 3,
           "column": 11
@@ -5093,7 +5093,7 @@
           "occurrence": 1,
           "shape": "js.concat.dynamic",
           "expect": "discarded",
-          "why": "R174 step 2(b), R175 -- THE RULE'S HARD SIDE. A route whose static prefix coincides with a directory of images: apps/web/public/gallery/ holds nine. It meets both conditions of R173's refined rule (a non-root directory, under a serving root, that holds images) and its static text is paths.ts:78's exactly -- the gallery directory and one unknown, no extension. Nothing the text PROVES separates the two (R108), so a rule that emits :78 emits this, and this is not a reference: the evidence that re-keyed :78 discarded. Under the mutation 'keep a chain as dynamic when its prefix names a non-root image directory' this reads dynamic.",
+          "why": "The hard side of the rule: a route whose static prefix coincides with a directory of images (apps/web/public/gallery/ holds nine). It is a non-root directory, under a serving root, that holds images, and its static text is exactly paths.ts:78's: the gallery directory and one unknown, no extension. Nothing the text proves separates the two, so a rule that emits :78 emits this, and this is not a reference, which is why :78 is keyed discarded. A rule that kept a chain as dynamic whenever its prefix names a non-root image directory would read this as dynamic.",
           "offset": 204,
           "line": 3,
           "column": 16
@@ -5108,7 +5108,7 @@
           "occurrence": 1,
           "shape": "js.concat.dynamic",
           "expect": "dynamic",
-          "why": "R175: paths.ts:60 spelled with +. Two unknown parts in the name after a fixed directory -- R80(b)'s guess: a glob would claim icon-192.png and icon-512.png on a pattern that constrains almost nothing. The refuting input for 'a chain globs regardless of R80(b)', placed where the glob WOULD hit real files (R170: a leading hole refutes nothing, because the resolver refuses it anyway).",
+          "why": "paths.ts:60 spelled with +. Two unknown parts in the name after a fixed directory make a guess, not a pattern: a glob would claim icon-192.png and icon-512.png on a pattern that constrains almost nothing. It sits where the glob would hit real files, so a chain that globbed regardless would fail here; a leading hole would show nothing, because the resolver refuses one on its own.",
           "offset": 167,
           "line": 3,
           "column": 11
@@ -5133,7 +5133,7 @@
           "occurrence": 3,
           "shape": "js.concat.dynamic",
           "expect": "dynamic",
-          "why": "R175's tracing bound, its refuting input. BASE has two bindings in this file -- the module const and the parameter -- so no use of it is read through. Inside fromBase the parameter wins, the directory is unknown, and a leading unknown is dynamic. Under the mutation 'read a const by name, however many bindings the name has' this reads resolved-pattern over the seven gallery PNGs.",
+          "why": "The bound on reading constants through. BASE has two bindings in this file, the module const and the parameter, so no use of it is read through. Inside fromBase the parameter wins, the directory is unknown, and a leading unknown is dynamic. Reading a const by name, however many bindings the name has, would make this resolved-pattern over the seven gallery PNGs.",
           "offset": 201,
           "line": 5,
           "column": 10
@@ -5153,7 +5153,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "dynamic",
-          "why": "The template twin, shadowed the same way: the same bound asked of the other spelling (R106, R175). Both entries want the same file-level decision, so neither can mask the other (R166).",
+          "why": "The template twin, shadowed the same way: the same bound asked of the other spelling. Both entries want the same file-level decision, so neither can mask the other.",
           "offset": 313,
           "line": 9,
           "column": 11
@@ -5168,7 +5168,7 @@
           "occurrence": 3,
           "shape": "js.concat.dynamic",
           "expect": "dynamic",
-          "why": "R175's tracing bound: only a const is read through. base is a let and setBase reassigns it, so its first value proves nothing about a call. Under the mutation 'read a let as well as a const' this reads resolved-pattern.",
+          "why": "Only a const is read through. base is a let and setBase reassigns it, so its first value proves nothing about a call. Reading a let as well as a const would make this resolved-pattern.",
           "offset": 252,
           "line": 9,
           "column": 10
@@ -5188,7 +5188,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "dynamic",
-          "why": "The template twin, under the same bound (R106, R175).",
+          "why": "The template twin, under the same bound.",
           "offset": 353,
           "line": 13,
           "column": 11
@@ -5204,7 +5204,7 @@
           "shape": "js.string.literal",
           "expect": "resolved",
           "target": "apps/web/public/img/hero.jpg",
-          "why": "R175 -- 'group C ends a silence; it re-reads nothing.' The whole path is one literal, so the string rule reads it exactly as it reads '/img/hero.jpg' alone: resolved, and a rewrite edits that literal and nothing else, which stays correct with the query appended after it. Its template twin would be an unrewritable pattern -- the one place the spelling justifies a different outcome, and it favours the chain. Under the mutation 'a chain always wins over its literals' this reads resolved-pattern.",
+          "why": "Where one operand is already a complete path, that literal stays the reference and the chain is not read. The whole path is one literal, so the string rule reads it exactly as it reads '/img/hero.jpg' alone: resolved, and a rewrite edits that literal and nothing else, which stays correct with the query appended after it. Its template twin would be an unrewritable pattern, the one place the spelling justifies a different outcome, and it favours the chain. If a chain always won over its literals, this would read resolved-pattern.",
           "offset": 175,
           "line": 3,
           "column": 11
@@ -5219,7 +5219,7 @@
           "occurrence": 1,
           "shape": "js.template.dynamic",
           "expect": "discarded",
-          "why": "R176's refuting input, for templates. A translation key: the dot is followed by a hole, so the static text shows no extension -- staticExtensionOf's 'the hole IS the extension'. Before R176 the bound read it as report.* with extension .*; on the five repositories that let 39 such templates through (i18n keys, version strings, IP formats, layout.${ext} naming .tsx source) and not one was an image. Under the mutation 'a hole after a dot counts as an extension' this reads dynamic.",
+          "why": "A translation key: the dot is followed by a hole, so the static text shows no extension (in staticExtensionOf's words, the hole is the extension). A guessed template needs its extension in the static text. Templates of this shape in the five validation repositories are i18n keys, version strings, IP formats and source file names such as layout.${ext}, and none is an image. If a hole after a dot counted as an extension, this would read dynamic.",
           "offset": 142,
           "line": 3,
           "column": 11
@@ -5234,7 +5234,7 @@
           "occurrence": 2,
           "shape": "js.concat.dynamic",
           "expect": "discarded",
-          "why": "R176's refuting input, for + chains -- the class guard 2 caught. A namespaced listener name, eventType + '.' + space: 18 of these on railsgirls-com (Bootstrap, jQuery, JW Player) and 2 on scratch-www became dynamic references the first time chains were read with the template bound, because a hole after a dot passed as an extension. Under that mutation this reads dynamic.",
+          "why": "The same bound for + chains. A namespaced listener name, eventType + '.' + space: railsgirls-com (Bootstrap, jQuery, JW Player) and scratch-www hold chains like it, and none names a file. A hole after a dot is not an extension; if it counted as one, this would read dynamic.",
           "offset": 141,
           "line": 3,
           "column": 10
@@ -5253,7 +5253,7 @@
             "apps/web/public/icons/icon-192.png",
             "apps/web/public/icons/icon-512.png"
           ],
-          "why": "R175: a + chain inside a JSX src. No literal holds the path; assembled it is the icons directory, 'icon-', one unknown and '.png' -- one unknown in the name after a fixed directory, a pattern (R80(b)) matching both icons the manifest lists. The third js.concat.pattern instance, and the only one in an attribute position.",
+          "why": "A + chain inside a JSX src. No literal holds the path; assembled, it is the icons directory, 'icon-', one unknown and '.png': one unknown in the name after a fixed directory, a pattern matching both icons the manifest lists. The third js.concat.pattern instance, and the only one in an attribute position.",
           "offset": 178,
           "line": 3,
           "column": 21
@@ -5468,7 +5468,7 @@
           "occurrence": 1,
           "shape": "decoy.log-message",
           "expect": "discarded",
-          "why": "A third, and this one names TWO paths in one template literal.",
+          "why": "A third, and this one names two paths in one template literal.",
           "offset": 825,
           "line": 18,
           "column": 38
@@ -5548,7 +5548,7 @@
           "occurrence": 1,
           "shape": "decoy.windows-path",
           "expect": "discarded",
-          "why": "Backslash-separated. Nothing in this tree is addressed this way. The raw carries TWO backslashes because the .ts source escapes one — the key records what is in the file, not what the program sees.",
+          "why": "Backslash-separated. Nothing in this tree is addressed this way. The raw carries two backslashes because the .ts source escapes one: the key records what is in the file, not what the program sees.",
           "offset": 1748,
           "line": 42,
           "column": 31
@@ -5578,7 +5578,7 @@
           "occurrence": 1,
           "shape": "decoy.glob",
           "expect": "discarded",
-          "why": "A brace expansion over a real basename. ⚠️ The token scan cannot see this one — `.{jpg` is not `.jpg` — so it is keyed without the scan demanding it.",
+          "why": "A brace expansion over a real basename. The token scan cannot see this one, because `.{jpg` is not `.jpg`, so it is keyed without the scan demanding it.",
           "offset": 1898,
           "line": 47,
           "column": 28
@@ -5667,7 +5667,7 @@
           "occurrence": 1,
           "shape": "html.svg.image.href",
           "expect": "resolved",
-          "why": "Both spellings on ONE element: href wins.",
+          "why": "Both spellings on one element: href wins.",
           "target": "apps/web/public/srcset/tile@2x.png",
           "offset": 924,
           "line": 20,
@@ -5700,7 +5700,7 @@
           "occurrence": 1,
           "shape": "path.charref",
           "expect": "resolved",
-          "why": "feImage through xlink:href, carrying a character reference. 🔴 KEYED BY THE CHARREF, NOT THE CONSTRUCT (R88(a)): what would take this out is the entity decoding, which breaks identically in an <img src>. The three feImage entries are the construct row; this is the spelling row.",
+          "why": "feImage through xlink:href, carrying a character reference. Keyed by the character reference, not the construct: what would take this out is the entity decoding, which breaks identically in an <img src>. The three feImage entries are the construct row; this is the spelling row.",
           "decoded": "/gallery/a&b.png",
           "target": "apps/web/public/gallery/a&b.png",
           "offset": 1328,
@@ -5733,7 +5733,7 @@
           "occurrence": 1,
           "shape": "html.svg.feimage",
           "expect": "resolved",
-          "why": "feImage through xlink:href with NO character reference. R88(c): moving the a&amp;b.png entry to path.charref left feImage at two instances and its legacy spelling untested — grown rather than padded, because this is coverage the tree could honestly have had.",
+          "why": "feImage through xlink:href with no character reference, which gives the feImage row its third instance and its legacy spelling. It is a real spelling the tree lacked, not a copy made to fill the row.",
           "target": "apps/web/public/img/banner.png",
           "offset": 1675,
           "line": 40,
@@ -5749,7 +5749,7 @@
           "occurrence": 1,
           "shape": "html.link.href.icon",
           "expect": "resolved",
-          "why": "R63: the site's OWN directory is the serving root, so /img resolves inside it. The FIFTH logo.png.",
+          "why": "The site's own directory is the serving root, so /img resolves inside it. The fifth logo.png.",
           "target": "sites/root-served/img/logo.png",
           "offset": 142,
           "line": 6,
@@ -5771,7 +5771,7 @@
           "occurrence": 1,
           "shape": "html.style.element",
           "expect": "resolved",
-          "why": "A bare relative inside the style element, which resolves against this site's own root (R63). R82: keyed by HOST like the entry above it — the path FORM is not what a shape names, and quoting is already covered by css.url.single in .css.",
+          "why": "A bare relative inside the style element, which resolves against this site's own root. Keyed by host like the entry above it: the path form is not what a shape names, and quoting is already covered by css.url.single in .css.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 287,
           "line": 12,
@@ -5804,7 +5804,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "Explicitly relative. R63 is the case where all three forms happen to agree, which is exactly why a bug here hides.",
+          "why": "Explicitly relative. A site served from its own directory is the case where all three forms happen to agree, which is exactly why a bug here hides.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 772,
           "line": 25,
@@ -5847,7 +5847,7 @@
           "occurrence": 4,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "And named a third time, in a sentence. R24.",
+          "why": "And named a third time, in a sentence. A path in prose is not a reference.",
           "offset": 1235,
           "line": 35,
           "column": 19
@@ -5905,7 +5905,7 @@
           "occurrence": 1,
           "shape": "path.absolute-url",
           "expect": "out-of-scope",
-          "why": "R32, in JSON.",
+          "why": "An absolute URL to another host, in JSON.",
           "offset": 193,
           "line": 7,
           "column": 14
@@ -5937,7 +5937,7 @@
           "occurrence": 1,
           "shape": "json.config.value",
           "expect": "resolved",
-          "why": "Reaching into the OTHER app's serving root by relative path.",
+          "why": "Reaching into the other app's serving root by relative path.",
           "target": "apps/docs/public/brand.png",
           "offset": 384,
           "line": 13,
@@ -5959,7 +5959,7 @@
           "occurrence": 2,
           "shape": "md.prose-mention",
           "expect": "discarded",
-          "why": "The same path inside an English sentence in a notes array. R24 applies to JSON strings too.",
+          "why": "The same path inside an English sentence in a notes array. A path in prose is not a reference in a JSON string either.",
           "offset": 513,
           "line": 17,
           "column": 15
@@ -6084,7 +6084,7 @@
           "occurrence": 2,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "A REAL markdown image, relative — which resolves regardless of whether the folder is a serving root.",
+          "why": "A real markdown image, relative, which resolves regardless of whether the folder is a serving root.",
           "target": "docs-examples/public/sample.png",
           "offset": 958,
           "line": 30,
@@ -6111,7 +6111,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "broken",
-          "why": "🔴 R78 Q4: a root-relative path resolves against the nearest GENUINE serving root, and none of the four reaches docs-examples/ — so it is broken. The directory is called `public` because the guide it illustrates is about a project that has one.",
+          "why": "A root-relative path resolves against the nearest genuine serving root, and none of the four reaches docs-examples/, so it is broken. The directory is called `public` because the guide it illustrates is about a project that has one.",
           "offset": 495,
           "line": 14,
           "column": 15
@@ -6121,7 +6121,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "broken",
-          "why": "🔴 R78 Q4: the same, with a basename that exists in six other directories — so resolving it against the wrong root also picks the wrong picture, not merely the wrong bucket.",
+          "why": "The same, with a basename that exists in five other directories, so resolving it against the wrong root also picks the wrong picture, not merely the wrong bucket.",
           "offset": 583,
           "line": 15,
           "column": 15
@@ -6159,7 +6159,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "Root-relative in a template nothing opens.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/public/brand.png",
           "offset": 48,
           "line": 3,
@@ -6171,7 +6171,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "Relative in that template.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/src/assets/chart.png",
           "offset": 126,
           "line": 4,
@@ -6182,8 +6182,8 @@
           "occurrence": 1,
           "shape": "unread.vue",
           "expect": "broken",
-          "why": "🔴 R72 in one line: this is broken, and every instrument reports success.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "why": "The whole problem in one line: this is broken, and every instrument reports success.",
+          "knownGap": "No adapter reads .vue files.",
           "offset": 271,
           "line": 6,
           "column": 15
@@ -6194,7 +6194,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "An import in the script block.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/src/components/logo.png",
           "offset": 404,
           "line": 11,
@@ -6206,7 +6206,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "A literal in the script block.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/public/img/hero.jpg",
           "offset": 448,
           "line": 13,
@@ -6218,7 +6218,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "A four-level climb in the script block.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "shared/assets/img/thumb.png",
           "offset": 480,
           "line": 14,
@@ -6230,7 +6230,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "A url() in a scoped style block.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/public/img/texture.png",
           "offset": 583,
           "line": 19,
@@ -6242,7 +6242,7 @@
           "shape": "unread.vue",
           "expect": "resolved",
           "why": "A second url() in that block.",
-          "knownGap": "R72 / §4j — no adapter reads .vue.",
+          "knownGap": "No adapter reads .vue files.",
           "target": "apps/web/src/assets/inline-logo.jpg",
           "offset": 647,
           "line": 22,
@@ -6259,7 +6259,7 @@
           "shape": "unread.njk",
           "expect": "resolved",
           "why": "Root-relative in Nunjucks. eleventy-docs is full of these.",
-          "knownGap": "R72 / §4j — no adapter reads .njk.",
+          "knownGap": "No adapter reads .njk files.",
           "target": "sites/root-served/img/logo.png",
           "offset": 58,
           "line": 4,
@@ -6271,7 +6271,7 @@
           "shape": "unread.njk",
           "expect": "resolved",
           "why": "Relative from templates/.",
-          "knownGap": "R72 / §4j — no adapter reads .njk.",
+          "knownGap": "No adapter reads .njk files.",
           "target": "sites/root-served/img/photo.jpg",
           "offset": 121,
           "line": 5,
@@ -6283,7 +6283,7 @@
           "shape": "unread.njk",
           "expect": "dynamic",
           "why": "Half literal, half interpolated by the template engine.",
-          "knownGap": "R72 / §4j — no adapter reads .njk.",
+          "knownGap": "No adapter reads .njk files.",
           "offset": 251,
           "line": 7,
           "column": 13
@@ -6294,7 +6294,7 @@
           "shape": "unread.njk",
           "expect": "broken",
           "why": "Broken, and invisible.",
-          "knownGap": "R72 / §4j — no adapter reads .njk.",
+          "knownGap": "No adapter reads .njk files.",
           "offset": 325,
           "line": 8,
           "column": 13
@@ -6305,7 +6305,7 @@
           "shape": "unread.njk",
           "expect": "resolved",
           "why": "A url() inside a style element inside a Nunjucks block.",
-          "knownGap": "R72 / §4j — no adapter reads .njk.",
+          "knownGap": "No adapter reads .njk files.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 435,
           "line": 12,
@@ -6322,7 +6322,7 @@
           "shape": "unread.liquid",
           "expect": "resolved",
           "why": "An image path in Liquid front matter.",
-          "knownGap": "R72 / §4j — no adapter reads .liquid.",
+          "knownGap": "No adapter reads .liquid files.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 27,
           "line": 3,
@@ -6334,7 +6334,7 @@
           "shape": "unread.liquid",
           "expect": "resolved",
           "why": "Root-relative in the body.",
-          "knownGap": "R72 / §4j — no adapter reads .liquid.",
+          "knownGap": "No adapter reads .liquid files.",
           "target": "sites/root-served/img/photo.jpg",
           "offset": 68,
           "line": 7,
@@ -6346,7 +6346,7 @@
           "shape": "unread.liquid",
           "expect": "resolved",
           "why": "Relative from templates/.",
-          "knownGap": "R72 / §4j — no adapter reads .liquid.",
+          "knownGap": "No adapter reads .liquid files.",
           "target": "sites/root-served/img/logo.png",
           "offset": 130,
           "line": 8,
@@ -6358,7 +6358,7 @@
           "shape": "unread.liquid",
           "expect": "resolved",
           "why": "A literal passed through a Liquid filter, which is still a literal.",
-          "knownGap": "R72 / §4j — no adapter reads .liquid.",
+          "knownGap": "No adapter reads .liquid files.",
           "target": "sites/root-served/img/hero.jpg",
           "offset": 278,
           "line": 10,
@@ -6370,7 +6370,7 @@
           "shape": "unread.liquid",
           "expect": "broken",
           "why": "Broken, and invisible.",
-          "knownGap": "R72 / §4j — no adapter reads .liquid.",
+          "knownGap": "No adapter reads .liquid files.",
           "offset": 367,
           "line": 11,
           "column": 13
@@ -6386,7 +6386,7 @@
           "shape": "unread.erb",
           "expect": "broken",
           "why": "An asset-pipeline URL. legacy/public is the serving root, and it holds no assets/ directory — so this is broken even though a file called emblem.png exists elsewhere.",
-          "knownGap": "R72 / §4j — no adapter reads .erb.",
+          "knownGap": "No adapter reads .erb files.",
           "offset": 52,
           "line": 2,
           "column": 26
@@ -6397,7 +6397,7 @@
           "shape": "unread.erb",
           "expect": "resolved",
           "why": "Relative, out of app/views and into public.",
-          "knownGap": "R72 / §4j — no adapter reads .erb.",
+          "knownGap": "No adapter reads .erb files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 122,
           "line": 6,
@@ -6409,7 +6409,7 @@
           "shape": "unread.erb",
           "expect": "resolved",
           "why": "Relative, into the asset pipeline where emblem.png actually lives.",
-          "knownGap": "R72 / §4j — no adapter reads .erb.",
+          "knownGap": "No adapter reads .erb files.",
           "target": "legacy/app/assets/emblem.png",
           "offset": 192,
           "line": 7,
@@ -6420,24 +6420,24 @@
           "occurrence": 3,
           "shape": "unread.erb",
           "expect": "resolved",
-          "why": "R78 Q5: an image_tag helper argument is a reference. The asset pipeline resolves it from app/assets.",
+          "why": "An image_tag helper argument is a reference. The asset pipeline resolves it from app/assets.",
           "offset": 274,
           "line": 8,
           "column": 18,
           "target": "legacy/app/assets/emblem.png",
-          "knownGap": "TWO reasons, both recorded: (1) R72 / §4j — no adapter reads .erb; (2) R51 — Rails' asset-pipeline resolution is framework-specific and was declined. Consistent with the .vue precedent: the entry expects to be found, and the matrix prints why the row is zero."
+          "knownGap": "Two reasons: no adapter reads .erb files, and Rails' asset-pipeline resolution is framework-specific, which the engine does not implement. As with the .vue entries, the entry expects to be found, and the matrix prints why the row is zero."
         },
         {
           "raw": "gallery/plate.jpg",
           "occurrence": 2,
           "shape": "unread.erb",
           "expect": "resolved",
-          "why": "R78 Q5: an asset_path helper argument, same rule. The only plate.jpg in the repository is the one under legacy/public.",
+          "why": "An asset_path helper argument, same rule. The only plate.jpg in the repository is the one under legacy/public.",
           "offset": 317,
           "line": 9,
           "column": 29,
           "target": "legacy/public/gallery/plate.jpg",
-          "knownGap": "TWO reasons, both recorded: (1) R72 / §4j — no adapter reads .erb; (2) R51 — Rails' asset-pipeline resolution is framework-specific and was declined. Consistent with the .vue precedent: the entry expects to be found, and the matrix prints why the row is zero."
+          "knownGap": "Two reasons: no adapter reads .erb files, and Rails' asset-pipeline resolution is framework-specific, which the engine does not implement. As with the .vue entries, the entry expects to be found, and the matrix prints why the row is zero."
         },
         {
           "raw": "/gallery/plate.jpg",
@@ -6445,7 +6445,7 @@
           "shape": "unread.erb",
           "expect": "resolved",
           "why": "Root-relative against legacy/public, the fourth serving root. Occurrence 2: the relative path on line 6 contains this string.",
-          "knownGap": "R72 / §4j — no adapter reads .erb.",
+          "knownGap": "No adapter reads .erb files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 352,
           "line": 10,
@@ -6457,7 +6457,7 @@
           "shape": "unread.erb",
           "expect": "broken",
           "why": "Broken, and invisible.",
-          "knownGap": "R72 / §4j — no adapter reads .erb.",
+          "knownGap": "No adapter reads .erb files.",
           "offset": 449,
           "line": 11,
           "column": 13
@@ -6473,7 +6473,7 @@
           "shape": "unread.php",
           "expect": "resolved",
           "why": "A literal assigned to a variable.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 16,
           "line": 2,
@@ -6485,7 +6485,7 @@
           "shape": "unread.php",
           "expect": "resolved",
           "why": "Relative, out of the serving root.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "target": "legacy/app/assets/emblem.png",
           "offset": 48,
           "line": 3,
@@ -6497,7 +6497,7 @@
           "shape": "unread.php",
           "expect": "resolved",
           "why": "A url() in a style element.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 232,
           "line": 12,
@@ -6509,7 +6509,7 @@
           "shape": "unread.php",
           "expect": "resolved",
           "why": "Root-relative in the markup.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 362,
           "line": 18,
@@ -6521,7 +6521,7 @@
           "shape": "unread.php",
           "expect": "resolved",
           "why": "Bare relative. Occurrence 4: three root-relative forms above contain this string.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 435,
           "line": 19,
@@ -6533,7 +6533,7 @@
           "shape": "unread.php",
           "expect": "broken",
           "why": "Broken, and invisible.",
-          "knownGap": "R72 / §4j — no adapter reads .php.",
+          "knownGap": "No adapter reads .php files.",
           "offset": 499,
           "line": 20,
           "column": 15
@@ -6548,7 +6548,7 @@
           "occurrence": 1,
           "shape": "md.image",
           "expect": "resolved",
-          "why": "🔴 R179's refuting input for a config DIRECTORY. VitePress serves docs/public/ from the root, and what makes docs/ a project is docs/.vitepress/ — a directory; the package.json is two levels up. A rule that counted only FILES as project markers would reject this folder under the no-configuration run, and one reference is under R132's volume floor, so inference cannot put it back: this goes `broken`. Its own file, so nothing else here can mask it.",
+          "why": "A project marked by a config directory. VitePress serves docs/public/ from the root, and what makes docs/ a project is docs/.vitepress/, a directory; the package.json is two levels up. A rule that counted only files as project markers would reject this folder under the no-configuration run, and one reference is below inference's volume floor of three, so inference cannot put it back: this would go `broken`. Its own file, so nothing else here can mask it.",
           "target": "sites/vitepress-docs/docs/public/vp-mark.png",
           "offset": 151,
           "line": 6,
@@ -6564,7 +6564,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "🔴 R179's refuting input for a project file NO ADAPTER CLAIMS. Rails generates public/404.html and serves it as it stands; what makes legacy/ a project is its Gemfile, which the walk records as an unscanned file. A rule that looked for markers only among the files an adapter reads would reject legacy/public under the no-configuration run, and with one reference inference cannot put it back: this goes `broken`. The first file under legacy/ that the engine READS, so it is the first entry that can tell.",
+          "why": "A project marked by a file no adapter claims. Rails generates public/404.html and serves it as it stands; what makes legacy/ a project is its Gemfile, which the walk records as an unscanned file. A rule that looked for markers only among the files an adapter reads would reject legacy/public under the no-configuration run, and with one reference inference cannot put it back: this would go `broken`. The first file under legacy/ that the engine reads, so it is the first entry that can tell.",
           "target": "legacy/public/gallery/plate.jpg",
           "offset": 268,
           "line": 9,
