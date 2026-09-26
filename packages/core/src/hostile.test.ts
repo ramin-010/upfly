@@ -26,16 +26,16 @@ import { sweepForMentions } from './sweep.js';
 import type { Adapter } from './types.js';
 
 /**
- * §5.1(e): hostile inputs, expected to **degrade gracefully and never crash**.
+ * Hostile inputs: the run degrades, and never crashes.
  *
- * Everything here is a real file on a real disk, because the failure mode being
- * tested is the one a fake cannot produce: what libvips does with 200 MB of
- * nothing, what the walker does with a symlink that points at its own parent, what
- * happens when a file is deleted between the walk and the read.
+ * Everything here is a real file on a real disk, because these failures are the ones a
+ * fake cannot produce: what libvips does with 200 MB of nothing, what the walker does
+ * with a symlink that points at its own parent, what happens when a file is deleted
+ * between the walk and the read.
  *
- * The bar is not "produces good findings". It is: **the run completes, and
- * everything it could not do is in the report with a reason.** A crash loses the
- * other 9 999 files; a silent skip is worse than a crash because nobody learns.
+ * The bar is not good findings. It is that the run completes and everything it could not
+ * do is in the report with a reason. A crash loses every other file in the run; a silent
+ * skip is worse, because nobody learns of it.
  */
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
@@ -52,8 +52,8 @@ afterEach(async () => {
 async function makeRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'upfly-hostile-'));
   roots.push(root);
-  // The tree lives in the OS temp dir, so the v2 watcher never sees it. The kill
-  // switch is belt and braces — the failure it prevents is silent corruption.
+  // The v2 VS Code extension converts images in place in the folders it watches. The OS
+  // temp directory is outside them, and this `upfly.config.json` turns it off anyway.
   await writeFile(join(root, 'upfly.config.json'), '{"enabled":false,"watchTargets":[]}\n');
   return root;
 }
@@ -121,7 +121,7 @@ function basenamesOf(assets: readonly { relative: string }[]): Set<string> {
   );
 }
 
-describe('§5.1(e) hostile inputs', () => {
+describe('hostile inputs', () => {
   it('survives a zero-byte image and says why it could not measure it', async () => {
     const root = await makeRoot();
     await writeFile(join(root, 'index.html'), '<img src="empty.png">');
@@ -129,16 +129,16 @@ describe('§5.1(e) hostile inputs', () => {
 
     const { report } = await runEverything(root, { probe: true });
 
-    // Discovered as an asset — it is a file with an image extension, and pretending
-    // otherwise would hide it from the report entirely.
+    // Still an asset: it has an image extension, and leaving it out would hide it from
+    // the report entirely.
     expect(report.summary.assets).toBe(1);
     expect(report.skipped.some((item) => item.stage === 'measurement')).toBe(true);
   });
 
   it('survives a truncated image', async () => {
     const root = await makeRoot();
-    // A real PNG signature followed by nothing, which is what a half-written file
-    // looks like — and the case `failOn: 'none'` does not rescue.
+    // A real PNG signature followed by nothing, which is how a half-written file looks.
+    // This is the case `failOn: 'none'` does not rescue.
     await writeFile(
       join(root, 'cut.png'),
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]),
@@ -156,16 +156,16 @@ describe('§5.1(e) hostile inputs', () => {
     const root = await makeRoot();
     const huge = join(root, 'huge.png');
     await writeFile(huge, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    // Sparse where the filesystem supports it, so this costs a stat-sized file
-    // rather than 200 MB of disk — the size is what is under test, not the bytes.
+    // Sparse where the filesystem supports it, so it takes almost no disk: the size is
+    // what is under test, not the bytes.
     await truncate(huge, 200 * 1024 * 1024);
     await writeFile(join(root, 'page.html'), '<img src="huge.png">');
 
     const { report } = await runEverything(root, { probe: true });
 
     expect(report.summary.assetBytes).toBeGreaterThan(200_000_000);
-    // Oversized by bytes, which needs no decode — the finding survives even though
-    // the header does not parse. That is the point of taking bytes from discovery.
+    // Oversized by bytes needs no decode, so the finding survives although the header
+    // does not parse. That is why the byte size comes from discovery.
     expect(report.summary.findings.oversized).toBe(1);
   });
 
@@ -180,10 +180,10 @@ describe('§5.1(e) hostile inputs', () => {
     expect(report.summary.assets).toBe(names.length);
     expect(report.summary.findings.broken).toBe(0);
 
-    // The §5.1(a) invariant with an emoji in play. Offsets are UTF-16 code units,
-    // so a surrogate pair earlier in the file must not shift a later reference —
-    // and this asserts it directly rather than through a report that lists nothing
-    // when everything resolves.
+    // Each reference's offsets must slice its raw path back out of the source, with an
+    // emoji in play. Offsets are UTF-16 code units, so a surrogate pair earlier in the
+    // file must not shift a later reference. Asserted directly, because a report lists
+    // nothing when everything resolves.
     const source = await readFile(join(root, 'page.html'), 'utf8');
     for (const reference of graph.references) {
       expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
@@ -203,8 +203,8 @@ describe('§5.1(e) hostile inputs', () => {
 
     expect(report.summary.findings.broken).toBe(0);
     expect(report.summary.linkedReferences).toBe(1);
-    // The citation must land on the real line, not on a line count inflated or
-    // deflated by carriage returns.
+    // The risk is a citation on the wrong line, from a line count inflated or deflated
+    // by carriage returns. Only the path is asserted here, not the line or the offsets.
     expect(graph.references[0]?.rawPath).toBe('hero.png');
   });
 
@@ -215,7 +215,7 @@ describe('§5.1(e) hostile inputs', () => {
     await writeFile(join(root, 'a.png'), Buffer.alloc(8));
 
     const discovery = await discover({ root, adapters: ADAPTERS });
-    // Deleted after discovery saw it — the race a long walk always loses eventually.
+    // Deleted after discovery saw it: the race a long walk always loses eventually.
     await rm(join(root, 'gone.html'));
 
     const scanned = await scanSources({
@@ -246,8 +246,8 @@ describe('§5.1(e) hostile inputs', () => {
 
   it('survives a path longer than 260 characters', async () => {
     const root = await makeRoot();
-    // Nested rather than one long segment: every filesystem caps a single name,
-    // but the 260-character *path* limit is the Windows-specific one.
+    // Nested rather than one long segment: every filesystem caps a single name, but the
+    // 260-character limit on the whole path is the Windows-specific one.
     let directory = root;
     for (let depth = 0; depth < 12; depth++) {
       directory = join(directory, `deeply-nested-directory-${depth}`);
@@ -265,9 +265,9 @@ describe('§5.1(e) hostile inputs', () => {
 
     const { report } = await runEverything(root);
 
-    // If the OS refused the path there is nothing here to test, and a green tick
-    // would say §5.1(e) covered a case it never reached. `report.version` was the
-    // fallback assertion and it is a constant — it cannot fail on any input.
+    // If the OS refused the path there is nothing here to test, and a pass would claim
+    // a case that never ran. So it fails, rather than falling back to an assertion on a
+    // constant such as `report.version`, which cannot fail on any input.
     if (!created) {
       expect.fail('the OS refused a 375-character path, so this case did not run');
     }
@@ -292,12 +292,13 @@ describe('§5.1(e) hostile inputs', () => {
 
     const { report, text } = await runEverything(root, { probe: true });
 
-    // One genuinely broken reference, and it is the one that is genuinely broken.
+    // Only `missing.png` does not exist. The empty and truncated images do, so their
+    // references resolve.
     expect(report.findings.filter((finding) => finding.kind === 'broken')).toHaveLength(1);
-    // The unparseable stylesheet is reported, not swallowed — and named, so this
-    // still fails if the stylesheet starts parsing and something else takes its
-    // place in the scan bucket. (`unread.vue` cannot: an unclaimed extension is
-    // coverage rather than failure and `collectSkips` filters it out.)
+    // The unparseable stylesheet is reported by name, so this still fails if it starts
+    // parsing and something else takes its place among the scan skips. `unread.vue`
+    // cannot: an unclaimed extension is coverage, not failure, and `collectSkips`
+    // leaves it out.
     expect(report.skipped).toContainEqual(
       expect.objectContaining({
         what: 'broken.scss',

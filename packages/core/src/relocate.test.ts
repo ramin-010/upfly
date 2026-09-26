@@ -13,14 +13,13 @@ import { scanSources } from './scan.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 /**
- * `relocate` — moving an asset and repointing what names it.
+ * `relocate`: moving an asset and repointing what names it.
  *
- * Two layers, deliberately. The **fixture** block runs the real pipeline over
- * `fixtures/partial-pattern`, because R70(c) is about a template binding several assets
- * and that is a partial-failure state the corpus cannot produce (R67). The **spelling**
- * block uses hand-built graphs, because a re-derived path has to be checked from many
- * directions and building twelve real trees to vary one directory would test the
- * fixtures rather than the arithmetic.
+ * Two layers. The fixture block runs the real pipeline over `fixtures/partial-pattern`,
+ * because a template binding several assets is a partial-failure state no real
+ * repository supplies. The spelling block uses hand-built graphs, because a re-derived
+ * path has to be checked from many directions, and building a real tree for each
+ * directory would test the fixtures rather than the arithmetic.
  */
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/partial-pattern');
@@ -75,8 +74,8 @@ describe('relocate, on the real tree', () => {
 
   it('moves a bundled asset within the source tree and re-derives the relative path', async () => {
     // `./inline-logo.jpg` is expressed from the file that holds it, so moving the asset
-    // one directory down makes it `./img/inline-logo.jpg` — and the `./` survives,
-    // because a diff where `./` appears and disappears is a diff nobody can review.
+    // one directory down makes it `./img/inline-logo.jpg`. The `./` survives, because a
+    // diff where `./` appears and disappears is a diff nobody can review.
     const plan = await relocateFixture([
       { from: 'src/inline-logo.jpg', to: 'src/img/inline-logo.jpg' },
     ]);
@@ -85,16 +84,15 @@ describe('relocate, on the real tree', () => {
     expect(plan.rewrites[0]?.edits[0]?.replacement).toBe('./img/inline-logo.jpg');
   });
 
-  describe('R70: a move that changes HOW the asset is referenced', () => {
+  describe('the moves it refuses', () => {
     it.each([
       ['served to bundled', 'public/banner.png', 'src/banner.png'],
       ['bundled to served', 'src/inline-logo.jpg', 'public/inline-logo.jpg'],
     ])('refuses %s', async (_name, from, to) => {
-      // 🔴 **The ruling's core, and the refusal a reader is most likely to think is
-      // over-cautious.** It is not. After this move there is no path text that reaches
-      // the file, whatever we write: a bundled asset is imported and emitted by the
-      // build, a served one is fetched by URL. Turning one into the other is a code
-      // change, and `relocate` rewrites paths.
+      // The refusal a reader is most likely to think over-cautious. After this move no
+      // path text reaches the file, whatever is written: a bundled asset is imported and
+      // emitted by the build, a served one is fetched by URL. Turning one into the other
+      // is a code change, and `relocate` rewrites paths.
       const plan = await relocateFixture([{ from, to }]);
 
       expect(plan.moves).toEqual([]);
@@ -103,9 +101,9 @@ describe('relocate, on the real tree', () => {
     });
 
     it('makes no edits at all for a refused move', async () => {
-      // ⚠️ Nothing partially applies. A caller that ignores `refused` writes *less*
-      // than it asked for, never something wrong — which matters because the rewrites
-      // would otherwise point at a file that never moved.
+      // Nothing partially applies. A caller that ignores `refused` writes less than it
+      // asked for, never something wrong: the rewrites would otherwise point at a file
+      // that never moved.
       const plan = await relocateFixture([{ from: 'public/banner.png', to: 'src/banner.png' }]);
 
       expect(plan.rewrites).toEqual([]);
@@ -113,14 +111,12 @@ describe('relocate, on the real tree', () => {
     });
 
     it('refuses a pattern sibling and names every asset the pattern binds', async () => {
-      // R70(c), inheriting R65. The user asked for one file; moving all of them silently
-      // is not the fix, and moving one breaks the single edit that stands for all of
-      // them. ✅ This is the case `fixtures/partial-pattern` was built for.
+      // The user asked for one file. Moving all of them silently is not the fix, and
+      // moving one breaks the single edit that stands for all of them. This is the case
+      // `fixtures/partial-pattern` was built for.
       //
-      // ⚠️ **Four since R138**, not three: the fixture gained `theme-not-an-image.png` as
-      // a blocker that no encoder improvement can undo. The count is asserted because the
-      // refusal QUOTES it — a message naming three assets while binding four is the kind
-      // of wrong that reads as right.
+      // The count is asserted because the refusal quotes it: a message naming three
+      // assets while binding four is the kind of wrong that reads as right.
       const plan = await relocateFixture([
         { from: 'public/theme-dark.png', to: 'public/img/theme-dark.png' },
       ]);
@@ -132,7 +128,7 @@ describe('relocate, on the real tree', () => {
       expect(plan.refused[0]?.reason).toContain('Move all 4, or none');
     });
 
-    it('refuses a destination outside the project, which §1.2 already settled', async () => {
+    it('refuses a destination outside the project', async () => {
       const plan = await relocateFixture([{ from: 'public/banner.png', to: '../banner.png' }]);
 
       expect(plan.refused.map((refusal) => refusal.code)).toEqual(['outside-project']);
@@ -259,8 +255,8 @@ describe('relocate, and how a path is re-spelled', () => {
 
   it('re-derives a root-relative path against the serving root, not the project root', () => {
     // The URL is what the browser asks for, so it is relative to what the server
-    // serves. Writing `/public/img/hero.png` would be a path that exists on disk and
-    // 404s in a browser — the most convincing kind of wrong.
+    // serves. `/public/img/hero.png` would be a path that exists on disk and 404s in a
+    // browser, the most convincing kind of wrong.
     const graph = graphFor({
       assets: ['public/hero.png'],
       references: [
@@ -314,7 +310,7 @@ describe('relocate, and how a path is re-spelled', () => {
   });
 
   it('does not re-spell through an alias whose scope does not cover the file', () => {
-    // ⚠️ An alias rule only applies to references from inside the directory its config
+    // An alias rule applies only to references from inside the directory its config
     // governs, which is what `expandAlias` enforces. A matcher here that looked only at
     // the `~/` prefix would re-spell a reference through a rule the resolver never
     // used, producing text that looks right and reaches nothing.
@@ -348,9 +344,9 @@ describe('relocate, and how a path is re-spelled', () => {
   });
 
   it('refuses when the alias cannot express the destination', () => {
-    // 🔴 R70(a) in its narrow form, and the case that made it a ruling. `~/* → src/*`
-    // cannot name anything outside `src/`, so after the move no alias path reaches the
-    // file. The import would have to become a URL string, which is a code change.
+    // `~/* → src/*` cannot name anything outside `src/`, so after the move no alias path
+    // reaches the file. The import would have to become a URL string, which is a code
+    // change.
     const aliases: AliasMap = {
       rules: [
         {
@@ -385,8 +381,8 @@ describe('relocate, and how a path is re-spelled', () => {
   });
 
   it('declines a reference it may not edit, rather than moving in silence', () => {
-    // 🔴 **R39.** The move happens and this reference will break. Saying so is the
-    // whole difference between a dangling reference we found and one we caused.
+    // The move happens and this reference will break. Saying so is the difference
+    // between a dangling reference Upfly found and one it caused.
     const graph = graphFor({
       assets: ['src/logo.png'],
       references: [
@@ -407,10 +403,8 @@ describe('relocate, and how a path is re-spelled', () => {
   });
 
   it('refuses a second move of the SAME file, rather than quietly taking the last', () => {
-    // 🔴 Found by writing the real-repository runner, not by a test. `accepted` is keyed
-    // on the source, so the second move silently replaced the first and the plan
-    // reported one move having been asked for two — a quiet wrong answer, and the kind
-    // only a second caller ever finds.
+    // `accepted` is keyed on the source, so without this refusal the second move would
+    // silently replace the first, and the plan would report one move when asked for two.
     const graph = graphFor({ assets: ['src/a.png'], references: [] });
     const plan = planRelocation({
       graph,
@@ -439,16 +433,18 @@ describe('relocate, and how a path is re-spelled', () => {
     });
 
     // One survives and one is refused, rather than both proceeding and the result
-    // depending on which ran first — the same fold `prepare` applies, for the same
-    // reason: two paths differing only in case are one file on Windows and macOS.
+    // depending on which ran first. Destinations are compared with case folded, as
+    // `prepare` compares them: two paths differing only in case are one file on Windows
+    // and macOS.
     expect(plan.moves).toHaveLength(1);
     expect(plan.refused.map((refusal) => refusal.code)).toEqual(['destination-claimed-twice']);
   });
 
   it('treats a project that serves from its own root as all one world', () => {
-    // R63's `''`: a hand-written static site with no build step serves the repository
-    // it uploads, so nothing can cross a boundary — there is only one side. Getting
-    // this backwards would refuse every move on the simplest kind of site there is.
+    // A serving directory of `''` is the project root: a hand-written static site with no
+    // build step serves the repository it uploads, so there is only one side and nothing
+    // can cross a boundary. Getting this backwards would refuse every move on the
+    // simplest kind of site there is.
     const graph = graphFor({
       assets: ['images/logo.png'],
       references: [

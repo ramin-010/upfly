@@ -11,9 +11,8 @@ import type { Asset } from './types.js';
 /**
  * The sharp-backed probe, against real bytes.
  *
- * `probe.test.ts` covers the logic with a fake; this covers the half a fake cannot:
- * what libvips actually does with an animation, a truncated file and a vector. Every
- * expectation here was measured with a throwaway script before it was written down.
+ * `probe.test.ts` covers the logic with a fake; this covers what a fake cannot: what
+ * libvips does with an animation, a truncated file and a vector.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
@@ -53,10 +52,9 @@ const FRAME_HEIGHT = 12;
 /**
  * A genuinely animated GIF.
  *
- * `join: { animated: true }` is the way to build one — neither `pageHeight` on raw
- * input nor a tall strip through `.gif()` produces multiple pages, they just make a
- * tall still image. Getting that wrong gives a fixture that silently tests nothing,
- * which is how the animation bug survives review in the first place.
+ * Built with `join: { animated: true }`. Neither `pageHeight` on raw input nor a tall
+ * strip through `.gif()` produces multiple pages: both make a tall still image, which
+ * gives a fixture that silently tests nothing.
  */
 async function animatedGif(name: string, frames: number): Promise<string> {
   const { default: sharp } = await import('sharp');
@@ -85,9 +83,6 @@ async function animatedGif(name: string, frames: number): Promise<string> {
 
 describe('createSharpProbe', () => {
   it('reads a real fixture image', async () => {
-    // 240x160 since R53 replaced the placeholders with real photographs. It used to be
-    // 1x1, which is what a fixture looks like when it cannot exercise the thing it is
-    // for.
     const result = await probe.metadata(join(FIXTURES, 'plain-html/images/hero.jpg'));
 
     expect(result).toEqual({ width: 240, height: 160, format: 'jpeg', pages: 1 });
@@ -123,14 +118,14 @@ describe('createSharpProbe', () => {
     const bytes = await probe.encodedBytes({ path, format: 'webp', animated: false });
 
     expect(bytes).toBeGreaterThan(0);
-    // "Read-only" is the whole promise of this module, so it is asserted rather
-    // than assumed: an encode that reached a disk would leave a file behind.
+    // `encodedBytes` promises to write nothing, so that is asserted rather than
+    // assumed: an encode that reached the disk would leave a file behind.
     expect(await readdir(temp)).toEqual(before);
   });
 
   it('measures an AVIF encode too', async () => {
-    // Deliberately tiny. AVIF is ~8x the cost of WebP (R11), so the point here is
-    // only that the format actually reaches libvips — the numbers live in `bench/`.
+    // Tiny, because an AVIF encode costs about eight times a WebP one. This only checks
+    // that the format reaches libvips; the numbers live in `bench/`.
     const path = await noisyJpeg('avif.jpg', 24, 16);
 
     const bytes = await probe.encodedBytes({ path, format: 'avif', animated: false });
@@ -156,14 +151,9 @@ describe('createSharpProbe', () => {
     });
 
     it('writes at the quality it reports, byte for byte', async () => {
-      // B3's unease (h): R30(b) holds "by construction" because the same object both
-      // measures and writes, and nobody had checked that the construction is real. A
-      // saving quoted at a quality the file was not written at is exactly the figure
-      // R30 exists to forbid.
-      //
-      // Compared against an independent encode at the declared quality rather than
-      // against the probe's own output, because comparing a thing to itself proves
-      // nothing.
+      // A saving quoted at a quality the file was not written at would be a false
+      // figure. Compared with an independent encode at the declared quality, because
+      // comparing the probe's output with itself would prove nothing.
       const { default: sharp } = await import('sharp');
       const path = await noisyJpeg('quality.jpg', 120, 90);
       const destination = join(temp, 'quality.webp');
@@ -189,7 +179,7 @@ describe('createSharpProbe', () => {
     });
   });
 
-  describe('hostile inputs — §5.1(e)', () => {
+  describe('hostile inputs', () => {
     it('rejects a zero-byte file', async () => {
       const path = join(temp, 'zero.png');
       await writeFile(path, Buffer.alloc(0));
@@ -210,9 +200,8 @@ describe('createSharpProbe', () => {
       const path = join(temp, 'truncated.jpg');
       await writeFile(path, (await readFile(source)).subarray(0, 24));
 
-      // Worth knowing: `failOn: 'none'` does NOT rescue this. It governs decode
-      // warnings, not header parsing, so there is no lenient mode to reach for —
-      // catching and reporting is the only option.
+      // `failOn: 'none'` does not rescue this: it governs decode warnings, not header
+      // parsing. There is no lenient mode, so the caller has to catch and report.
       await expect(probe.metadata(path)).rejects.toThrow(/corrupt header|unsupported/i);
     });
 
@@ -249,9 +238,9 @@ describe('createSharpProbe', () => {
 
       const result = await probe.metadata(path);
 
-      // Read with `{ animated: true }` this same file reports a height six times
-      // larger — every frame in one strip. An `oversized by dimensions` finding fed
-      // from that number would be wrong by a factor of six.
+      // Read with `{ animated: true }`, this file reports a height six times larger,
+      // every frame in one strip, and an oversized-by-dimensions finding fed from that
+      // number would be wrong by a factor of six.
       expect(result.height).toBe(FRAME_HEIGHT);
       expect(result.width).toBe(FRAME_WIDTH);
     });

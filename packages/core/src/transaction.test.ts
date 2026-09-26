@@ -39,14 +39,11 @@ interface Harness {
  * Wrap a store so it can be told to die partway through.
  *
  * The count is of operations that change something: a write, a copy, a removal.
- * Injecting the failure here rather than calling revert directly is the point of the
- * whole exercise, because it interrupts commit on the same code path a real crash
- * would.
+ * Injecting the failure here rather than calling revert directly is the point, because
+ * it interrupts commit on the same code path a real crash would.
  *
- * Separate from any one store so that both the in-memory double and the real
- * filesystem store are interrupted by the same mechanism at the same points. While
- * this lived inside the memory store, every crash test in the project ran against
- * semantics the real store does not have.
+ * Separate from any one store, so the in-memory double and the real filesystem store
+ * are interrupted by the same mechanism at the same points.
  */
 function interruptible(store: FileStore): {
   readonly store: FileStore;
@@ -79,10 +76,10 @@ function interruptible(store: FileStore): {
         mutate();
         await store.writeText(path, text);
       },
-      // Passed through WITHOUT `mutate()`. The crash harness counts mutations to fail
-      // at every step of a commit, and taking the lock is not a step of the commit --
-      // counting it would shift every injected failure by one and silently re-aim the
-      // whole crash matrix at the wrong operations.
+      // Passed through without `mutate()`. The crash harness counts mutations to fail at
+      // every step of a commit, and taking the lock is not a step of the commit: counting
+      // it would shift every injected failure by one and aim the crash matrix at the
+      // wrong operations.
       createExclusive: (path, text) => store.createExclusive(path, text),
       async copy(from, to) {
         mutate();
@@ -113,8 +110,8 @@ function memoryFiles(files: Map<string, string>): FileStore {
       files.set(path, text);
     },
     // Real exclusive semantics, not a stub that always succeeds. A memory store that
-    // happily overwrote here would let every lock test pass against a lock that could
-    // never refuse — the fake would be asserting its own politeness.
+    // overwrote here would let every lock test pass against a lock that could never
+    // refuse.
     async createExclusive(path, text) {
       if (files.has(path)) return false;
       files.set(path, text);
@@ -241,8 +238,8 @@ describe('prepare', () => {
 
   it('refuses two creates whose paths differ only in case, which are one file on Windows', async () => {
     // Neither file exists yet, so the absent check passes for both and only this
-    // catches it. Comparing paths exactly let the second create land on top of the
-    // first and the run reported success.
+    // catches it. Compared exactly, the second create would land on top of the first
+    // and the run would report success.
     const harness = memoryStore(tree());
     const clash: PlannedOperation[] = [
       ...plan(),
@@ -308,9 +305,8 @@ describe('commit', () => {
     // manifest is the single state undo cannot get out of.
     //
     // Asserting the manifest is present matters more than asserting the tree is
-    // clean. An earlier version of this test crashed at mutation zero and only
-    // checked the tree, which passes whatever the order is, because nothing has
-    // happened yet either way. It was named after a property it did not test.
+    // clean: a crash at mutation zero leaves a clean tree whatever the order, because
+    // nothing has happened yet either way.
     const harness = memoryStore(tree(), 1);
     await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
 
@@ -451,8 +447,6 @@ describe('revert', () => {
  * The disk half is not thoroughness for its own sake. The in-memory double's `copy`
  * overwrites its destination and the real store refuses to, so any recovery path
  * that copies onto a file already present passes in memory and fails on a disk.
- * These matrices are the strongest instrument this project has and, until now, both
- * of them only ever ran against the double.
  */
 interface MatrixHarness {
   readonly store: FileStore;
@@ -490,8 +484,8 @@ const onDisk: MatrixStore = {
   name: 'on a real filesystem',
   async open() {
     // The OS temp directory rather than anywhere in the workspace: this tree has a
-    // `public/` in it, and the v2 extension converts images inside in-repo ones in
-    // place, which has already destroyed a set of fixture files once.
+    // `public/` in it, and the v2 editor extension converts images inside a workspace's
+    // `public/` folders in place.
     const root = await mkdtemp(join(tmpdir(), 'upfly-matrix-'));
 
     for (const [path, text] of Object.entries(tree())) {
@@ -599,8 +593,7 @@ describe.each([inMemory, onDisk])('the crash matrix, $name', (matrix) => {
 
       // The last value lets commit run to the end, so undo is exercised from the
       // completed run as well as from every point a crash can cut it short at. The
-      // matrix that existed before this one interrupted commit only, and then reverted
-      // on a disk that had started working again.
+      // matrix above interrupts commit only, and reverts on a disk that works again.
       for (let commitFailAfter = 0; commitFailAfter <= commitSteps; commitFailAfter++) {
         for (let undoFailAfter = 0; ; undoFailAfter++) {
           const harness = await matrix.open();
@@ -844,9 +837,9 @@ describe('pathsTouched', () => {
 
 describe('the manifest schema is public API', () => {
   it('matches the approved shape', async () => {
-    // Rule 6: a change to this snapshot is a schema change, and a schema change is
-    // something a reviewer approves rather than something that lands because the
-    // tests were updated alongside it.
+    // A change to this snapshot is a schema change, and a schema change is something a
+    // reviewer approves rather than something that lands because the tests were
+    // updated alongside it.
     const manifest = await commit(plan(), memoryStore(tree()).store, context());
     expect(withoutVolatileFields(manifest)).toMatchSnapshot();
   });

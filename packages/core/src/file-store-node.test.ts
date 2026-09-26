@@ -1,16 +1,11 @@
 /**
  * The store that actually touches a disk.
  *
- * Until this file existed the module had no tests and no callers: it was reachable
- * only through the package index, and every transaction test ran against the
- * in-memory double. A module nothing calls looks exactly like a module that works.
- *
- * Two halves, and the split is deliberate. Everything that can be observed on a real
- * filesystem is tested on one, in the OS temp directory rather than anywhere inside
- * the workspace. The busy retry cannot be: neither a read-only file nor one with an
- * open handle produces EBUSY or EPERM from Node on Windows, both delete cleanly, so
- * that half injects the failure through `FileOperations` and still drives it through
- * the store rather than calling the retry directly.
+ * Everything that can be observed on a real filesystem is tested on one. The busy retry
+ * cannot be: on Windows, Node deletes a read-only file and a file with an open handle
+ * cleanly, so neither produces EBUSY or EPERM. Those tests inject the failure through
+ * `FileOperations` and still drive it through the store rather than calling the retry
+ * directly.
  */
 
 import { createHash } from 'node:crypto';
@@ -40,9 +35,8 @@ describe('on a real filesystem', () => {
   let store: FileStore;
 
   beforeEach(async () => {
-    // Outside the workspace on purpose. The v2 extension watches in-repo `public/`
-    // directories and converts what it finds in place, which has already destroyed
-    // a set of fixture files, and this suite writes a `public/` of its own.
+    // Outside the workspace: the v2 VS Code extension converts images in any in-repo
+    // `public/` directory in place, and this suite writes a `public/` of its own.
     root = await mkdtemp(join(tmpdir(), 'upfly-store-'));
     store = createNodeFileStore(root);
   });
@@ -98,12 +92,11 @@ describe('on a real filesystem', () => {
     });
   });
 
-  describe('createExclusive, which is what makes R68 lock rather than pretend to', () => {
+  describe('createExclusive, which is what makes the lock work rather than pretend to', () => {
     /**
-     * ⚠️ **Every other test of the lock runs against the in-memory store**, where
-     * exclusivity is three lines this project wrote and could therefore have written
-     * to agree with itself. The real guarantee is `O_EXCL` in the kernel, and it is
-     * only real on a real filesystem — so it is tested here, on one.
+     * The lock's other tests run against in-memory stores, whose exclusivity is our own
+     * code and could agree with itself while being wrong. The real guarantee is `O_EXCL`
+     * in the kernel, which only a real filesystem provides.
      */
     it('creates a file that is not there and reports that it did', async () => {
       expect(await store.createExclusive('lock', 'FIRST')).toBe(true);
@@ -111,9 +104,8 @@ describe('on a real filesystem', () => {
     });
 
     it('refuses a file that exists, and does not touch what is in it', async () => {
-      // 🔴 The half that matters. If this overwrote, the lock would hand itself to
-      // every run that asked and the refusal would never fire on a real machine, while
-      // every in-memory test stayed green.
+      // If this overwrote, every run that asked would get the lock and the refusal would
+      // never fire on a real machine, while every in-memory test stayed green.
       await store.createExclusive('lock', 'FIRST');
 
       expect(await store.createExclusive('lock', 'SECOND')).toBe(false);

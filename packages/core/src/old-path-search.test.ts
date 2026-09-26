@@ -3,13 +3,12 @@ import { findSurvivingPaths, spellingsFor } from './old-path-search.js';
 import { compareStrings } from './paths.js';
 
 /**
- * R72 part 2 — searching for the old path without asking the graph.
+ * Searching for an old path without asking the graph.
  *
- * The tests that matter here are the ones about **what is searched for**, not about the
- * searching. A substring search is hard to get wrong; choosing the needle is where this
- * check lives or dies, and the ruling names the way it dies: **search the basename and
- * every move looks like a disaster**, because the asset still has that name at its new
- * home.
+ * The tests that matter here are about what is searched for, not the searching. A
+ * substring search is hard to get wrong; choosing the needle is where this check lives or
+ * dies. Search the basename and every move looks like a disaster, because the asset still
+ * has that name at its new home.
  */
 
 const SERVING = ['public'];
@@ -30,15 +29,14 @@ function search(files: Record<string, string>, from: string, servingDirs = SERVI
 
 describe('the spellings an old path is searched for', () => {
   it('never searches the basename alone, because a move keeps the filename', () => {
-    // 🔴 **The defect the ruling names.** After `public/img/hero.png` moves to
-    // `public/moved/hero.png`, every reference to the NEW location still contains
-    // `hero.png`. A basename search would report all of them as survivors, and a check
-    // whose noise is indistinguishable from its signal is worse than no check.
+    // After `public/img/hero.png` moves to `public/moved/hero.png`, every reference to the
+    // new location still contains `hero.png`. A basename search would report all of them
+    // as survivors, and a check whose noise cannot be told from its signal is worse than
+    // no check.
     const spellings = spellingsFor('public/img/hero.png', SERVING);
     expect(spellings).not.toContain('hero.png');
-    // Every spelling carries a directory separator — EITHER separator, since one of them
-    // is the Windows variant. The first version of this assertion demanded `/` and failed
-    // on `public\img\hero.png`, which is the spelling doing its job.
+    // Every spelling carries a directory separator, of either kind: one of them is the
+    // Windows variant, `public\img\hero.png`.
     for (const spelling of spellings) {
       expect(spelling.includes('/') || spelling.includes('\\')).toBe(true);
     }
@@ -51,24 +49,17 @@ describe('the spellings an old path is searched for', () => {
   });
 
   it('treats an empty serving directory as the project root being served', () => {
-    // The `''` case, got backwards twice elsewhere in this codebase (R70).
-    //
-    // ⚠️ **This test caught nothing until the code changed.** It was written against an
-    // explicit `if (dir === '')` branch, and a mutation that broke that branch left this
-    // green — because the leading-slash spelling comes from the unconditional base set,
-    // so the branch was adding a string that was already there. **The test could not see
-    // its own premise**, and what it exposed was dead code rather than a weak assertion.
-    // The branch is gone; the assertion is the same and now has one source of truth.
+    // The `''` case, which is easy to get backwards. The leading-slash spelling comes from
+    // the base set every path gets, so no branch for `''` is needed to produce it.
     expect(spellingsFor('img/hero.png', [''])).toContain('/img/hero.png');
     // And `''` must not be treated as a prefix that strips nothing and yields `/`.
     expect(spellingsFor('img/hero.png', [''])).not.toContain('/');
   });
 
   it('does not treat a serving directory as a bare string prefix', () => {
-    // 🔴 Found by a mutation, not by design. `static` is a serving root and
-    // `staticky/logo.png` is an asset that merely starts with those letters — stripping
-    // the prefix without requiring a separator yields the URL `/ky/logo.png`, a spelling
-    // that exists nowhere and that would then be searched for across the whole tree.
+    // `static` is a serving root and `staticky/logo.png` merely starts with those letters.
+    // Stripping the prefix without requiring a separator would yield the URL
+    // `/ky/logo.png`, a spelling that exists nowhere, searched for across the whole tree.
     const spellings = spellingsFor('staticky/logo.png', ['static']);
     expect(spellings).not.toContain('/ky/logo.png');
     expect(spellings).toContain('staticky/logo.png');
@@ -85,9 +76,9 @@ describe('the spellings an old path is searched for', () => {
 });
 
 describe('searching for what the move left behind', () => {
-  it('finds a literal reference in a file type nothing parses — R72’s own case', async () => {
-    // 🔴 B5's measurement, reproduced: a reference to a moved asset in `deploy/netlify.yml`.
-    // Part 1 could only disclose that `.yml` went unread. This finds the line.
+  it('finds a literal reference in a file type nothing parses', async () => {
+    // A reference to a moved asset in `deploy/netlify.yml`. The move's regression count
+    // can only disclose that `.yml` went unread; this search finds the line.
     const result = await search(
       { 'deploy/netlify.yml': 'from = "/img/hero.png"\nto = "/somewhere"\n' },
       'public/img/hero.png',
@@ -101,9 +92,8 @@ describe('searching for what the move left behind', () => {
 
   it('does NOT match a reference to the new location', async () => {
     // The premise of the whole design. `moved/hero.png` shares a basename with the old
-    // path and must not match. ⚠️ If this ever goes green with a basename search, the
-    // test data no longer satisfies its own premise — the old and new directories must
-    // differ, and they do.
+    // path and must not match. If this ever passes with a basename search, the test data
+    // no longer satisfies its premise: the old and new directories must differ.
     const result = await search(
       { 'page.html': '<img src="/moved/hero.png">' },
       'public/img/hero.png',
@@ -112,13 +102,11 @@ describe('searching for what the move left behind', () => {
   });
 
   it('does not report the rewrite it just made as a survivor', async () => {
-    // 🔴 **Found by running this on `astro-docs` and reading the output.** The asset was
-    // served at `/default-og-image.png` and moved to `/upfly-moved/default-og-image.png`.
-    // The old URL spelling is a SUFFIX of the new one, so the file the move had correctly
-    // rewritten came back as a survivor — a correct rewrite reported as a failure, which
-    // is the most misleading thing this check could say. An asset at the serving root has
-    // a URL that is a filename with a slash in front of it, so the ruling's basename
-    // warning applies to it in a costume.
+    // An asset at the serving root has a URL that is its file name with a slash in
+    // front, so the old URL (`/hero.png`) is a suffix of the new one
+    // (`/upfly-moved/hero.png`). Unless matches inside a destination are discounted, a
+    // correct rewrite comes back as a survivor: a success reported as a failure, the most
+    // misleading thing this check could say.
     const result = await findSurvivingPaths({
       moves: [{ from: 'public/hero.png', to: 'public/upfly-moved/hero.png' }],
       files: ['routeData.ts'],
@@ -130,8 +118,8 @@ describe('searching for what the move left behind', () => {
   });
 
   it('still reports a genuine survivor in a file that also holds the new path', async () => {
-    // The inverse, and it is what stops the fix above from being a blanket exemption: a
-    // file may hold both the rewritten reference AND one that was missed.
+    // The inverse, which keeps the discount above from being a blanket exemption: a file
+    // may hold both the rewritten reference and one that was missed.
     const result = await findSurvivingPaths({
       moves: [{ from: 'public/hero.png', to: 'public/upfly-moved/hero.png' }],
       files: ['both.html'],
@@ -165,8 +153,8 @@ describe('searching for what the move left behind', () => {
   });
 
   it('reports a file it could not read rather than counting it as clean', async () => {
-    // 🔴 A hole in a search that reports "nothing found" is precisely R72's defect. An
-    // unreadable file is named, not skipped.
+    // A file the search could not read is a hole in its "nothing found", so it is named,
+    // not skipped.
     const result = await findSurvivingPaths({
       moves: [{ from: 'public/img/hero.png', to: 'public/moved/hero.png' }],
       files: ['gone.yml'],
@@ -183,8 +171,8 @@ describe('searching for what the move left behind', () => {
   });
 
   it('states its limits even when it finds nothing', async () => {
-    // Same rule as part 1: a clean result is exactly where an unstated limit is read as a
-    // guarantee, and this check has a large one.
+    // As with the move's regression count: a clean result is where an unstated limit is
+    // read as a guarantee, and this check has a large one.
     const result = await search({ 'a.yml': 'nothing' }, 'public/img/hero.png');
 
     expect(result.survivors).toEqual([]);
@@ -220,7 +208,7 @@ describe('searching every file once, with exactly the answers of one search per 
    */
   type Move = { from: string; to: string };
 
-  /** The search as it was: one `indexOf` loop per spelling, and per destination, per file. */
+  /** The oracle: one `indexOf` loop per spelling, and per destination, per file. */
   function oneSearchPerSpelling(
     moves: readonly Move[],
     files: Readonly<Record<string, string>>,
@@ -359,9 +347,9 @@ describe('searching every file once, with exactly the answers of one search per 
 
   it('skips a match that overlaps an earlier match of the same spelling, as indexOf did', async () => {
     // `x/png.png.png` holds `png.png` at 2, inside the destination `x/png.png`, and again
-    // at 6, overlapping the first. Searching on from the END of the first match never
+    // at 6, overlapping the first. Searching on from the end of the first match never
     // sees the second, so nothing survives. Counting every occurrence would report the
-    // one at 6, a match the original search could not produce.
+    // one at 6, a match the oracle's `indexOf` loop cannot produce.
     const result = await searchAll(
       [{ from: 'png.png', to: 'x/png.png' }],
       { 'a.txt': 'x/png.png.png' },

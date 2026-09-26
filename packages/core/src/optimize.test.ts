@@ -96,8 +96,8 @@ function harness(initial: Record<string, string>) {
       tree.set(path, text);
     },
     // Real exclusive semantics, not a stub that always succeeds. A memory store that
-    // happily overwrote here would let every lock test pass against a lock that could
-    // never refuse — the fake would be asserting its own politeness.
+    // overwrote here would let every lock test pass against a lock that could never
+    // refuse.
     async createExclusive(path, text) {
       if (tree.has(path)) return false;
       tree.set(path, text);
@@ -146,8 +146,8 @@ function inputFor(
     graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
     audit,
     probes: [probeOf('src/logo.png')],
-    // R77's haystack. Defaults to the one file these fixtures hold a reference in; a
-    // test that cares passes its own.
+    // The files the old-path search reads. Defaults to the one file these fixtures hold
+    // a reference in; a test that cares passes its own.
     files: ['src/App.jsx'],
     servingRoots: { dirs: ['public'], declared: true },
     format: 'webp',
@@ -263,10 +263,8 @@ describe('optimize', () => {
     expect(result.manifest).toBeNull();
     expect([...store.tree]).toEqual([...before]);
 
-    // ⚠️ An asset with no measured saving is declined with a null reason, so it does
-    // not reach the report at all. That is B2's unease (f) and it is still open: the
-    // audit is believed to report the same assets as `beyond-encode-cap`, and nobody
-    // has checked end to end that the two land in the same place.
+    // An asset with no webp measurement is left out of `declined`: the probe records
+    // why it was not measured, and the report prints that skip.
     expect(result.plan.declined).toEqual([]);
   });
 });
@@ -320,21 +318,17 @@ describe('the pattern-target lookup', () => {
   });
 });
 
-describe('R68: the lock covers the gap between staging and committing', () => {
+describe('the lock covers the gap between staging and committing', () => {
   /**
-   * 🔴 **The failure `commit`-scoped locking does NOT close, and the reason the lock is
-   * taken in `optimize` as well.**
+   * Why `optimize` takes the lock as well as `commit`.
    *
-   * `commit` holds the lock across its own two manifest writes, which closes the
-   * failure exactly as R68 describes it. It leaves a second window: between this run's
-   * `prepare` and its `commit`, another run can start AND FINISH completely. Its
-   * committed manifest is then overwritten the moment this run resumes and writes its
-   * own pending one -- and its backups are orphaned exactly as if it had been
-   * interrupted mid-write. Same lost record, different route.
-   *
-   * Note this is NOT the case B3's fix already covers: `commit` re-verifies
-   * `beforeHash`, so two runs cannot corrupt the same FILE. Two runs touching
-   * different files corrupt nothing and still destroy one of the two records.
+   * `commit` holds the lock across its own two manifest writes. That leaves a window
+   * between this run's `prepare` and its `commit`, in which another run can start and
+   * finish. Its committed manifest is then overwritten when this run writes its pending
+   * one, and its backups are left with nothing pointing at them. `commit` hashes each
+   * file again before writing, so two runs cannot corrupt the same file, but two runs
+   * touching different files would still lose one of the two records.
+   * See "One writer at a time" in ARCHITECTURE.md.
    */
   it('refuses a second run while the first is between prepare and commit', async () => {
     const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
@@ -351,10 +345,10 @@ describe('R68: the lock covers the gap between staging and committing', () => {
     const suspending: FileStore = {
       ...project.store,
       async hash(path) {
-        // Suspends on a staged-path hash taken AFTER the lock exists, which lands
-        // inside `prepare`. `stage` hashes staged paths too and runs before the lock,
-        // so keying on the path alone stopped the run in the wrong place -- caught by
-        // the assertion below, which is why it asserts a position and not a feeling.
+        // Suspends on a staged-path hash taken after the lock exists, which lands inside
+        // `prepare`. `stage` hashes staged paths too and runs before the lock, so keying
+        // on the path alone would stop the run in the wrong place; the assertion below
+        // checks where it stopped.
         if (armed && project.tree.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
           armed = false;
           reached();
@@ -367,9 +361,9 @@ describe('R68: the lock covers the gap between staging and committing', () => {
     const running = optimize(inputFor({ ...project, store: suspending, apply: true }));
     await inside;
 
-    // ⚠️ **The position is asserted, not assumed.** The run is past `prepare`'s first
-    // staged-path check and has not written a manifest yet, which IS the gap -- and it
-    // is precisely where a commit-scoped lock would not be holding anything.
+    // The position is asserted, not assumed: the run is past `prepare`'s first
+    // staged-path check and has not written a manifest yet. That is the gap, where a
+    // lock taken only by `commit` would not be held.
     expect(project.tree.has(MANIFEST_PATH)).toBe(false);
 
     const other: RunContext = {
@@ -390,9 +384,9 @@ describe('R68: the lock covers the gap between staging and committing', () => {
   });
 
   it('lets that same second run through once the lock is gone', async () => {
-    // ⚠️ The fixture mutation, kept as a control. Without it the refusal above could
-    // be caused by anything at all in a half-finished run, and would still read as
-    // proof of a lock.
+    // The control: the same second run with no other run in flight. Without it the
+    // refusal above could be caused by anything at all in a half-finished run, and
+    // would still read as proof of a lock.
     const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
     const other: RunContext = {
       runId: 'run-other',
@@ -405,13 +399,13 @@ describe('R68: the lock covers the gap between staging and committing', () => {
   });
 });
 
-describe('R77 — replace refuses to delete an original a mention would outlive', () => {
+describe('replace refuses to delete an original a mention would outlive', () => {
   /**
    * A served asset, one reference the engine found, and whatever else is on disk.
    *
    * A `public` serving root with `publicPolicy: 'replace'` is what makes the original a
-   * deletion candidate; outside a served directory nothing is deleted and R77 does not
-   * apply.
+   * deletion candidate; outside a served directory nothing is deleted and the search for
+   * surviving mentions does not apply.
    */
   function servedProject(tree: Record<string, string>, files: readonly string[]) {
     const html = tree['index.html'] ?? '';
@@ -434,10 +428,10 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
   }
 
   it('converts normally when the only mention is one it will rewrite', async () => {
-    // 🔴 **The trap this test exists for.** At plan time EVERY mention still reads as the
-    // old path, including the reference the run is about to repoint. A guard that did not
-    // exclude those would refuse every conversion it ever looked at — and a guard that
-    // always fires gets deleted by the next person, which is worse than not having it.
+    // At plan time every mention still reads as the old path, including the reference
+    // the run is about to repoint. A guard that did not exclude those would refuse every
+    // conversion it looked at, and a guard that always fires gets deleted by the next
+    // person.
     const { input } = servedProject(
       { 'index.html': '<img src="/logo.png">', 'public/logo.png': 'PNG' },
       ['index.html'],
@@ -452,9 +446,8 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
   });
 
   it('refuses the conversion when a mention survives in a file nothing parses', async () => {
-    // The measured case, in miniature: `scratch-www` had the same shape in custom JSX
-    // props. The reference in `index.html` is rewritten; the one in `deploy.yml` is not,
-    // and deleting the original would make it a 404.
+    // The reference in `index.html` is rewritten; the one in `deploy.yml` is not, and
+    // deleting the original would make it a 404.
     const { input } = servedProject(
       {
         'index.html': '<img src="/logo.png">',
@@ -467,16 +460,16 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
     const result = await optimize(input);
 
     expect(result.plan.conversions).toEqual([]);
-    // 🔴 And it is REPORTED, not merely skipped — rule 9. The reason names the trade.
+    // And it is reported, not skipped: the reason names the trade.
     const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
-    // 🔴 It must name WHERE. A reason that says a mention survives *somewhere* leaves the
-    // user to grep for a path this engine had already located.
+    // It names where. A reason that says a mention survives somewhere leaves the user to
+    // search for a path the engine had already located.
     expect(declined?.reason).toContain('deploy.yml:1');
     expect(declined?.reason).toContain('cannot rewrite');
   });
 
   it('does not refuse under keep-original, where nothing is deleted', async () => {
-    // 🔴 The other half of the trade. With the original left on disk the surviving mention
+    // The other half of the trade. With the original left on disk the surviving mention
     // still resolves, so refusing would cost a saving to prevent nothing. Same tree as the
     // test above, one policy different, opposite answer.
     const { input } = servedProject(
@@ -517,9 +510,9 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
   });
 
   it('searches files the graph never saw, which is the whole point', async () => {
-    // ⚠️ Premise, asserted: `deploy.yml` holds no reference the engine recognises, so it
-    // appears nowhere in the graph. A haystack derived from the graph would not contain
-    // it, and the guard would pass — which is the defect R77 exists to close.
+    // Premise, asserted: `deploy.yml` holds no reference the engine recognises, so it
+    // appears nowhere in the graph. A file list derived from the graph would not contain
+    // it, and the guard would let the mention through.
     const { input } = servedProject(
       {
         'index.html': '<img src="/logo.png">',
@@ -537,20 +530,17 @@ describe('R77 — replace refuses to delete an original a mention would outlive'
 
 describe('replace at the seam: a new file only where a reference moves to it, a delete only where all do', () => {
   /**
-   * The operations `optimize` emits, not only the plan: `stage` turns a conversion into a
-   * `create` and `replacesOriginal` into a `delete`, and the manifest records every
-   * operation a run committed. So each test runs an applied `replace` over one in-memory
-   * project holding every row of the rule, and reads the manifest and the disk afterwards.
+   * The operations `optimize` emits, not only the plan: each test runs an applied
+   * `replace` over one project holding every case, then reads the manifest and the disk.
    *
-   * | row | asset | expected |
-   * |---|---|---|
-   * | every reference moves | `logo.png`, one literal | converted, original deleted |
-   * | some move, some still need it | `theme-light.png`, a literal and the template | converted, original kept |
-   * | linked only through references that stay | `theme-dark.png` (template), `icon-16/32.png` (chain), `hero.png` (refused literal), `mark.png` (no extension) | not converted |
-   * | linked by nothing | `orphan.png` | not converted |
+   * - Every reference moves (`logo.png`): converted, original deleted.
+   * - A literal moves and the template still needs it (`theme-light.png`): converted,
+   *   original kept.
+   * - Linked only through references that stay (`theme-dark.png`, the icons, `hero.png`,
+   *   `mark.png`) or by nothing (`orphan.png`): not converted.
    *
-   * `logo.png` is the positive control. A fix that simply switched `replace` off would
-   * pass every "not deleted" test here, and fails that one.
+   * `logo.png` is the positive control: a fix that switched `replace` off would pass every
+   * "not deleted" test here, and fails that one.
    */
   const INDEX = '<img src="/logo.png"><img src="/public/h%65ro.png"><img src="/mark">\n';
   const ABOUT = '<img src="/theme-light.png">\n';
@@ -616,7 +606,7 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
       // Some move, some still need it: this literal moves, the template below does not.
       resolved('about.html', '/theme-light.png', 'public/theme-light.png', ABOUT),
       // Linked only through references that stay. A root-relative path that missed the
-      // DECLARED root, so its rewrite is refused, spelled so that the text search, which
+      // declared root, so its rewrite is refused, spelled so that the text search, which
       // looks for the path as written, finds none of its spellings.
       {
         ...resolved('index.html', '/public/h%65ro.png', 'public/hero.png', INDEX),

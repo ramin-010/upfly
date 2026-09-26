@@ -4,20 +4,15 @@ import { checkMoveRegression } from './move-check.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, UnscannedFile } from './types.js';
 
 /**
- * R72 part 1 — the disclosure that travels with a move's regression count.
+ * The disclosure that travels with a move's regression count.
  *
- * ⚠️ **What these tests are for, and what they are not for.** They pin the *shape* of
- * the disclosure: that it is present, that it survives the cases where it looks
- * unnecessary, and that it names what a reader can act on. They did not find the
- * defects in the wording — **three of those were found by rendering the output and
- * reading it**, after these assertions were already green: a truncated list that hid
- * the one extension R72 was discovered through, and two drafts of a sentence that said
- * *"1 directory … their files"*. That is the fourth, fifth and sixth time this phase
- * that reading the rendered output found what a passing suite could not.
+ * These tests pin its shape: that it is present, that it survives the cases where it
+ * looks unnecessary, and that it names what a reader can act on. They cannot judge its
+ * wording; reading the rendered output is how that gets checked.
  *
- * Graphs go through the **real** `buildGraph`, so `unscannedExtensions` is counted by
- * the code that counts it in production. A hand-written extension table would have let
- * the ordering test pass against data the real counter never produces.
+ * Graphs go through the real `buildGraph`, so `unscannedExtensions` is counted by the
+ * code that counts it in production. A hand-written extension table could let the
+ * ordering test pass against data the real counter never produces.
  */
 
 const ROOT = '/repo';
@@ -39,7 +34,7 @@ function unreadFiles(spec: readonly { ext: string; count: number }[]): Unscanned
   return files;
 }
 
-/** Files of a type we DO read that the scan could not parse. */
+/** Files of a type Upfly reads that the scan could not parse. */
 function parseFailures(spec: readonly { relative: string; detail: string }[]): UnscannedFile[] {
   return spec.map((entry) => ({
     path: `${ROOT}/${entry.relative}`,
@@ -65,12 +60,10 @@ function graphWith(input: {
     ceiling: 'high',
     asserted: true,
   };
-  // ⚠️ `confidence: 'unsafe'` and `resolvedPath: null` are not decoration — the
-  // `Reference` union *requires* them of anything not resolved, and the first draft of
-  // this helper wrote `'high'` with a real path. **Rule 17's test typechecking caught a
-  // reference in a state the engine cannot produce**, which would have made every
-  // assertion below true of data no run can create. The fix is the data, not a cast
-  // through `unknown`.
+  // The `Reference` union requires `confidence: 'unsafe'` and `resolvedPath: null` of
+  // anything not resolved. A reference in a state the engine cannot produce would make
+  // every assertion below true of data no run can create, so the data follows the type
+  // rather than being cast through `unknown`.
   const references: Reference[] = Array.from({ length: input.broken }, (_, index) => ({
     ...base,
     file: `${ROOT}/page${index}.html`,
@@ -105,7 +98,7 @@ function rendered(check: { lines: readonly string[] }): string {
 
 describe('a move’s regression count, and what it cannot see', () => {
   it('never states the count without stating its limit', () => {
-    // The sentence R72 is about is "no new broken references". The qualifier has to
+    // The sentence that matters is "no new broken references". The qualifier has to
     // travel with it, because a reader who reads one line reads that one.
     const check = checkMoveRegression({
       before: graphWith({ broken: 111 }),
@@ -116,16 +109,15 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(check.regressed).toBe(false);
     expect(rendered(check)).toContain('no new broken references among those Upfly can parse');
     expect(rendered(check)).toContain('What that count cannot see');
-    // The circularity itself is named, not just its consequence: this is the whole
-    // content of R72 and a reader cannot weigh the number without it.
+    // The circularity itself is named, not just its consequence: a reader cannot weigh
+    // the number without knowing that one graph produced both sides of it.
     expect(rendered(check)).toContain('same graph');
   });
 
   it('still states the limit when nothing went unread at all', () => {
-    // 🔴 **The most important test in this file.** A tree where every file was read is
-    // exactly where the count looks like a guarantee, and a caveat that disappears
-    // there would turn the clean case into the false one. The class is absent from
-    // *this tree*; it is not absent from the check.
+    // A tree where every file was read is where the count looks most like a guarantee,
+    // and a caveat that disappeared there would turn the clean case into the false one.
+    // The class is absent from this tree, not from the check.
     const check = checkMoveRegression({
       before: graphWith({ broken: 0 }),
       after: graphWith({ broken: 0 }),
@@ -154,26 +146,20 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(rendered(check)).toContain('REGRESSION');
     expect(rendered(check)).toContain('3 references Upfly can parse broke in this move');
 
-    // ⚠️ **Assert the bullets, never the heading.** The first version of this test
-    // checked for `What that count cannot see`, which `render` pushes before the
-    // conditional bullets — so suppressing every bullet on a regression left the
-    // heading standing and this test green. The mutation that proved it is recorded in
-    // the handoff; it is the same defect as B5's three, one layer further out.
+    // Assert the bullets, not the heading: `render` pushes `What that count cannot see`
+    // before the conditional bullets, so a change that suppressed every bullet on a
+    // regression would leave the heading standing and this test green.
     expect(rendered(check)).toContain('could have broken without');
     expect(rendered(check)).toContain('.yml — 1 file');
     expect(rendered(check)).toContain('assembles at runtime');
   });
 
   it('names parse failures separately, because they are fixable and the types are not', () => {
-    // 🔴 **Measured on `railsgirls-com`, and the most consequential line this disclosure
-    // has.** Three `.html` files failed on invalid CSS inside an inline `<style>`, so the
-    // scan collected nothing from them — including their `<link rel="apple-touch-icon">`
-    // pointing at the asset being moved. The move broke all three, and `broken before vs
-    // after` stayed at 111, because the same scan failure hid both the reference and the
-    // breakage. R72 part 2 found them by searching the text.
-    //
-    // ⚠️ Before this split, the disclosure grouped them by extension and printed
-    // `.html — 22 files`, which reads as "Upfly cannot read HTML". It reads HTML fine.
+    // A parse failure is the likeliest place a break hides: the failure that hides a
+    // reference to the moved asset also hides its breakage, so the count stays level.
+    // Grouped by extension, the failures would read as "Upfly cannot read HTML" rather
+    // than one invalid construct in one file. See "What "broken before versus after" can
+    // see" in ARCHITECTURE.md.
     const check = checkMoveRegression({
       before: graphWith({ broken: 0 }),
       after: graphWith({
@@ -209,9 +195,8 @@ describe('a move’s regression count, and what it cannot see', () => {
 
   it('names an unread type that could hold a path, and not one that could not', () => {
     // The line `couldHideAReference` draws. A `.woff2` holds no path text, so naming it
-    // would send a reader to look for a reference inside a font — confidently wrong,
-    // which is the R21 failure. `.svg` is named because it genuinely carries
-    // `<image href>` and nothing parses it.
+    // would send a reader to look for a reference inside a font. `.svg` is named because
+    // it can carry `<image href>` and nothing parses it.
     const check = checkMoveRegression({
       before: graphWith({ broken: 0 }),
       after: graphWith({
@@ -235,14 +220,10 @@ describe('a move’s regression count, and what it cannot see', () => {
   });
 
   it('names the types holding most files first, so truncation hides the smallest', () => {
-    // 🔴 **Found by reading the rendered output, and the premise is what matters.**
-    // On `railsgirls-com` the alphabetical order put `.yml` sixth of six, so the one
-    // extension that demonstrated R72 sat behind "and 1 more".
-    //
-    // ⚠️ The data below is built so the two orderings **disagree** — alphabetically
-    // `.aaa` leads, by volume it is last. B5 wrote a test whose `small-*`/`big-*` names
-    // sorted the same way under both orders, so the mutation stayed green and the
-    // premise was never exercised. That premise is asserted here rather than assumed.
+    // In alphabetical order the one type that matters can sit behind "and 1 more". The
+    // data below is built so the two orderings disagree: alphabetically `.aaa` leads, by
+    // volume it is last. Names that sorted the same way under both orders would let an
+    // alphabetical sort pass, so that premise is asserted rather than assumed.
     const unread = [
       { ext: '.aaa', count: 1 },
       { ext: '.bbb', count: 2 },
@@ -272,7 +253,7 @@ describe('a move’s regression count, and what it cannot see', () => {
   it('discloses directories nothing opened, and says they are outside the unread count', () => {
     // A reader told "2 files went unread" would otherwise take 2 for the whole blind
     // spot. An excluded directory's files were never seen, so they are absent from
-    // that count as well as from the graph — R72's own defect one level down.
+    // that count as well as from the graph.
     const check = checkMoveRegression({
       before: graphWith({ broken: 0, unread: [{ ext: '.yml', count: 2 }] }),
       after: graphWith({ broken: 0, unread: [{ ext: '.yml', count: 2 }] }),
@@ -301,8 +282,8 @@ describe('a move’s regression count, and what it cannot see', () => {
 
   it('warns when the two sides of the comparison did not read the same files', () => {
     // Then part of the difference between the counts may be coverage rather than the
-    // move, and the comparison is not like-for-like. It should not happen — a move
-    // relocates assets, not sources — so it is surfaced rather than assumed away.
+    // move, and the comparison is not like-for-like. It should not happen, since a move
+    // relocates assets rather than sources, so it is surfaced rather than assumed away.
     const check = checkMoveRegression({
       before: graphWith({ broken: 2, unread: [{ ext: '.yml', count: 4 }] }),
       after: graphWith({ broken: 2, unread: [{ ext: '.yml', count: 2 }] }),
@@ -342,16 +323,10 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(rendered(check)).toContain('needs explaining');
   });
 
-  it('reproduces R72: B5’s measurement does not read as a guarantee', () => {
-    // 🔴 The exact shape B5 measured on `astro-docs`. A reference to a moved asset was
-    // added to `deploy/netlify.yml`, nothing scans `.yml`, the move broke it, and the
-    // check reported:
-    //
-    //     broken before: 0    broken after: 0    and the reference was broken
-    //
-    // Both numbers are still 0 — that is the check's shape and this does not change
-    // it. What it changes is that the output now says the `.yml` was never read, so
-    // the zero is no longer offered as proof.
+  it('does not offer a zero as proof when the break is in a file type nothing reads', () => {
+    // A reference to a moved asset in `deploy/netlify.yml`, which nothing scans: the move
+    // breaks it and both counts still read 0, which is the shape of the check. What the
+    // output adds is that the `.yml` was never read, so the zero is not offered as proof.
     const check = checkMoveRegression({
       before: graphWith({ broken: 0, unread: [{ ext: '.yml', count: 1 }] }),
       after: graphWith({ broken: 0, unread: [{ ext: '.yml', count: 1 }] }),

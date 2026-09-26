@@ -8,9 +8,9 @@ import { UpflyError } from './errors.js';
 import type { Adapter } from './types.js';
 
 /**
- * `discover` is one of the two modules that is *supposed* to touch a disk, so it is
- * tested against a real temporary tree rather than a mock. Mocking `fs` here would
- * test our idea of the filesystem instead of the filesystem.
+ * `discover` is one of the few modules that touch the disk, so it is tested against a
+ * real temporary tree rather than a mock. Mocking `fs` here would test our idea of the
+ * filesystem instead of the filesystem.
  */
 
 const createdRoots: string[] = [];
@@ -150,8 +150,8 @@ describe('discover', () => {
     const result = await discover({ root, adapters });
 
     // The likeliest real case is not node_modules but a user who ignores `legacy/`
-    // while it is still referenced. Recording the rule is what lets the report say
-    // *why* an asset went missing.
+    // while it is still referenced. Recording the rule is what lets the report say why
+    // an asset went missing.
     expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
       ['legacy', "the ignore rule 'legacy/'"],
       ['node_modules', "a build or version-control directory named 'node_modules'"],
@@ -223,10 +223,10 @@ describe('discover', () => {
 
       const result = await discover({ root, adapters });
 
-      // An ignore rule is an instruction, not a gap in our coverage — hedging a
-      // report on a directory the user told us to skip would be dishonest in the
-      // other direction, and walking a pruned node_modules to do it is absurd.
-      // `.upflyignore` is absent because we read it; it is not a file we failed on.
+      // An ignore rule is an instruction, not a gap in our coverage: hedging a report
+      // on a directory the user told us to skip would mislead in the other direction,
+      // and would mean walking a pruned node_modules. `.upflyignore` is absent because
+      // we read it; it is not a file we failed on.
       expect(result.unscannedFiles.map((file) => file.relative)).toEqual(['app.vue']);
     });
 
@@ -370,7 +370,7 @@ describe('discover', () => {
       const result = await discover({ root, adapters });
       await chmod(join(root, '.upflyignore'), 0o644);
 
-      // The rules could not be read, so nothing is ignored — but that is visible.
+      // The rules could not be read, so nothing is ignored, and the skip says so.
       expect(result.assets.map((asset) => asset.relative)).toEqual(['a.png']);
       expect(result.skipped).toEqual([
         {
@@ -481,10 +481,9 @@ describe('discover', () => {
     });
 
     it('lists a directory holding only files nothing tracks', async () => {
-      // The case that decides why this is recorded rather than derived. Deriving
-      // directories from the paths in `assets` and `sourceFiles` loses this one
-      // entirely, and on shadcn-ui that is the difference between finding 12 serving
-      // roots and finding 11: `templates/next-app/public` holds only a `.gitkeep`.
+      // Why directories are recorded rather than derived from the paths in `assets` and
+      // `sourceFiles`: deriving loses this one. In shadcn-ui, `templates/next-app/public`
+      // holds only a `.gitkeep` and is still a serving root.
       const root = await makeTree({
         'public/.gitkeep': '',
         'static/robots.txt': '',

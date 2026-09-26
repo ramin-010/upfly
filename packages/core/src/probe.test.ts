@@ -10,8 +10,7 @@ import type { Asset } from './types.js';
 
 /**
  * `probeAssets` is pure over an injected port, so these run against a fake. The
- * sharp-backed implementation is exercised on real bytes in `probe-sharp.test.ts` —
- * the split is the point of the port.
+ * sharp-backed implementation is tested on real bytes in `probe-sharp.test.ts`.
  */
 
 function asset(relative: string, bytes = 1000): Asset {
@@ -78,8 +77,8 @@ describe('probeAssets', () => {
   });
 
   it('measures nothing when asked for nothing, and still reads the header', async () => {
-    // `--no-probe` for the expensive half. Dimensions cost 1-2 ms, so there is no
-    // reason to give them up.
+    // An empty `formats` skips only the encodes. Dimensions cost a millisecond or two,
+    // so there is no reason to give them up.
     const [result] = await probeAssets([asset('hero.png')], {
       probe: fakeProbe(),
       formats: [],
@@ -101,9 +100,8 @@ describe('probeAssets', () => {
 
   describe('animation', () => {
     it('encodes an animated source as animated', async () => {
-      // The finding that justifies this whole parameter: sharp keeps ONE frame
-      // without it, so a ten-frame GIF would report a ~92% saving achievable only
-      // by destroying the animation.
+      // Without `animated`, sharp encodes only the first frame, and a ten-frame GIF would
+      // report a saving that is only achievable by destroying the animation.
       const encodedBytes = vi.fn(async () => 8370);
       const probe: ImageProbe = { ...fakeProbe({ pages: 10, format: 'gif' }), encodedBytes };
 
@@ -170,8 +168,8 @@ describe('probeAssets', () => {
     });
 
     it('records a reason rather than throwing when the header is unreadable', async () => {
-      // §5.1(e): a zero-byte file, a truncated PNG, a text file named `.png`. The
-      // run degrades; it does not crash.
+      // A zero-byte file, a truncated PNG, a text file named `.png`: the run degrades
+      // rather than crashing.
       const [result] = await probeAssets([asset('zero.png')], {
         probe: fakeProbe({ metadataFails: 'Input file contains unsupported image format' }),
         formats: ['webp'],
@@ -193,11 +191,9 @@ describe('probeAssets', () => {
     });
 
     it('keeps the library own words out of the skip and sends them to the sink', async () => {
-      // The report is promised to be byte-identical for identical inputs, and libvips
-      // does not give the same sentence twice: four corrupt SVGs read 160 times gave
-      // the full message 114 times and a truncated one 46. What Upfly concluded is
-      // stable; what libvips said about it is not, so only one of the two is allowed
-      // into the report.
+      // The report is byte-identical for the same input, and libvips does not word the
+      // same failure the same way every time. What Upfly concluded is stable and what
+      // libvips said is not, so only the first reaches the report.
       const diagnostics: ProbeDiagnostic[] = [];
       const [result] = await probeAssets([asset('zero.png')], {
         probe: fakeProbe({ metadataFails: 'Input file contains unsupported image format' }),
@@ -227,16 +223,12 @@ describe('probeAssets', () => {
       expect(JSON.stringify(result)).not.toContain('Input file');
     });
 
-    describe('R64: classified by what the reader can do, not by what libvips said', () => {
+    describe('failures classified by what the reader can do, not by what libvips said', () => {
       it('calls an unreadable SVG an SVG, and an unreadable PNG not an image', async () => {
-        // 🔴 **The split that R60 cost us, restored without reading libvips' prose.**
-        // Measured across the corpus, the 20 header failures are 8 files that are not
-        // images and 12 SVGs the vector parser refused — and libvips distinguishes
-        // them only in wording we have promised not to print. The extension separates
-        // them perfectly, and it is our data.
-        //
-        // Both are fed the *same* libvips message on purpose: if the error text were
-        // deciding this, both would land in the same bucket and this test would fail.
+        // A header failure is either a file that is not an image or an SVG the vector
+        // parser refused, and libvips tells them apart only in wording the report does
+        // not print. The extension separates them, and it is our own data. Both are fed
+        // the same message: if the error text decided this, both would land together.
         const failing = { metadataFails: 'Input file has corrupt header: svgload: bad dimensions' };
 
         const [vector] = await probeAssets([asset('icon.svg')], {
@@ -264,14 +256,9 @@ describe('probeAssets', () => {
       });
 
       it('formats the limit without asking the platform how to write a number', async () => {
-        // ⚠️ Rule 11. The first version used `toLocaleString('en-US')`, and an explicit
-        // locale is NOT enough: number formatting goes through ICU, and a Node built
-        // with `small-icu` can render the same number differently — so the same
-        // repository would produce different bytes on two machines, by exactly the
-        // mechanism `report-human.ts` already bans `toLocaleString` for.
-        //
-        // Found by reading the rendered report on a real repository, not by a test,
-        // which is this phase's most reliable instrument and its least automated one.
+        // The report is byte-identical for the same input on every machine.
+        // `toLocaleString` goes through ICU even with an explicit locale, and a Node
+        // built with `small-icu` can format the same number differently.
         const [result] = await probeAssets([asset('huge.png')], {
           probe: fakeProbe({ width: 40_000, height: 40_000, encodeFails: 'boom' }),
           formats: ['webp'],
@@ -281,14 +268,10 @@ describe('probeAssets', () => {
       });
 
       it('names the pixel limit when the source is past it', async () => {
-        // 🔴 **The one regression R60 actually caused.** `Input image exceeds pixel
-        // limit` was the single most actionable string we had and became the vaguest
-        // sentence in the report. It is the only one of the five causes with a fix the
-        // reader controls, so it gets its own code.
-        //
-        // Decided by arithmetic against `MAX_ENCODE_PIXELS` — a limit we set — rather
-        // than by matching libvips' text. The message below is deliberately unrelated
-        // to pixels, so a string-matching implementation would fail here.
+        // A source past the pixel limit has a clear fix, resizing it, so it gets its own
+        // code. That is decided by arithmetic against `MAX_ENCODE_PIXELS`, a limit we set,
+        // not by matching libvips' text: the message below has nothing to do with pixels,
+        // so a string-matching implementation fails here.
         const [result] = await probeAssets([asset('huge.png')], {
           probe: fakeProbe({
             width: 40_000,
@@ -322,10 +305,9 @@ describe('probeAssets', () => {
       });
 
       it('keeps a plain encode failure unclassified rather than guessing', async () => {
-        // The residual stays. An encode that failed for a reason we cannot attribute
-        // is not a silent skip — it is reported as what it is. Deleting this code to
-        // make the enumeration look tidy would turn an unexplained failure into an
-        // invented explanation, and rule 9 prefers the honest one.
+        // An encode that failed for a reason we cannot attribute is reported as exactly
+        // that. Folding it into another code to tidy the list would turn an unexplained
+        // failure into an invented explanation.
         const [result] = await probeAssets([asset('hero.png')], {
           probe: fakeProbe({ width: 100, height: 50, encodeFails: 'out of memory' }),
           formats: ['webp'],
@@ -417,7 +399,7 @@ describe('probeAssets', () => {
     });
   });
 
-  describe('alwaysMeasure, which is what R35 needs to be true', () => {
+  describe('alwaysMeasure, so every asset a pattern could match is measured', () => {
     it('measures an exempt asset the cap would otherwise have excluded', async () => {
       const small = asset('small.png', 100);
 
@@ -433,9 +415,9 @@ describe('probeAssets', () => {
     });
 
     it('does not spend a capped slot on the exempt asset', async () => {
-      // Exempting has to happen before the cap applies, not by adding the asset back
-      // afterwards. Added back, it would take a slot from the largest assets and
-      // quietly turn "the 1 largest" into "the 0 largest".
+      // The exempt asset is left out of the ranking, so it takes no slot. Counted
+      // against the cap, it would take the slot of the largest asset and quietly turn
+      // "the 1 largest" into "the 0 largest".
       const small = asset('small.png', 100);
 
       const results = await probeAssets([small, asset('huge.png', 9000), asset('mid.png', 500)], {
@@ -488,15 +470,16 @@ describe('probeAssets', () => {
       const measured = results.filter((result) => result.encoded.length > 0);
       expect(measured.map((result) => result.relative)).toEqual(['huge.png', 'medium.png']);
 
-      // Rule 9: the one left out says so, rather than looking like it had no
-      // opportunity. And it names the flag that lifts the cap.
+      // Every skipped measurement reaches the report with a reason, so the one left out
+      // does not look as if it had no opportunity. The reason names the flag that lifts
+      // the cap.
       const capped = results.find((result) => result.relative === 'small.png');
       expect(capped?.skipped).toEqual([
         {
           measurement: 'webp',
           code: 'beyond-encode-cap',
-          // Points at `--probe-all`, the flag a user reaches for at exactly this
-          // moment — not at the tunable that also happens to lift the cap.
+          // Names `--probe-all`, the flag a user wants at this moment, rather than
+          // `--max-encodes`, which only raises the cap.
           reason:
             'not among the 2 largest assets measured (run with --probe-all to measure the rest)',
         },
@@ -516,8 +499,8 @@ describe('probeAssets', () => {
     });
 
     it('breaks a size tie by path, so two runs choose the same assets', async () => {
-      // Rule 11 reaches the *selection*, not only the output order: the same
-      // repository must produce the same report on any machine.
+      // The same repository must give the same report on any machine, so which assets
+      // are measured has to be deterministic too, not only the order they come back in.
       const assets = [asset('z.png', 500), asset('a.png', 500), asset('m.png', 500)];
 
       const forwards = await probeAssets(assets, {

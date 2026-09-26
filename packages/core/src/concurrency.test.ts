@@ -5,28 +5,21 @@ import { MANIFEST_PATH } from './manifest.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 
 /**
- * R68 — two writers, one manifest.
+ * Two writers, one manifest: the lock that keeps a second run out while the first writes.
  *
- * 🔴 **The ruling asks for a test that starts a second transaction while the first
- * holds the lock, and explicitly NOT a unit test of the lock helper**, because this
- * project has shipped four guards that never fired. So everything here goes through
- * the real `commit`, and the first transaction is genuinely suspended mid-flight
- * holding a genuinely created lock file.
+ * Everything goes through the real `commit` rather than the lock helper alone: the first
+ * transaction is suspended mid-run, holding a lock file it created, while a second one
+ * starts. A guard tested only on its own can pass while never firing where it matters.
  *
- * ⚠️ **The fixture here is the HELD LOCK, and it is mutated the way R67 says a fixture
- * must be.** Two of the tests below exist only to break the premise on purpose: one
- * removes the lock before the second run starts, one gives it a live holder instead of
- * a dead one. If the refusal survived either, it would be firing for some reason other
- * than the lock, and the tests that assert it would be measuring nothing. That is the
- * lesson from `partial-pattern`, where a premise test hardcoded 70 bytes and could not
- * see its own premise change.
- *
- * **No pid is hardcoded and no timestamp is asserted.** A dead pid is obtained by
- * running a real process and letting it exit, which is the only way to have one that
- * is dead as a fact rather than as an assumption.
+ * Two tests break the premise on purpose, as controls: with the held lock removed the
+ * second run goes through, and with a live holder in place of a dead one it is refused.
+ * Each shows that the outcome it mirrors comes from the lock, not from something else.
  */
 
-/** A pid that is dead because a real process used it and exited. */
+/**
+ * A pid that is dead because a real process used it and exited. A hardcoded pid could
+ * belong to a live process on some machine.
+ */
 function deadPid(): number {
   // `spawnSync` returns after the child has exited, so this pid is free by the time
   // it is read. Node itself is used rather than a shell so the call means the same
@@ -34,9 +27,8 @@ function deadPid(): number {
   const { pid } = spawnSync(process.execPath, ['-e', '']);
   if (pid === undefined) throw new Error('could not spawn a process to get a dead pid');
 
-  // ⚠️ The one guard against the flake this technique can have. If the operating
-  // system has already recycled the pid, this test's premise is false, and it must
-  // say so loudly rather than pass for the wrong reason.
+  // If the operating system has already recycled the pid, the premise is false, and
+  // the test must fail saying so rather than pass for the wrong reason.
   if (processIsAlive(pid)) throw new Error(`pid ${pid} was recycled before the test could use it`);
   return pid;
 }
@@ -87,9 +79,9 @@ function contextFor(runId: string): RunContext {
 /**
  * A store that suspends the first manifest write until the test lets it go.
  *
- * This is what makes the first transaction genuinely *in progress*: it has taken the
- * lock and has not finished, which is the state a second run has to meet. Stubbing the
- * lock file instead would test a file, not a transaction.
+ * This keeps the first transaction in progress: it has taken the lock and not finished,
+ * which is the state a second run has to meet. Stubbing the lock file instead would test
+ * a file, not a transaction.
  */
 function suspendable(store: FileStore) {
   let release = (): void => {};
@@ -117,13 +109,12 @@ function suspendable(store: FileStore) {
   return { store: wrapped, release, inside };
 }
 
-describe('R68: two runs, one manifest', () => {
+describe('two runs, one manifest', () => {
   it('refuses a second transaction while the first is still running', async () => {
-    // 🔴 The failure this prevents, stated plainly: without the lock the second run
-    // overwrites the first run's pending manifest, the first run then writes its own
-    // committed manifest over that, and the second run's backups are left in
-    // `.upfly/runs/<B>/` with nothing pointing at them. Its deletions become
-    // unrecoverable, which is the one thing the transaction exists to guarantee.
+    // Without the lock, the second run overwrites the first run's pending manifest, the
+    // first then writes its committed manifest over that, and the second run's backups
+    // are left in `.upfly/runs/<B>/` with nothing pointing at them. Its deletions could
+    // not be undone, which is what the transaction exists to prevent.
     const { files, store } = memoryStore();
     const first = suspendable(store);
 
@@ -155,10 +146,9 @@ describe('R68: two runs, one manifest', () => {
   });
 
   it('lets the second transaction through once the lock is GONE', async () => {
-    // ⚠️ **The fixture mutation, kept as a permanent control.** Remove the held lock
-    // and the same second run succeeds. Without this, the refusal above could be
-    // firing for any reason at all — a hash mismatch, a store quirk — and the test
-    // would read as proof of a lock that was doing nothing.
+    // A control: remove the held lock and the same second run succeeds. Without it, the
+    // refusal above could be firing for another reason (a hash mismatch, a store quirk)
+    // and would still read as proof of a lock that was doing nothing.
     const { files, store } = memoryStore();
     const first = suspendable(store);
     const running = commit([], first.store, contextFor('run-a'));
@@ -187,7 +177,7 @@ describe('R68: two runs, one manifest', () => {
 
   it('releases the lock even when the run fails, so a failure is not a brick', async () => {
     // A throw mid-commit must not leave the directory locked for the rest of the
-    // process's life. The `finally` is what makes this true, and nothing else would.
+    // process's life. `commit` releases the lock in a `finally`.
     const { files, store } = memoryStore();
     const exploding: FileStore = {
       ...store,
@@ -202,15 +192,15 @@ describe('R68: two runs, one manifest', () => {
   });
 });
 
-describe('R68: a lock its holder did not survive', () => {
+describe('a lock its holder did not survive', () => {
   /** A lock file exactly as a run would have written it, for a chosen holder. */
   function lockHeldBy(pid: number): string {
     return `${JSON.stringify({ pid, startedAt: '2026-09-13T00:00:00.000Z', runId: 'run-crashed' }, null, 2)}\n`;
   }
 
   it('clears a lock whose process is gone, rather than bricking the directory', async () => {
-    // 🔴 Without this the first killed run makes the project permanently unusable, and
-    // the only fix is a user deleting a file nobody ever told them about.
+    // Without this, the first killed run would lock the project for good, and the only
+    // fix would be deleting a file nobody told the user about.
     const { files, store } = memoryStore();
     files.set(LOCK_PATH, lockHeldBy(deadPid()));
 
@@ -220,9 +210,9 @@ describe('R68: a lock its holder did not survive', () => {
   });
 
   it('still refuses when the holder is ALIVE, which is the same test with one change', async () => {
-    // ⚠️ **The second fixture mutation, also kept.** Identical lock file, identical
-    // run, and only the holder's liveness differs — so the recovery above is caused by
-    // the process being gone and not by the lock being readable, or old, or ours.
+    // The control for the test above: the same lock file and run, with only the holder's
+    // liveness changed. It shows the recovery is caused by the process being gone, not by
+    // the lock being readable, old or ours.
     const { files, store } = memoryStore();
     files.set(LOCK_PATH, lockHeldBy(process.pid));
 
@@ -244,10 +234,10 @@ describe('R68: a lock its holder did not survive', () => {
   });
 
   it('does not treat a live holder as stale just because this process is the holder', async () => {
-    // 🔴 The subtle one. Keying staleness on "the pid is not ours" instead of "the pid
-    // is not running" would be invisible in production — where the two runs really are
-    // separate processes — and would disable the lock entirely under test, where they
-    // are not. The extension and a CLI run in one host process are exactly this case.
+    // A lock held by this process still blocks a different run. Judging staleness by
+    // whether the pid is ours, rather than by whether it is running, would pass in
+    // production, where two runs are two processes, and switch the lock off here, where
+    // they share one. An editor extension hosting several runs in one process is the same.
     const { files, store } = memoryStore();
     files.set(LOCK_PATH, lockHeldBy(process.pid));
 
@@ -276,11 +266,11 @@ describe('readLockHolder', () => {
   });
 });
 
-describe('R68: a run may re-enter its own lock', () => {
+describe('a run may re-enter its own lock', () => {
   it('lets the same runId take the lock it already holds', async () => {
     // `optimize` holds the lock across `prepare` and `commit`, and `commit` takes it
     // again on its own behalf so a library consumer calling it directly is protected
-    // too. Without re-entrancy every applied run would deadlock against itself.
+    // too. Without re-entry every applied run would refuse itself.
     const { files, store } = memoryStore();
     files.set(
       LOCK_PATH,
@@ -321,9 +311,8 @@ describe('R68: a run may re-enter its own lock', () => {
   });
 
   it('leaves the outer hold in place when the inner one finishes', async () => {
-    // The release of a re-entrant acquisition must be a no-op, or an inner `commit`
-    // finishing would unlock a run that is still going — and the next run would walk
-    // straight into the window this whole ruling exists to close.
+    // Releasing a re-entrant hold must do nothing, or an inner `commit` finishing would
+    // unlock a run that is still going, and the next run could start while it writes.
     const { files, store } = memoryStore();
     const outer = `${JSON.stringify({ pid: process.pid, startedAt: '2026-09-13T00:00:00.000Z', runId: 'run-a' }, null, 2)}\n`;
     files.set(LOCK_PATH, outer);
