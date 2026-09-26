@@ -7164,6 +7164,38 @@
           "column": 20
         }
       ]
+    },
+    {
+      "path": "apps/web/vector-link.html",
+      "entries": [
+        {
+          "raw": "/icons/mask.svg",
+          "occurrence": 1,
+          "shape": "html.a.href.image",
+          "expect": "resolved",
+          "why": "A download link to a vector file. A link hands over the file it names whatever its format, so the SVG is used by this page, and an engine that skipped the link would count it unused. Linked like a link to a raster, and never rewritten, though a vector is never converted anyway.",
+          "target": "apps/web/public/icons/mask.svg",
+          "offset": 136,
+          "line": 8,
+          "column": 17
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/VectorLink.tsx",
+      "entries": [
+        {
+          "raw": "/icons/mask.svg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A link to a vector file, written in a component. The same claim as in vector-link.html, read from the one list both adapters share.",
+          "target": "apps/web/public/icons/mask.svg",
+          "offset": 137,
+          "line": 3,
+          "column": 19
+        }
+      ]
     }
   ]
 }

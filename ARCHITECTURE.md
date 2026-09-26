@@ -683,8 +683,10 @@ Two more claims make the list read what a page names only in its head or in a li
 content>` names a link preview's image when its `property` or `name` is `og:image`,
 `og:image:url`, `og:image:secure_url`, `twitter:image`, `twitter:image:src` or
 `msapplication-TileImage`, in any case (`metaImageClaim`). An `<a href>` names an image when its
-value shows a raster extension in one of the spellings the resolver tries (`anchorImageClaim`), so
-`<a href="/about">`, a PDF and a vector claim nothing. Such an image is often named nowhere else,
+value shows an image extension in one of the spellings the resolver tries (`anchorImageClaim`), so
+`<a href="/about">` and a PDF claim nothing. A vector counts as a raster does: `optimize` never
+converts one, but a link is what shows it is used, and an SVG named only by a link would
+otherwise be counted as an unused vector. Such an image is often named nowhere else,
 and before the claims it was reported dead while the site used it. Both references link their
 asset and are never rewritten: the sites that fetch previews may not read a converted format, and a
 person following a link expects the format it names. The rule lives on the shape, as `formatKept`

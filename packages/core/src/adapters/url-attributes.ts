@@ -5,11 +5,11 @@
  *
  * A position is a tag, an attribute and, where those two do not decide, a claim read from the
  * element: a `<link href>` names an image only when its `rel` says it is an icon or a
- * preloaded image, and an `<a href>` only when its value spells a raster extension. See "The
+ * preloaded image, and an `<a href>` only when its value spells an image extension. See "The
  * six that exist" in ARCHITECTURE.md.
  */
 
-import { isImageExtension, isVectorExtension } from '../paths.js';
+import { isImageExtension } from '../paths.js';
 import type { ShapeId } from '../shapes.js';
 import { spellingsOf, staticExtensionOf } from './reference-path.js';
 
@@ -170,17 +170,17 @@ function metaImageClaim(element: ClaimedElement): ShapeId | null {
 }
 
 /**
- * Whether an `<a href>` names an image: its value shows a raster extension in some
- * spelling, the kind of image `optimize` converts. The spellings are the resolver's, so
- * `hero%2Epng` counts. A link to a page, a document or a vector claims nothing, and a value
- * with no text of its own, such as a variable, cannot show an extension.
+ * Whether an `<a href>` names an image: its value shows an image extension in some
+ * spelling. The spellings are the resolver's, so `hero%2Epng` counts. A vector counts as a
+ * raster does: `optimize` never converts one, but the link is what shows it is used. A link
+ * to a page or a document claims nothing, and a value with no text of its own, such as a
+ * variable, cannot show an extension.
  */
 function anchorImageClaim(element: ClaimedElement): ShapeId | null {
   const text = element.valueText();
   if (text === null) return null;
-  const raster = spellingsOf(text, 'attr').some(({ path }) => {
-    const extension = staticExtensionOf(path);
-    return isImageExtension(extension) && !isVectorExtension(extension);
-  });
-  return raster ? 'html.a.href.image' : null;
+  const image = spellingsOf(text, 'attr').some(({ path }) =>
+    isImageExtension(staticExtensionOf(path)),
+  );
+  return image ? 'html.a.href.image' : null;
 }

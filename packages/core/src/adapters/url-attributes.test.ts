@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { IMAGE_EXTENSIONS } from '../paths.js';
 import { whyFormatKept } from '../shapes.js';
 import type { RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
@@ -158,7 +159,7 @@ describe('a meta tag names an image under a link-preview name', () => {
   });
 });
 
-describe('a link names an image when its value spells a raster extension', () => {
+describe('a link names an image when its value spells an image extension', () => {
   it.each([
     ['a plain path', '/img/team.jpg'],
     ['an uppercase extension', '/gallery/Banner.PNG'],
@@ -166,6 +167,8 @@ describe('a link names an image when its value spells a raster extension', () =>
     ['a template hole in the name', '/img/${}.png'],
     ['a percent-encoded dot', '/img/hero%2Epng'],
     ['a character reference for the dot', '/img/hero&#46;png'],
+    ['a vector', '/icons/mask.svg'],
+    ['a vector with an uppercase extension', '/img/Diagram.SVG'],
   ])('claims %s', (_name, value) => {
     expect(urlPosition('a', 'href', element({}, value))).toEqual({
       html: 'html.a.href.image',
@@ -173,10 +176,20 @@ describe('a link names an image when its value spells a raster extension', () =>
     });
   });
 
+  it.each(IMAGE_EXTENSIONS)(
+    'claims every extension the engine counts as an image, %s among them',
+    (extension) => {
+      // A vector is never converted, but a link is what shows it is used, so the claim takes
+      // every image extension, not only the ones `optimize` converts.
+      expect(urlPosition('a', 'href', element({}, `/files/picture${extension}`))?.html).toBe(
+        'html.a.href.image',
+      );
+    },
+  );
+
   it.each([
     ['a page', '/about'],
     ['a document', '/files/report.pdf'],
-    ['a vector', '/icons/mask.svg'],
     ['an extension a hole hides', '/img/hero.${}'],
     ['a script that serves an image', '/download?file=team.jpg'],
   ])('claims nothing for %s', (_name, value) => {
@@ -185,5 +198,29 @@ describe('a link names an image when its value spells a raster extension', () =>
 
   it('claims nothing for a value with no text of its own', () => {
     expect(urlPosition('a', 'href', element({}, null))).toBeNull();
+  });
+});
+
+describe('a vector at a position that keeps the format', () => {
+  // An SVG named only here would otherwise be counted unused while a page links to it.
+  it.each([
+    ['a link', '<a href="/icons/mask.svg">x</a>', 'html.a.href.image', 'js.jsx.a.href.image'],
+    [
+      'a link preview',
+      '<meta property="og:image" content="/icons/mask.svg" />',
+      'html.meta.content.image',
+      'js.jsx.meta.content.image',
+    ],
+  ])('is read at %s, in a page and in a component', (_name, text, pageShape, componentShape) => {
+    const page = htmlAdapter.findReferences({ file: '/project/page.html', text });
+    const component = javascriptAdapter.findReferences({ file: '/project/Page.jsx', text });
+
+    expect(page.map(({ rawPath, shape }) => [rawPath, shape])).toEqual([
+      ['/icons/mask.svg', pageShape],
+    ]);
+    expect(component.map(({ rawPath, shape }) => [rawPath, shape])).toEqual([
+      ['/icons/mask.svg', componentShape],
+    ]);
+    expect(located(component)).toEqual(located(page));
   });
 });

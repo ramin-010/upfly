@@ -182,9 +182,9 @@ export const SHAPES = [
     formatKept: LINK_FORMAT_KEPT,
     why:
       'A link that hands over an image file, such as a download link, claimed by ' +
-      '`anchorImageClaim` in `url-attributes.ts` when its value spells a raster extension. ' +
-      'It links its asset, so the image is never reported dead, and `optimize` never ' +
-      'repoints it.',
+      '`anchorImageClaim` in `url-attributes.ts` when its value spells an image extension, ' +
+      "a vector's included. It links its asset, so the image is never reported dead or " +
+      'unused, and `optimize` never repoints it.',
   },
   { id: 'html.object.data', label: 'object@data', emission: 'engine' },
   {

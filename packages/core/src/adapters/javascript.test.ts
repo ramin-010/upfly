@@ -841,8 +841,8 @@ body`,
     });
 
     it('reads an href by the tag it sits on, and a link only when it names an image', () => {
-      // An `<image>` href is always a file. A link's is an image only when its value spells a
-      // raster extension, so a link to a document or a page yields nothing.
+      // An `<image>` href is always a file. A link's is an image only when its value spells an
+      // image extension, so a link to a document or a page yields nothing.
       expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
       expect(find('<a href="/about">x</a>')).toEqual([]);
       expect(paths('<a href="/a/hero.png">x</a>')).toEqual(['/a/hero.png']);
@@ -905,8 +905,10 @@ body`,
       expect(pattern?.ceiling).toBe('medium');
     });
 
-    it('reads no link to a vector, which is never converted', () => {
-      expect(find('<a href="/icons/mask.svg">x</a>')).toEqual([]);
+    it('reads a link to a vector as a link to an image, though a vector is never converted', () => {
+      const [reference] = find('<a href="/icons/mask.svg">x</a>');
+      expect(reference?.rawPath).toBe('/icons/mask.svg');
+      expect(reference?.shape).toBe('js.jsx.a.href.image');
     });
 
     it('keeps the position shape on a template with no holes, which a template shape would lose', () => {

@@ -151,6 +151,7 @@ describe('htmlAdapter', () => {
       ],
       ['a download link', '<a href="/img/team.jpg" download>x</a>', 'html.a.href.image'],
       ['an uppercase extension', '<a href="/gallery/Banner.PNG">x</a>', 'html.a.href.image'],
+      ['a link to a vector', '<a href="/icons/mask.svg">x</a>', 'html.a.href.image'],
     ];
 
     it.each(found)('reads %s under its own shape', (_name, source, shape) => {
@@ -163,7 +164,6 @@ describe('htmlAdapter', () => {
       expect(find('<meta name="description" content="/img/logo.png">')).toEqual([]);
       expect(find('<a href="/files/report.pdf">x</a>')).toEqual([]);
       expect(find('<a href="/about">x</a>')).toEqual([]);
-      expect(find('<a href="/icons/mask.svg">x</a>')).toEqual([]);
     });
 
     it('keeps the position shape on an encoded path, where the spelling shape would lose it', () => {
