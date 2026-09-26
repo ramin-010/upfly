@@ -1,27 +1,15 @@
 /**
- * What the STATIC TEXT of an assembled path proves, and what it does not.
+ * What the static text of an assembled path proves, and what it does not.
  *
- * Three rules share this file because they are one question asked three ways — *given
- * only the literal characters between the unknown segments, what can be concluded?*
- * R80(b) asks whether enough is fixed to glob; R108 asks whether anything could be a
- * file at all; the delimiter tests ask where the path stops. Keeping them together is
- * what stops the fourth one being written somewhere else with its own opinion, which is
- * precisely how R89 and R106 happened.
+ * Three rules share this file because they ask one question: given only the literal
+ * characters between the unknown segments, what can be concluded? `assembledPathIsGlobbable`
+ * asks whether enough is fixed to glob, `provablyNotAFile` whether it could be a file at
+ * all, and `splitPathSuffix` where the path stops. Keeping them together stops a fourth
+ * from being written elsewhere with its own opinion.
  *
- * ── R80(b)'s rule, which had been ruled and implemented nowhere.
- *
- * 🔴 **The test that would have failed, and the reason it did not exist.** Until R89 the
- * decision lived in `templateShape`, which asked only *“does the static prefix contain a
- * `/`”* — condition ONE of two. `/icons/${theme}-${size}.png` passed it, so the engine
- * called it a `pattern` while the ruled answer is `dynamic`, and a pattern claims files:
- * globbing it would sweep in `icon-192.png` and `icon-512.png` on a template that
- * constrains almost nothing.
- *
- * ⚠️ **The second reason to test it here rather than through an adapter.** The rule now
- * decides two different things about the same reference — its SHAPE (`templateShape`) and
- * its CEILING (`addTemplateReference`) — and only the ceiling changes behaviour. Getting
- * the two from one function is what stops a future relabelling from looking like a fix
- * again. Each is asserted against a real adapter in `shape-ladder.test.ts`.
+ * The glob rule sets both a template's shape and its ceiling, and only the ceiling changes
+ * what the resolver does, so both come from this one function. `shape-ladder.test.ts`
+ * asserts each through a real adapter.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -37,16 +25,14 @@ import {
 /**
  * The rule, asked with a path rather than a chunk array, because a table of
  * `['', '/b-', '.png']` is unreadable and an unreadable table is how a case gets
- * written wrong. Splitting lives here rather than in shipped code: the engine's
- * callers already hold the chunks (a template literal's `quasis`), so a shipped
- * splitter would have had no consumer but this file.
+ * written wrong.
  */
 function globbable(path: string): boolean {
   return assembledPathIsGlobbable(path.split(/\$\{[^}]*\}/));
 }
 
 describe('assembledPathIsGlobbable', () => {
-  describe('condition 1 — the directory must be fixed (R78 Q3)', () => {
+  describe('condition 1: the directory must be fixed', () => {
     it.each([
       ['a leading interpolation', '${base}/hero.png'],
       ['a leading interpolation with a fixed name', '${ASSET_BASE}/${name}.png'],
@@ -56,16 +42,15 @@ describe('assembledPathIsGlobbable', () => {
     });
   });
 
-  describe('condition 2 — enough of the NAME must be fixed (R80(b))', () => {
+  describe('condition 2: enough of the name must be fixed', () => {
     it('accepts one unknown segment in the name', () => {
       expect(globbable('/theme-${mode}.png')).toBe(true);
       expect(globbable('/srcset/tile@${density}x.png')).toBe(true);
     });
 
-    it('🔴 REFUSES two unknown segments in the name — the case R80(b) ruled', () => {
-      // The ruled answer is `dynamic`. The directory is fixed and the name is not:
-      // `/icons/*-*.png` constrains almost nothing, so claiming its matches would
-      // claim assets nobody referenced.
+    it('refuses two unknown segments in the name', () => {
+      // `dynamic`: the directory is fixed but the name is not. `/icons/*-*.png` constrains
+      // almost nothing, so claiming its matches would claim assets nobody referenced.
       expect(globbable('/icons/${theme}-${size}.png')).toBe(false);
     });
 
@@ -117,21 +102,19 @@ describe('provablyNotAFile', () => {
 
   describe('🔴 rules on nothing else, however obvious the answer looks to a person', () => {
     const kept: readonly string[] = [
-      // R108's worked example. A route, and `item.name` could end in `.png`.
+      // A route, but `item.name` could end in `.png`.
       '/view/${styleName}/${item.name}',
       // An embed URL. It does not end in `/`, so nothing in the text proves it.
       '${process.env.IDEAS_GENERATOR_SOURCE}/embed',
       // An i18n message id. `${type}` could be `png`, making `report.png`.
       'report.${type}',
-      // A query-parameter list joined with `&` — and the `?` that would prove it is
-      // inside the const `prefix`, where the static text cannot see it.
+      // A query-parameter list joined with `&`, but the `?` that would prove it is inside
+      // the const `prefix`, where the static text cannot see it.
       '${prefix}&${formTitle}&${username}',
-      // 🔴 A FRAGMENT ON THE END IS NOT A FRAGMENT INSTEAD OF A PATH, and this case was
-      // in the "proven" table until the run said otherwise. `/docs/${page}#section` has
-      // the path part `/docs/${page}`, which could be `/docs/hero.png` — and
-      // `sprite.svg#icon` is the ordinary way to reference one symbol in a sprite sheet.
-      // The rule fires only when the last segment IS the fragment, so nothing of a
-      // filename is left.
+      // A fragment on the end still leaves a path: `/docs/${page}#section` has the path
+      // part `/docs/${page}`, which could be `/docs/hero.png`, and `sprite.svg#icon` is the
+      // usual way to reference one symbol in a sprite sheet. The rule fires only when the
+      // last segment is the fragment, so nothing of a file name is left.
       '/docs/${page}#section',
       'sprite.svg#icon',
       // Ordinary paths.
@@ -149,9 +132,8 @@ describe('provablyNotAFile', () => {
   });
 
   /**
-   * ⚠️ `#{`, `${` and `@{` open an unknown segment. Reading that `#` as a fragment
-   * marker would drop a real SCSS reference — B9 made exactly that mistake in the
-   * opposite direction and it turned three `dynamic` rows into three `absent` ones.
+   * `#{`, `${` and `@{` open an unknown segment. Reading that `#` as a fragment marker
+   * would drop a real SCSS reference.
    */
   it('does not read an interpolation opener as a fragment', () => {
     expect(provablyNotAFile('/img/#{$mode}.png')).toBeNull();
@@ -162,18 +144,11 @@ describe('provablyNotAFile', () => {
 });
 
 /**
- * 🔴 A `?` or `#` INSIDE AN UNKNOWN SEGMENT IS NOT A DELIMITER.
- *
- * `splitPathSuffix` searched the raw text, so an optional chain inside a template hole
- * looked like the start of a query string. The damage was downstream and silent:
- * `staticExtensionOf` calls this first, so the path it measured was
- * `styles/${config` — no extension — and `provablyNotAnAsset` could not rule out a
- * `.json` written in plain sight two segments later.
- *
- * ⚠️ B9 made the opposite mistake in the same place: `#` opens a URL fragment in CSS
- * and an interpolation in SCSS, `/theme-#{$mode}.png` was split at the `#`, and the
- * extension went with the discarded half. **Both halves of the ambiguity are one rule
- * now**, and both directions are tested here.
+ * An optional chain inside a template hole is not the start of a query string, and
+ * `#{$mode}` in SCSS is not a fragment. Split there, the extension goes with the discarded
+ * half. `staticExtensionOf` splits first, so it would see `styles/${config` with no
+ * extension, and the resolver could not use the `.json` two segments later to rule the
+ * reference out. Both directions are tested here.
  */
 describe('a delimiter inside an unknown segment is not a delimiter', () => {
   const cases: ReadonlyArray<[name: string, raw: string, path: string, suffix: string]> = [
@@ -201,19 +176,15 @@ describe('a delimiter inside an unknown segment is not a delimiter', () => {
 
   it('lets the extension filter see an extension it could not see before', () => {
     expect(staticExtensionOf('styles/${config?.style ?? "x"}/${item}.json')).toBe('.json');
-    // And an extension genuinely hidden by a hole stays hidden — unknown is not ruled out.
+    // An extension a hole hides stays hidden: unknown is not ruled out.
     expect(staticExtensionOf('src/app/layout.${ext}')).toBe('');
   });
 });
 
 /**
- * R118 — decode before you decide, and keep the range honest.
- *
- * 🔴 **The pair in the second block is the whole point and it is why an engine cannot
- * simply "support percent-encoding".** `enc%20name.png` is a real file whose NAME contains
- * a percent sign; `hero%20image.png` is a different real file called `hero image.png`. The
- * two are indistinguishable as text. An engine that never decodes gets the second wrong, one
- * that always decodes gets the first wrong, and only literal-then-decoded gets both.
+ * Decode before deciding, and keep the range on the text as written. The literal spelling
+ * comes first because `enc%20name.png` can be a file whose name holds a percent sign. See
+ * "Percent-encoded and entity-encoded paths" in ARCHITECTURE.md.
  */
 describe('spellingsOf', () => {
   it('always offers the literal spelling first', () => {
@@ -236,11 +207,10 @@ describe('spellingsOf', () => {
   });
 
   /**
-   * 🔴 A path we cannot FULLY decode offers no decoded candidate at all, and that is the
-   * safety argument for promoting these to a lookup. A lookup that misses does not shrug —
-   * it falls through to `broken`, and a false `broken` is the one outcome this project
-   * promises never to produce. The bound is stated in `spellingsOf` and is deliberate:
-   * `&eacute;` stays unreadable rather than becoming a wrong answer.
+   * A path that cannot be fully decoded offers no decoded spelling at all. A lookup that
+   * misses falls through to `broken`, and a false `broken` is the one outcome the engine
+   * promises never to produce, so `&eacute;` stays unreadable rather than becoming a wrong
+   * answer.
    */
   it('offers NOTHING decoded when one reference is outside the bound', () => {
     expect(spellingsOf('caf&eacute;.png').map((candidate) => candidate.spelling)).toEqual([
@@ -249,7 +219,7 @@ describe('spellingsOf', () => {
   });
 
   it('offers nothing decoded when the percent-encoding is malformed', () => {
-    // `decodeURIComponent` THROWS here rather than returning anything (R86).
+    // `decodeURIComponent` throws on these rather than returning anything.
     expect(spellingsOf('100%.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
     expect(spellingsOf('a%ZZb.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
   });
@@ -262,9 +232,9 @@ describe('spellingsOf', () => {
 });
 
 /**
- * 🔴 The half that makes the decode safe to ship. `relocate` builds a reference's new
- * text from the ON-DISK path, so a file genuinely called `hero image.png` would be written
- * back with a raw space inside a URL. Decode and re-encode are one change.
+ * The other half of decoding. `relocate` builds a reference's new text from the path on
+ * disk, so without re-encoding, a file called `hero image.png` would be written back with
+ * a raw space inside a URL.
  */
 describe('spell', () => {
   it('re-encodes a percent-spelled path per segment, leaving the slashes alone', () => {
@@ -294,11 +264,9 @@ describe('spell', () => {
 });
 
 /**
- * 🔴 A `#` inside a character reference is not a fragment delimiter, and this cost
- * `path.charref` two of its four entries. `/gallery/a&#38;b.png` split at the `#` of its own
- * numeric reference, leaving `/gallery/a&` — no extension, so rung 3 dropped it. The named
- * form `&amp;` resolved perfectly, which is what made the row look like a partial success
- * rather than one rule missing one encoding.
+ * A `#` inside a character reference is not a fragment delimiter. Split there,
+ * `/gallery/a&#38;b.png` would leave `/gallery/a&`, which has no extension, so the resolver
+ * would drop it while the named form `a&amp;b.png` still resolved.
  */
 describe('a delimiter inside a character reference is not a delimiter', () => {
   const cases: ReadonlyArray<[raw: string, path: string, suffix: string]> = [

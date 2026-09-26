@@ -6,9 +6,8 @@ import { parseFailure } from './parse-failure.js';
 
 /**
  * Table-driven, per the adapter contract. Every case states the source and the
- * references expected from it; the helper checks the offsets by slicing them back
- * out of the source, which is the assertion that actually matters — an offset that
- * is off by one produces a rewrite landing in the wrong place.
+ * references expected from it, and the helper checks the offsets by slicing them back
+ * out of the source: an offset that is off by one lands a rewrite in the wrong place.
  */
 
 function find(text: string, file = '/project/styles.css'): RawReference[] {
@@ -180,7 +179,7 @@ describe('cssAdapter', () => {
       const [reference] = references;
       expect(reference?.ceiling).toBe('unsafe');
       expect(reference?.note).toMatch(note);
-      // Still reported: a silent skip is a P0 bug.
+      // Still reported: the engine treats a silent skip as its worst bug.
       expect(reference?.asserted).toBe(true);
     });
   });
@@ -305,7 +304,7 @@ describe('cssAdapter', () => {
       );
     });
 
-    describe('R60: the message is ours and PostCSS is not quoted in it', () => {
+    describe('the message is ours and PostCSS is not quoted in it', () => {
       /** The `UpflyError` a dialect throws for a given source, or `null` if it parses. */
       function failure(source: string, file = '/project/a.css'): UpflyError | null {
         try {
@@ -321,10 +320,9 @@ describe('cssAdapter', () => {
         ['/project/a.scss', 'scss'],
         ['/project/a.less', 'less'],
       ])('%s: names the dialect we read it as and keeps the position', (file, dialect) => {
-        // `railsgirls-com` carried 23 of these reading
-        // `Could not parse: <css input>:144:13: Unknown word /`. `<css input>` is
-        // PostCSS's placeholder for a file we did name, `Unknown word` is PostCSS's
-        // vocabulary, and the position was the only part worth a reader's time.
+        // A PostCSS message such as `<css input>:144:13: Unknown word /` holds a placeholder
+        // for a file we did name and PostCSS's own vocabulary. Only the position is worth a
+        // reader's time.
         const error = failure('a { color: red; } }', file);
 
         expect(error?.message).toBe(
@@ -350,8 +348,8 @@ describe('cssAdapter', () => {
       );
 
       it('keeps PostCSS-s own words on the diagnostic channel', () => {
-        // Not lost, just not in a rule-11 artefact. Somebody debugging an adapter
-        // wants exactly this string, and `scan` routes it to `onDiagnostic`.
+        // Not lost, just kept out of the report. Somebody debugging an adapter wants
+        // exactly this string, and `scan` routes it to `onDiagnostic`.
         expect(failure('a { color: red; } }')?.diagnostic).toBe('<css input>:1:19: Unexpected }');
       });
 
@@ -383,11 +381,9 @@ describe('cssAdapter', () => {
   });
 });
 
-describe('a parenthesis inside quotes is a character, not a function call (R26 class)', () => {
-  // Found by `scratch-www` in B1's re-validation: four assets reported `dead` —
-  // *safe to delete* — about files the live site serves, because
-  // `url("/images/quote (blue).svg")` was read as containing a function call. The
-  // reference became `dynamic`, linked nothing, and the asset looked unreferenced.
+describe('a parenthesis inside quotes is a character, not a function call', () => {
+  // Read as a function call, `url("/images/quote (blue).svg")` becomes `dynamic` and links
+  // nothing, so a file the live site serves looks unreferenced and is reported `dead`.
   const find = (text: string) => cssAdapter.findReferences({ file: '/project/a.scss', text });
 
   it('treats a quoted path with parentheses as a literal path', () => {
@@ -421,9 +417,8 @@ describe('a parenthesis inside quotes is a character, not a function call (R26 c
     ['Less interpolation', 'url("@{path}/hero.png")'],
     ['a CSS-in-JS substitution hole', 'url("/*------*/")'],
   ])('keeps %s unsafe even inside quotes', (_name, value) => {
-    // The other markers are NOT quote-sensitive, and that asymmetry is the whole
-    // design: interpolation and the comment the JS adapter substitutes appear inside
-    // quotes routinely, while a function call cannot.
+    // The other markers apply inside quotes too: interpolation and the comment the
+    // JavaScript adapter substitutes appear there routinely, while a function call cannot.
     const [reference] = find(`a { background-image: ${value}; }`);
 
     expect(reference?.ceiling).toBe('unsafe');
@@ -433,15 +428,13 @@ describe('a parenthesis inside quotes is a character, not a function call (R26 c
 /**
  * A quoted path parked in a preprocessor variable.
  *
- * 🔴 **THE ASSET IS NOT HEDGED, WHICH IS WHY THIS IS A DEFECT RATHER THAN A MISSING ROW.**
- * Without this, the only thing the engine sees is `url($hero)` — correctly `dynamic`, a
- * hedge that protects the REFERENCE and says nothing about the FILE. If `/img/hero.jpg` is
- * named nowhere else it looks dead, and `--replace` converts it and leaves the declaration
- * pointing at a name that is gone. Silently.
+ * Without this, the engine sees only `url($hero)`, which is rightly `dynamic`: that
+ * protects the reference but says nothing about the file. If `/img/hero.jpg` is named
+ * nowhere else it looks dead, and `--replace` converts it and leaves the variable naming a
+ * file that is gone, with nothing reported.
  *
- * ⚠️ **Two mechanisms, and only one of them is a declaration.** `$x: '…'` reaches
- * `walkDecls`; Less's `@x: '…'` is an AT-RULE to CSS's grammar and never does. A test that
- * only covered Sass would have passed against an engine that reads none of the Less half.
+ * SCSS and Less reach this by two routes. `$x: '…'` is a declaration that `walkDecls`
+ * visits; Less's `@x: '…'` is an at-rule, which it never visits, so both need cases.
  */
 describe('a path in a preprocessor variable declaration is a reference', () => {
   it.each([
@@ -474,11 +467,9 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
   });
 
   /**
-   * 🔴 **THE REJECTIONS ARE THE HALF THAT MATTERS.** A rule that collects every quoted
-   * string in a variable would manufacture exactly the false positives R49 warns about,
-   * and these are the strings it must refuse. **Measured on the validation corpus: of 16
-   * quoted-string variable declarations across 194 real `.scss`/`.less` files, 0 have a
-   * file extension — and every one of them is a media query, the first case below.**
+   * What the rule must refuse. Taking every quoted string in a variable for a path would
+   * admit media queries, selectors and prose. In the validation repositories every
+   * quoted-string variable is a media query, the first case below.
    */
   it.each([
     ['a media query', '$big: "only screen and (min-width : 900px)";\n', 'styles.scss'],
@@ -489,7 +480,7 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
     // Prose that happens to name a file. The JS rule's SPACED_PATH anchoring is what
     // rejects this, and it is shared rather than reimplemented here.
     ['prose naming a file', "$note: 'see ./old.png for details';\n", 'styles.scss'],
-    // Not a variable at all: in an ordinary declaration a quoted string is TEXT.
+    // Not a variable at all: in an ordinary declaration a quoted string is text.
     ['content, which is a caption', '.a { content: "note.png"; }\n', 'styles.scss'],
     ['a plain CSS custom property', '.a { --brand: "/img/hero.jpg"; }\n', 'styles.css'],
   ])('refuses %s', (_name, source, file) => {
@@ -497,9 +488,9 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
   });
 
   it('does not disturb the url() that USES the variable', () => {
-    // The use stays `dynamic` — nothing static to resolve, and nobody typed a wrong path.
-    // Both are emitted, at two different positions, and that is the point: the
-    // declaration names the file and the use names the variable.
+    // The use stays `dynamic`: there is nothing static to resolve, and nobody typed a
+    // wrong path. Both are emitted, at different positions, because the declaration names
+    // the file and the use names the variable.
     const source = "$hero: '/img/hero.jpg';\n.a { background: url($hero); }\n";
     const references = cssAdapter.findReferences({ file: '/project/s.scss', text: source });
 
@@ -522,17 +513,14 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
 });
 
 /**
- * 🔴 **R80(b) WAS RULED, THE CONDITION WAS WRITTEN AND SHARED AND TESTED, AND THE CSS
- * ADAPTER NEVER CALLED IT.** `assembledPathIsGlobbable` has governed the JavaScript
- * adapter's template literals since R89. A SCSS interpolation went straight to `unsafe`,
- * and `resolveOne` refuses an unsafe reference outright — so `resolved-pattern` was
- * reachable ONLY through a JS template literal. The rule was not missing; it was unwired.
+ * SCSS and Less interpolations follow the rule the JavaScript adapter applies to template
+ * literals, `assembledPathIsGlobbable`. A globbable one is `medium`, so the resolver can
+ * match it as a pattern; at `unsafe` it would be `dynamic` without a lookup.
  *
- * ⚠️ **This is an adapter test, so it asserts the CEILING rather than the resolution.**
- * The ceiling is the decision this file owns; whether the pattern names anything is
- * `matchPattern`'s question and is tested in `resolve.test.ts`.
+ * An adapter test, so it asserts the ceiling rather than the resolution. Whether the
+ * pattern names any file is `matchPattern`'s question, tested in `resolve.test.ts`.
  */
-describe('R80(b) — a trailing interpolation is a pattern, not a dead end', () => {
+describe('a trailing interpolation is a pattern, not a dead end', () => {
   const ceilingOf = (source: string, file = '/project/s.scss') =>
     cssAdapter.findReferences({ file, text: source })[0]?.ceiling;
 
@@ -564,12 +552,9 @@ describe('R80(b) — a trailing interpolation is a pattern, not a dead end', () 
   });
 
   /**
-   * 🔴 **`#` MEANS TWO THINGS, AND THE FIRST VERSION OF THIS FIX GOT IT WRONG.** In CSS it
-   * opens a URL fragment; in SCSS it opens an interpolation. `splitPathSuffix` knows only
-   * the first, so `/theme-#{$mode}.png` came back as the path `/theme-` with `{$mode}.png`
-   * discarded as a fragment — no image extension, dropped at rung 3, and the matrix moved
-   * from `dynamic` to **`absent`**. A silent skip introduced by the fix for a silent skip,
-   * and the matrix is what caught it within one run.
+   * `#` opens a fragment in CSS and an interpolation in SCSS, and `splitPathSuffix` knows
+   * only the first. Split there, `/theme-#{$mode}.png` would become the path `/theme-`,
+   * which has no image extension, so the resolver would drop it with no report line.
    */
   it('🔴 keeps the WHOLE path: a `#{` is an interpolation, not a fragment', () => {
     const source = '.a { background: url("/theme-#{$mode}.png"); }';

@@ -13,7 +13,7 @@ const bare: AdapterDefinition = {
   findReferences: () => [],
 };
 
-describe('defineAdapter (R37)', () => {
+describe('defineAdapter', () => {
   it('supplies the shared rewrite when a definition omits one', () => {
     const adapter = defineAdapter(bare);
 
@@ -71,10 +71,9 @@ describe('defineAdapter (R37)', () => {
   });
 });
 
-describe('no adapter carries a private copy of rewrite (R37)', () => {
-  // The assertion the ruling exists for. Five byte-identical copies drift; this
-  // fails the moment one of them is reintroduced, which is what "the shape removes
-  // the possibility" has to mean in practice.
+describe('no adapter carries a private copy of rewrite', () => {
+  // Byte-identical copies drift apart, so this fails as soon as one of these adapters
+  // carries its own copy of `rewrite`.
   const adapters = [
     ['css', cssAdapter],
     ['html', htmlAdapter],

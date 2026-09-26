@@ -3,18 +3,17 @@ import type { RawReference } from '../types.js';
 import { astroAdapter } from './astro.js';
 
 /**
- * R167 group B: a braced attribute value in an Astro template body is JavaScript, and is
- * read by the JavaScript adapter. `<img src={`/theme-${mode}.png`} />` used to reach the
- * report as ONE `unsafe` reference whose text was the whole `{…}`, two characters before
- * the path and never globbed — while the identical template in a `.tsx` file resolves as a
- * pattern. Every case here is written from reading the source, not from the output.
+ * A braced attribute value in an Astro template body is JavaScript, and is read by the
+ * JavaScript adapter, so ``<img src={`/theme-${mode}.png`} />`` is a pattern whose range
+ * is the path itself, as the same template is in a `.tsx` file. Every case here is written
+ * from reading the source, not from the output.
  */
 function body(markup: string): { text: string; references: RawReference[] } {
   const text = `---\nconst mode = 'dark';\n---\n${markup}\n`;
   return { text, references: astroAdapter.findReferences({ file: '/site/Page.astro', text }) };
 }
 
-describe('Astro body expressions are read as JavaScript (R167 group B)', () => {
+describe('Astro body expressions are read as JavaScript', () => {
   it('reads a template with one unknown segment in the name as a pattern, at the path itself', () => {
     const { text, references } = body('<img src={`/theme-${mode}.png`} alt="" />');
     const [reference] = references;
@@ -47,7 +46,7 @@ describe('Astro body expressions are read as JavaScript (R167 group B)', () => {
     expect(references).toEqual([]);
   });
 
-  it('🔴 does not glob two unknowns in the name, or an unknown directory (R80(b), R78 Q3)', () => {
+  it('does not glob two unknowns in the name, or an unknown directory', () => {
     for (const markup of [
       '<img src={`/icons/${theme}-${size}.png`} alt="" />',
       '<img src={`${base}/theme-light.png`} alt="" />',

@@ -4,11 +4,8 @@ import type { RawReference } from '../types.js';
 import { javaScriptParseOutcome, javascriptAdapter } from './javascript.js';
 
 /**
- * Table-driven, per the adapter contract.
- *
- * The most important group here is "never mistakes text for code": it is the group
- * that proves why §3.2 forbids parsing JavaScript with a regular expression. Each of
- * those cases contains a path that a regex would find and a parser will not.
+ * Table-driven, as the adapter rules require. The group that matters most is "never
+ * mistakes text for code". See "Adapters: the contribution surface" in ARCHITECTURE.md.
  */
 
 function find(text: string, file = '/project/src/App.jsx'): RawReference[] {
@@ -69,10 +66,9 @@ describe('javascriptAdapter', () => {
     });
 
     it('treats new URL without import.meta.url as a guess, not an assertion', () => {
-      // Not a bundled asset, so not `certain` — but a runtime URL still 404s if the
-      // file it names is converted and this line is not updated. Emitting it
-      // speculative gets both: it links when the path resolves, and it is discarded
-      // silently when it does not, so it can never become a false `broken`.
+      // Not a bundled asset, so not `certain`, but a runtime URL still 404s if the file it
+      // names is converted and this line is not updated. As a guess it links when the path
+      // resolves and is discarded when it does not, so it never becomes a false `broken`.
       const [reference] = find("const u = new URL('./img.png');");
 
       expect(reference?.rawPath).toBe('./img.png');
@@ -87,16 +83,17 @@ describe('javascriptAdapter', () => {
     });
 
     it('emits bare specifiers, which the resolver drops by extension', () => {
-      // The adapter does not filter by extension — that policy lives in one place.
+      // The adapter does not filter by extension: that policy lives in one place, the
+      // resolver.
       expect(paths("import React from 'react';")).toEqual(['react']);
     });
   });
 
   describe('Node subpath imports', () => {
     it('keeps a #-prefixed import instead of dropping it as a fragment', () => {
-      // A leading `#` is a document fragment nearly everywhere, but in a module
-      // specifier it is a Node subpath import. Dropping it here made it vanish from
-      // every report under no reason at all — a silent skip, which is a P0.
+      // A leading `#` is a document fragment nearly everywhere, but in a module specifier
+      // it is a Node subpath import. Dropped, it would vanish from every report with no
+      // reason given, which is a silent skip.
       expect(paths("import logo from '#assets/logo.png';")).toEqual(['#assets/logo.png']);
     });
 
@@ -315,9 +312,9 @@ describe('javascriptAdapter', () => {
 
   describe('escape sequences', () => {
     it('reports a string with escapes as unsafe rather than mislocating it', () => {
-      // `-` is an escaped hyphen: babel decodes it, so the value is 9
-      // characters where the source text is 14. No range points at the path, and a
-      // rewrite computed from a mismatched range would corrupt the file.
+      // `\u002D` is an escaped hyphen: Babel decodes it, so the value is 9 characters
+      // where the source text is 14. No range points at the path, and a rewrite computed
+      // from a mismatched range would corrupt the file.
       const source = String.raw`import logo from './a\u002Db.png';`;
       const references = find(source);
       expect(references).toHaveLength(1);
@@ -378,7 +375,7 @@ describe('javascriptAdapter', () => {
       );
     });
 
-    describe('R60: the message is ours and Babel is not quoted in it', () => {
+    describe('the message is ours and Babel is not quoted in it', () => {
       /** The `UpflyError` this source throws, or `null` if it parses. */
       function failure(source: string, file = '/project/a.js'): UpflyError | null {
         try {
@@ -390,15 +387,12 @@ describe('javascriptAdapter', () => {
       }
 
       it('counts the column from one, where Babel counts it from zero', () => {
-        // 🔴 **The trap, and the reason `parseFailure` is told which parser ran rather
-        // than sniffing the error.** PostCSS puts a 1-based `line`/`column` on the
-        // error; Babel puts `loc: { line, column }` with the column counted from
-        // **zero**. Reading Babel's the way PostCSS's is read reports every JavaScript
-        // failure one column to the left — a wrong number indistinguishable from a
-        // right one, in the one field a reader would actually act on.
+        // PostCSS puts a 1-based `line` and `column` on its error, and Babel puts
+        // `loc: { line, column }` with a 0-based column, which is why `parseFailure` is told
+        // which parser ran. Read the PostCSS way, every JavaScript failure would be reported
+        // one column to the left, a wrong number that looks right.
         //
-        // Babel says `Unexpected token (1:6)` for this source. Every editor, and every
-        // other citation in this codebase, would call that column 7.
+        // Babel says `Unexpected token (1:6)` for this source; an editor calls it column 7.
         const error = failure('const = ;');
 
         expect(error?.diagnostic).toBe('Unexpected token (1:6)');
@@ -425,10 +419,9 @@ describe('javascriptAdapter', () => {
       });
 
       it('still prefers our own sentence when the file is not JavaScript at all', () => {
-        // ⚠️ This one was already ours and must stay first. A Nunjucks template is not
-        // broken JavaScript, and `invalid JavaScript syntax at line 1, column 2` would
-        // be a true statement pointing into the wrong language — the position is
-        // precise and useless. Babel's text still reaches the diagnostic channel.
+        // The template sentence comes first. A Nunjucks template is not broken JavaScript,
+        // and `invalid JavaScript syntax at line 1, column 2` would be precise and useless,
+        // a position in the wrong language. Babel's text still reaches the diagnostic.
         const error = failure('{% for x in y %}<img src="/a.png">{% endfor %}');
 
         expect(error?.message).toBe(
@@ -560,14 +553,11 @@ describe('javascriptAdapter', () => {
     });
   });
 
-  describe('templated URLs are external too (R21)', () => {
+  describe('templated URLs are external too', () => {
     /**
-     * `skipPathChecks` means *suffix splitting would be wrong on this text*, which
-     * is what its own comment says — and it was also skipping the external-URL
-     * test. So every templated URL in a codebase became an `unsafe` reference, and
-     * that bucket is what §1.1 shows users as "references I couldn't safely
-     * rewrite". On `astro-docs` it held an npm registry call and a preview-branch
-     * URL and **no images at all**.
+     * The external-URL test runs even when `skipPathChecks` is set: that flag means only
+     * that suffix splitting would be wrong on the text. A templated URL names another
+     * server's file whatever its holes hold, so it is dropped rather than reported.
      */
 
     it.each([
@@ -581,21 +571,16 @@ describe('javascriptAdapter', () => {
     });
 
     it('still keeps a template whose static prefix is a real path', () => {
-      // The control, and the thing that must not break: a hole at the *start* is not
-      // a scheme, so this is KEPT as a local path rather than dropped as a URL. That
-      // is the whole of R21's guard, and it is the assertion below.
+      // The control: a hole at the start is not a scheme, so this is kept as a local path
+      // rather than dropped as a URL.
       const references = find('const src = `${base}/img/hero.png`;');
 
       expect(references).toHaveLength(1);
     });
 
-    it('but does not GLOB it, because the directory is the unknown part (R78 Q3)', () => {
-      // ⚠️ This asserted `medium` until R89, and `medium` was an accident rather than a
-      // behaviour: the resolver globbed `[^/]*/img/hero.png`, matched nothing, and fell
-      // through to `dynamic`. MEASURED before changing it — across the coverage tree and
-      // all five validation repositories, 40 references fail this condition and NOT ONE
-      // of them resolves. So the outcome is identical and the refusal is now explicit,
-      // with a reason, which is what rule 9 asks of every decline.
+    it('but does not glob it, because the directory is the unknown part', () => {
+      // A pattern needs a fixed directory, so this is refused rather than globbed, and its
+      // note says why: every declined item reaches the report with a reason.
       const [reference] = find('const src = `${base}/img/hero.png`;');
 
       expect(reference?.ceiling).toBe('unsafe');
@@ -603,36 +588,33 @@ describe('javascriptAdapter', () => {
     });
 
     it('keeps a relative templated path whose hole is the whole filename stem', () => {
-      // ⚠️ This never worked, and finding out why was worth more than the URL fix
-      // above it. The guard joined the quasis with the holes **deleted**, so
-      // `./images/${name}.png` became `./images/.png` — a dotfile, no extension,
-      // dropped. Every `/images/${slug}.png` in a gallery or CMS data object went
-      // the same way, and with no basename for the sweep to find, those assets were
-      // reported *confidently dead*. The holes now become `*`, which is what the
-      // resolver globs them to anyway.
+      // The shape test reads each hole as `*`. With the holes deleted instead,
+      // `./images/${name}.png` would read as the dotfile `./images/.png`, which has no
+      // extension, and be dropped; the images it names would then look dead, since their
+      // names appear nowhere in the source for the sweep to find.
       const references = find('const src = `./images/${name}.png`;');
 
       expect(references.map((reference) => reference.rawPath)).toEqual(['./images/${name}.png']);
     });
 
     it('still rejects a template that is not path-shaped', () => {
-      // The control for that change: `*` must not make everything look like a path.
+      // The control: reading holes as `*` must not make everything look like a path.
       expect(find('const label = `${count} items`;')).toEqual([]);
       expect(find('const key = `user:${id}`;')).toEqual([]);
     });
   });
 
-  describe('a template wearing a code extension (R25 #4)', () => {
-    // `eleventy-docs/src/_includes/snippets/pagination/**` are ten `.js` and `.cjs`
-    // files opening with `{% raw %}` — Nunjucks source that Eleventy includes as
-    // text. Failing to parse them is correct. "Unexpected token (1:1)" is not: it
-    // tells a reader their JavaScript is broken when the file was never JavaScript.
+  describe('a template wearing a code extension', () => {
+    // eleventy-docs keeps Nunjucks snippets in `.js` and `.cjs` files that open with
+    // `{% raw %}`, which Eleventy includes as text. Failing to parse them is correct, but
+    // "Unexpected token (1:1)" would tell a reader their JavaScript is broken when the
+    // file was never JavaScript.
 
     it.each([
       ['{% raw %}', 'Nunjucks, Jinja or Liquid'],
-      // `{{ title }}` on its own is *valid* JavaScript — nested blocks around an
-      // expression — so it parses and never reaches this message at all. A real
-      // Handlebars file opens with a helper, and `#` is what Babel rejects.
+      // `{{ title }}` alone is valid JavaScript (nested blocks around an expression), so it
+      // parses and never reaches this message. A real Handlebars file opens with a helper,
+      // and Babel rejects the `#`.
       ['{{#each items}}', 'Handlebars, Mustache or Vue'],
       ['<% if (x) { %>', 'EJS or ERB'],
     ])('names the syntax when a file starts with %s', (opener, syntax) => {
@@ -665,8 +647,8 @@ body`,
     });
 
     it('says nothing about a file that parses, however it starts', () => {
-      // `{{` inside a valid file is not this function's business — it is consulted
-      // only after a parse failure, so a working file never reaches it.
+      // The template check runs only after a parse failure, so `{{` in a file that parses
+      // is never read as a template opener.
       expect(() =>
         javascriptAdapter.findReferences({ file: '/p/ok.js', text: 'const t = `{{ x }}`;' }),
       ).not.toThrow();
@@ -674,24 +656,12 @@ body`,
   });
 
   /**
-   * R26 — a space in a filename made an image invisible, and the claim `dead` makes
-   * depends on this.
-   *
-   * Found on a fourth repository (a university site, 2,052 images): 50 of 709 `dead`
-   * findings were sampled against an independent grep and **8 were wrong, 16%** — seven
-   * of the eight because the filename contained a space. Spaces are not an edge case in
-   * the target market; they arrive with every CMS upload and every dragged-in file.
-   *
-   * ⚠️ **The guard that caused it stated a falsehood as fact:**
-   * `// A module specifier never contains whitespace or a comma; neither does a path.`
-   * The first clause is true, the second is not, and writing it as a certainty is why
-   * nobody questioned it for the life of the adapter.
-   *
-   * Both directions are asserted here, because the fix is only correct if prose stays
-   * out — and the first attempt at it (allow a space when there is also a `/`) let three
-   * of `never mistakes text for code`'s cases through.
+   * Files uploaded through a CMS or dragged into a project carry spaces, and an image
+   * whose path goes unread is reported dead. Both directions are asserted, because a
+   * space is allowed only where prose stays out. See "What counts as a path-shaped
+   * string" in ARCHITECTURE.md.
    */
-  describe('a space in a filename — R26', () => {
+  describe('a space in a filename', () => {
     const found: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
       [
         'a served path in an array',
@@ -723,20 +693,19 @@ body`,
     });
 
     const ignored: ReadonlyArray<[name: string, source: string]> = [
-      // Each of these contains both a space and a `/`, which is why the slash rule alone
-      // was not enough. What separates them is that prose continues after the extension.
+      // Each of these contains both a space and a `/`, so the slash rule alone cannot
+      // reject them. What separates them is that prose continues after the extension.
       [
         'prose that continues past the extension',
         'const m = { note: "see ./old.png for details" };',
       ],
       ['an import statement quoted as text', `const s = "import logo from './old.png'";`],
       ['prose in a template literal', 'const msg = `we removed ./old.png last week`;'],
-      // Measured in shadcn-ui: 87 strings of this shape, 13 distinct, none with a slash.
-      // They are accessible button labels, and treating one as a path would put a
-      // rewritable reference on a piece of UI text.
+      // Accessible button labels like these, common in shadcn-ui, carry no slash. Taking
+      // one for a path would put a rewritable reference on a piece of UI text.
       ['an accessible UI label naming a file', 'const label = "Remove workspace.png";'],
       ['another UI label', 'const label = "Open desk-reference.jpg";'],
-      // A comma means a list, not a path — the unsplit srcSet shape.
+      // A comma means a list, not a path: the unsplit srcSet shape.
       ['a srcSet-shaped candidate list', 'const s = "/a.jpg 1x, /b.jpg 2x";'],
     ];
 
@@ -745,19 +714,11 @@ body`,
     });
 
     /**
-     * Parentheses, which the first version of this fix left out (R26 follow-up).
-     *
-     * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` is a phone screenshot plus the
-     * suffix every browser appends to a duplicate download — the commonest way a
-     * non-developer gets an image into a repository. Measured on `RBU-Website`: **9 images
-     * carry a paren and 4 were referenced and reported `dead` anyway**, which is why
-     * §5.1(j) reads 0.7% rather than 0.0%.
-     *
-     * ⚠️ **Fixed only for the bare string literal, which is already a quoted context.** In
-     * unquoted CSS `url(…)` and bare Markdown `![](…)` a paren is the closing delimiter,
-     * and admitting it there breaks the parse — both have quoted and angle forms that
-     * carry such a name correctly. Measured: of twelve reference positions only this one
-     * lost a paren path.
+     * Parentheses. A browser appends ` (1)` to a duplicate download, so names such as
+     * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` are common. They are allowed only
+     * in a string literal, which is already quoted: in an unquoted CSS `url(…)` or a bare
+     * Markdown `![](…)` a parenthesis closes the construct. See "What counts as a
+     * path-shaped string" in ARCHITECTURE.md.
      */
     it.each([
       [
@@ -782,25 +743,16 @@ body`,
       expect(find('const s = "url(hero one.png)";')).toEqual([]);
       expect(find('const s = "call(a b.png) later";')).toEqual([]);
 
-      // ⚠️ Deliberately NOT asserting that `"url(hero.png)"` is rejected. Without a space it
-      // never reaches the spaced rule at all — it is emitted as a speculative guess, as it
-      // was before this change, and the resolver discards it because nothing of that name
-      // exists. An earlier draft of this test claimed otherwise and was simply wrong about
-      // the code; the behaviour is unchanged by the paren widening, which is the property
-      // worth pinning.
+      // `"url(hero.png)"` is not asserted either way. With no space it never reaches the
+      // spaced rule: it is emitted as a guess, and the resolver discards it because no file
+      // of that name exists.
     });
 
     /**
-     * ⚠️ The known limit, pinned deliberately rather than fixed.
-     *
-     * A bare spaced filename with no separator is indistinguishable from the UI labels
-     * above — `'My Logo.svg'` and `'Remove workspace.png'` have the same shape — so it
-     * stays invisible. **Measured frequency across all four repositories: zero**; in the
-     * university site all 109 spaced image paths contained a slash.
-     *
-     * This test documents the gap instead of leaving it silent. If a repository ever
-     * needs it, the fix is to drop the `path.includes('/')` clause in
-     * `plausiblePathShape`, and this expectation flips.
+     * The accepted gap. A spaced file name with no slash has the same shape as the UI
+     * labels above (`'My Logo.svg'`, `'Remove workspace.png'`), so it stays invisible.
+     * Closing it means dropping the `path.includes('/')` clause in `plausiblePathShape`,
+     * which flips this expectation.
      */
     it('still misses a bare spaced filename with no separator, by design', () => {
       expect(find("const a = { file: 'My Logo.svg' };")).toEqual([]);
@@ -808,14 +760,10 @@ body`,
   });
 
   /**
-   * R26's second defect — `<image href>` in JSX.
-   *
-   * ARCHITECTURE.md recorded `<image href>` as a known gap **for `.svg` files**, which is
-   * why nobody looked here: an inline `<svg>` in a JSX component is not an `.svg` file,
-   * so no future SVG adapter would ever have covered it. Measured across the three
-   * validation repos: **0 occurrences**, which is why §5.1 could not have found it.
+   * An inline `<svg>` in a JSX component is not an `.svg` file, so an SVG adapter would
+   * never read its `<image href>`; only this adapter sees it.
    */
-  describe('inline SVG in JSX — R26', () => {
+  describe('inline SVG in JSX', () => {
     const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
       ['image href', '<image href="/a/hero.png" />', ['/a/hero.png']],
       ['image xlinkHref, the React spelling', '<image xlinkHref="/a/hero.png" />', ['/a/hero.png']],
@@ -838,11 +786,11 @@ body`,
   });
 
   /**
-   * R175 — R167 group C. A `+` chain is a template literal spelled differently, and it is
-   * read by the template's own rule: the same bound, the same R80(b) globbing, the same
-   * external-URL test — all asked of what the chain ASSEMBLES.
+   * A `+` chain is a template literal spelled differently, and it is read by the template's
+   * rules: the same bound, the same globbing and the same external-URL test, all asked of
+   * the path the chain assembles. See "Assembled paths in JavaScript" in ARCHITECTURE.md.
    */
-  describe('a path assembled with + (R175)', () => {
+  describe('a path assembled with +', () => {
     const TS = '/project/src/lib/paths.ts';
 
     function only(text: string, file = TS): RawReference {
@@ -894,7 +842,7 @@ body`,
       expect(twoInName.ceiling).toBe('unsafe');
     });
 
-    it('collects nothing where the static text shows no extension — a route, a key, a namespace (R176)', () => {
+    it('collects nothing where the static text shows no extension: a route, a key, a namespace', () => {
       for (const text of [
         "export const f = (albumId: string) => router.push('/gallery/' + albumId);",
         "export const f = (id: string) => '/api/users/' + id;",
@@ -981,12 +929,11 @@ body`,
   });
 
   /**
-   * R175: R100 filed a module constant as "statically knowable, we cannot see it yet —
-   * OUR GAP". It is read through under ONE condition — the name's only binding in the whole
-   * file is a top-level `const` with a string initialiser — which is what makes it sound
-   * without scope analysis.
+   * A module constant is read through under one condition, which makes it sound without
+   * scope analysis: the name's only binding in the whole file is a top-level `const` with
+   * a string initialiser. See "Assembled paths in JavaScript" in ARCHITECTURE.md.
    */
-  describe('same-file constants (R175)', () => {
+  describe('same-file constants', () => {
     const TS = '/project/src/lib/paths.ts';
 
     it('reads a top-level string const through, in a chain and in a template alike', () => {
@@ -1063,9 +1010,9 @@ body`,
 
       const found = find(text, TS);
       expect(found).toHaveLength(names.length + 1);
-      // Every shadowed name stays an unknown — a leading hole, so `dynamic`.
+      // Every shadowed name stays an unknown: a leading hole, so `dynamic`.
       expect(found.slice(0, names.length).every((ref) => ref.ceiling === 'unsafe')).toBe(true);
-      // The control: nothing binds U twice, so it IS read through.
+      // The control: nothing binds U twice, so it is read through.
       expect(found.at(-1)?.assembledPath).toBe('/u/${}.png');
     });
 
@@ -1102,7 +1049,7 @@ body`,
         "export const a = (n: string) => CDN + '/' + n + '.png';",
         'export const b = (n: string) => `${CDN}/${n}.png`;',
       ].join('\n');
-      // Untraced, the template was a `dynamic` phantom; read through, it is external.
+      // Without the constant the template would be `dynamic`; read through, it is external.
       expect(find(text, TS)).toEqual([]);
     });
 
@@ -1113,8 +1060,9 @@ body`,
       expect(template?.assembledPath).toBe('/img/hero.png');
     });
 
-    it("asks R108's directory test of what the text proves, in an asserting position too", () => {
-      // R108's own example, through the adapter rather than the predicate alone.
+    it('drops a directory path, judged by what the text proves, in an asserting position too', () => {
+      // A path ending in `/` names a directory. Asked through the adapter here, rather than
+      // of `provablyNotAFile` alone.
       expect(
         find(
           'export const f = (id) => <iframe src={`/scratch2/${id}/adminpanel/`} />;',
@@ -1127,8 +1075,8 @@ body`,
     });
 
     it('pins the known hazard: a complete-path literal after an unknown is still read alone', () => {
-      // R175 re-reads nothing, so `DIR + '/hero.png'` keeps today's reading of the literal
-      // — which is not the whole path. Measured and raised in R175, not changed there.
+      // A chain with an operand that is already a complete path is left to that literal, so
+      // `DIR + '/hero.png'` is read as `/hero.png`, which is not the whole path.
       const text = ["const DIR = '/img';", "export const u = DIR + '/hero.png';"].join('\n');
       expect(paths(text, TS)).toEqual(['/hero.png']);
     });
@@ -1136,9 +1084,9 @@ body`,
 });
 
 /**
- * MDX ends an ESM block at a blank line unless the code so far is UNFINISHED (R167
- * group A). Babel and acorn disagree about where an unfinished construct is reported, so
- * the three answers are pinned here against both of Babel's signals.
+ * MDX ends an ESM block at a blank line unless the code so far is unfinished. Babel and
+ * acorn disagree about where an unfinished construct is reported, so the three answers are
+ * pinned here against both of Babel's signals.
  */
 describe('javaScriptParseOutcome', () => {
   it('says `parses` for code that parses', () => {
@@ -1158,7 +1106,7 @@ describe('javaScriptParseOutcome', () => {
   it.each([
     ['prose that begins with the keyword', ['export and option.']],
     ['a malformed declaration', ['export const = broken;']],
-    // A string cannot cross a line, so more text never finishes it — and acorn does not
+    // A string cannot cross a line, so more text never finishes it, and acorn does not
     // swallow it either.
     ['an unterminated string', ["export const a = 'x", '']],
   ])('says `invalid` for %s', (_name, lines) => {

@@ -224,13 +224,10 @@ describe('htmlAdapter', () => {
 
   describe('HTML character references', () => {
     /**
-     * ⚠️ **This test asserted `unsafe` until R118, and the change is a RULING rather
-     * than a relaxation.** The reasoning it carried — *the decoded value is shorter than
-     * the source, so no range points at the path* — was only ever an argument against
-     * storing the DECODED text. The range covers the ENCODED source text and `rawPath` is
-     * that text, so the invariant holds exactly as before; what changed is that the
-     * resolver now also tries the decoded spelling and `relocate` re-encodes on the way
-     * out. The reference is located, resolvable and rewritable.
+     * The decoded value is shorter than the source, so no range could point at a decoded
+     * path. The range covers the encoded source text instead and `rawPath` is that text;
+     * the resolver also tries the decoded spelling, and a rewrite re-encodes. So the
+     * reference is located, resolvable and rewritable.
      */
     it('locates an entity-bearing path without decoding it into rawPath', () => {
       const source = '<img src="a&amp;b.png">';
@@ -249,23 +246,12 @@ describe('htmlAdapter', () => {
     });
 
     /**
-     * R99. The guard above is right about the cases it was written for and it used to
-     * fire on **every attribute of every element**, before anything decided whether the
-     * attribute was a reference position at all.
-     *
-     * Measured across the five validation repositories: **536 references carried that
-     * reason and 535 were phantoms.** 402 of them were absolute URLs in real reference
-     * positions, 133 were attributes that are not references at all — `alt` prose, an
-     * `<a href>`, a PKCS7 certificate blob in a `<meta content>` — and exactly one was a
-     * genuine local image path with a character reference in it.
-     *
-     * 🔴 **The shape of the bug is the INVERSE of the one rule 9 guards.** Rule 9 stops
-     * us silently DROPPING a reference; this silently INVENTED them, and every invention
-     * landed in `unsafe` where it was counted as something we could not handle. A tool
-     * that manufactures its own failures measures itself as worse than it is, which is
-     * why it went unexamined: the number moved in the direction that reads as humility.
+     * An escaped value matters only where the attribute is a reference position. Acted on
+     * for every attribute, it would turn escaped `alt` text, other sites' links and
+     * `<meta content>` values into `unsafe` references: failures the engine invented. See
+     * "Character references in HTML attributes" in ARCHITECTURE.md.
      */
-    describe('R99 — only where the attribute is a reference position at all', () => {
+    describe('only where the attribute is a reference position at all', () => {
       const silent: ReadonlyArray<[name: string, source: string]> = [
         ['alt prose', '<img src="ok.png" alt="Rails Girls Baltimore: March 1st &amp; 2nd">'],
         ['an anchor href', '<a href="http://example.com/x?a=1&amp;b=2">x</a>'],
@@ -287,7 +273,6 @@ describe('htmlAdapter', () => {
         const references = find('<img src="./images/c&amp;s.png">');
         expect(references).toHaveLength(1);
         expect(references[0]?.shape).toBe('path.charref');
-        // `unsafe` until R118 made this spelling resolvable. See the block below.
         expect(references[0]?.ceiling).toBe('high');
       });
 
@@ -303,9 +288,8 @@ describe('htmlAdapter', () => {
       });
 
       /**
-       * R99's second half, and the larger one: the guard bypassed `isExternalUrl` as
-       * well as the position test. **An entity in a query string does not make another
-       * host's file ours**, so the answer must not depend on the spelling.
+       * The external-URL test runs before the escaped-value rule, because an entity in a
+       * query string does not make another host's file ours.
        */
       it('drops an escaped path that is somebody else’s, exactly as the unescaped one is', () => {
         expect(find('<img src="http://graph.facebook.com/p?type=square&width=100">')).toEqual([]);
@@ -328,28 +312,12 @@ describe('htmlAdapter', () => {
       });
 
       /**
-       * 🔴 The external-URL test must not run on a style attribute, and this test is
-       * here because the first version of the fix ran it and dropped the attribute
-       * silently. `URL_SCHEME` is *letters then a colon*, so `width: 100%` reads as a
-       * scheme.
-       *
-       * ⚠️ **Both spellings, because the bug depended on WHITESPACE.** The only two real
-       * cases in the validation corpus begin with a space, which does not match the
-       * scheme pattern — so they went on being emitted and the measurement looked clean
-       * while the ordinary spelling was being thrown away.
+       * A style attribute holds CSS, so the external-URL test must not run on it:
+       * `width: 100%` begins with letters and a colon, which reads as a URL scheme. A value
+       * that starts with a space does not, so both spellings are here. Each decodes to
+       * valid CSS with no `url()`, so neither yields a reference.
        */
       it('leaves a style attribute alone — its text is CSS, not a URL', () => {
-        // ⚠️ **R123 SUPERSEDED THE OUTCOME AND NOT THE POINT.** The assertion used to be
-        // that this emits an UNSAFE reference, because the attribute could not be read.
-        // It can be read now: it decodes to `width: 100%; font: 12px "Inter"`, parses,
-        // holds no `url()`, and therefore yields nothing at all — exactly as the
-        // unescaped spelling does. A valid style attribute with no `url()` was never a
-        // reference, and the entry it used to produce described our inability rather than
-        // its contents.
-        //
-        // 🔴 What this test is still FOR is unchanged: the external-URL test must not run
-        // here, because `URL_SCHEME` is *letters then a colon* and `width: 100%` reads as
-        // a scheme. Both spellings stay, because that bug depended on whitespace.
         for (const source of [
           '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
           '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
@@ -359,8 +327,8 @@ describe('htmlAdapter', () => {
       });
 
       it('and one that cannot be read still says whether it could be hiding a reference', () => {
-        // The refusal path is still reachable — this is not parseable CSS — and R111's
-        // classification still depends on the sentence it carries.
+        // Not valid CSS even once decoded, so it is refused. The report reads the note to
+        // tell a correct refusal from a miss, so the note has to say which this is.
         const references = find('<div style="margin 0 0 &quot;x&quot;"></div>');
 
         expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
@@ -370,14 +338,10 @@ describe('htmlAdapter', () => {
   });
 
   /**
-   * R118. The two kinds of unparseable style attribute are OPPOSITE outcomes and the note
-   * has to say which, because the report classifies from it and must not re-derive the
-   * rule (R111).
-   *
-   * Measured on the five validation repositories: 33 style attributes fail to parse and
-   * **none of them contains a `url()`**. They are an author's missing colon
-   * (`margin 0 0 0 15px`) and two Astro `style={{...}}` expressions. Refusing those is a
-   * correct refusal \u2014 there is no reference in them to find.
+   * Two kinds of unparseable style attribute are opposite outcomes. Without a url-taking
+   * function there is nothing to find and refusing is correct (an author's missing colon,
+   * `margin 0 0 0 15px`); with one, a reference may be hidden. The note says which, so the
+   * report can classify the refusal without re-deriving the rule.
    */
   describe('an unparseable style attribute says whether it could be hiding a reference', () => {
     it('says there is nothing to find when no url-taking function is present', () => {
@@ -406,8 +370,8 @@ describe('htmlAdapter', () => {
   });
 
   /**
-   * R118 \u2014 a path spelled with character references is resolvable, and the RANGE still
-   * covers the encoded source text so the invariant is untouched.
+   * A path spelled with character references resolves decoded, while its range still
+   * covers the encoded source text, so `source.slice(start, end) === rawPath` holds.
    */
   describe('character-reference paths are located, decoded and re-encoded', () => {
     for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png']) {
@@ -434,19 +398,13 @@ describe('htmlAdapter', () => {
   });
 
   /**
-   * R123 — the last member of the entity family, and the one that MOVES A RANGE.
-   *
-   * 🔴 `style="background-image: url(&quot;/logo.png&quot;)"` is CSS the HTML parser has
-   * already decoded, so handing PostCSS the SOURCE text gives `&quot;/logo.png&quot;` as
-   * one unquoted token — extension `.png&quot;`, dropped by rung 3. The decoded text
-   * parses correctly and returns offsets into a string that is not the file, so the
-   * decode carries a MAP back.
-   *
-   * ⚠️ **The path itself is plain ASCII and contiguous in the source; only the
-   * DELIMITERS are encoded.** That is what makes this member the easiest one and the
-   * right one to design against.
+   * A browser decodes the attribute before reading it as CSS. Read as source text,
+   * `url(&quot;/logo.png&quot;)` holds one unquoted token ending in `.png&quot;`, not an
+   * image extension, so the resolver would drop it. The decoded text parses, but its
+   * offsets are not the file's, so the decoder keeps a map back to the source. See
+   * "Character references in HTML attributes" in ARCHITECTURE.md.
    */
-  describe('R123 — a style attribute whose CSS is spelled with character references', () => {
+  describe('a style attribute whose CSS is spelled with character references', () => {
     it('reads the CSS a browser sees, and points at the SOURCE text', () => {
       const source = '<span style="background-image: url(&quot;/logo.png&quot;)"></span>';
       const references = find(source);
@@ -456,8 +414,8 @@ describe('htmlAdapter', () => {
       if (reference === undefined) throw new Error('unreachable');
       expect(reference.rawPath).toBe('/logo.png');
       expect(reference.ceiling).toBe('high');
-      // The invariant, asserted rather than assumed. This is the only change in the
-      // family that moves a range, so it is the only one where this can fail.
+      // The range invariant, asserted rather than assumed: here the offsets come from
+      // decoded text and are mapped back, so this is where it can fail.
       expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
     });
 
@@ -470,9 +428,8 @@ describe('htmlAdapter', () => {
     });
 
     it('keeps the path ENCODED when the path itself carries a reference', () => {
-      // The delimiters decode; the path does not. `rawPath` stays the source text and
-      // R118's spelling machinery resolves it — the two changes compose rather than
-      // fighting.
+      // The delimiters decode; the path does not. `rawPath` stays the source text, and
+      // the resolver tries its decoded spelling as it does for any escaped path.
       const source = '<span style="background: url(&quot;/a&amp;b.png&quot;)"></span>';
       const references = find(source);
 
@@ -482,11 +439,10 @@ describe('htmlAdapter', () => {
     });
 
     /**
-     * 🔴 **Guard 2, and it is why a five-entity decoder is safe beside a complete one.**
-     * parse5 knows every named reference and we know five. Where the two disagree our
-     * offsets describe a string the browser never saw, so the attribute is refused
-     * exactly as it was before any of this existed — the worst case is yesterday's
-     * behaviour, never a wrong range.
+     * This check is what makes a five-entity decoder safe beside parse5, which knows every
+     * named reference. Where the two disagree our offsets would describe text the browser
+     * never saw, so the attribute is refused: the worst case is a refusal, never a wrong
+     * range.
      */
     it('refuses when our decoder and the parser disagree', () => {
       const source = '<span style="background: url(&quot;/caf&eacute;.png&quot;)"></span>';
@@ -592,18 +548,12 @@ describe('htmlAdapter', () => {
     });
   });
 
-  // `String.fromCharCode(10)` rather than an escape: this harness eats a backslash
-  // in transit and turns `join('\n')` into a join on a literal newline. Third time
-  // this session — the construction beats remembering.
   const NEWLINE = String.fromCharCode(10);
 
-  describe('a <style> block built by a template (R25 #5)', () => {
-    // `eleventy-docs/src/docs/data-js.md:133` holds `<style>` then
-    // `{% if myProject.environment == "production" %}`. PostCSS dies on the `%`, and
-    // before R20 that took the whole document's references with it. R20 masks
-    // *unclosed* raw-text tags and deliberately leaves closed ones scanned, so this
-    // is the gap that fix left — and Eleventy, Jekyll, Hugo, Nunjucks and Liquid all
-    // inline conditional CSS exactly this way.
+  describe('a <style> block built by a template', () => {
+    // Eleventy, Jekyll, Hugo, Nunjucks and Liquid sites inline conditional CSS this way.
+    // PostCSS fails on the `%`, and a CSS failure inside `<style>` fails the whole
+    // document, taking the references outside the block with it.
 
     it('does not hand template syntax to the CSS parser', () => {
       const text = [
@@ -618,8 +568,8 @@ describe('htmlAdapter', () => {
     });
 
     it('reports it as unsafe rather than dropping it', () => {
-      // Rule 9: the block is declined, so it is declined out loud. The reason is the
-      // same one the report already prints for a templated path.
+      // Declined, so it reaches the report with a reason: the same one a templated path
+      // gets.
       const text = ['<style>', '{% if x %}.a{}{% endif %}', '</style>'].join(NEWLINE);
       const references = htmlAdapter.findReferences({ file: '/p/page.html', text });
 
@@ -640,17 +590,10 @@ describe('htmlAdapter', () => {
   });
 
   /**
-   * Inline SVG — R26's second defect, and this adapter had the same hole as the JSX one.
-   *
-   * R26 reported it as a JSX gap. Measured, it was both: `<image href>` was missing from
-   * this adapter's attribute map too. ARCHITECTURE.md recorded it as a known gap *"for
-   * `.svg` files"*, and that framing is what hid it — an inline `<svg>` inside an HTML
-   * document is not an `.svg` file, so no future SVG adapter would ever have reached it.
-   *
-   * Measured incidence across the three validation repos: **0**, which is why §5.1 could
-   * not have found it.
+   * An `<svg>` inside an HTML document is not an `.svg` file, so no SVG adapter would reach
+   * it: this adapter reads its `<image>` and `<feImage>` references itself.
    */
-  describe('inline SVG — R26', () => {
+  describe('inline SVG', () => {
     const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
       ['image href', '<svg><image href="/a/hero.png"/></svg>', ['/a/hero.png']],
       // The SVG 1.1 spelling, still overwhelmingly what shipped markup contains.
@@ -668,14 +611,9 @@ describe('htmlAdapter', () => {
     });
 
     /**
-     * ⚠️ A namespaced attribute needed a second fix, and it was a silent skip.
-     *
      * parse5 splits `xlink:href` into `{ name: 'href', prefix: 'xlink' }` but keys its
-     * source-location map by the **written** spelling, `'xlink:href'`. The adapter looked
-     * the location up by the bare name, found nothing, and `continue`d — so even after
-     * `<image>` was added to the map the attribute was still dropped, with no reason
-     * recorded anywhere. That is the rule 9 shape, and it would have applied to any
-     * namespaced attribute added later.
+     * source-location map by the written spelling, `'xlink:href'`. Looked up by the bare
+     * name, the location is missing and the attribute is skipped with no reason recorded.
      */
     it('finds the location of a namespaced attribute, which is keyed by its spelling', () => {
       const source = '<svg><image xlink:href="/a/hero.png"/></svg>';
@@ -686,29 +624,25 @@ describe('htmlAdapter', () => {
 
     it('leaves a bare <image href> alone, because the parser makes it an <img>', () => {
       // Not a gap. Outside foreign content the HTML spec renames `<image>` to `<img>`,
-      // and `href` is not an `<img>` attribute — so the markup genuinely displays nothing
-      // and there is no reference to find.
+      // and `href` is not an `<img>` attribute, so the markup displays nothing and there
+      // is no reference to find.
       expect(find('<image href="/a/hero.png">')).toEqual([]);
     });
 
     it('leaves <use href> alone, deliberately', () => {
-      // `<use href="#icon">` is a same-document element reference, not a file, and that is
-      // the commonest form by far. Measured incidence of `<use>` naming an image across
-      // the three validation repos: 0. Written down so adding it stays a decision.
+      // `<use href="#icon">`, the commonest form, names an element in the same document,
+      // and `/a/sprite.svg#icon` names a vector Upfly neither converts nor deletes. Pinned
+      // so that reading `<use>` stays a decision.
       expect(find('<svg><use href="#icon"/></svg>')).toEqual([]);
       expect(find('<svg><use href="/a/sprite.svg#icon"/></svg>')).toEqual([]);
     });
   });
 
   /**
-   * R26 — a space in a filename, on this adapter's side.
-   *
-   * These already worked before the fix, and the test exists to keep them working: the
-   * defect was confined to the JavaScript adapter's speculative string rule, and three of
-   * eighteen reference positions lost a spaced path. Asserting the fifteen that did not
-   * is how a later "simplification" cannot quietly widen the hole.
+   * Files uploaded through a CMS often carry spaces, and a path cut at the space leaves its
+   * image looking unreferenced. These cases pin the positions that read the whole name.
    */
-  describe('a space in a filename — R26', () => {
+  describe('a space in a filename', () => {
     const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
       ['img src', '<img src="/a/Firing Practice.webp">', ['/a/Firing Practice.webp']],
       [
@@ -734,18 +668,12 @@ describe('htmlAdapter', () => {
 });
 
 /**
- * 🔴 **R98 — `<noscript>` CONTENT WAS RAW TEXT, AND THE WORD `noscript` APPEARED NOWHERE
- * IN THE ENGINE.** parse5 defaults `scriptingEnabled` to true, and with scripting enabled
- * the HTML spec says a `<noscript>` element's children are raw text: the parser returns one
- * text node and the `<img>` inside never becomes an element. Nothing was suppressing these
- * — they were never parsed.
- *
- * ⚠️ **It fails in the expensive direction.** `<noscript><img>` is the standard lazy-load
- * fallback, so `optimize --replace` rewrites every reference it can see, converts the
- * asset, and leaves the fallback naming a file that is gone — breaking precisely the render
- * that has no JavaScript to recover. Same severity class as R77.
+ * With scripting enabled, parse5's default, the HTML spec parses a `<noscript>` element's
+ * children as raw text, so the `<img>` inside never becomes an element. `<noscript><img>` is
+ * the standard lazy-loading fallback: missed, it would be left naming an original that
+ * `optimize --replace` removed, breaking the one render with no script to recover.
  */
-describe('R98 — an image inside <noscript> is markup, not text', () => {
+describe('an image inside <noscript> is markup, not text', () => {
   it('finds it', () => {
     const source = '<figure><noscript><img src="/img/hero.png"></noscript></figure>';
 
@@ -753,8 +681,8 @@ describe('R98 — an image inside <noscript> is markup, not text', () => {
   });
 
   it('keeps finding the ones around it — the control', () => {
-    // A parser option is a blunt instrument. The case that would have caught a change
-    // that fixed noscript and broke ordinary markup.
+    // A parser option is a blunt instrument: this catches a change that fixes noscript
+    // and breaks ordinary markup.
     const source =
       '<img src="/a.png">\n<noscript><img src="/b.png"></noscript>\n<img src="/c.png">';
 
@@ -775,12 +703,10 @@ describe('R98 — an image inside <noscript> is markup, not text', () => {
   });
 
   it('🔴 does NOT yet read <template>, and that gap is pinned rather than silent', () => {
-    // parse5 puts a template's children in a separate `content` fragment that `walk`
-    // never descends into, so this is a DIFFERENT mechanism from noscript and is not
-    // fixed by the parser option. Raised as a growth item with its shape id
-    // (`html.template.content`) rather than fixed here. ⚠️ The assertion is deliberately
-    // of today's WRONG behaviour: when somebody implements it this test goes red and
-    // names itself, which is the opposite of the gap being discovered by accident.
+    // parse5 puts a template's children in a separate `content` fragment that `walk` never
+    // descends into, a different mechanism from noscript's, which the parser option does
+    // not reach. The assertion pins today's wrong behaviour, so whoever closes the gap sees
+    // this test fail and updates it.
     expect(find('<template><img src="/img/hero.png"></template>')).toEqual([]);
   });
 });

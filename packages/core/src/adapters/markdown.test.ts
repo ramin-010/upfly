@@ -234,21 +234,17 @@ describe('markdownAdapter', () => {
     });
   });
 
-  describe('raw-text elements mentioned in prose (R20)', () => {
+  describe('raw-text elements mentioned in prose', () => {
     // Markdown hands its text to the HTML adapter, and parse5 is a real HTML parser:
-    // `<script>` opens a **raw-text element** wherever it appears, so prose that
-    // merely mentions one swallows the rest of the document. Found on
-    // `shadcn-ui/skills/migrate-radix-to-base/SKILL.md:67` — "retargeting onto a
-    // base-<style> variant" — and in astro-docs's Korean config reference.
-    //
-    // Every layer is individually correct. The composition is what is wrong.
+    // `<script>` opens a raw-text element wherever it appears, so prose that merely
+    // mentions one ("retargeting onto a base-<style> variant") swallows the rest of the
+    // document. Each layer is correct on its own; the composition is what goes wrong.
 
     const TAGS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
 
     it.each(TAGS)('does not swallow the document after a bare <%s> in prose', (tag) => {
-      // The dangerous half, and it is the *quiet* one: for five of these six there is
-      // no error at all. A raw `<img>` after the mention is simply gone — a silent
-      // skip, which rule 9 makes a P0.
+      // For five of these six there is no error at all: a raw `<img>` after the mention
+      // is simply gone, with nothing in the report.
       const text = [
         '# Guide',
         '',
@@ -263,9 +259,8 @@ describe('markdownAdapter', () => {
     });
 
     it('still reads a raw-text element that does close', () => {
-      // The mask keys on *unclosed*, so a real `<style>` block is untouched and the
-      // CSS inside it is still scanned. Without this the fix would be a silent skip
-      // of its own, in the other direction.
+      // Only a tag that never closes is masked, so a real `<style>` block is untouched and
+      // its CSS still scanned. Masking every one would silently drop what real blocks hold.
       const text = [
         '# Guide',
         '',
@@ -280,9 +275,9 @@ describe('markdownAdapter', () => {
     });
 
     it('keeps the references it already found when the HTML hand-off throws', () => {
-      // A *closed* `<style>` whose CSS will not parse still throws, which is right —
-      // rule 9 wants the failure visible. What must not happen is the four images
-      // above it disappearing with it, which is what made the asset look dead.
+      // A closed `<style>` whose CSS will not parse still throws, which is right: the
+      // failure has to reach the report. The references above it must survive the throw,
+      // or their assets look dead.
       const text = [
         '# Guide',
         '',
@@ -310,8 +305,8 @@ describe('markdownAdapter', () => {
     });
 
     it('leaves a mention inside a code span alone, as it always did', () => {
-      // The existing masker runs first, so a backticked `<style>` never reaches this
-      // rule at all. Asserted so a future change to the mask order shows up here.
+      // Code spans are masked first, so a backticked `<style>` never reaches the raw-text
+      // rule. Asserted so a change to the mask order shows up here.
       const text = ['# Guide', '', 'use the `<style>` element', '', '![hero](./hero.png)'].join(
         '\n',
       );
@@ -322,24 +317,17 @@ describe('markdownAdapter', () => {
     });
   });
 
-  describe('fence tracking follows CommonMark (R21)', () => {
+  describe('fence tracking follows CommonMark', () => {
     /**
-     * Getting a fence boundary wrong does not lose one reference — it **inverts the
-     * mask** from that point to the end of the file. Everything fenced becomes live
-     * and everything live becomes fenced, so the same defect produces a false
-     * positive and a false negative at once, with no error either way.
-     *
-     * Found by chasing why `astro-docs`' unsafe bucket was full of CSP headers. Those
-     * sit inside a ```html block; the mask had come out of step six hundred lines
-     * earlier, at a ```ts fence.
-     *
-     * Each case asserts the same thing: the fenced example must not be a reference,
-     * and the live one after it must still be found.
+     * A fence boundary read wrongly inverts the mask to the end of the file: fenced
+     * examples turn live and live references are blanked, a false positive and a false
+     * negative at once, with no error either way. Each case asserts that the fenced
+     * example is not a reference and the live one after it is still found.
      */
 
     it('does not let an info-string fence close a block — it may only open one', () => {
-      // `api-reference.mdx` opens fences with ```astro and ```ts title="…" all the
-      // way down. Reading one of those as a *close* is what desynchronised it.
+      // Documentation opens fences with ```astro or ```ts title="…" throughout, and
+      // reading one of those as a close puts the mask out of step.
       const text = [
         '```',
         'inside a plain fence',
@@ -354,8 +342,7 @@ describe('markdownAdapter', () => {
     });
 
     it('does not let a shorter fence close a longer one', () => {
-      // How a ```` block quotes a ``` block, which is what documentation *about*
-      // Markdown does constantly — including ours.
+      // How a ```` block quotes a ``` block, as documentation about Markdown often does.
       const text = [
         '````',
         'showing how a fence works:',
@@ -370,7 +357,6 @@ describe('markdownAdapter', () => {
     });
 
     it('does not let a tilde fence be closed by a backtick fence', () => {
-      // This rule was already right. Asserted so it stays right.
       const text = [
         '~~~',
         '```',
@@ -385,7 +371,7 @@ describe('markdownAdapter', () => {
 
     it('closes on a longer run of the same character', () => {
       // The other direction: a fence longer than its opener still closes it, so the
-      // fix must not make blocks impossible to end.
+      // length rule must not make blocks impossible to end.
       const text = ['```', '![example](./fenced.png)', '`````', '', '![real](./real.png)'].join(
         '\n',
       );
@@ -394,8 +380,8 @@ describe('markdownAdapter', () => {
     });
 
     it('still masks an ordinary fenced block, indented or not', () => {
-      // The control. A fix that stopped masking anything would pass three of the
-      // four assertions above.
+      // None of the cases above indents its fence, and CommonMark allows up to three
+      // spaces before one.
       const text = [
         'prose',
         '',
@@ -411,7 +397,7 @@ describe('markdownAdapter', () => {
   });
 });
 
-describe('maskInactiveRegions, now that it is exported (R34)', () => {
+describe('maskInactiveRegions', () => {
   it('preserves length exactly, so an offset into one indexes the other', () => {
     const text = ['prose `code` more', '', '```js', 'const x = 1;', '```', ''].join('\n');
 
@@ -427,15 +413,14 @@ describe('maskInactiveRegions, now that it is exported (R34)', () => {
 
   it('masks an import inside a fence — the defect this export exists to prevent', () => {
     // Documentation teaching a reader how to write an import is not an import.
-    // Counting these produced 25 alias-shaped references where there were 11.
     const text = ['```astro', "import stars from '~/stars/docline.png';", '```'].join('\n');
 
     expect(maskInactiveRegions(text)).not.toContain('docline.png');
   });
 
   it('masks a fence whose lines end CRLF', () => {
-    // A line-anchored `$` does not match before `\r`, which is how a fenced-block
-    // count once came back as 0 of 124. Same input as the test above, CRLF endings.
+    // Split on `\n`, a CRLF line keeps its `\r`, so a pattern ending in `$` has to allow
+    // for it or it misses every fence. Same input as the test above, with CRLF endings.
     const text = ['```astro', "import stars from '~/stars/docline.png';", '```'].join('\r\n');
 
     expect(maskInactiveRegions(text)).not.toContain('docline.png');
@@ -459,18 +444,12 @@ describe('maskInactiveRegions, now that it is exported (R34)', () => {
 });
 
 /**
- * 🔴 **R124's skip: the parse5 pass runs only when the masked document has markup.**
- *
- * ~20% of the graph build was parse5 reading markdown for HTML that was not there, and
- * on the old bench tree it searched 2,640 documents containing **zero** angle brackets —
- * a corpus that could confirm the skip was safe and could never refute it (R117). The
- * tree holds 17 refuting documents now; **these tests own their own**, because a fixture
- * somebody else maintains is one somebody else can take away.
- *
- * ⚠️ **The whole risk of this change is a document whose reference only parse5 can see.**
- * Every assertion below is built around one.
+ * The parse5 pass runs only when the masked document has markup, because parse5 is most
+ * of the adapter's cost. The risk is skipping a document whose reference only parse5 can
+ * see. These tests hold their own documents rather than rely on a fixture somebody else
+ * maintains and could take away.
  */
-describe('the parse5 pass is skipped only when there is nothing for it to find (R124)', () => {
+describe('the parse5 pass is skipped only when there is nothing for it to find', () => {
   it('🔴 still finds a reference that ONLY the HTML pass can see', () => {
     const text = '# Title\n\n<img src="/only-html.png" alt="">\n';
     const found = markdownAdapter.findReferences({ file: 'doc.md', text });
@@ -496,13 +475,10 @@ describe('the parse5 pass is skipped only when there is nothing for it to find (
   });
 
   /**
-   * 🔴 **The case the skip exists for, and the one the old bench tree could not hold.**
-   *
-   * astro-docs keeps 19.6 tags per document and refutes nothing, because its markup sits
-   * inside fenced code blocks that masking blanks before parse5 sees them. So the skip
-   * must be decided on the MASKED text: a document whose only `<img>` is fenced has
-   * nothing for the HTML pass to find, and the reference inside the fence must NOT be
-   * reported — it is documentation, not a reference.
+   * The case the skip exists for. Documentation keeps most of its markup in code fences,
+   * which masking blanks, so the skip is decided on the masked text: a document whose
+   * only `<img>` is fenced has nothing for the HTML pass to find, and the fenced one is
+   * documentation, not a reference.
    */
   it('🔴 skips a document whose only markup is inside a fence, and reports nothing from it', () => {
     const text = '# Title\n\n```html\n<img src="/inside-a-fence.png">\n```\n\n![real](/real.png)\n';
@@ -512,10 +488,10 @@ describe('the parse5 pass is skipped only when there is nothing for it to find (
   });
 
   /**
-   * ⚠️ The guard is `<` followed by a letter — HTML's own tag-open condition — so a
-   * stray angle bracket in prose must not be mistaken for markup, and must not cost a
-   * parse5 parse either. Asserting the OUTPUT rather than whether the pass ran, because
-   * the output is what a user sees and the timing is what `bench/` measures.
+   * The guard is `<` followed by a letter, HTML's own tag-open condition, so a stray angle
+   * bracket in prose is not markup and costs no parse. The test asserts the output rather
+   * than whether the pass ran: the output is what a user sees, and `bench/` measures the
+   * timing.
    */
   it('treats a bare `<` in prose as text, exactly as parse5 would', () => {
     const text = '# Title\n\n5 < 6 and 7 > 3\n\n![alt](/a.png)\n';
@@ -526,12 +502,12 @@ describe('the parse5 pass is skipped only when there is nothing for it to find (
 });
 
 /**
- * R167 group A. MDX's top-level `import`/`export` lines are JavaScript, and until this
- * nothing read them: `import hero from './hero.png'` named an asset the graph never saw.
- * The block rules are MDX's own (`micromark-extension-mdxjs-esm`), so every case below
- * that says "not ESM" is a case MDX itself reads as prose.
+ * MDX's top-level `import`/`export` blocks are JavaScript and name assets
+ * (`import hero from './hero.png'`). Where a block starts and ends follows MDX's own
+ * rules (`micromark-extension-mdxjs-esm`), so a line these cases do not read as ESM is
+ * one MDX does not read as ESM either.
  */
-describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
+describe('MDX top-level ESM is read as JavaScript', () => {
   const mdx = (text: string) => markdownAdapter.findReferences({ file: '/site/post.mdx', text });
   const summary = (text: string) =>
     mdx(text).map((reference) => ({
@@ -553,9 +529,8 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
 
     expect(summary(text)).toEqual([
       { raw: '../public/hero.png', shape: 'mdx.import', exact: true },
-      // Alias-shaped: WHICH alias row it is needs the paths table, so the construct is
-      // named and the resolver decides (R87 — `mdx.import` is in both alias rows'
-      // `adapterEmitsAs`).
+      // Alias-shaped. Which alias it is depends on the paths table, which the resolver
+      // reads, so the adapter names only the construct.
       { raw: '@img/thumb.png', shape: 'mdx.import', exact: true },
     ]);
   });
@@ -575,9 +550,10 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
   });
 
   it('🔴 does not read a PARAGRAPH line that begins with the keyword — MDX cannot interrupt one', () => {
-    // shadcn-ui's docs hold three of these ("...lists every public\nexport and option.").
-    // Read as code they are parse failures. This one is worse: it is VALID JavaScript, so
-    // a rule that ignored the paragraph would emit a phantom import (R109's box D).
+    // Prose can wrap onto a line that begins with the keyword ("lists every public\nexport
+    // and option."). Read as code, that is a parse failure. The first case is worse: it is
+    // valid JavaScript, so ignoring the paragraph would emit a phantom import, a wrong
+    // answer the engine cannot catch in its own report.
     const phantom = 'The build step will\nimport hero from "./hero.png";\n';
     expect(mdx(phantom)).toEqual([]);
 
@@ -605,7 +581,7 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
       { raw: '/img/a.png', shape: 'js.string.literal', exact: true },
     ]);
 
-    // Babel positions an unfinished JSX body at its START, not at the end of the input,
+    // Babel positions an unfinished JSX body at its start, not at the end of the input,
     // so the test for "unfinished" has to read its reason code too.
     const jsx = [
       'export const Hero = () => (',
@@ -623,7 +599,7 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
     expect(summary(text)).toEqual([{ raw: '/img/c.png', shape: 'js.jsx.attribute', exact: true }]);
   });
 
-  it('🔴 reports a block MDX would refuse, and keeps everything else the document holds (R20)', () => {
+  it('reports a block MDX would refuse, and keeps everything else the document holds', () => {
     const text = [
       '![before](/before.png)',
       '',
@@ -648,13 +624,12 @@ describe('MDX top-level ESM is read as JavaScript (R167 group A)', () => {
 });
 
 /**
- * R167: an indented code block is code shown, not run — like a fence — and it was left
- * live, so the `<img>` inside one was claimed as raw HTML (R109's box D). Masking it is
- * easy; masking ONLY it is the work, because four spaces also mean a list item's own
- * content, a paragraph carrying on, and the inside of a `<pre>`. Every "stays live"
- * case below is one where a looser rule would blank a real reference.
+ * An indented code block is code shown, not run, like a fence, so an `<img>` inside one is
+ * not raw HTML. Four spaces also mean a list item's own content, a paragraph carrying on,
+ * or the inside of a `<pre>`, and every case below that stays live is one where a looser
+ * rule would blank a real reference.
  */
-describe('indented code blocks are masked, and only they are (R167)', () => {
+describe('indented code blocks are masked, and only they are', () => {
   const md = (text: string) =>
     markdownAdapter.findReferences({ file: '/site/guide.md', text }).map((r) => r.rawPath);
 
@@ -714,8 +689,8 @@ describe('indented code blocks are masked, and only they are (R167)', () => {
   });
 
   it('🔴 keeps indented table rows live across a commented-out row (eleventy-docs cjs-esm.md)', () => {
-    // The mask turns the comment into spaces. Reading the MASK for blank lines ended the
-    // HTML block there and blanked the live rows after it — on a real repository.
+    // The mask turns the comment into spaces, so reading the mask for blank lines would
+    // end the HTML block there and blank the live rows after it.
     const text = [
       '<table>',
       '\t<tbody>',

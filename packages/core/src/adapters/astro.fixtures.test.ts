@@ -5,13 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { astroAdapter } from './astro.js';
 
 /**
- * The fixture the adapter contract asks for, shaped like a component someone would
- * write: imports in the fence, plain `<img src>` and a `<link href>` in the body,
- * a `<style>` block, a templated path, component bindings, and commented-out paths.
+ * The fixture the adapter rules ask for, shaped like a component someone would write:
+ * imports in the fence, plain `<img src>` and a `<link href>` in the body, a `<style>`
+ * block, a templated path, component bindings, and commented-out paths. See "Adapters:
+ * the contribution surface" in ARCHITECTURE.md.
  *
- * Every expected value here is written from reading the fixture, never from running
- * the adapter and pasting its output — an assertion whose expected value came from
- * the code cannot vouch for the code.
+ * Every expected value here is written from reading the fixture, never from running the
+ * adapter and pasting its output: an assertion whose expected value came from the code
+ * cannot vouch for the code.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../fixtures/astro');
@@ -32,11 +33,9 @@ describe('astroAdapter fixtures', () => {
     expect(references.map((reference) => reference.rawPath)).toEqual([
       // --- the frontmatter fence, read as TypeScript ---
       //
-      // `astro:assets` is deliberately absent. It is a virtual module, and `astro:`
-      // matches the URL-scheme test in `reference-path.ts`, so it is excluded as an
-      // external URL rather than carried as a path. This expectation was written the
-      // other way from reading the fixture, and the engine was right — recorded so
-      // nobody "fixes" it back.
+      // `astro:assets` is absent, and correctly: it is a virtual module, and `astro:`
+      // matches the URL-scheme test in `reference-path.ts`, so it is dropped as an
+      // external URL rather than carried as a path.
       '~/assets/houston.png',
       './sidebar.webp',
       '~/components/Button.astro',
@@ -44,9 +43,8 @@ describe('astroAdapter fixtures', () => {
       'gallery/two.png',
       // --- the body, read as HTML ---
       '/favicon.png',
-      // `{Houston}` and `{local}` are no longer here, and nothing is lost: a braced
-      // value is JavaScript now (R167 group B), and an identifier is a value, not a
-      // path — the resolver used to drop them at rung 3 for having no extension.
+      // `{Houston}` and `{local}` yield nothing: a braced value is read as JavaScript,
+      // and an identifier is a value, not a path. Their fence imports are the references.
       '/banner.png',
       './relative.png',
       // Read by the JavaScript adapter, so the path is the template's own text rather
@@ -59,9 +57,9 @@ describe('astroAdapter fixtures', () => {
   });
 
   it('keeps every offset pointing at the real file, across both halves', () => {
-    // The invariant that matters most for Phase 2: an off-by-one here corrupts a
-    // source file at rewrite time rather than merely reporting something wrong. The
-    // masking approach is what earns it, and this is what proves it.
+    // An off-by-one here corrupts a source file at rewrite time rather than merely
+    // reporting something wrong. Blanking the other half, rather than slicing it out, is
+    // what keeps every offset exact, and this proves it.
     const { text, references } = referencesIn('Page.astro');
 
     for (const reference of references) {
@@ -73,8 +71,8 @@ describe('astroAdapter fixtures', () => {
     const { references } = referencesIn('Page.astro');
     const houston = references.find((reference) => reference.rawPath === '~/assets/houston.png');
 
-    // `certain` — an ESM import specifier cannot be anything but a module path, and
-    // this is what makes the nine hedged astro-docs assets ordinary links.
+    // An ESM import specifier cannot be anything but a module path, so it is `certain`,
+    // and an asset imported in a fence is an ordinary link.
     expect(houston?.ceiling).toBe('certain');
     expect(houston?.asserted).toBe(true);
     expect(houston?.kind).toBe('import');
@@ -84,10 +82,9 @@ describe('astroAdapter fixtures', () => {
     const { references } = referencesIn('Page.astro');
     const templated = references.find((reference) => reference.rawPath.includes('${'));
 
-    // Reporting a templated path as a broken reference is the false positive the exit
-    // criterion forbids. Since R167 this one globs — one unknown segment in the name —
-    // and `medium` is the pattern tier, which the resolver never lets fall through to
-    // `broken` either: it links every match or says `dynamic`.
+    // A templated path reported as broken would be a false positive. This one has one
+    // unknown segment in the name, so it globs at `medium`, and the resolver never lets a
+    // pattern fall through to `broken`: it links every match or says `dynamic`.
     expect(templated?.ceiling).toBe('medium');
     expect(templated?.shape).toBe('js.template.pattern');
   });
@@ -97,14 +94,14 @@ describe('astroAdapter fixtures', () => {
     const paths = references.map((reference) => reference.rawPath);
 
     // One is inside a `//` comment in the fence, one inside an HTML comment in the
-    // body — the two halves' comment syntaxes, which is why both are here.
+    // body: the two halves' comment syntaxes, which is why both are here.
     expect(paths).not.toContain('./commented.png');
     expect(paths).not.toContain('./ignored.png');
   });
 
   it('reads a component with no frontmatter fence at all', () => {
-    // A missing fence is ordinary, not a parse failure. Treating it as one would
-    // turn six of astro-docs' 86 components into a silent coverage gap.
+    // A missing fence is ordinary, not a parse failure: astro-docs has components with
+    // none. Treating it as one would turn each of them into a silent coverage gap.
     const { text, references } = referencesIn('NoFence.astro');
 
     expect(references.map((reference) => reference.rawPath)).toEqual(['/no-fence.png']);

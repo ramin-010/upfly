@@ -5,13 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { cssAdapter } from './css.js';
 
 /**
- * The adapter contract requires a fixture directory alongside the table-driven
- * tests. The tables above prove individual behaviours in isolation; these files
- * prove the adapter on stylesheets shaped like ones people actually write, where
- * comments, media queries, nesting and preprocessor syntax all appear at once.
+ * The adapter contract asks for fixtures beside the table-driven tests. The tables in
+ * `css.test.ts` prove each behaviour in isolation; these files prove the adapter on
+ * stylesheets shaped like real ones, where comments, media queries, nesting and
+ * preprocessor syntax all appear at once.
  *
- * The adapter still never touches a disk — the test reads the file and hands over
- * text, which is exactly how the engine will call it.
+ * The adapter still never touches a disk: the test reads the file and hands over text,
+ * as the engine does.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../fixtures/css');

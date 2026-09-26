@@ -225,53 +225,6 @@
       "emoji": 2,
       "long-comment": 3
     },
-    "packages/core/src/adapters/assembled-path.test.ts": {
-      "internal-reference": 11,
-      "em-dash": 13,
-      "emphasis": 2,
-      "emoji": 10,
-      "long-comment": 9
-    },
-    "packages/core/src/adapters/astro.fixtures.test.ts": {
-      "internal-reference": 3,
-      "em-dash": 7
-    },
-    "packages/core/src/adapters/astro.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 1
-    },
-    "packages/core/src/adapters/css.fixtures.test.ts": {
-      "em-dash": 1
-    },
-    "packages/core/src/adapters/css.test.ts": {
-      "internal-reference": 4,
-      "em-dash": 8,
-      "emphasis": 7,
-      "emoji": 6
-    },
-    "packages/core/src/adapters/html.test.ts": {
-      "internal-reference": 19,
-      "em-dash": 22,
-      "emphasis": 12,
-      "emoji": 13,
-      "long-comment": 3
-    },
-    "packages/core/src/adapters/javascript.fixtures.test.ts": {
-      "em-dash": 2
-    },
-    "packages/core/src/adapters/javascript.test.ts": {
-      "internal-reference": 18,
-      "em-dash": 30,
-      "emphasis": 13,
-      "emoji": 8,
-      "long-comment": 4
-    },
-    "packages/core/src/adapters/markdown.test.ts": {
-      "internal-reference": 7,
-      "em-dash": 14,
-      "emphasis": 11,
-      "emoji": 4
-    },
     "packages/core/src/shapes.ts": {
       "output-reference": 4
     }

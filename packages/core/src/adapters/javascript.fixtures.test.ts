@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { javascriptAdapter } from './javascript.js';
 
 /**
- * The fixture the adapter contract asks for: a component shaped like one someone
- * would actually write, where imports, CSS-in-JS, JSX, templates, comments and
- * prose strings all appear together.
+ * The fixture the adapter rules ask for: a component shaped like one someone would
+ * actually write, where imports, CSS-in-JS, JSX, templates, comments and prose strings all
+ * appear together. See "Adapters: the contribution surface" in ARCHITECTURE.md.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../fixtures/javascript');
@@ -35,11 +35,9 @@ describe('javascriptAdapter fixtures', () => {
       { path: './assets/thumb.png', ceiling: 'certain', slice: './assets/thumb.png' },
       { path: '../images/frame.png', ceiling: 'high', slice: '../images/frame.png' },
       { path: '../images/frame-hover.png', ceiling: 'high', slice: '../images/frame-hover.png' },
-      // `const dynamic = \`/generated/${slug}.png\`` on line 35. The fixture was
-      // written to exercise it and the adapter never saw it: the speculative
-      // template guard joined the quasis with the holes deleted, making
-      // `/generated/.png` — a dotfile — so it was dropped. This list asserted 14
-      // references for a file that has 15, which is a test blessing a defect.
+      // `const dynamic = \`/generated/${slug}.png\`` on line 35, a guess outside any
+      // construct. It is found because the template rule reads each hole as `*`; with the
+      // holes deleted it would read as the dotfile `/generated/.png` and be dropped.
       { path: '/generated/${slug}.png', ceiling: 'medium', slice: '/generated/${slug}.png' },
       { path: '/static/inline.png', ceiling: 'high', slice: '/static/inline.png' },
       { path: '/static/inline@2x.png', ceiling: 'high', slice: '/static/inline@2x.png' },
