@@ -111,9 +111,25 @@ describe('the ordinary case', () => {
       },
     ]);
     expect(plan.rewrites).toEqual([
-      { file: 'src/App.jsx', edits: [{ start: 10, end: 20, replacement: './logo.webp' }] },
+      {
+        file: 'src/App.jsx',
+        edits: [{ start: 10, end: 20, replacement: './logo.webp', expected: './logo.png' }],
+      },
     ]);
     expect(plan.declined).toEqual([]);
+  });
+
+  it('gives each rewrite the hash of the text its offsets count into', () => {
+    const assets = [asset('src/logo.png')];
+    const references = [resolved('src/App.jsx', './logo.png', 'src/logo.png')];
+    const texts = [{ path: `${ROOT}/src/App.jsx`, hash: 'hash-of-the-scanned-text' }];
+
+    const plan = planOptimization({
+      ...input({ assets, references }),
+      graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [], texts }),
+    });
+
+    expect(plan.rewrites.map((rewrite) => rewrite.textHash)).toEqual(['hash-of-the-scanned-text']);
   });
 
   it('does not convert an asset the encode made bigger', () => {
@@ -252,7 +268,14 @@ describe('a root-relative path that resolved at the project root', () => {
     expect(plan.rewrites).toEqual([
       {
         file: 'index.html',
-        edits: [{ start: 10, end: 10 + '/hero.png'.length, replacement: '/hero.webp' }],
+        edits: [
+          {
+            start: 10,
+            end: 10 + '/hero.png'.length,
+            replacement: '/hero.webp',
+            expected: '/hero.png',
+          },
+        ],
       },
     ]);
   });

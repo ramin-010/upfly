@@ -111,6 +111,23 @@ describe('applyEdits', () => {
         expect((error as UpflyError).code).toBe('INVALID_EDIT_RANGE');
       }
     });
+
+    it('throws when a range does not hold the text the edit expects', () => {
+      // A line saved above the reference moves it, and the old range now holds other text.
+      const moved = '<!-- saved -->\n<img src="a.png">';
+      try {
+        applyEdits(moved, [{ ...edit(10, 15, 'a.webp'), expected: 'a.png' }]);
+        expect.unreachable('should have thrown');
+      } catch (error) {
+        expect((error as UpflyError).code).toBe('EDIT_TEXT_MISMATCH');
+      }
+    });
+
+    it('applies an edit whose range holds exactly the text it expects', () => {
+      expect(
+        applyEdits('<img src="a.png">', [{ ...edit(10, 15, 'a.webp'), expected: 'a.png' }]),
+      ).toBe('<img src="a.webp">');
+    });
   });
 });
 

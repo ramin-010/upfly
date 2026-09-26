@@ -1267,6 +1267,12 @@ It is deliberately strict, and throws rather than guessing when:
 - two edits cover overlapping text (`OVERLAPPING_EDITS`)
 - two edits start at the same offset, where the result would depend on order
   (`AMBIGUOUS_EDITS`)
+- an edit carries the text it expects to replace, and its range holds anything else
+  (`EDIT_TEXT_MISMATCH`)
+
+The planner gives every edit its reference's `rawPath` as that expected text. An edit is then
+applied only to the text it was worked out from: an edit landing on moved text, or offsets
+an adapter miscounted, is refused rather than written into the middle of something else.
 
 `validateEdits` runs the same checks without applying anything. `applyEdits` and `invertEdits` call
 it, and so does the transaction's `prepare`, which rejects a whole run before a single byte is
@@ -1357,6 +1363,14 @@ somebody's work is worse than leaving a run half applied.
 after prepare leaves edit offsets that no longer describe the text, and applying them would both
 corrupt the file and store an undo that does not fit it: damage `inspect` would report afterwards
 rather than prevent.
+
+**And it starts at the scan, not at prepare.** Every offset counts into the text the scan read,
+so the scan records a hash of that text (`ScannedText`), the graph keeps it, and the planner
+copies it into each rewrite (`textHash`). `optimize` stages the encodes first, which can take
+minutes, and only then reads each file it rewrites; a file whose text no longer matches the
+scan's is refused there, before anything is written. Without that, the hashes prepare and
+commit check would be taken from the file as saved, and the scan's offsets would be applied
+to it with every check passing.
 
 **There is no separate "recover an interrupted run" path.** Undoing a finished run and cleaning
 up an interrupted one are the same job (reverse whatever the disk says actually happened), so

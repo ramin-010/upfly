@@ -12,6 +12,7 @@ import { lineOf } from './citation.js';
 import { couldHoldReference } from './could-hold-reference.js';
 import { UpflyError } from './errors.js';
 import { imageFilenameCandidates } from './paths.js';
+import { hashText } from './text-hash.js';
 import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /**
@@ -40,6 +41,19 @@ export interface ScannedMention {
   readonly line: number;
   /** The token exactly as written, so the report can quote it. */
   readonly quote: string;
+}
+
+/**
+ * The text of a source file as the scan read it, identified by its hash.
+ *
+ * Every offset in a reference found in the file counts into this text and no other, so a
+ * write checks the file against `hash` before applying an edit at those offsets.
+ */
+export interface ScannedText {
+  /** Absolute path of the file, as in `RawReference.file`. */
+  readonly path: string;
+  /** SHA-256 of the text, encoded as UTF-8. */
+  readonly hash: string;
 }
 
 /**
@@ -97,6 +111,8 @@ export interface ScanResult {
    * `assetBasenames` was given.
    */
   readonly mentions: readonly ScannedMention[];
+  /** The text of every file that yielded a reference, in source-file order. */
+  readonly texts: readonly ScannedText[];
 }
 
 /** How many files are read at once. IO-bound, so higher than the core count. */
@@ -129,6 +145,7 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
   const references: RawReference[] = [];
   const unscanned: UnscannedFile[] = [];
   const mentions: ScannedMention[] = [];
+  const texts: ScannedText[] = [];
   const files = options.sourceFiles;
 
   for (let index = 0; index < files.length; index += concurrency) {
@@ -147,6 +164,7 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
       references.push(...result.references);
       if (result.failure !== null) unscanned.push(result.failure);
       mentions.push(...result.mentions);
+      if (result.text !== null) texts.push(result.text);
       // Emitted here rather than inside the concurrent map, so diagnostics arrive in
       // source-file order. Nothing deterministic reads them, but debugging output that
       // reorders between runs is harder to use.
@@ -154,7 +172,7 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
     }
   }
 
-  return { references, unscanned, mentions };
+  return { references, unscanned, mentions, texts };
 }
 
 function adapterFor(file: SourceFile, byId: ReadonlyMap<string, Adapter>): Adapter {
@@ -175,6 +193,8 @@ interface ScannedFile {
   readonly mentions: readonly ScannedMention[];
   /** `null` unless a third-party parser said something. */
   readonly diagnostic: ScanDiagnostic | null;
+  /** `null` when the file yielded no reference, so no edit can ever be made to it. */
+  readonly text: ScannedText | null;
 }
 
 async function scanOne(
@@ -193,10 +213,13 @@ async function scanOne(
       failure: unscannedFile(file, 'unreadable', describe(error)),
       mentions: [],
       diagnostic: null,
+      text: null,
     };
   }
 
-  return parseOne(file, adapter, text, assetBasenames);
+  const scanned = parseOne(file, adapter, text, assetBasenames);
+  if (scanned.references.length === 0) return { ...scanned, text: null };
+  return { ...scanned, text: { path: file.path, hash: hashText(text) } };
 }
 
 /**
@@ -210,7 +233,7 @@ function parseOne(
   adapter: Adapter,
   text: string,
   assetBasenames: ReadonlySet<string> | undefined,
-): ScannedFile {
+): Omit<ScannedFile, 'text'> {
   // One pass over text already in memory. Done before the adapter runs so that a
   // file which fails to parse still contributes its mentions: that file is exactly
   // the one whose references we do not know.

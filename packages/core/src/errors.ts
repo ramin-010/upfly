@@ -3,6 +3,11 @@ export type UpflyErrorCode =
   | 'INVALID_EDIT_RANGE'
   | 'OVERLAPPING_EDITS'
   | 'AMBIGUOUS_EDITS'
+  /**
+   * An edit's range does not hold the text the edit was worked out from, so applying it
+   * would replace something else: the file changed since, or the offsets were wrong.
+   */
+  | 'EDIT_TEXT_MISMATCH'
   /** The discovery root does not exist or is not a directory. */
   | 'ROOT_NOT_A_DIRECTORY'
   /** Two adapters claim the same file extension, so the winner would be arbitrary. */

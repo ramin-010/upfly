@@ -8,9 +8,9 @@
  * planner, so that each rule has one implementation.
  */
 
-import { createHash } from 'node:crypto';
 import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
+import { UpflyError } from './errors.js';
 import type { Graph } from './graph.js';
 import { acquireLock } from './lock.js';
 import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
@@ -18,6 +18,7 @@ import { type Survivor, findSurvivingPaths, spellingsFor } from './old-path-sear
 import {
   type OptimizationPlan,
   type PlanRefusal,
+  type PlannedRewrite,
   type PublicPolicy,
   type RootLinkPolicy,
   patternTargets,
@@ -25,6 +26,7 @@ import {
 } from './plan.js';
 import type { AssetProbe, EncodeFormat, ImageProbe } from './probe.js';
 import type { ServingRoots } from './resolve.js';
+import { hashText } from './text-hash.js';
 import {
   type FileStore,
   type LockPorts,
@@ -388,6 +390,11 @@ async function stage(
 
   for (const rewrite of plan.rewrites) {
     const before = await input.store.readText(rewrite.file);
+    // Read after every encode, which can take minutes, so this is the last moment to find
+    // that the file was saved since the scan. Its edits' offsets count into the scanned
+    // text: applied to any other, they would land in the wrong place, and every later check
+    // would compare against this read and pass.
+    refuseUnlessScannedText(rewrite, before);
     operations.push({
       kind: 'edit',
       path: rewrite.file,
@@ -403,6 +410,27 @@ async function stage(
 }
 
 /**
+ * Refuse a rewrite unless the file holds the text the scan read.
+ *
+ * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` when the file changed since the scan
+ * @throws {UpflyError} `TRANSACTION_PLAN_INVALID` when the plan recorded no text to compare
+ */
+function refuseUnlessScannedText(rewrite: PlannedRewrite, text: string): void {
+  if (rewrite.textHash === undefined) {
+    throw new UpflyError(
+      'TRANSACTION_PLAN_INVALID',
+      `The plan has no record of the text ${rewrite.file} held when it was read, so its edits cannot be checked against the file, and nothing was written. Plan from a graph that runPipeline built.`,
+    );
+  }
+  if (hashText(text) !== rewrite.textHash) {
+    throw new UpflyError(
+      'TRANSACTION_FOREIGN_CHANGE',
+      `${rewrite.file} changed after Upfly read it, so its references are no longer where the plan found them, and nothing was written. Run Upfly again to plan from the file as it is now.`,
+    );
+  }
+}
+
+/**
  * Which assets have more than one frame, from the measurements already taken.
  *
  * From the probe rather than from the extension: a `.gif` may well be a still, and a
@@ -414,13 +442,4 @@ function animatedAssets(probes: readonly AssetProbe[]): ReadonlySet<string> {
     if ((probe.metadata?.pages ?? 1) > 1) animated.add(probe.relative);
   }
   return animated;
-}
-
-/**
- * Hash text the way the store hashes a file, with the store's own algorithm. The store
- * hashes bytes and this hashes the text, so the two agree only for a file that is valid
- * UTF-8.
- */
-function hashText(text: string, algorithm: string): string {
-  return createHash(algorithm).update(text, 'utf8').digest('hex');
 }

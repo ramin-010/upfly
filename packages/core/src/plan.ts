@@ -116,7 +116,51 @@ export interface PlannedConversion {
 export interface PlannedRewrite {
   /** POSIX-relative path of the file holding the references. */
   readonly file: string;
+  /** In offset order, each carrying the reference's text as its `expected`. */
   readonly edits: readonly Edit[];
+  /**
+   * SHA-256 of the text the scan read from `file`, encoded as UTF-8: the text every offset
+   * in `edits` counts into. `optimize` applies the edits only to a file that still holds it, and
+   * refuses a rewrite without one. Absent when the graph recorded no text for the file.
+   */
+  readonly textHash?: string;
+}
+
+/** A file's edits while a plan is being made, and the file's absolute path. */
+export interface EditsInFile {
+  /** As in `Reference.file`, which is how `Graph.texts` is keyed. */
+  readonly path: string;
+  readonly edits: Edit[];
+}
+
+/**
+ * A file's collected edits as a `PlannedRewrite`: in offset order, and carrying the hash
+ * of the text they were counted in when the graph recorded one.
+ */
+export function plannedRewrite(file: string, collected: EditsInFile, graph: Graph): PlannedRewrite {
+  const edits = [...collected.edits].sort((a, b) => a.start - b.start);
+  const text = graph.texts.get(collected.path);
+  return text === undefined ? { file, edits } : { file, edits, textHash: text.hash };
+}
+
+/**
+ * Record the edit that repoints `reference`, under its file. The edit carries the text it
+ * replaces as `expected`, so it can never land on different text.
+ */
+export function collectEdit(
+  edits: Map<string, EditsInFile>,
+  file: string,
+  reference: Reference,
+  replacement: string,
+): void {
+  const collected = edits.get(file) ?? { path: reference.file, edits: [] };
+  collected.edits.push({
+    start: reference.start,
+    end: reference.end,
+    replacement,
+    expected: reference.rawPath,
+  });
+  edits.set(file, collected);
 }
 
 /**
@@ -231,7 +275,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
 
   declinePartialPatterns(input, converting, relativeOf, declined);
 
-  const edits = new Map<string, Edit[]>();
+  const edits = new Map<string, EditsInFile>();
   const rewritten = new Set<Reference>();
   for (const reference of input.graph.references) {
     const moved = collectRewrite(reference, {
@@ -255,7 +299,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   return {
     conversions: conversions.sort((a, b) => a.asset.localeCompare(b.asset)),
     rewrites: [...edits.entries()]
-      .map(([file, list]) => ({ file, edits: [...list].sort((a, b) => a.start - b.start) }))
+      .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
       .sort((a, b) => a.file.localeCompare(b.file)),
     declined: declined.sort(
       (a, b) => a.path.localeCompare(b.path) || a.reason.localeCompare(b.reason),
@@ -514,7 +558,7 @@ interface RewriteContext {
   readonly root: string;
   readonly converting: ReadonlyMap<string, PlannedConversion>;
   readonly relativeOf: ReadonlyMap<string, string>;
-  readonly edits: Map<string, Edit[]>;
+  readonly edits: Map<string, EditsInFile>;
   readonly declined: Declined[];
 }
 
@@ -562,14 +606,12 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
 
   if (obstacle !== null) return false;
 
-  const file = relativePath(context.root, reference.file);
-  const list = context.edits.get(file) ?? [];
-  list.push({
-    start: reference.start,
-    end: reference.end,
-    replacement: withExtension(reference.rawPath, context.input.format),
-  });
-  context.edits.set(file, list);
+  collectEdit(
+    context.edits,
+    relativePath(context.root, reference.file),
+    reference,
+    withExtension(reference.rawPath, context.input.format),
+  );
   return true;
 }
 

@@ -217,6 +217,12 @@ export interface Edit {
   readonly end: number;
   /** Text to put in place of `[start, end)`. */
   readonly replacement: string;
+  /**
+   * The text `[start, end)` held when the edit was worked out. When present, `applyEdits`
+   * refuses a source whose range holds anything else, so an edit counted in one text is
+   * never applied to another.
+   */
+  readonly expected?: string;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,5 +98,31 @@ describe('optimizeProject', () => {
     expect(written).toContain(MANIFEST_PATH);
     expect(written).toContain('images/logo.webp');
     expect(written).not.toContain('.upfly/lock');
+  });
+});
+
+describe('a source file saved after the scan read it', () => {
+  it('is refused, not edited at offsets counted in its old text', async () => {
+    const root = await copy();
+    const page = join(root, 'index.html');
+    // Every reference after this line moves, which is what an editor's save does.
+    const saved = `<!-- saved while the images were converting -->\n${await readFile(page, 'utf8')}`;
+    const planned: string[] = [];
+
+    const run = optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: true,
+      beforeWrite: async (plan) => {
+        planned.push(...plan.rewrites.map((rewrite) => rewrite.file));
+        await writeFile(page, saved);
+        return true;
+      },
+    });
+
+    await expect(run).rejects.toMatchObject({ code: 'TRANSACTION_FOREIGN_CHANGE' });
+    expect(planned).toContain('index.html');
+    expect(await readFile(page, 'utf8')).toBe(saved);
   });
 });

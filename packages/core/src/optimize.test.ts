@@ -20,6 +20,7 @@ import {
   optimize,
 } from './optimize.js';
 import type { AssetProbe, ImageProbe } from './probe.js';
+import type { ScannedText } from './scan.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
@@ -28,6 +29,11 @@ const RUN_ID = '2026-01-01T000000-abcd';
 
 function sha(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/** What the scan records of a file it read, which an applied run checks the file against. */
+function scanned(file: string, text: string): ScannedText {
+  return { path: `${ROOT}/${file}`, hash: sha(text) };
 }
 
 function asset(relative: string, bytes = 10_000): Asset {
@@ -143,7 +149,13 @@ function inputFor(
   };
 
   return {
-    graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
+    graph: buildGraph({
+      root: ROOT,
+      assets,
+      references,
+      unscannedFiles: [],
+      texts: [scanned('src/App.jsx', SOURCE)],
+    }),
     audit,
     probes: [probeOf('src/logo.png')],
     // The files the old-path search reads. Defaults to the one file these fixtures hold
@@ -266,6 +278,32 @@ describe('optimize', () => {
     // An asset with no webp measurement is left out of `declined`: the probe records
     // why it was not measured, and the report prints that skip.
     expect(result.plan.declined).toEqual([]);
+  });
+});
+
+describe('an edit whose offsets do not cover its reference', () => {
+  it('is refused before the file is touched, whatever put the offsets there', async () => {
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    const right = resolved('src/App.jsx', './logo.png', 'src/logo.png');
+    // Six characters early, as an adapter that miscounted would report it. The file is
+    // unchanged since the scan, so only the edit's own expected text can catch this.
+    const early = { ...right, start: right.start - 6, end: right.end - 6 } as Reference;
+
+    const run = optimize(
+      inputFor({
+        ...project,
+        graph: buildGraph({
+          root: ROOT,
+          assets: [asset('src/logo.png')],
+          references: [early],
+          unscannedFiles: [],
+          texts: [scanned('src/App.jsx', SOURCE)],
+        }),
+      }),
+    );
+
+    await expect(run).rejects.toMatchObject({ code: 'EDIT_TEXT_MISMATCH' });
+    expect(project.tree.get('src/App.jsx')).toBe(SOURCE);
   });
 });
 
@@ -418,7 +456,13 @@ describe('replace refuses to delete an original a mention would outlive', () => 
       input: inputFor({
         ...project,
         files,
-        graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
+        graph: buildGraph({
+          root: ROOT,
+          assets,
+          references,
+          unscannedFiles: [],
+          texts: [scanned('index.html', html)],
+        }),
         probes: [probeOf('public/logo.png')],
         publicPolicy: 'replace' as const,
         servingRoots: { dirs: ['public'], declared: true },
@@ -643,6 +687,7 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
           assets: PUBLIC.map((path) => asset(path)),
           references,
           unscannedFiles: [],
+          texts: Object.entries(tree).map(([file, text]) => scanned(file, text)),
         }),
         probes: PUBLIC.map((path) => probeOf(path)),
         files: ['about.html', 'index.html', 'src/icon.js', 'src/theme.js'],

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UpflyError } from './errors.js';
 import { type ReadFilePort, scanSources } from './scan.js';
+import { hashText } from './text-hash.js';
 import type { Adapter, RawReference, SourceFile } from './types.js';
 
 /**
@@ -516,9 +517,22 @@ describe('scanSources', () => {
     expect(readFile).not.toHaveBeenCalled();
   });
 
+  it('records the text of each file that yielded a reference, and of no other', async () => {
+    const result = await scanSources({
+      sourceFiles: [sourceFile('index.html', 'test-html'), sourceFile('app.css', 'test-css')],
+      adapters,
+      readFile: filesystem({
+        '/repo/index.html': 'ref:hero.png',
+        '/repo/app.css': 'no reference in this one',
+      }),
+    });
+
+    expect(result.texts).toEqual([{ path: '/repo/index.html', hash: hashText('ref:hero.png') }]);
+  });
+
   it('scans nothing without complaint', async () => {
     const result = await scanSources({ sourceFiles: [], adapters, readFile: filesystem({}) });
 
-    expect(result).toEqual({ references: [], unscanned: [], mentions: [] });
+    expect(result).toEqual({ references: [], unscanned: [], mentions: [], texts: [] });
   });
 });

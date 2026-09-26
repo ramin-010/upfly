@@ -178,6 +178,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     assets: discovery.assets,
     references,
     unscannedFiles: [...discovery.unscannedFiles, ...scanned.unscanned],
+    texts: scanned.texts,
   });
   const graphMs = Math.round(performance.now() - started);
   progress({

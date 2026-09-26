@@ -13,6 +13,8 @@ import type { Edit } from './types.js';
  * @throws {UpflyError} `OVERLAPPING_EDITS` if two edits cover overlapping text.
  * @throws {UpflyError} `AMBIGUOUS_EDITS` if two edits start at the same offset, where
  *         the result would depend on application order.
+ * @throws {UpflyError} `EDIT_TEXT_MISMATCH` if an edit's range does not hold its
+ *         `expected` text.
  */
 export function applyEdits(source: string, edits: readonly Edit[]): string {
   if (edits.length === 0) return source;
@@ -77,6 +79,13 @@ export function validateEdits(source: string, edits: readonly Edit[]): Edit[] {
       throw new UpflyError(
         'INVALID_EDIT_RANGE',
         `Edit range [${edit.start}, ${edit.end}) is not within a source of length ${source.length}.`,
+      );
+    }
+    const found = source.slice(edit.start, edit.end);
+    if (edit.expected !== undefined && found !== edit.expected) {
+      throw new UpflyError(
+        'EDIT_TEXT_MISMATCH',
+        `Edit range [${edit.start}, ${edit.end}) holds ${JSON.stringify(found)}, not the ${JSON.stringify(edit.expected)} it was worked out from.`,
       );
     }
   }

@@ -18,10 +18,16 @@ import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, relativePath, toPosix } from './paths.js';
 import { servingRootOf } from './plan.js';
-import type { PlannedRewrite, RootLinkPolicy } from './plan.js';
+import {
+  type EditsInFile,
+  type PlannedRewrite,
+  type RootLinkPolicy,
+  collectEdit,
+  plannedRewrite,
+} from './plan.js';
 import { isLinked, linkedPaths } from './reference.js';
 import type { ServingRoots } from './resolve.js';
-import type { Edit, Reference } from './types.js';
+import type { Reference } from './types.js';
 
 /** One asset's path change. Both sides POSIX-relative to the project root. */
 export interface Move {
@@ -121,7 +127,7 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
     accepted.set(move.from, move);
   }
 
-  const edits = new Map<string, Edit[]>();
+  const edits = new Map<string, EditsInFile>();
   for (const reference of input.graph.references) {
     collectRepoint(reference, accepted, input, edits, declined);
   }
@@ -129,7 +135,7 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
   return {
     moves: [...accepted.values()],
     rewrites: [...edits.entries()]
-      .map(([file, list]) => ({ file, edits: [...list].sort((a, b) => a.start - b.start) }))
+      .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
       .sort((a, b) => compareStrings(a.file, b.file)),
     refused,
     declined: declined.sort(
@@ -326,7 +332,7 @@ function collectRepoint(
   reference: Reference,
   accepted: ReadonlyMap<string, Move>,
   input: RelocateInput,
-  edits: Map<string, Edit[]>,
+  edits: Map<string, EditsInFile>,
   declined: Declined[],
 ): void {
   const root = input.graph.root;
@@ -373,9 +379,7 @@ function collectRepoint(
   }
   if (replacement === reference.rawPath) return;
 
-  const list = edits.get(file) ?? [];
-  list.push({ start: reference.start, end: reference.end, replacement });
-  edits.set(file, list);
+  collectEdit(edits, file, reference, replacement);
 }
 
 /**

@@ -170,7 +170,13 @@ export {
 } from './resolution-health.js';
 export type { ResolveOptions, ServingRoots } from './resolve.js';
 export { scanSources } from './scan.js';
-export type { ReadFilePort, ScanDiagnostic, ScanOptions, ScanResult } from './scan.js';
+export type {
+  ReadFilePort,
+  ScanDiagnostic,
+  ScanOptions,
+  ScanResult,
+  ScannedText,
+} from './scan.js';
 export { conventionLinkFor, detectConventionRoots } from './conventions.js';
 export type { ConventionLink, ConventionRoot } from './conventions.js';
 export { sweepForMentions } from './sweep.js';

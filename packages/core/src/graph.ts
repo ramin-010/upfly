@@ -11,6 +11,7 @@
 import { UpflyError } from './errors.js';
 import { compareStrings, relativePath } from './paths.js';
 import { linkedPaths } from './reference.js';
+import type { ScannedText } from './scan.js';
 import type { Asset, Reference, Resolution, UnscannedExtension, UnscannedFile } from './types.js';
 import { countExtensions } from './unscanned.js';
 
@@ -55,6 +56,12 @@ export interface Graph {
    * and how a user finds out they want an adapter.
    */
   readonly unscannedExtensions: readonly UnscannedExtension[];
+  /**
+   * The text each reference's offsets count into, keyed by `Reference.file`. The planner
+   * copies it into every rewrite, and `optimize` edits a file only while it still holds
+   * that text.
+   */
+  readonly texts: ReadonlyMap<string, ScannedText>;
 }
 
 export interface BuildGraphInput {
@@ -71,6 +78,11 @@ export interface BuildGraphInput {
    * cases the engine did not learn what the file references.
    */
   readonly unscannedFiles: readonly UnscannedFile[];
+  /**
+   * `ScanResult.texts`. Left out, the graph records no text, and `optimize` refuses every
+   * edit its plan would make, having nothing to check the files against.
+   */
+  readonly texts?: readonly ScannedText[];
 }
 
 /**
@@ -112,6 +124,7 @@ export function buildGraph(input: BuildGraphInput): Graph {
     byResolution: bucketByResolution(references),
     unscannedFiles,
     unscannedExtensions: countExtensions(unscannedFiles),
+    texts: new Map((input.texts ?? []).map((text) => [text.path, text])),
   };
 }
 
