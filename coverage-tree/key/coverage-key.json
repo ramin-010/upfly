@@ -5287,6 +5287,31 @@
       ]
     },
     {
+      "path": "apps/web/src/components/TeamThumb.tsx",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "A tooltip is display text. A template with no holes is only a string written with backticks, and the same text in quotes is declined as display text. Taken as a guess, this spelling links the team photo, and a rewrite would change what the tooltip says.",
+          "offset": 196,
+          "line": 3,
+          "column": 33
+        },
+        {
+          "raw": "/srcset/${name}.jpg",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "Alt text is display text too, and a hole does not make it a path. Taken as a guess, this template is a pattern standing for all five jpg files in apps/web/public/srcset, a link that no code makes.",
+          "offset": 218,
+          "line": 3,
+          "column": 55
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/lib/preload.mjs",
       "entries": [
         {

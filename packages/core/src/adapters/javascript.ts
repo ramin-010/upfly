@@ -4,7 +4,8 @@
  * Finds static `import`s, `require()`, dynamic `import()`, the bundler form
  * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster`, inline-SVG
  * `<image href>`, and `url()` inside CSS-in-JS template literals. Path-shaped strings,
- * templates and `+` chains outside those constructs become speculative candidates.
+ * templates and `+` chains outside those constructs become speculative candidates, except
+ * as the value of a JSX attribute that names no file, such as `alt`.
  *
  * It parses with `@babel/parser`, never a regular expression: a regex would find
  * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
@@ -290,9 +291,9 @@ interface Context {
    */
   readonly constantNamed: (name: string) => string | null;
   /**
-   * The inner `+` nodes of every chain already read. A chain nests down its left side, so
-   * the walk meets each inner node after its outer one, and must not read it again as a
-   * second, shorter chain.
+   * The `+` nodes the chain rule must not read. A chain nests down its left side, so the
+   * walk meets each inner node after its outer one, and must not read it again as a
+   * second, shorter chain. A chain in an attribute that names no file is here whole.
    */
   readonly chainParts: Set<BabelNode>;
 }
@@ -354,6 +355,7 @@ function collectFromNode(node: BabelNode, context: Context): void {
       return;
     case 'JSXOpeningElement':
       collectFromJsxSvgImage(node, context);
+      declineNonFileAttributes(node, context);
       return;
     case 'JSXAttribute':
       collectFromJsxAttribute(node, context);
@@ -505,7 +507,7 @@ function templateChunks(
  *
  * Where one operand is already a complete path (`'/img/hero.jpg' + '?v=' + v`), that
  * literal stays the reference and the chain is not read, so a rewrite can still edit the
- * literal. A chain is a guess wherever it sits, a JSX `src` included. The range runs from
+ * literal. A chain is a guess wherever it is read, a JSX `src` included. The range runs from
  * the first operand to the last without their outer quotes, so `rawPath` is source text,
  * and the assembled path travels as `assembledPath`. See "Assembled paths in JavaScript"
  * in ARCHITECTURE.md.
@@ -854,6 +856,55 @@ function collectFromJsxSvgImage(node: JSXOpeningElement, context: Context): void
     if (attribute.type !== 'JSXAttribute') continue;
     if (!attributes.includes(jsxAttributeName(attribute).toLowerCase())) continue;
     addJsxAttributeValue(attribute.value, context, 'js.jsx.svg', `JSX <${tag}> href`, false);
+  }
+}
+
+/**
+ * Mark the value of every attribute here that names no file as examined, however it is
+ * written: `` alt={`/hero.png`} `` is display text as much as `alt="/hero.png"` is.
+ * Decided at the element, because an attribute cannot see its tag.
+ */
+function declineNonFileAttributes(node: JSXOpeningElement, context: Context): void {
+  const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
+  const hrefs = JSX_SVG_HREF_ELEMENTS.get(tag) ?? [];
+  for (const attribute of node.attributes) {
+    if (attribute.type !== 'JSXAttribute') continue;
+    const name = jsxAttributeName(attribute).toLowerCase();
+    if (JSX_URL_ATTRIBUTES.has(name) || hrefs.includes(name)) continue;
+    const value = attribute.value;
+    declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
+  }
+}
+
+/**
+ * Record a value's string and template literals as examined and its `+` chains as read,
+ * through any choice between values. A function, call, object or array ends the search:
+ * a component can pass it on as data, as `images={['/img/a.png']}` does.
+ */
+function declineValue(node: BabelNode | null | undefined, context: Context): void {
+  if (node === null || node === undefined || typeof node.start !== 'number') return;
+  switch (node.type) {
+    case 'StringLiteral':
+      context.handled.add(node.start + 1);
+      return;
+    case 'TemplateLiteral':
+      context.handled.add(node.start);
+      return;
+    case 'BinaryExpression':
+      if (node.operator !== '+') return;
+      context.chainParts.add(node);
+      declineValue(node.left, context);
+      declineValue(node.right, context);
+      return;
+    case 'ConditionalExpression':
+      declineValue(node.consequent, context);
+      declineValue(node.alternate, context);
+      return;
+    case 'LogicalExpression':
+      declineValue(node.left, context);
+      declineValue(node.right, context);
+      return;
+    default:
   }
 }
 

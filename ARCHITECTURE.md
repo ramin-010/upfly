@@ -635,7 +635,10 @@ which beats a hedge because the rewrite can act on it; one that does not is disc
 the report, and listable with `--include-discarded`**, because a candidate the JSON adapter ate in
 error is invisible unless the count says something is wrong and the list says what. It leaves
 alone any value a construct examined and declined: `alt="/not.png"` is display text, and
-overturning that decision would rewrite it.
+overturning that decision would rewrite it. The attribute decides, not the spelling of its value:
+a template with holes or none, a `+` chain, or a choice between them in `alt` is declined too. A
+function, call, object or array there is still searched, because a component can pass it on as
+data.
 
 Four things they share, and each was a bug before it was a rule:
 
@@ -750,9 +753,9 @@ There is one difference, and it favours the chain. Where an operand is already a
 as in `'/img/hero.jpg' + '?v=' + version`, that literal stays the reference and the chain is not
 read at all. The literal resolves as an ordinary path, and a rewrite edits exactly that literal and
 leaves the query alone, where the template twin would be a pattern that no rewrite touches. A chain
-is a guess wherever it sits, a JSX `src` included, so it is held to the bound even where a template
-would not be. A parenthesised `+` is a single operand, because the brackets may be adding numbers
-rather than joining text.
+is a guess wherever it is read, a JSX `src` included, so it is held to the bound even where a
+template would not be. A parenthesised `+` is a single operand, because the brackets may be adding
+numbers rather than joining text.
 
 Same-file constants are read through. `const ASSET_BASE = '/gallery'` above
 `` `${ASSET_BASE}/${name}.png` `` is statically knowable, so the template is judged as

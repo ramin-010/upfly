@@ -167,6 +167,33 @@ describe('javascriptAdapter', () => {
       expect(paths(source)).toEqual([...expected]);
     });
 
+    // Display text in every spelling. Taken as a guess, each could link an image the text
+    // only names, and a rewrite could then edit the text.
+    const displayText: ReadonlyArray<[spelling: string, source: string]> = [
+      ['a template with no holes', '<img src="/yes.png" title={`/img/team.jpg`} />'],
+      ['a template with a hole', '<img src="/yes.png" alt={`/img/${n}.png`} />'],
+      ['a + chain', `<img src="/yes.png" alt={'/img/' + n + '.png'} />`],
+      [
+        'a + chain that starts with a constant',
+        `const BASE = '/img/'; <img src="/yes.png" alt={BASE + n + '.png'} />;`,
+      ],
+      ['a choice between strings', `<img src="/yes.png" alt={ok ? '/img/a.png' : ''} />`],
+      ['a fallback', `<img src="/yes.png" alt={name ?? '/img/a.png'} />`],
+    ];
+
+    it.each(displayText)(
+      'reads nothing from an attribute that names no file, written as %s',
+      (_spelling, source) => {
+        expect(paths(source)).toEqual(['/yes.png']);
+      },
+    );
+
+    it('still guesses inside a function or an array that an attribute passes on', () => {
+      // A component can hand these on as data, so the attribute's name says nothing about them.
+      expect(paths("<Picker onPick={() => load('/img/a.png')} />")).toEqual(['/img/a.png']);
+      expect(paths("<Gallery images={['/img/a.png']} />")).toEqual(['/img/a.png']);
+    });
+
     it('splits srcSet into candidates, as the HTML adapter does', () => {
       // Left unsplit this is two false positives: the whole string resolves to
       // nothing, and every image but the first gains no reference and looks dead.
@@ -782,6 +809,13 @@ body`,
       // set would have made every link a candidate, including links to non-images.
       expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
       expect(find('<a href="/a/hero.png">x</a>')).toEqual([]);
+      expect(find('<a href={`/a/hero.png`}>x</a>')).toEqual([]);
+    });
+
+    it('reads a + chain in an image href as a guess, as it does in a src', () => {
+      const [chain] = find("<image href={'/a/' + s + '.png'} />");
+      expect(chain?.shape).toBe('js.concat.pattern');
+      expect(chain?.asserted).toBe(false);
     });
   });
 
