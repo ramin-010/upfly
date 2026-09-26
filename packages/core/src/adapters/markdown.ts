@@ -550,10 +550,21 @@ function contentColumnOf(marker: RegExpExecArray): number {
 /**
  * HTML's raw-text elements, which consume everything until their closing tag.
  *
- * The obsolete `<xmp>` and `<plaintext>` belong here too (`<plaintext>` never closes at
- * all): parse5 implements the whole parsing algorithm, not the polite subset.
+ * The set parse5 reads as text in a document body, from `startTagInBody` in its parser.
+ * `<noscript>` joins them only with scripting on, and html.ts parses with it off.
+ * `<plaintext>` never closes at all. GitHub's Markdown filters the same nine tags.
  */
-const RAW_TEXT_ELEMENTS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
+const RAW_TEXT_ELEMENTS = [
+  'style',
+  'script',
+  'textarea',
+  'title',
+  'plaintext',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+] as const;
 
 /**
  * Blank a raw-text open tag that never closes.

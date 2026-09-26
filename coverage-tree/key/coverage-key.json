@@ -6647,6 +6647,38 @@
       ]
     },
     {
+      "path": "apps/docs/src/content/guide/unclosed-iframe.md",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "Below an <iframe> that the prose mentions and never closes. Mid-sentence the tag is inline HTML and the text after it is still Markdown, but the HTML parser that reads the raw HTML treats everything after an open iframe as text. Unless the markdown adapter masks the unclosed tag, this image vanishes from the HTML pass with nothing in the report.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 159,
+          "line": 6,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/unclosed-noembed.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "Below a <noembed> that the prose mentions and never closes. The HTML parser reads everything after an open noembed as text, as it does after an iframe, so the unclosed tag has to be masked for this image to be found. In a file of its own, so its result does not depend on how the iframe is handled.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 180,
+          "line": 6,
+          "column": 11
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/styles/liquid-prefix.scss",
       "entries": [
         {

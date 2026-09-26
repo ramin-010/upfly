@@ -1,3 +1,4 @@
+import { type DefaultTreeAdapterMap, html, parse } from 'parse5';
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
@@ -6,6 +7,21 @@ import { markdownAdapter, maskInactiveRegions } from './markdown.js';
 function find(text: string, file = '/project/README.md'): RawReference[] {
   return markdownAdapter.findReferences({ file, text });
 }
+
+/** The text of every text node under `node`. */
+function textUnder(node: DefaultTreeAdapterMap['node']): string {
+  if ('value' in node) return node.value;
+  return 'childNodes' in node ? node.childNodes.map(textUnder).join('') : '';
+}
+
+/**
+ * The tags after which parse5 reads markup as text, found by asking it, with scripting off
+ * as html.ts parses. A copy of the adapter's list could only agree with the adapter.
+ */
+const RAW_TEXT_TAGS: readonly string[] = Object.values(html.TAG_NAMES).filter((tag) => {
+  const document = parse(`<p>a <${tag}> b <img src="x.png"> c`, { scriptingEnabled: false });
+  return textUnder(document).includes('<img');
+});
 
 function paths(text: string): string[] {
   return find(text).map((reference) => reference.rawPath);
@@ -273,11 +289,25 @@ describe('markdownAdapter', () => {
     // mentions one ("retargeting onto a base-<style> variant") swallows the rest of the
     // document. Each layer is correct on its own; the composition is what goes wrong.
 
-    const TAGS = ['style', 'script', 'textarea', 'title', 'plaintext', 'xmp'] as const;
+    it('asks parse5 which tags it reads as text, and gets an answer', () => {
+      // An empty answer would leave every test below with nothing to check.
+      expect(RAW_TEXT_TAGS).toEqual(expect.arrayContaining(['script', 'style']));
+    });
 
-    it.each(TAGS)('does not swallow the document after a bare <%s> in prose', (tag) => {
-      // For five of these six there is no error at all: a raw `<img>` after the mention
-      // is simply gone, with nothing in the report.
+    it('masks an unclosed tag exactly when parse5 reads what follows it as text', () => {
+      // Every tag name parse5 knows: one too few in the adapter hides references, and one
+      // too many blanks markup parse5 would have read.
+      const disagreements = Object.values(html.TAG_NAMES).filter((tag) => {
+        const prose = `prose mentioning a <${tag}> element`;
+        return (maskInactiveRegions(prose) !== prose) !== RAW_TEXT_TAGS.includes(tag);
+      });
+
+      expect(disagreements).toEqual([]);
+    });
+
+    it.each(RAW_TEXT_TAGS)('does not swallow the document after a bare <%s> in prose', (tag) => {
+      // Only `<style>` fails loudly, when the swallowed text reaches the CSS parser. After
+      // any other, a raw `<img>` after the mention is simply gone, with nothing reported.
       const text = [
         '# Guide',
         '',
