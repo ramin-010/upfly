@@ -147,10 +147,10 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 8 | otherwise | `discarded` | a path-shaped string in `package.json` |
 
 The ceiling tests come first because if there is no static path, every later question is
-meaningless. **Rung 3's position is the subtle one**, and it is wrong in both directions: moved
+meaningless. **Rung 3's position is the subtle one**, and moving it is wrong in both directions:
 above the ceiling tests it silently swallows `url($hero)` and `` `/img/${file}` ``, real dynamic
-references with no extension to test, and moved below the rungs that turn a miss into a finding
-it reports every `url(inter.woff2)` as broken. There is a test for each failure mode, because the
+references with no extension to test, and below the rungs that turn a miss into a finding it
+reports every `url(inter.woff2)` as broken. There is a test for each failure mode, because the
 placement is invisible otherwise.
 
 Two outcomes deserve their own note.
@@ -507,12 +507,12 @@ positive we manufactured ourselves. The `eleventy` fixture has two of them: `log
 The hedge stands in for coverage the engine does not have yet, and the fix for a hedge is an
 adapter, not a softer label.
 
-The obvious rule, hedge globally whenever some extension went unread, degenerates. Measured on
-this repository, the unread list is `.astro`, `.njk`, `.yaml`, `.yml`, three dotfiles and
-`LICENSE`. It is never empty on a real project, so `dead` would never fire, and a label that
-always fires carries no information. A curated allowlist of "extensions that can reference an
-image" is the other wrong answer: it is a place to be wrong in the direction that ships a false
-`dead`.
+The obvious rule, hedge globally whenever some extension went unread, degenerates. On the five
+validation repositories the unread list holds 10 to 28 file types each: templates such as `.njk`,
+`.liquid` and `.ejs`, icons, fonts, media and SVG. It is never empty on a real project, so `dead`
+would never fire, and a label that always fires carries no information. A curated allowlist of
+"extensions that can reference an image" is the other wrong answer: it is a place to be wrong in
+the direction that ships a false `dead`.
 
 **So the hedge is per-asset.** `discover` records every file it did not read *with its path*, and
 `scan` adds every file it could not parse. For each asset with zero references, the audit sweeps
@@ -578,8 +578,9 @@ Rules an adapter must follow:
    path-shaped string as speculative and lets the resolver decide.
 3. **Be pure.** Same input, same output, no globals.
 4. **Report offsets of the path text only**, not the surrounding quotes or attribute.
-5. **Ship a fixture and a table-driven test.** The compatibility matrix in the README is
-   generated from fixture results, so an adapter without fixtures is invisible.
+5. **Ship a fixture and a table-driven test.** A fixture is a small project in `fixtures/`,
+   written the way a person would write it. The adapter's `*.fixtures.test.ts` reads it, and
+   `fixtures.test.ts` and the fixture build run the whole engine over it.
 
 Parsing strategy: use a real parser wherever one is cheap and correct: `@babel/parser` or
 `oxc` for JS/TS, `parse5` for HTML, `postcss` for CSS. Regex is acceptable for Markdown and
@@ -1644,7 +1645,7 @@ selects the largest first and a uniform tree would make the cap look idle.
 
 ## The report
 
-The JSON is public API and carries `version`. It is snapshot-tested over all five fixture trees, so a
+The JSON is public API and carries `version`. It is snapshot-tested over every fixture tree, so a
 schema change shows up as a diff somebody has to approve rather than as tests that still pass.
 
 **No absolute path reaches it.** Half the data upstream carries an absolute `path` beside a POSIX
@@ -1706,7 +1707,7 @@ are formatted by hand. Colour is the CLI's business, since that is the layer tha
 and `NO_COLOR`.
 
 Caveats carry their own count and a `detail` list. "No adapter reads these file types" is a shrug;
-`.astro — 1 file` is how someone finds out which adapter they want.
+`.njk — 2 files` is how someone finds out which adapter they want.
 
 ### Scoring references for accuracy
 
