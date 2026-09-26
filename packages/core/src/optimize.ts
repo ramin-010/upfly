@@ -358,17 +358,26 @@ async function stage(
       throw new Error(`the plan names ${conversion.asset}, which is not in the graph`);
     }
 
-    await input.probe.encodeToFile({
-      path: source.asset.path,
-      format: conversion.format,
-      // Getting this wrong keeps one frame of an animation, for a saving only
-      // achievable by destroying it.
-      animated: animated.has(conversion.asset),
-      // The setting the saving was measured at. The probe's default quality would put a
-      // different file on disk from the one whose saving the user was shown.
-      lossless: conversion.quality === 'lossless',
-      destination: `${input.graph.root}/${runDir}/${staged}`,
-    });
+    // Hashed before the encode and checked after each step that reads the original, so the
+    // file encoded, the file backed up and the file the delete expects are one file.
+    const original = await input.store.hash(conversion.asset);
+    if (original === null) {
+      throw originalMoved(conversion.asset, 'was removed after Upfly read the project');
+    }
+
+    await unlessOriginalMoved(input.store, conversion.asset, original, () =>
+      input.probe.encodeToFile({
+        path: source.asset.path,
+        format: conversion.format,
+        // Getting this wrong keeps one frame of an animation, for a saving only
+        // achievable by destroying it.
+        animated: animated.has(conversion.asset),
+        // The setting the saving was measured at. The probe's default quality would put a
+        // different file on disk from the one whose saving the user was shown.
+        lossless: conversion.quality === 'lossless',
+        destination: `${input.graph.root}/${runDir}/${staged}`,
+      }),
+    );
 
     const afterHash = await input.store.hash(`${runDir}/${staged}`);
     if (afterHash === null) {
@@ -380,12 +389,10 @@ async function stage(
 
     // Before `prepare`, which refuses a delete whose backup is not actually there.
     const backup = `backup/${conversion.asset}`;
-    await input.store.copy(conversion.asset, `${runDir}/${backup}`);
-    const beforeHash = await input.store.hash(conversion.asset);
-    if (beforeHash === null) {
-      throw new Error(`${conversion.asset} vanished between planning and staging`);
-    }
-    operations.push({ kind: 'delete', path: conversion.asset, beforeHash, backup });
+    await unlessOriginalMoved(input.store, conversion.asset, original, () =>
+      input.store.copy(conversion.asset, `${runDir}/${backup}`),
+    );
+    operations.push({ kind: 'delete', path: conversion.asset, beforeHash: original, backup });
   }
 
   for (const rewrite of plan.rewrites) {
@@ -410,6 +417,43 @@ async function stage(
 }
 
 /**
+ * Run a step that reads an original, then refuse the run if the original is no longer the
+ * file hashed before it, whether or not the step failed because of that. A failure with
+ * the original unchanged is the step's own and is thrown as it is.
+ *
+ * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` when the original was removed or changed
+ */
+async function unlessOriginalMoved(
+  store: FileStore,
+  path: string,
+  expected: string,
+  step: () => Promise<unknown>,
+): Promise<void> {
+  let failure: { error: unknown } | null = null;
+  try {
+    await step();
+  } catch (error) {
+    failure = { error };
+  }
+  const now = await store.hash(path);
+  if (now !== expected) {
+    throw originalMoved(
+      path,
+      `${now === null ? 'was removed' : 'changed'} while Upfly was converting it`,
+    );
+  }
+  if (failure !== null) throw failure.error;
+}
+
+/** The refusal for an original that is not the file the plan was made from. */
+function originalMoved(path: string, happened: string): UpflyError {
+  return new UpflyError(
+    'TRANSACTION_FOREIGN_CHANGE',
+    `${path} ${happened}, so no file in the project was changed. Run Upfly again to plan from the project as it is now.`,
+  );
+}
+
+/**
  * Refuse a rewrite unless the file holds the text the scan read.
  *
  * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` when the file changed since the scan
@@ -425,7 +469,7 @@ function refuseUnlessScannedText(rewrite: PlannedRewrite, text: string): void {
   if (hashText(text) !== rewrite.textHash) {
     throw new UpflyError(
       'TRANSACTION_FOREIGN_CHANGE',
-      `${rewrite.file} changed after Upfly read it, so its references are no longer where the plan found them, and nothing was written. Run Upfly again to plan from the file as it is now.`,
+      `${rewrite.file} changed after Upfly read it, so its references are no longer where the plan found them, and no file in the project was changed. Run Upfly again to plan from the file as it is now.`,
     );
   }
 }

@@ -437,6 +437,30 @@ describe('the lock covers the gap between staging and committing', () => {
   });
 });
 
+describe('an image saved while it is being encoded', () => {
+  it('is refused, so the file converted is the file backed up and removed', async () => {
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    const encode = project.probe.encodeToFile;
+    const probe: ImageProbe = {
+      ...project.probe,
+      async encodeToFile(options) {
+        const bytes = await encode(options);
+        project.tree.set('src/logo.png', 'PNG saved from an image editor');
+        return bytes;
+      },
+    };
+
+    await expect(
+      optimize(inputFor({ ...project, probe, publicPolicy: 'replace' })),
+    ).rejects.toMatchObject({
+      code: 'TRANSACTION_FOREIGN_CHANGE',
+      message: expect.stringContaining('src/logo.png changed while'),
+    });
+    expect(project.tree.get('src/App.jsx')).toBe(SOURCE);
+    expect(project.tree.get('src/logo.png')).toBe('PNG saved from an image editor');
+  });
+});
+
 describe('a lock file its creator is still writing', () => {
   it('is taken as held, so a second run cannot start beside the first', async () => {
     // What a reader sees between the creator's exclusive create and its write: nothing yet,

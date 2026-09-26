@@ -126,3 +126,30 @@ describe('a source file saved after the scan read it', () => {
     expect(await readFile(page, 'utf8')).toBe(saved);
   });
 });
+
+describe('an image removed after the scan read it', () => {
+  it('is a refusal with a code and a sentence, not a crash', async () => {
+    const root = await copy();
+    const page = await readFile(join(root, 'index.html'), 'utf8');
+    const converting: string[] = [];
+
+    const run = optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: true,
+      beforeWrite: async (plan) => {
+        converting.push(...plan.conversions.map((conversion) => conversion.asset));
+        await rm(join(root, 'images/logo.png'));
+        return true;
+      },
+    });
+
+    await expect(run).rejects.toMatchObject({
+      code: 'TRANSACTION_FOREIGN_CHANGE',
+      message: expect.stringContaining('images/logo.png was removed'),
+    });
+    expect(converting).toContain('images/logo.png');
+    expect(await readFile(join(root, 'index.html'), 'utf8')).toBe(page);
+  });
+});

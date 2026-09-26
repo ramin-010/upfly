@@ -1370,7 +1370,10 @@ copies it into each rewrite (`textHash`). `optimize` stages the encodes first, w
 minutes, and only then reads each file it rewrites; a file whose text no longer matches the
 scan's is refused there, before anything is written. Without that, the hashes prepare and
 commit check would be taken from the file as saved, and the scan's offsets would be applied
-to it with every check passing.
+to it with every check passing. Images get the same treatment: each original is hashed before
+its encode and checked after the encode and after its backup, so the file converted, the file
+backed up and the file a delete expects are one file, and an image removed or saved meanwhile
+is a refusal naming it rather than a crash.
 
 **There is no separate "recover an interrupted run" path.** Undoing a finished run and cleaning
 up an interrupted one are the same job (reverse whatever the disk says actually happened), so
