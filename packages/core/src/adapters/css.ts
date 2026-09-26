@@ -311,7 +311,7 @@ function collectVariableDeclarationString(
   declaration: DeclarationContext,
   position: ValuePosition,
 ): void {
-  const { path } = splitPathSuffix(node.value);
+  const { path, suffix } = splitPathSuffix(node.value);
   // As in the JavaScript and JSON adapters, any file extension makes a candidate, and the
   // resolver decides which extensions are assets. `$dir: '/gallery'` has none.
   if (path === '' || extensionOf(path) === '' || isExternalUrl(node.value, 'string')) return;
@@ -319,6 +319,7 @@ function collectVariableDeclarationString(
 
   addReference({
     text: path,
+    suffix,
     // `sourceIndex` sits on the opening quote; the path starts one after it.
     start: base + node.sourceIndex + 1,
     run,
@@ -468,6 +469,11 @@ function addReference(input: {
    * names nothing is `discarded`, while an asserted one is reported `broken`.
    */
   asserted?: boolean;
+  /**
+   * The `?query` or `#fragment` the caller already split off `text`, which a rewrite keeps.
+   * Absent, `text` is split here.
+   */
+  suffix?: string;
 }): void {
   const { text, start, run, declaration, position, quote } = input;
   const asserted = input.asserted ?? true;
@@ -497,8 +503,16 @@ function addReference(input: {
   // An interpolated path is kept whole, including any `?query` or `#fragment`;
   // `matchPattern` removes the suffix before globbing.
   const interpolated = isInterpolated(text);
-  const { path, suffix } = interpolated ? { path: text, suffix: '' } : splitPathSuffix(text);
+  const split = interpolated ? { path: text, suffix: '' } : splitPathSuffix(text);
+  const { path } = split;
+  const suffix = input.suffix ?? split.suffix;
   if (path === '') return; // A bare `?query` names no file.
+
+  // Every note that applies, in a fixed order, so that one never replaces another.
+  const notes = [
+    ...(asserted ? [] : ['a path-shaped string literal, guessed rather than asserted']),
+    ...(suffix === '' ? [] : [`query or fragment preserved: ${suffix}`]),
+  ];
 
   references.push({
     file,
@@ -512,7 +526,6 @@ function addReference(input: {
     // `/theme-#{$mode}.png` up verbatim and report a broken reference nobody wrote.
     ceiling: interpolated ? 'medium' : 'high',
     asserted,
-    ...(asserted ? {} : { note: 'a path-shaped string literal, guessed rather than asserted' }),
-    ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),
+    ...(notes.length === 0 ? {} : { note: notes.join('; ') }),
   });
 }

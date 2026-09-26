@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
-import { cssAdapter } from './css.js';
+import { cssAdapter, findCssReferences } from './css.js';
 import { parseFailure } from './parse-failure.js';
 
 /**
@@ -529,6 +529,41 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
     });
 
     expect(references).toEqual([]);
+  });
+});
+
+/**
+ * A reference's note is surfaced verbatim in the report, and each note says something the
+ * others do not: that the path is a guess, and that a suffix a rewrite keeps was split off.
+ */
+describe('every note that applies reaches the reference', () => {
+  it.each([
+    ['a SCSS variable with a query', "$hero: '/img/hero.jpg?v=2';\n", '.scss', '?v=2'],
+    ['a Less variable with a fragment', "@icon: '/img/sprite.svg#home';\n", '.less', '#home'],
+  ])(
+    'joins the guess and the kept suffix for %s, in that order',
+    (_name, text, extension, suffix) => {
+      const [reference] = findCssReferences({ file: `/project/s${extension}`, text, extension });
+
+      expect(reference?.note).toBe(
+        `a path-shaped string literal, guessed rather than asserted; query or fragment preserved: ${suffix}`,
+      );
+    },
+  );
+
+  it('writes a note that applies alone as it is', () => {
+    const [asserted] = findCssReferences({
+      file: '/project/s.css',
+      text: 'a { background: url(/img/hero.jpg?v=2); }',
+    });
+    const [guessed] = findCssReferences({
+      file: '/project/s.scss',
+      text: "$hero: '/img/hero.jpg';\n",
+      extension: '.scss',
+    });
+
+    expect(asserted?.note).toBe('query or fragment preserved: ?v=2');
+    expect(guessed?.note).toBe('a path-shaped string literal, guessed rather than asserted');
   });
 });
 
