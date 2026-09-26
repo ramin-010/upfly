@@ -399,6 +399,61 @@ describe('sweepForMentions', () => {
       expect(result.mentions.size).toBe(0);
     });
 
+    it('reads a path that did not resolve in every spelling the resolver would look it up in', async () => {
+      // Read only as written, `/img/my%20photo.png` holds the token `20photo.png` and
+      // `a&amp;b.png` the token `b.png`, so neither asset would be found. The resolver tries
+      // each decoded spelling after the written one, and so does the sweep.
+      const graph = graphOf({
+        assets: [
+          asset('src/img/my photo.png'),
+          asset('src/img/a&b.png'),
+          asset('src/img/unused.png'),
+        ],
+        references: [
+          { ...unlinked('data.json', '/img/my%20photo.png', 'discarded'), kind: 'json' },
+          unlinked('page.html', '{{ base }}/img/a&amp;b.png', 'dynamic'),
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({
+          '/repo/data.json': '{ "photo": "/img/my%20photo.png" }',
+          '/repo/page.html': '<img src="{{ base }}/img/a&amp;b.png">',
+        }),
+      });
+
+      expect(result.mentions.get('src/img/my photo.png')).toEqual([
+        {
+          asset: 'src/img/my photo.png',
+          source: 'unresolved-reference',
+          where: 'data.json:1',
+          quote: '/img/my%20photo.png',
+        },
+      ]);
+      expect(result.mentions.get('src/img/a&b.png')?.map((mention) => mention.quote)).toEqual([
+        '{{ base }}/img/a&amp;b.png',
+      ]);
+      expect(result.mentions.has('src/img/unused.png')).toBe(false);
+    });
+
+    it('reads a backslash escape as one only in a Markdown destination, as the resolver does', async () => {
+      // CommonMark drops a backslash before punctuation in a link destination, so this names
+      // `my_photo.png` in Markdown. Anywhere else the resolver leaves a backslash as written.
+      const written = '{{ site.url }}/img/my\\_photo.png';
+      const sweepAs = (kind: 'md' | 'attr') =>
+        sweepForMentions({
+          graph: graphOf({
+            assets: [asset('src/img/my_photo.png')],
+            references: [{ ...unlinked('post.md', written, 'dynamic'), kind }],
+          }),
+          readFile: files({ '/repo/post.md': written }),
+        });
+
+      expect((await sweepAs('md')).mentions.has('src/img/my_photo.png')).toBe(true);
+      expect((await sweepAs('attr')).mentions.has('src/img/my_photo.png')).toBe(false);
+    });
+
     it('still cites the file when its source cannot be re-read for a line', async () => {
       const graph = graphOf({
         assets: [asset('img/hero.png')],

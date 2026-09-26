@@ -489,7 +489,10 @@ tries each one: its extension filter passes a path if any spelling ends in a tra
 and its lookup tries the spellings in order, recording on the resolved reference the spelling
 that matched. Rung 5 asks about the same spellings in the same order, so an encoded path to a
 file an ignore rule excludes, or into a directory the walk pruned, is `out-of-scope` rather than
-`broken`: `unindexed%20photo.png` names the ignored `unindexed photo.png`.
+`broken`: `unindexed%20photo.png` names the ignored `unindexed photo.png`. The audit's sweep reads
+a path that did not resolve in the same spellings, so an asset named only in an encoded spelling
+is `possibly-dead` rather than `dead` (see "`possibly-dead`, and why "zero references" is usually
+a lie").
 
 The literal spelling is tried first. `enc%20name.png` can be a real file whose name contains a
 percent sign, while `hero%20image.png` reaches a file called `hero image.png`, and as text the two
@@ -575,6 +578,13 @@ already its own finding, and `hero.png: dead` beside `./wrong-dir/hero.png: brok
 more than a hedge would. A withheld one has no finding of its own, and `/img/hero.png` may be served
 from the directory the run did not find, so a `dead` beside it would call a file safe to remove
 that the site may serve. `out-of-scope` is known not to be an indexed asset.
+
+Each of those paths is read in every spelling the resolver would look it up in, for the
+reference's kind (see "Percent-encoded and entity-encoded paths"). Read only as written,
+`/img/my%20photo.png` holds the token `20photo.png`, and `my photo.png` would be called dead beside
+a path that names it. A spelling's last segment is looked up whole as well as searched for
+filename tokens, because a decoded name can hold characters no token can: `a&amp;b.png` decodes
+to `a&b.png`, whose only token is `b.png`.
 
 **No basename sweep can rescue a filename assembled at runtime.** `` `background-${dir}.png` ``
 never contains the string `background-ltr.png`, so there is a test pinning that limit, of *the

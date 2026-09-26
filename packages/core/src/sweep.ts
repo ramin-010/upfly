@@ -9,6 +9,7 @@
  * See "`possibly-dead`, and why "zero references" is usually a lie" in ARCHITECTURE.md.
  */
 
+import { spellingsOf, splitPathSuffix } from './adapters/reference-path.js';
 import { citeReferences, lineOf } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
@@ -225,11 +226,11 @@ async function sweepUnresolvedReferences(
   const hits: { reference: Reference; asset: string }[] = [];
 
   for (const reference of unknownTargetReferences(options.graph)) {
-    for (const [token] of tokens(reference.rawPath)) {
-      for (const asset of candidates.get(token.toLowerCase()) ?? []) {
-        hits.push({ reference, asset });
-      }
+    const named = new Set<string>();
+    for (const name of namesIn(reference)) {
+      for (const asset of candidates.get(name) ?? []) named.add(asset);
     }
+    for (const asset of named) hits.push({ reference, asset });
   }
   if (hits.length === 0) return;
 
@@ -249,6 +250,27 @@ async function sweepUnresolvedReferences(
       quote: hit.reference.rawPath,
     });
   }
+}
+
+/**
+ * The file names a path that did not resolve could stand for, lowercased as the candidates
+ * are.
+ *
+ * It is read in every spelling the resolver would look it up in, so `/img/my%20photo.png`
+ * names `my photo.png`. A spelling's last segment is taken whole, because a decoded name
+ * can hold what no filename token can: `/img/a&amp;b.png` names `a&b.png`. Each spelling
+ * is also searched for tokens, since a dynamic path can hold a name anywhere.
+ */
+function namesIn(reference: Reference): ReadonlySet<string> {
+  const { path } = splitPathSuffix(reference.rawPath);
+  const spelled = spellingsOf(path, reference.kind).map((spelling) => spelling.path);
+  const names = new Set<string>();
+
+  for (const text of [reference.rawPath, ...spelled]) {
+    names.add(text.slice(text.lastIndexOf('/') + 1).toLowerCase());
+    for (const [token] of tokens(text)) names.add(token.toLowerCase());
+  }
+  return names;
 }
 
 /**

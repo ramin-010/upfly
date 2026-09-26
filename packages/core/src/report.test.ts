@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
@@ -1855,6 +1855,157 @@ describe('the references withheld when the serving root cannot be found', () => 
     ).toEqual([]);
     // Nothing names `unused.png`, so it stays confidently dead.
     expect(verdictOf('src/img/unused.png')).toBe('dead');
+  });
+});
+
+/**
+ * A small project held in memory and run through the real adapters, resolver, sweep and
+ * audit: a fixture tree cannot take these inputs without moving every snapshot it has. Its
+ * page shows ten images kept under `src`, which serves them, so a run that is not told so
+ * resolves none of their root-relative paths and withholds them.
+ */
+describe('what a path that did not resolve names, in a project held in memory', () => {
+  const ROOT = resolve('/repo');
+  const SERVED = Array.from({ length: 10 }, (_, index) => `src/img/a${index}.png`);
+  const SERVED_FROM_SRC: ServingRoots = { dirs: ['src'], declared: true };
+
+  /** An HTML page with one image for each of `SERVED` and then one for each path, a line each. */
+  function page(paths: readonly string[] = []): string {
+    const srcs = [...SERVED.map((asset) => asset.slice('src'.length)), ...paths];
+    return `${srcs.map((src) => `<img src="${src}">`).join('\n')}\n`;
+  }
+
+  async function reportForFiles(
+    sources: Readonly<Record<string, string>>,
+    assetPaths: readonly string[],
+    servingRoots: ServingRoots = NO_SERVING_ROOT,
+  ): Promise<Report> {
+    const texts = new Map(
+      Object.entries(sources).map(([relative, text]) => [join(ROOT, relative), text]),
+    );
+    const readFileText = async (path: string): Promise<string> => {
+      const text = texts.get(path);
+      if (text === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      return text;
+    };
+    const assets = assetPaths.map((relative) => ({
+      path: join(ROOT, relative),
+      relative,
+      extension: extname(relative).toLowerCase(),
+      bytes: 70,
+    }));
+    const sourceFiles = Object.keys(sources).map((relative) => {
+      const extension = extname(relative);
+      const adapter = ADAPTERS.find((candidate) => candidate.extensions.includes(extension));
+      if (adapter === undefined) throw new Error(`no adapter reads ${relative}`);
+      return { path: join(ROOT, relative), relative, extension, adapterId: adapter.id };
+    });
+
+    const scanned = await scanSources({
+      sourceFiles,
+      adapters: ADAPTERS,
+      readFile: readFileText,
+      assetBasenames: basenamesOf(assets),
+    });
+    const graph = buildGraph({
+      root: ROOT,
+      assets,
+      references: resolveReferences(scanned.references, {
+        root: ROOT,
+        assets,
+        servingRoots,
+        exists: () => false,
+      }),
+      unscannedFiles: scanned.unscanned,
+    });
+    const sweep = await sweepForMentions({
+      graph,
+      readFile: readFileText,
+      scannedMentions: scanned.mentions,
+      publicDirs: servingRoots.dirs,
+    });
+    const auditResult = await audit({
+      graph,
+      sweep,
+      readFile: readFileText,
+      publicDirs: servingRoots.dirs,
+    });
+
+    return buildReport({
+      graph,
+      audit: auditResult,
+      discovery: {
+        root: ROOT,
+        assets,
+        sourceFiles,
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        unscannedFiles: [],
+      },
+      sweep,
+      servingRoots,
+    });
+  }
+
+  function verdictOf(report: Report, asset: string): string | undefined {
+    return report.findings.find(
+      (finding) =>
+        (finding.kind === 'dead' || finding.kind === 'possibly-dead') && finding.asset === asset,
+    )?.kind;
+  }
+
+  /** Each mention behind an asset's hedge, as `source where quote`. */
+  function evidenceOf(report: Report, asset: string): readonly string[] {
+    const finding = report.findings.find(
+      (candidate) => candidate.kind === 'possibly-dead' && candidate.asset === asset,
+    );
+    return finding?.kind === 'possibly-dead'
+      ? finding.evidence.map((mention) => `${mention.source} ${mention.where} ${mention.quote}`)
+      : [];
+  }
+
+  it('hedges an asset a withheld reference names only in an encoded spelling', async () => {
+    // Served from `src`, `/img/my%20photo.png` is `src/img/my photo.png`: the resolver tries
+    // the decoded spelling after the written one. With no serving root the target is unknown
+    // rather than missing, in either spelling, so the asset is hedged rather than dead.
+    const sources = { 'src/index.html': page(['/img/my%20photo.png']) };
+    const assets = [...SERVED, 'src/img/my photo.png', 'src/img/unused.png'];
+
+    const report = await reportForFiles(sources, assets);
+    const served = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+    const diagnosis = report.findings.find((finding) => finding.kind === 'serving-root-unknown');
+
+    expect(
+      diagnosis?.kind === 'serving-root-unknown' &&
+        diagnosis.suppressed.map((entry) => entry.rawPath),
+    ).toContain('/img/my%20photo.png');
+    expect(verdictOf(report, 'src/img/my photo.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/my photo.png')).toEqual([
+      'unresolved-reference src/index.html:11 /img/my%20photo.png',
+    ]);
+    // Nothing names `unused.png`, so it stays confidently dead.
+    expect(verdictOf(report, 'src/img/unused.png')).toBe('dead');
+    // The control: once `src` is known to serve, the reference links the asset.
+    expect(verdictOf(served, 'src/img/my photo.png')).toBeUndefined();
+  });
+
+  it('hedges an asset a dynamic path names only in an encoded spelling, in a run with its serving root', async () => {
+    // A template hole leaves the path dynamic whatever the serving root is, so this needs no
+    // withheld reference: the page's own images all resolve against `src` here.
+    const sources = {
+      'src/index.html': page(),
+      'src/posts/first.md': '# First\n\n![Photo]({{ site.url }}/img/my%20photo.png)\n',
+    };
+    const assets = [...SERVED, 'src/img/my photo.png'];
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(verdictOf(report, 'src/img/my photo.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/my photo.png')).toEqual([
+      'unresolved-reference src/posts/first.md:3 {{ site.url }}/img/my%20photo.png',
+    ]);
   });
 });
 
