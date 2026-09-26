@@ -123,6 +123,7 @@ describe('a change of behaviour is reported', () => {
     ['a union turned intersection', "type K = 'a' | 'b';", "type K = 'a' & 'b';"],
     ['a bar between members removed', "type K = | 'a' | 'b';", "type K = 'a' 'b';"],
     ['a changed operator', 'if (a === b) f();', 'if (a !== b) f();'],
+    ['a hole removed from a destructuring', 'const [a, , b] = x;', 'const [a, b] = x;'],
     ['a changed regular expression', 'const r = /a+/g;', 'const r = /a*/g;'],
     ['a changed template literal', 'const t = `a ${b} c`;', 'const t = `a ${b} d`;'],
     ['a changed type', 'let a: string;', 'let a: number;'],
@@ -158,7 +159,7 @@ describe('a change of behaviour is reported', () => {
   });
 });
 
-describe('the three allowed kinds', () => {
+describe('the four allowed kinds', () => {
   it('a renamed test title is kind (a), in every form a title takes', () => {
     const cases = [
       ["it('R181 (b′)', () => {});", "it('keeps the original', () => {});"],
@@ -229,6 +230,78 @@ describe('the three allowed kinds', () => {
     expect(kinds(before, "log('unscanned (R87)');", BENCH)).toEqual(['code']);
     expect(kinds('log(`a ${x} (R86)`);', 'log(`a ${y}`);', BENCH)).toContain('code');
   });
+
+  const withSpec = [
+    'export interface ShapeDeclaration {',
+    '  readonly id: string;',
+    '  /** Which section asked for it. */',
+    '  readonly spec: string;',
+    '  readonly emission: string;',
+    '}',
+    'export const SHAPES = [',
+    "  { id: 'a', label: 'img@src', spec: '4a', emission: 'engine' },",
+    '  {',
+    "    id: 'b',",
+    "    spec: '§8.5',",
+    '  },',
+    '] as const satisfies readonly ShapeDeclaration[];',
+  ].join('\n');
+  const withoutSpec = [
+    'export interface ShapeDeclaration {',
+    '  readonly id: string;',
+    '  readonly emission: string;',
+    '}',
+    'export const SHAPES = [',
+    "  { id: 'a', label: 'img@src', emission: 'engine' },",
+    "  { id: 'b' },",
+    '] as const satisfies readonly ShapeDeclaration[];',
+  ].join('\n');
+
+  it('a spec removed from ShapeDeclaration and from each SHAPES row is kind (d)', () => {
+    const differences = compareSources(withSpec, withoutSpec, SHAPES);
+    expect(differences.map(({ kind, before }) => [kind, before[0]?.text, before[0]?.line])).toEqual(
+      [
+        ['shapes-spec', 'readonly spec : string ;', 4],
+        ['shapes-spec', "spec : '4a'", 8],
+        ['shapes-spec', "spec : '§8.5'", 11],
+      ],
+    );
+  });
+
+  it('and from an object literal declared as a ShapeDeclaration, which the type requires', () => {
+    const helper = (field: string) =>
+      `const declare = (over: Partial<ShapeDeclaration>): ShapeDeclaration => ({\n  id: 'a',\n${field}  ...over,\n});`;
+    expect(kinds(helper("  spec: '4a',\n"), helper(''), TEST)).toEqual(['shapes-spec']);
+    const one = (field: string) => `const one: ShapeDeclaration = { id: 'a'${field} };`;
+    expect(kinds(one(", spec: '4a'"), one(''), SOURCE)).toEqual(['shapes-spec']);
+  });
+
+  it('but only a whole spec removed, with nothing beside it but its comma', () => {
+    const row = (fields: string) =>
+      `export const SHAPES = [{ id: 'a', ${fields} }] as const satisfies readonly X[];`;
+    const spec = "spec: '4a', emission: 'engine'";
+    expect(kinds(row(spec), row("spec: '4b', emission: 'engine'"), SHAPES)).toEqual(['code']);
+    expect(kinds(row(spec), row("size: 1, emission: 'engine'"), SHAPES)).toEqual(['code']);
+    expect(kinds(row(spec), row(''), SHAPES)).toEqual(['code']);
+    expect(kinds(row("emission: 'engine'"), row(spec), SHAPES)).toEqual(['code']);
+    expect(kinds(row("label: 'x', emission: 'engine'"), row("emission: 'engine'"), SHAPES)).toEqual(
+      ['code'],
+    );
+  });
+
+  it('and only from a shape declaration', () => {
+    const table = (fields: string) => `export const OTHER = [{ id: 'a'${fields} }];`;
+    expect(kinds(table(", spec: '4a'"), table(''), SHAPES)).toEqual(['code']);
+    expect(kinds(withSpec, withoutSpec, SOURCE)).toEqual(['code', 'code', 'code']);
+    const member = (name: string, field: string) =>
+      `export interface ${name} {\n  readonly id: string;\n${field}}`;
+    const spec = '  readonly spec: string;\n';
+    expect(kinds(member('Other', spec), member('Other', ''), SHAPES)).toEqual(['code']);
+    const typed = (type: string, field: string) => `const one: ${type} = { id: 'a'${field} };`;
+    for (const type of ['Partial<ShapeDeclaration>', 'OtherDeclaration']) {
+      expect(kinds(typed(type, ", spec: '4a'"), typed(type, ''), SOURCE)).toEqual(['code']);
+    }
+  });
 });
 
 describe('the script itself', () => {
@@ -297,6 +370,9 @@ describe('the script itself', () => {
     expect(output).toContain("    - 'R181 (b′)'\n    + 'keeps the original'");
     expect(output).toContain('Not source, so not compared: README.md (modified).');
     expect(output).toContain('Compared 2 files: 1 differ only in comments and whitespace.');
+    expect(output).toContain(
+      'Allowed differences: 1 test title, 0 SHAPES why strings, 0 bench strings, 0 SHAPES spec removals.',
+    );
     expect(output).toContain('No change outside comments and the allowed kinds.');
   });
 

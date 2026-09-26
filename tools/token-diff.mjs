@@ -3,12 +3,13 @@
 /**
  * Proves that a change touched only comments. Each changed source file is compared before
  * and after as a stream of tokens without comments or whitespace, and every difference is
- * printed. Three kinds are allowed and named: a test's title, a `why` string of the exported
- * `SHAPES` table, and a `bench/src` string that held an internal reference and no longer
- * does. Anything else fails the run, as does a change under a test-data folder or a source
- * file added or deleted. Tool directives and the types JSDoc declares in JavaScript count as
- * code. Layout the formatter changes with a line break is ignored: a comma before a closing
- * bracket, the leading `|` or `&` of a union, and parentheses around a returned value.
+ * printed. Four kinds are allowed and named: a test's title, a `why` string of the exported
+ * `SHAPES` table, a `bench/src` string that held an internal reference and no longer does,
+ * and the removal of a shape declaration's `spec` field. Anything else fails the run, as
+ * does a change under a test-data folder or a source file added or deleted. Tool directives
+ * and the types JSDoc declares in JavaScript count as code. Layout the formatter changes
+ * with a line break is ignored: a comma before a closing bracket, the leading `|` or `&` of
+ * a union, and parentheses around a returned value.
  *
  * Usage: `node tools/token-diff.mjs [--base <rev>] [--head <rev>] [--root <dir>] [<path>...]`
  */
@@ -20,9 +21,10 @@ import ts from 'typescript';
 import { INTERNAL_REFERENCE, URL_PATTERN } from './comment-check.mjs';
 
 /**
- * @typedef {'test-title' | 'shapes-why' | 'bench-string'} AllowedKind
+ * @typedef {'test-title' | 'shapes-why' | 'bench-string' | 'shapes-spec'} AllowedKind
  * @typedef {AllowedKind | 'code'} DifferenceKind
- * @typedef {{ key: string, text: string, line: number, unit: 'title' | 'why' | null, isString: boolean }} Token
+ * @typedef {'title' | 'why' | 'spec'} Unit
+ * @typedef {{ key: string, text: string, line: number, unit: Unit | null, isString: boolean }} Token
  * @typedef {{ kind: DifferenceKind, before: Token[], after: Token[] }} Difference
  * @typedef {{ status: 'added' | 'deleted' | 'modified', file: string }} ChangedFile
  * @typedef {{ root: string, base: string, head: string | null, paths: string[] }} Options
@@ -33,11 +35,13 @@ export const KIND_LABELS = /** @type {const} */ ({
   'test-title': 'test title',
   'shapes-why': 'SHAPES why',
   'bench-string': 'bench string',
+  'shapes-spec': 'SHAPES spec',
   code: 'code change',
 });
 
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
 const SHAPES_FILE = 'packages/core/src/shapes.ts';
+const SHAPE_TYPE = 'ShapeDeclaration';
 const BENCH_SOURCE = /^bench\/src\/(?!.*\.test\.[cm]?[jt]s$)/;
 
 const TEST_FUNCTIONS = new Set(['describe', 'it', 'test']);
@@ -68,8 +72,9 @@ const STRING_KINDS = new Set([
 const CLOSERS = new Set([')', ']', '}']);
 
 /**
- * The file's tokens without comments or whitespace. A test title and a `SHAPES` `why` each
- * become one token, so a reworded one is one difference however it is spelled.
+ * The file's tokens without comments or whitespace. A test title, a `SHAPES` `why` and a
+ * shape declaration's `spec` each become one token, so each is one difference however it is
+ * spelled.
  *
  * @param {string} text
  * @param {string} file the path relative to the root, with POSIX separators
@@ -94,7 +99,7 @@ export function tokenize(text, file) {
 }
 
 /**
- * The code's own tokens, with each test title and `SHAPES` `why` folded into one.
+ * The code's own tokens, with each test title, `SHAPES` `why` and shape `spec` folded into one.
  *
  * @param {ts.SourceFile} sourceFile
  * @param {string} file
@@ -124,7 +129,7 @@ function codeTokens(sourceFile, file, tokenNodes) {
     placed.push({ pos: start, token: { ...token, isString: STRING_KINDS.has(node.kind) } });
   }
   for (const [index, texts] of unitTexts) {
-    const unit = /** @type {{ start: number, unit: 'title' | 'why' }} */ (units[index]);
+    const unit = /** @type {{ start: number, unit: Unit }} */ (units[index]);
     const text = texts.join(' ');
     placed.push({
       pos: unit.start,
@@ -220,6 +225,14 @@ export function compareSources(before, after, file) {
   for (const hunk of diffTokens(a, b)) {
     const removed = a.slice(hunk.aStart, hunk.aEnd);
     const added = b.slice(hunk.bStart, hunk.bEnd);
+    if (added.length === 0 && isSpecRemoval(removed)) {
+      // The `spec` first, so the printed line is the field's rather than its comma's.
+      const ordered = [...removed].sort(
+        (p, q) => Number(q.unit === 'spec') - Number(p.unit === 'spec'),
+      );
+      differences.push({ kind: 'shapes-spec', before: ordered, after: [] });
+      continue;
+    }
     if (removed.length !== added.length) {
       differences.push({ kind: 'code', before: removed, after: added });
       continue;
@@ -234,6 +247,18 @@ export function compareSources(before, after, file) {
     });
   }
   return differences;
+}
+
+/**
+ * Whether the removed tokens are one shape declaration's `spec`, alone or with the comma that
+ * separated it from a neighbour.
+ *
+ * @param {readonly Token[]} removed
+ */
+function isSpecRemoval(removed) {
+  const specs = removed.filter((token) => token.unit === 'spec').length;
+  const commas = removed.filter((token) => token.unit === null && token.text === ',').length;
+  return specs === 1 && specs + commas === removed.length;
 }
 
 /**
@@ -463,7 +488,7 @@ export function run(options) {
     `Token diff: ${base} to ${head ?? 'the working tree'}, ${plural(files.length, 'changed file')}.`,
   ];
   /** @type {Record<DifferenceKind, number>} */
-  const totals = { 'test-title': 0, 'shapes-why': 0, 'bench-string': 0, code: 0 };
+  const totals = { 'test-title': 0, 'shapes-why': 0, 'bench-string': 0, 'shapes-spec': 0, code: 0 };
   let failures = 0;
   let unchanged = 0;
   /** @type {string[]} */
@@ -509,7 +534,7 @@ export function run(options) {
   if (notCompared.length > 0) lines.push(`Not source, so not compared: ${notCompared.join(', ')}.`);
   lines.push(
     `Compared ${plural(files.length - notCompared.length, 'file')}: ${unchanged} differ only in comments and whitespace.`,
-    `Allowed differences: ${plural(totals['test-title'], 'test title')}, ${plural(totals['shapes-why'], 'SHAPES why string')}, ${plural(totals['bench-string'], 'bench string')}.`,
+    `Allowed differences: ${plural(totals['test-title'], 'test title')}, ${plural(totals['shapes-why'], 'SHAPES why string')}, ${plural(totals['bench-string'], 'bench string')}, ${plural(totals['shapes-spec'], 'SHAPES spec removal')}.`,
     failures === 0
       ? 'No change outside comments and the allowed kinds.'
       : `${plural(failures, 'change')} outside comments and the allowed kinds.`,
@@ -542,14 +567,15 @@ function render(difference) {
 }
 
 /**
- * The spans that become a single token: each test title, and each `why` of `SHAPES`.
+ * The spans that become a single token: each test title, each `why` of `SHAPES`, and each
+ * `spec` of a shape declaration.
  *
  * @param {ts.SourceFile} sourceFile
  * @param {string} file
- * @returns {{ start: number, end: number, unit: 'title' | 'why' }[]}
+ * @returns {{ start: number, end: number, unit: Unit }[]}
  */
 function unitSpans(sourceFile, file) {
-  /** @type {{ start: number, end: number, unit: 'title' | 'why' }[]} */
+  /** @type {{ start: number, end: number, unit: Unit }[]} */
   const spans = [];
   /** @param {ts.Node} node */
   const visit = (node) => {
@@ -566,6 +592,9 @@ function unitSpans(sourceFile, file) {
     for (const initializer of shapesWhyInitializers(sourceFile)) {
       spans.push({ start: initializer.getStart(sourceFile), end: initializer.end, unit: 'why' });
     }
+  }
+  for (const field of shapeSpecs(sourceFile, file)) {
+    spans.push({ start: field.getStart(sourceFile), end: field.end, unit: 'spec' });
   }
   spans.sort((p, q) => p.start - q.start);
   // A span inside another is already part of it.
@@ -593,6 +622,66 @@ function shapesWhyInitializers(sourceFile) {
             : [],
         )
       : [],
+  );
+}
+
+/**
+ * Every `spec` field of a shape declaration: the member of `ShapeDeclaration` and the property
+ * of each `SHAPES` row, both in shapes.ts, and the property of any object literal declared as
+ * a `ShapeDeclaration`, which the type then requires to lose it too.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} file
+ * @returns {ts.Node[]}
+ */
+function shapeSpecs(sourceFile, file) {
+  const isSpec = (/** @type {ts.Node} */ node) =>
+    (ts.isPropertyAssignment(node) || ts.isPropertySignature(node)) &&
+    ts.isIdentifier(node.name) &&
+    node.name.text === 'spec';
+  /** @type {ts.Node[]} */
+  const found = [];
+  if (file === SHAPES_FILE) {
+    const table = exportedInitializer(sourceFile, 'SHAPES');
+    const rows = table !== undefined && ts.isArrayLiteralExpression(table) ? table.elements : [];
+    for (const row of rows) {
+      if (ts.isObjectLiteralExpression(row)) found.push(...row.properties.filter(isSpec));
+    }
+    for (const statement of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(statement) && statement.name.text === SHAPE_TYPE) {
+        found.push(...statement.members.filter(isSpec));
+      }
+    }
+  }
+  /** @param {ts.Node} node */
+  const visit = (node) => {
+    if (ts.isObjectLiteralExpression(node) && declaredAsShape(node)) {
+      found.push(...node.properties.filter(isSpec));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
+/**
+ * Whether an object literal is a variable's value or an arrow function's result whose declared
+ * type is `ShapeDeclaration` itself, not a `Partial` of it.
+ *
+ * @param {ts.ObjectLiteralExpression} literal
+ */
+function declaredAsShape(literal) {
+  /** @type {ts.Node} */
+  let node = literal;
+  while (ts.isParenthesizedExpression(node.parent)) node = node.parent;
+  const { parent } = node;
+  const type =
+    ts.isVariableDeclaration(parent) || ts.isArrowFunction(parent) ? parent.type : undefined;
+  return (
+    type !== undefined &&
+    ts.isTypeReferenceNode(type) &&
+    ts.isIdentifier(type.typeName) &&
+    type.typeName.text === SHAPE_TYPE
   );
 }
 
