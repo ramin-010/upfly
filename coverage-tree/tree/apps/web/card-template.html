@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Team</title>
+  </head>
+  <body>
+    <ul id="cards"></ul>
+    <!-- One card, cloned into the list above by the script below. -->
+    <template id="card">
+      <li><img src="/img/team.jpg" alt="The team" /></li>
+    </template>
+    <script>
+      const card = document.getElementById('card');
+      document.getElementById('cards').append(card.content.cloneNode(true));
+    </script>
+  </body>
+</html>

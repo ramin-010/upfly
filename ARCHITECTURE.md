@@ -636,6 +636,12 @@ produce exactly the silent corruption this design exists to prevent.
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | regex over masked text; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 
+The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
+template's markup in a separate fragment, and that markup is live: a script clones it into the
+page, and a declarative shadow root renders it with no script at all. Markdown and Astro reach
+the same walk, so the raw HTML after a `<template>` that Markdown prose mentions and never
+closes, which the parser puts inside the template, is still read.
+
 The JavaScript adapter also emits **path-shaped string literals as speculative**, the same standing
 a string in a JSON file gets. The asymmetry was indefensible once stated: `{ "file": "x.png" }` in
 `data.json` was a candidate and the identical string in `data.ts` was invisible, and that produced

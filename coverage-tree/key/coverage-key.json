@@ -6900,6 +6900,38 @@
           "column": 13
         }
       ]
+    },
+    {
+      "path": "apps/web/card-template.html",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "Inside a <template>, which the script below it clones into the list. The HTML parser keeps a template's markup in a separate content fragment, not among the element's children, so a reader that walks children alone misses this image and reports nothing about it.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 255,
+          "line": 11,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/unclosed-template.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "Below a <template> that the prose mentions and never closes. A template's content is parsed as markup, not as text, so the markdown adapter rightly leaves the tag unmasked, and the HTML parser puts this image into the template's content fragment rather than among any element's children. It is still an image element the author wrote; unless that fragment is read, it vanishes from the HTML pass with nothing in the report.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 148,
+          "line": 6,
+          "column": 11
+        }
+      ]
     }
   ]
 }

@@ -758,12 +758,71 @@ describe('an image inside <noscript> is markup, not text', () => {
 
     expect(find(source).map((reference) => reference.rawPath)).toEqual(['/icon.png']);
   });
+});
 
-  it('does not yet read <template>, and that gap is pinned rather than silent', () => {
-    // parse5 puts a template's children in a separate `content` fragment that `walk` never
-    // descends into, a different mechanism from noscript's, which the parser option does
-    // not reach. The assertion pins today's wrong behaviour, so whoever closes the gap sees
-    // this test fail and updates it.
-    expect(find('<template><img src="/img/hero.png"></template>')).toEqual([]);
+/**
+ * parse5 keeps a template's markup in a separate `content` fragment, not among the
+ * element's children. That markup is live: a script clones it into the page, and a
+ * declarative shadow root (`shadowrootmode`) renders it with no script at all.
+ */
+describe("a <template>'s content is read like the markup around it", () => {
+  const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+    ['an image in a template', '<template><img src="/img/hero.png"></template>', ['/img/hero.png']],
+    [
+      'a declarative shadow root',
+      '<div><template shadowrootmode="open"><img src="/shadow.png"></template></div>',
+      ['/shadow.png'],
+    ],
+    [
+      'a template nested in a template',
+      '<template><div><template><img src="/deep.png"></template></div></template>',
+      ['/deep.png'],
+    ],
+    [
+      'a <style> in a template',
+      '<template><style>.a { background: url(/in-style.png); }</style></template>',
+      ['/in-style.png'],
+    ],
+    [
+      'a table row in a template, which the parser allows only there',
+      '<template><tr><td><img src="/cell.png"></td></tr></template>',
+      ['/cell.png'],
+    ],
+    [
+      'a template in the head',
+      '<html><head><template><link rel="icon" href="/icon.png"></template></head></html>',
+      ['/icon.png'],
+    ],
+  ];
+
+  it.each(cases)('finds %s, with its exact range', (_name, source, expected) => {
+    expect(paths(source)).toEqual([...expected]);
+    expect(slices(source)).toEqual([...expected]);
+  });
+
+  it('keeps the references around a template in document order (the control)', () => {
+    const source = '<img src="/a.png"><template><img src="/b.png"></template><img src="/c.png">';
+
+    expect(paths(source)).toEqual(['/a.png', '/b.png', '/c.png']);
+  });
+
+  it('rewrites a path inside a template where it stands', () => {
+    const source = '<template><p><img src="/img/hero.png"></p></template>';
+    const rewritten = htmlAdapter.rewrite({
+      text: source,
+      edits: find(source).map((reference) => ({
+        start: reference.start,
+        end: reference.end,
+        replacement: '/img/hero.webp',
+      })),
+    });
+
+    expect(rewritten).toBe('<template><p><img src="/img/hero.webp"></p></template>');
+  });
+
+  it('still reads the children of a <template> inside SVG, which has no content fragment', () => {
+    // In foreign content the tag makes an ordinary element, so reading the fragment has to
+    // come in addition to reading children, never instead of it.
+    expect(paths('<svg><template><image href="/svg.png"/></template></svg>')).toEqual(['/svg.png']);
   });
 });

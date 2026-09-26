@@ -378,6 +378,24 @@ describe('markdownAdapter', () => {
       expect(references.map((reference) => reference.rawPath)).toContain('./after.png');
     });
 
+    it('reads the document after a bare <template> in prose, which is left unmasked', () => {
+      // A template's content is parsed as markup, not text, so masking the tag would blank
+      // markup parse5 reads. The parser puts what follows into the template's content
+      // fragment instead, and the image is found there.
+      const text = [
+        '# Guide',
+        '',
+        'prose mentioning a <template> element.',
+        '',
+        '<img src="./after.png" alt="a">',
+      ].join('\n');
+
+      expect(maskInactiveRegions(text)).toBe(text);
+      expect(
+        markdownAdapter.findReferences({ file: 'guide.md', text }).map((r) => r.rawPath),
+      ).toEqual(['./after.png']);
+    });
+
     it('still reads a raw-text element that does close', () => {
       // Only a tag that never closes is masked, so a real `<style>` block is untouched and
       // its CSS still scanned. Masking every one would silently drop what real blocks hold.

@@ -131,6 +131,11 @@ function walk(node: ParsedNode, context: Context): void {
       walk(child, context);
     }
   }
+  // parse5 puts a template's markup in a separate `content` fragment, not among its children.
+  // It is live all the same: a script clones it, and a declarative shadow root renders it.
+  if ('content' in node) {
+    walk(node.content, context);
+  }
 }
 
 function isElement(node: ParsedNode): node is ParsedElement {
