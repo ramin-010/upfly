@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
+import type { PathSpelling } from './adapters/reference-path.js';
 import type { AliasMap } from './aliases.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
@@ -158,6 +159,7 @@ function graphFor(input: {
     rawPath: string;
     target: string;
     via?: 'file' | 'serving-root' | 'project-root' | 'speculative-root';
+    spelling?: PathSpelling;
     confidence?: 'high' | 'unsafe';
   }[];
 }) {
@@ -186,6 +188,7 @@ function graphFor(input: {
         confidence: entry.confidence ?? 'high',
         resolvedPath: `${ROOT}/${entry.target}`,
         resolvedVia: entry.via ?? 'file',
+        ...(entry.spelling === undefined ? {} : { spelling: entry.spelling }),
       }) as Reference,
   );
 
@@ -252,6 +255,37 @@ describe('relocate, and how a path is re-spelled', () => {
       '/img/hero.png?v=2',
     );
   });
+
+  it.each([
+    ['a name that needs no escape', 'public/photos/my_photo.png', '/photos/my_photo.png'],
+    [
+      'an ampersand CommonMark would read as a character reference',
+      'public/photos/my&amp;photo.png',
+      '/photos/my\\&amp;photo.png',
+    ],
+  ])(
+    'writes a Markdown-escaped path so that it reads as the moved file: %s',
+    (_name, to, written) => {
+      // `my\_photo.png` named `my_photo.png`. The new path is escaped where CommonMark needs it.
+      const graph = graphFor({
+        assets: ['public/img/my_photo.png'],
+        references: [
+          {
+            file: 'docs/guide.md',
+            rawPath: '/img/my\\_photo.png',
+            target: 'public/img/my_photo.png',
+            via: 'serving-root',
+            spelling: 'markdown-escapes',
+          },
+        ],
+      });
+
+      const { plan, text } = replacementFor(graph, { from: 'public/img/my_photo.png', to });
+
+      expect(text).toBe(written);
+      expect(plan.declined).toEqual([]);
+    },
+  );
 
   it('re-derives a root-relative path against the serving root, not the project root', () => {
     // The URL is what the browser asks for, so it is relative to what the server

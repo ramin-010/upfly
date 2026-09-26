@@ -32,7 +32,8 @@ const ASSERTING_TOKENS: readonly string[] = [
 // extension can be written `hero&#46;png`, `hero&period;png` or `hero%2Epng`. `&period;` is
 // the one named reference that spells an extension character, so it and `&#` cover
 // entities. Percent-decoding applies to every character (`hero.%70ng` is `hero.png`), so
-// the token is `%`, not `%2`.
+// the token is `%`, not `%2`. A Markdown backslash escape needs none: only punctuation can
+// be escaped, so `hero\.png` still holds `.png`.
 const ENCODED_SPELLING_TOKENS: readonly string[] = ['&#', '&period;', '%'];
 
 // A templated destination such as `![logo]({{ site.logo }})` is reported as `dynamic` and

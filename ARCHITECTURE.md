@@ -474,8 +474,9 @@ candidate asset, so declining it is not declining to do work, and counting fonts
 ### Percent-encoded and entity-encoded paths
 
 A reference can spell its path with encoded characters: `hero%20image.png` for a file called
-`hero image.png`, or, in HTML, `a&amp;b.png` or `a&#38;b.png` for `a&b.png`. Four rules govern
-these, and each prevents a different error.
+`hero image.png`, or, in HTML, `a&amp;b.png` or `a&#38;b.png` for `a&b.png`, or, in a Markdown
+destination, `my\_photo.png` for `my_photo.png`. Four rules govern these, and each prevents a
+different error.
 
 The reference keeps the text as written. `rawPath` is always the source text, so
 `source.slice(start, end) === rawPath` holds for every reference and a rewrite replaces exactly
@@ -500,19 +501,30 @@ semicolon. That is how CommonMark decodes a link destination, so `![](caf&eacute
 the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`, and text it
 rejects, such as `100%`, is treated the same way.
 
+In a Markdown destination a backslash before an ASCII punctuation character is an escape, and
+CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names
+`my_photo.png`, and `\&eacute;` is the text `&eacute;`, since an escaped `&` starts no reference.
+So for a reference of kind `md`, `spellingsOf` offers that reading, recorded as `markdown-escapes`
+when the path holds an escape. Anywhere else a backslash is left as written: in HTML it is not an
+escape, and the CSS adapter reports a path holding a CSS escape as `unsafe`.
+
 The spellings are tried one at a time, so a path that needs both decodings, such as
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
-reference the decoder cannot read, or references beside a percent-escape, is therefore reported as
-`unsafe` by the Markdown adapter, a refusal with a reason instead of a ceiling that leads to a
-lookup. The HTML adapter refuses the same paths, and also any whose decoded spelling differs from
-parse5's reading of the attribute, as when a legacy name such as `&copy` is written without its
-semicolon: parse5 still decodes it before a `.`, and our decoder does not.
+reference the decoder cannot read, or references or backslash escapes beside a percent-escape
+(`my\_photo%20x.png`), is therefore reported as `unsafe` by the Markdown adapter, a refusal with a
+reason instead of a ceiling that leads to a lookup. The HTML adapter refuses the same
+character-reference paths, and also any whose decoded spelling differs from parse5's reading of the
+attribute, as when a legacy name such as `&copy` is written without its semicolon: parse5 still
+decodes it before a `.`, and our decoder does not.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
 percent-encodes each segment separately, leaving the slashes alone, and for an entity spelling
 re-encodes only `&`, because inventing entities for other characters would change text the author
-did not write. How the HTML adapter finds these spellings in attributes, `style` included, is
+did not write. For a Markdown escape it escapes only `\` and `&`, which CommonMark would otherwise
+read as the start of an escape or a reference. The optimize planner re-spells nothing: it swaps the
+extension in the text as written, so `my\_photo.png` becomes `my\_photo.webp`, which reads as the
+converted file. How the HTML adapter finds these spellings in attributes, `style` included, is
 under "Character references in HTML attributes".
 
 ### `possibly-dead`, and why "zero references" is usually a lie

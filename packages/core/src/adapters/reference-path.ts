@@ -221,13 +221,14 @@ export const NOT_GLOBBABLE_REASON =
 
 /**
  * How a path is spelled in the source: as written, percent-encoded (`hero%20image.png`),
- * or with HTML character references (`a&amp;b.png`).
+ * with HTML character references (`a&amp;b.png`), or, in a Markdown destination, with
+ * backslash escapes (`my\_photo.png`).
  *
  * The resolver tries the literal spelling first, then each decoded one, and records the
  * spelling that matched, so a rewrite writes the new path back the same way (`spell`).
  * See "Percent-encoded and entity-encoded paths" in ARCHITECTURE.md.
  */
-export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities';
+export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities' | 'markdown-escapes';
 
 const ENTITY = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
@@ -262,8 +263,15 @@ function decodeNamedReference(name: string): string | null {
  *
  * Returns only the literal spelling when nothing is encoded, and never a partly decoded
  * path: text the decoder cannot finish contributes no candidate.
+ *
+ * @param kind The reference's kind. Only in a Markdown destination (`'md'`) is a backslash
+ * before ASCII punctuation an escape, decoded with the character references in one pass,
+ * as CommonMark reads it. Anywhere else a backslash is left as written.
  */
-export function spellingsOf(rawPath: string): ReadonlyArray<{
+export function spellingsOf(
+  rawPath: string,
+  kind?: ReferenceKind,
+): ReadonlyArray<{
   readonly spelling: PathSpelling;
   readonly path: string;
 }> {
@@ -271,9 +279,10 @@ export function spellingsOf(rawPath: string): ReadonlyArray<{
     { spelling: 'literal', path: rawPath },
   ];
 
-  const entities = decodeCharacterReferences(rawPath);
-  if (entities !== null && entities !== rawPath) {
-    candidates.push({ spelling: 'html-entities', path: entities });
+  const escaped = kind === 'md' && holdsBackslashEscape(rawPath);
+  const decoded = escaped ? decodeMarkdownDestination(rawPath) : decodeCharacterReferences(rawPath);
+  if (decoded !== null && decoded !== rawPath) {
+    candidates.push({ spelling: escaped ? 'markdown-escapes' : 'html-entities', path: decoded });
   }
 
   const percent = decodePercent(rawPath);
@@ -305,6 +314,10 @@ export function spell(path: string, spelling: PathSpelling): string {
       // Only `&` is re-encoded. Inventing entities for the other characters would change
       // text the author did not write.
       return path.replaceAll('&', '&amp;');
+    case 'markdown-escapes':
+      // CommonMark would read a backslash or an ampersand as the start of an escape or a
+      // character reference, so each is escaped with a backslash.
+      return path.replace(/[\\&]/g, (character) => `\\${character}`);
     default:
       return path;
   }
@@ -387,6 +400,66 @@ function decodeCharacterReferences(text: string): string | null {
 }
 
 /**
+ * A Markdown link destination as CommonMark reads it, or `null` when a character reference
+ * in it cannot be decoded.
+ *
+ * A backslash before an ASCII punctuation character is removed and character references
+ * are decoded, in one pass (CommonMark 0.31.2, sections 2.4 and 2.5): `my\_photo.png` reads
+ * `my_photo.png`, and `\&eacute;` reads `&eacute;`, since an escaped `&` starts no reference.
+ */
+export function decodeMarkdownDestination(text: string): string | null {
+  const decoded: string[] = [];
+  let index = 0;
+
+  while (index < text.length) {
+    const character = text.charAt(index);
+    const next = text.charAt(index + 1);
+    if (character === '\\' && isAsciiPunctuation(next)) {
+      decoded.push(next);
+      index += 2;
+      continue;
+    }
+
+    ENTITY_ONCE.lastIndex = index;
+    const match = character === '&' ? ENTITY_ONCE.exec(text) : null;
+    if (match === null) {
+      decoded.push(character);
+      index += 1;
+      continue;
+    }
+
+    const value = decodeOneReference(match[1] ?? '');
+    if (value === null) return null;
+    decoded.push(value);
+    index += match[0].length;
+  }
+
+  return decoded.join('');
+}
+
+/** Whether the text holds a backslash before an ASCII punctuation character. */
+function holdsBackslashEscape(text: string): boolean {
+  for (let index = text.indexOf('\\'); index !== -1; index = text.indexOf('\\', index + 1)) {
+    if (isAsciiPunctuation(text.charAt(index + 1))) return true;
+  }
+  return false;
+}
+
+/**
+ * CommonMark's ASCII punctuation, the characters a backslash can escape: `!` to `/`, `:` to
+ * `@`, `[` to the backtick, and `{` to `~`.
+ */
+function isAsciiPunctuation(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return (
+    (code >= 0x21 && code <= 0x2f) ||
+    (code >= 0x3a && code <= 0x40) ||
+    (code >= 0x5b && code <= 0x60) ||
+    (code >= 0x7b && code <= 0x7e)
+  );
+}
+
+/**
  * Whether a path holds character references that no spelling the resolver tries decodes
  * completely, so which file it names is not known: one the decoder cannot read, such as
  * the misspelled `&eacut;`, or any beside a percent-escape, as in `caf&eacute;%20x.png`,
@@ -399,6 +472,18 @@ export function holdsUndecodableCharacterReference(path: string): boolean {
 }
 
 const PERCENT_ESCAPE = /%[0-9A-Fa-f]{2}/;
+
+/**
+ * `holdsUndecodableCharacterReference` for a Markdown destination, whose backslash escapes
+ * are read too: true when a character reference cannot be decoded, unless a backslash
+ * escapes its `&`, or when escapes or references sit beside a percent-escape, as in
+ * `my\_photo%20x.png`, which names `my_photo x.png`.
+ */
+export function holdsUndecodableMarkdownEscape(path: string): boolean {
+  const decoded = decodeMarkdownDestination(path);
+  if (decoded === null) return true;
+  return decoded !== path && PERCENT_ESCAPE.test(path);
+}
 
 /**
  * The text with percent-escapes resolved, or `null` when it is not valid percent-encoding.

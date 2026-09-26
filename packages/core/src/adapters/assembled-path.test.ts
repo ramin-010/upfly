@@ -16,7 +16,9 @@ import { describe, expect, it } from 'vitest';
 import {
   TEMPLATE_HOLES,
   assembledPathIsGlobbable,
+  decodeMarkdownDestination,
   holdsUndecodableCharacterReference,
+  holdsUndecodableMarkdownEscape,
   interpolationChunks,
   isExternalUrl,
   provablyNotAFile,
@@ -347,6 +349,67 @@ describe('spellingsOf', () => {
       'literal',
     ]);
   });
+
+  /**
+   * CommonMark removes a backslash before ASCII punctuation in a link destination (section
+   * 2.4), so in Markdown `my\_photo.png` names `my_photo.png`. Anywhere else the backslash
+   * is left as written.
+   */
+  it('reads the backslash escapes of a Markdown destination and of nothing else', () => {
+    expect(spellingsOf('/img/my\\_photo.png', 'md')).toEqual([
+      { spelling: 'literal', path: '/img/my\\_photo.png' },
+      { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
+    ]);
+    for (const kind of [undefined, 'attr', 'import'] as const) {
+      expect(spellingsOf('/img/my\\_photo.png', kind), kind).toEqual([
+        { spelling: 'literal', path: '/img/my\\_photo.png' },
+      ]);
+    }
+  });
+
+  it('keeps the entity spelling of a Markdown destination that holds no escape', () => {
+    expect(spellingsOf('/img/caf&eacute;.png', 'md')).toEqual([
+      { spelling: 'literal', path: '/img/caf&eacute;.png' },
+      { spelling: 'html-entities', path: `/img/caf${String.fromCodePoint(0xe9)}.png` },
+    ]);
+    // A backslash before a letter escapes nothing.
+    expect(spellingsOf('C:\\site\\hero.png', 'md')).toEqual([
+      { spelling: 'literal', path: 'C:\\site\\hero.png' },
+    ]);
+  });
+});
+
+/**
+ * CommonMark 0.31.2, sections 2.4 and 2.5: in a link destination a backslash before an ASCII
+ * punctuation character is removed, and character references are decoded, in one pass.
+ */
+describe('decodeMarkdownDestination', () => {
+  it('removes the backslash before each ASCII punctuation character', () => {
+    // Section 2.4's list of the thirty-two.
+    const punctuation = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+    const escaped = [...punctuation].map((character) => `\\${character}`).join('');
+
+    expect(punctuation).toHaveLength(32);
+    expect(decodeMarkdownDestination(escaped)).toBe(punctuation);
+  });
+
+  it('keeps a backslash before anything else, as written', () => {
+    for (const text of ['C:\\site\\hero.png', '\\A\\a\\3\\φ\\«', 'end\\']) {
+      expect(decodeMarkdownDestination(text), text).toBe(text);
+    }
+  });
+
+  it('reads escapes and character references in one pass', () => {
+    const cafe = `caf${String.fromCodePoint(0xe9)}`;
+    expect(decodeMarkdownDestination('/img/my\\_caf&eacute;.png')).toBe(`/img/my_${cafe}.png`);
+    // An escaped ampersand starts no reference, and an escaped backslash escapes nothing.
+    expect(decodeMarkdownDestination('/img/\\&eacute;.png')).toBe('/img/&eacute;.png');
+    expect(decodeMarkdownDestination('/img/a\\\\_b.png')).toBe('/img/a\\_b.png');
+  });
+
+  it('gives no reading when a character reference cannot be decoded', () => {
+    expect(decodeMarkdownDestination('/img/caf&eacut;.png')).toBeNull();
+  });
 });
 
 /** What the markdown adapter asks before it lets a destination be looked up. */
@@ -370,6 +433,37 @@ describe('holdsUndecodableCharacterReference', () => {
   });
 });
 
+/** The same question for a Markdown destination, whose backslash escapes are read too. */
+describe('holdsUndecodableMarkdownEscape', () => {
+  // Each names its file only after both decodings: `my\_photo%20x.png` is `my_photo x.png`,
+  // and `my\%20photo.png` reads `my%20photo.png`, which a server decodes to `my photo.png`.
+  it('is true for a backslash escape beside a percent-escape', () => {
+    expect(holdsUndecodableMarkdownEscape('/img/my\\_photo%20x.png')).toBe(true);
+    expect(holdsUndecodableMarkdownEscape('/img/my\\%20photo.png')).toBe(true);
+  });
+
+  it('is false for an ampersand a backslash escapes, which starts no reference', () => {
+    expect(holdsUndecodableMarkdownEscape('/img/\\&eacut;.png')).toBe(false);
+    expect(holdsUndecodableMarkdownEscape('/img/my\\_photo.png')).toBe(false);
+  });
+
+  it('answers as holdsUndecodableCharacterReference for a path with no escape', () => {
+    for (const path of [
+      'caf&eacut;.png',
+      'caf&#x110000;.png',
+      'caf&eacute;%20x.png',
+      'caf&eacute;.png',
+      'my\\photo.png',
+      'hero%20image.png',
+      'hero.png',
+    ]) {
+      expect(holdsUndecodableMarkdownEscape(path), path).toBe(
+        holdsUndecodableCharacterReference(path),
+      );
+    }
+  });
+});
+
 /**
  * The other half of decoding. `relocate` builds a reference's new text from the path on
  * disk, so without re-encoding, a file called `hero image.png` would be written back with
@@ -387,6 +481,11 @@ describe('spell', () => {
     expect(spell('gallery/a&b.avif', 'html-entities')).toBe('gallery/a&amp;b.avif');
   });
 
+  it('escapes only a backslash and an ampersand in a Markdown-escaped path', () => {
+    expect(spell('img/my_photo.avif', 'markdown-escapes')).toBe('img/my_photo.avif');
+    expect(spell('img/a&amp;b\\_c.avif', 'markdown-escapes')).toBe('img/a\\&amp;b\\\\_c.avif');
+  });
+
   it('leaves a literal path exactly as it is', () => {
     expect(spell('gallery/hero image.avif', 'literal')).toBe('gallery/hero image.avif');
   });
@@ -399,6 +498,17 @@ describe('spell', () => {
         expect(spellingsOf(respelled).map((c) => c.path)).toContain(path);
       }
     }
+  });
+
+  it('round-trips a Markdown-escaped path through the reading CommonMark gives it', () => {
+    const written = '/g/my\\_a\\&amp;b\\\\c.png';
+    const decoded = spellingsOf(written, 'md').find(
+      ({ spelling }) => spelling === 'markdown-escapes',
+    );
+
+    expect(decoded?.path).toBe('/g/my_a&amp;b\\c.png');
+    const respelled = spell(decoded?.path ?? '', 'markdown-escapes');
+    expect(spellingsOf(respelled, 'md').map((c) => c.path)).toContain(decoded?.path);
   });
 });
 

@@ -18,7 +18,7 @@ import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
 import {
   TEMPLATE_HOLE_PATTERN,
-  holdsUndecodableCharacterReference,
+  holdsUndecodableMarkdownEscape,
   isExternalUrl,
   splitPathSuffix,
   templateExpressionReason,
@@ -376,10 +376,10 @@ function addReference(
   const { path, suffix } = splitPathSuffix(raw);
   if (path === '') return;
 
-  // CommonMark decodes character references in a destination, and the resolver tries the
-  // decoded spelling. When no spelling decodes them all the file is unknown, and looking up
-  // the text as written would report a miss as broken.
-  if (holdsUndecodableCharacterReference(path)) {
+  // CommonMark decodes backslash escapes and character references in a destination, and
+  // the resolver tries that reading. When no spelling decodes them all the file is unknown,
+  // and looking up the text as written would report a miss as broken.
+  if (holdsUndecodableMarkdownEscape(path)) {
     references.push({
       file,
       start,
@@ -389,7 +389,7 @@ function addReference(
       shape,
       ceiling: 'unsafe',
       asserted: true,
-      note: 'the path holds character references that cannot be fully decoded, such as a misspelled name or one beside a percent-escape, so the file it names is not known',
+      note: 'the path holds escapes that cannot be fully decoded, such as a misspelled character reference, or a character reference or backslash escape beside a percent-escape, so the file it names is not known',
     });
     return;
   }

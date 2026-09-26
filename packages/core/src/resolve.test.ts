@@ -702,6 +702,29 @@ describe('resolveReferences', () => {
     });
   });
 
+  describe('a Markdown destination with backslash escapes', () => {
+    // CommonMark removes a backslash before ASCII punctuation in a destination. Read as
+    // written on Windows, `logo\.png` would not even show its extension.
+    it.each([
+      ['an escaped hyphen', '../at\\-root.png', 'at-root.png'],
+      ['an escaped dot', './assets/logo\\.png', 'src/assets/logo.png'],
+    ])('is looked up as CommonMark reads %s', (_name, rawPath, target) => {
+      const reference = expectResolution(
+        resolveOne({ rawPath, kind: 'md', shape: 'md.image', ceiling: 'high' }),
+        'resolved',
+      );
+
+      expect(reference.resolvedPath).toBe(join(ROOT, target));
+      expect(reference.spelling).toBe('markdown-escapes');
+      expect(reference.rawPath).toBe(rawPath);
+    });
+
+    it('reads no escape outside Markdown, where a backslash is not one', () => {
+      const reference = resolveOne({ rawPath: '../at\\-root.png', kind: 'attr', ceiling: 'high' });
+      expect(reference?.resolution).toBe('broken');
+    });
+  });
+
   describe('rung 7: an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });

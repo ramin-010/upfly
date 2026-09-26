@@ -284,6 +284,32 @@ describe('a path that resolved through its decoded spelling', () => {
       },
     ]);
   });
+
+  it('keeps a Markdown escape, so the new text reads as the converted file', () => {
+    // `my\_photo.webp` is what CommonMark reads as `my_photo.webp`.
+    const plan = planOptimization(
+      input({
+        assets: [asset('public/img/my_photo.png')],
+        references: [
+          resolved('docs/guide.md', '/img/my\\_photo.png', 'public/img/my_photo.png', {
+            kind: 'md',
+            shape: 'md.image',
+            resolvedVia: 'serving-root',
+            spelling: 'markdown-escapes',
+          }),
+        ],
+      }),
+    );
+
+    expect(plan.rewrites.flatMap((rewrite) => rewrite.edits)).toEqual([
+      {
+        start: 10,
+        end: 28,
+        replacement: '/img/my\\_photo.webp',
+        expected: '/img/my\\_photo.png',
+      },
+    ]);
+  });
 });
 
 describe('a root-relative path that resolved at the project root', () => {

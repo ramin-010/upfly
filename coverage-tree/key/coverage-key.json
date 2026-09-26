@@ -665,6 +665,14 @@
       "height": 600
     },
     {
+      "path": "apps/docs/public/img/my_photo.png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
+    },
+    {
       "path": "apps/docs/public/img/screenshot.png",
       "bytes": 754718,
       "sha256": "a402827b8f7303d6",
@@ -6807,6 +6815,40 @@
           "offset": 111,
           "line": 2,
           "column": 20
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/escaped-underscore.md",
+      "entries": [
+        {
+          "raw": "/img/my\\_photo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "CommonMark removes a backslash before any ASCII punctuation character in a link destination, so /img/my\\_photo.png names my_photo.png, which exists. Looked up as written, the path names a file with a backslash in its name, and a picture that is there is reported as broken.",
+          "decoded": "/img/my_photo.png",
+          "target": "apps/docs/public/img/my_photo.png",
+          "offset": 203,
+          "line": 6,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/escaped-hyphen.md",
+      "entries": [
+        {
+          "raw": "/theme\\-dark.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "The same rule with another punctuation character: an escaped hyphen is a hyphen, so this names theme-dark.png. A decoder that removed the backslash only before an underscore would still report this one as broken.",
+          "decoded": "/theme-dark.png",
+          "target": "apps/docs/public/theme-dark.png",
+          "offset": 173,
+          "line": 6,
+          "column": 15
         }
       ]
     }

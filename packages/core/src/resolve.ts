@@ -158,7 +158,11 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
   //    not only the written one: `hero%2Epng` shows its extension only once decoded.
-  if (!spellingsOf(path).some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))) {
+  if (
+    !spellingsOf(path, raw.kind).some(({ path: candidate }) =>
+      isImageExtension(extensionOf(candidate)),
+    )
+  ) {
     return null;
   }
 
@@ -166,7 +170,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    file with a percent sign in its name, while `hero%20image.png` can name
   //    `hero image.png`. Only literal-then-decoded gets both right, and the coverage tree
   //    holds the pair so the order is tested.
-  for (const { spelling, path: candidate } of spellingsOf(path)) {
+  for (const { spelling, path: candidate } of spellingsOf(path, raw.kind)) {
     const found = index.lookup(candidate, raw, root, publicDirs);
     if (found === null) continue;
     return {

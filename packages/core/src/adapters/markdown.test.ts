@@ -261,6 +261,33 @@ describe('markdownAdapter', () => {
     });
   });
 
+  /**
+   * CommonMark removes a backslash before ASCII punctuation in a destination, so
+   * `my\_photo.png` names `my_photo.png`, and the resolver tries that reading. The range
+   * stays on the text as written, which is what a rewrite edits.
+   */
+  describe('backslash escapes in a destination', () => {
+    it.each([
+      ['an escaped underscore', '![a](/img/my\\_photo.png)', '/img/my\\_photo.png'],
+      ['an escaped hyphen', '![a](/theme\\-dark.png)', '/theme\\-dark.png'],
+      ['a link reference definition', '[a]: /img/my\\_photo.png', '/img/my\\_photo.png'],
+      ['an angle-bracketed destination', '![a](</img/my \\_photo.png>)', '/img/my \\_photo.png'],
+      // CommonMark reads `&eacut;` here as text: the escaped `&` starts no reference.
+      ['an escaped ampersand', '![a](/img/\\&eacut;.png)', '/img/\\&eacut;.png'],
+    ])('keeps %s as written, with a high ceiling', (_name, source, text) => {
+      expect(slices(source)).toEqual([text]);
+      expect(find(source)[0]?.ceiling).toBe('high');
+    });
+
+    it('refuses an escape beside a percent-escape, which no single reading decodes', () => {
+      const references = find('![a](/img/my\\_photo%20x.png)');
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/cannot be fully decoded/);
+    });
+  });
+
   describe('offsets are UTF-16 code units', () => {
     it('stays aligned after an emoji', () => {
       const source = '# Launch 🎉\n\n![Logo](./logo.png)';
