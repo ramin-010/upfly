@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Status badges</title>
+  </head>
+  <body>
+    <h1>Status badges</h1>
+
+    <!--
+      Each style attribute spells its quotes as &quot;, so it is decoded before its CSS is
+      read, and every offset in the decoded text is mapped back to the source. The emoji
+      before each url() is a character reference: one reference in the source, two UTF-16
+      code units once decoded.
+    -->
+    <div class="badge" style="--icon: &quot;&#x1F600;&quot;; background-image: url(&quot;/img/texture.png&quot;)">Happy</div>
+
+    <!-- The same, with a cache-busting query after the path. -->
+    <div class="badge" style="--icon: &quot;&#x1F600;&quot;; background-image: url(&quot;/img/team.jpg?v=2&quot;)">Team</div>
+  </body>
+</html>

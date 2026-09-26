@@ -274,13 +274,10 @@ export function decodeCharacterReferencesWithMap(
 
     const character = decodeOneReference(match[1] ?? '');
     if (character === null) return null;
-    // Each code unit of the decoded character should map to the reference's start. But
-    // `for...of` steps by code point, so an astral character (two code units) gets one
-    // entry, and every entry after it sits one place early.
-    for (const unit of character) {
-      map.push(index);
-      decoded.push(unit);
-    }
+    // Every code unit of the character maps to the reference's start. A character above
+    // U+FFFF, such as an emoji, is two code units, which `for...of` would visit as one.
+    for (let unit = 0; unit < character.length; unit += 1) map.push(index);
+    decoded.push(character);
     index += match[0].length;
   }
 

@@ -6571,6 +6571,35 @@
           "column": 15
         }
       ]
+    },
+    {
+      "path": "apps/web/emoji-entity.html",
+      "entries": [
+        {
+          "raw": "/img/texture.png",
+          "occurrence": 1,
+          "shape": "html.style.attribute",
+          "expect": "resolved",
+          "why": "An emoji written as a character reference comes first in the same attribute: one reference in the source, two UTF-16 code units once decoded. The map from the decoded CSS back to the source needs an entry for each unit, or every later offset lands one character late, the path reads `img/texture.png&quot;`, and the reference is lost without a report line.",
+          "decoded": "/img/texture.png",
+          "target": "apps/web/public/img/texture.png",
+          "offset": 558,
+          "line": 16,
+          "column": 90
+        },
+        {
+          "raw": "/img/team.jpg?v=2",
+          "occurrence": 1,
+          "shape": "html.style.attribute",
+          "expect": "resolved",
+          "why": "The same, with a query after the path. One character late, the path reads `img/team.jpg?`, which keeps an image extension once its query is split off, so it is looked up beside the page and reported broken: a false broken rather than a silent drop.",
+          "decoded": "/img/team.jpg?v=2",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 751,
+          "line": 19,
+          "column": 90
+        }
+      ]
     }
   ]
 }

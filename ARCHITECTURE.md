@@ -765,10 +765,12 @@ A `style` attribute is CSS and never meets the external-URL test: `width: 100%` 
 and a colon, which reads as a URL scheme and would drop the whole attribute. Usually only its
 delimiters are encoded, as in `style="background-image: url(&quot;/logo.png&quot;)"`, and the path
 itself is plain in the source; read as source text, PostCSS would see the unquoted token
-`&quot;/logo.png&quot;`. The adapter decodes the CSS with a map from each decoded character back to
-its source offset (`decodeCharacterReferencesWithMap`), hands the decoded text to the CSS adapter,
-and maps each reference found back to the source. It keeps the result only when three guards hold,
-and otherwise reports the attribute as unread:
+`&quot;/logo.png&quot;`. The adapter decodes the CSS with a map from each decoded UTF-16 code unit
+back to the source offset it came from (`decodeCharacterReferencesWithMap`), hands the decoded text
+to the CSS adapter, and maps each reference found back to the source. A character above U+FFFF,
+such as an emoji, is two code units even when one reference spells it, and both map to the
+reference's start. It keeps the result only when three guards hold, and otherwise reports the
+attribute as unread:
 
 1. The decoder finishes. A named reference outside its five, such as `&nbsp;`, stops it.
 2. Its decoded text equals parse5's. parse5 knows every named reference in the HTML

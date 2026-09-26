@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
+import { decodeCharacterReferencesWithMap } from './reference-path.js';
 
 /**
  * Table-driven, per the adapter contract. As with CSS, every case slices the path
@@ -460,6 +461,49 @@ describe('htmlAdapter', () => {
       expect(references[0]?.ceiling).toBe('unsafe');
       expect(references[0]?.note).toMatch(/no reference in it to find/);
     });
+
+    /**
+     * This emoji, U+1F600, is two UTF-16 code units, and one character reference can spell
+     * it. Both units map to the reference's start, so the text after it keeps its offsets.
+     */
+    for (const written of ['&#x1F600;', '&#128512;']) {
+      it(`keeps the path on its own source range after an emoji written as ${written}`, () => {
+        const source = `<div style="--icon: &quot;${written}&quot;; background: url(&quot;/img/a.png&quot;)"></div>`;
+        const references = find(source);
+
+        expect(references).toHaveLength(1);
+        const reference = references[0];
+        if (reference === undefined) throw new Error('unreachable');
+        expect(reference.rawPath).toBe('/img/a.png');
+        expect(reference.ceiling).toBe('high');
+        expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+      });
+    }
+
+    it('keeps the path and its query apart after an emoji reference', () => {
+      // One character late, the range would read `img/a.png?`, still an image once the query
+      // is split off, so the resolver would look it up beside the page and report it broken.
+      const source =
+        '<div style="--icon: &quot;&#x1F600;&quot;; background: url(&quot;/img/a.png?v=2&quot;)"></div>';
+
+      expect(paths(source)).toEqual(['/img/a.png']);
+      expect(slices(source)).toEqual(['/img/a.png']);
+    });
+
+    const emoji = String.fromCodePoint(0x1f600);
+    const maps: ReadonlyArray<[name: string, source: string, text: string, map: number[]]> = [
+      ['a named reference', 'a&amp;b', 'a&b', [0, 1, 6, 7]],
+      ['an emoji as a hex reference', 'a&#x1F600;b', `a${emoji}b`, [0, 1, 1, 10, 11]],
+      ['an emoji as a decimal reference', 'a&#128512;b', `a${emoji}b`, [0, 1, 1, 10, 11]],
+      ['a literal emoji before a reference', `${emoji}&amp;b`, `${emoji}&b`, [0, 1, 2, 7, 8]],
+    ];
+
+    it.each(maps)(
+      'maps each decoded UTF-16 code unit to the source offset it came from: %s',
+      (_name, source, text, map) => {
+        expect(decodeCharacterReferencesWithMap(source)).toEqual({ text, map });
+      },
+    );
   });
 
   describe('query strings', () => {
