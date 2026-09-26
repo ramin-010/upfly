@@ -140,7 +140,7 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
-| 5 | under an excluded root, or exists on disk | `out-of-scope` | `../legacy/old.png` |
+| 5 | under an excluded root, exists on disk, or a drive path outside the project | `out-of-scope` | `../legacy/old.png` |
 | 6 | alias-shaped, nothing matched | `unresolved-alias` | `@/assets/logo.png` |
 | 6b | a package specifier | `out-of-scope` | `@11ty/logo/img/logo.png` |
 | 7 | asserted | `broken` | `./missing.png`, a real finding |
@@ -181,6 +181,14 @@ reference at a `.webp` would break something that works today. It also carries t
 `exclusionReason`, naming the actual rule (`the ignore rule 'legacy/'`) rather than a generic
 "excluded", because that is the difference between a report line that explains a missing asset
 and one that just mentions it.
+
+**A Windows drive path names a place on one disk.** `C:/site/hero.png` and `C:\site\hero.png`
+are read with Windows path rules on every platform, so a report made on Linux says what one made
+on Windows does. Inside the project, which only a project on a Windows drive can contain, the
+path is looked up like any other. Outside it, it is `out-of-scope` without a `stat`: whether this
+machine holds the file says nothing about the project, and asking would make the report depend
+on the machine that ran it. A browser reads `C:` as a URL scheme, so the path never loads from a
+served site; the report line is how the author finds out.
 
 ### The resolver is pure, and its one filesystem need is a port
 
@@ -655,6 +663,10 @@ Two places where the same character means opposite things, both settled by `kind
   reading silently, and dropping a subpath import made it vanish from every report under no
   reason at all.
 - `#{` opens a SCSS interpolation, so it is never treated as a fragment.
+
+A letter, a colon and a slash or backslash is a Windows drive, never a URL scheme, a package or
+an alias. `isDrivePath` answers it before the scheme test, so `C:/site/hero.png` reaches the
+resolver instead of being dropped as another host's URL with no report line.
 
 ### What counts as a path-shaped string
 

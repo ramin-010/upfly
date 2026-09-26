@@ -1,0 +1,5 @@
+/* A Windows path pasted into a stylesheet, where CSS reads each backslash as an escape. */
+
+.team {
+  background-image: url(C:\site\img\photo.png);
+}

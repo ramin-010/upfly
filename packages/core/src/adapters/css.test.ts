@@ -115,6 +115,26 @@ describe('cssAdapter', () => {
     });
   });
 
+  describe('a Windows drive path', () => {
+    it('is a path rather than a URL scheme, so it is reported', () => {
+      const source = 'a { background: url("C:/site/img/hero.png"); }';
+      const references = find(source);
+
+      expect(slices(source, references)).toEqual(['C:/site/img/hero.png']);
+      expect(references[0]?.ceiling).toBe('high');
+    });
+
+    it('is unsafe with backslashes, which CSS reads as escapes', () => {
+      const path = 'C:\\site\\img\\hero.png';
+      const source = `a { background: url(${path}); }`;
+      const references = find(source);
+
+      expect(slices(source, references)).toEqual([path]);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/escape/);
+    });
+  });
+
   describe('never mistakes commented-out code for a reference', () => {
     it('ignores a whole-line comment', () => {
       expect(find('/* a { background: url(old.png); } */\na { color: red; }')).toEqual([]);

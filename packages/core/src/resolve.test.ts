@@ -637,6 +637,71 @@ describe('resolveReferences', () => {
     });
   });
 
+  /**
+   * `C:/site/hero.png` names a file by where it sits on one machine's disk. Outside the
+   * project it is out of scope, decided without asking this machine's disk, so the report
+   * is the same on every machine; inside it, on Windows, it is looked up like any path.
+   */
+  describe('a Windows drive path', () => {
+    const onWindows = process.platform === 'win32';
+    // On Windows the project's own drive, so only the directories put the path outside it.
+    const drive = onWindows ? ROOT.slice(0, 2) : 'C:';
+    const outside = `${drive}/elsewhere/logo.png`;
+
+    it.each([
+      ['an attribute', 'attr'],
+      ['an import, where it is not a package or an alias', 'import'],
+      ['a guessed string', 'string'],
+    ] as const)('is out of scope outside the project, in %s', (_name, kind) => {
+      const reference = expectResolution(resolveOne({ rawPath: outside, kind }), 'out-of-scope');
+
+      expect(reference.exclusionReason).toMatch(/outside the project/);
+      expect(reference.resolvedPath).toBe(outside);
+    });
+
+    it('reads backslashes as separators', () => {
+      const rawPath = `${drive}\\elsewhere\\logo.png`;
+      const reference = expectResolution(resolveOne({ rawPath, kind: 'attr' }), 'out-of-scope');
+
+      expect(reference.resolvedPath).toBe(outside);
+    });
+
+    it('asks the disk nothing about a file outside the project', () => {
+      const asked: string[] = [];
+      resolveReferences([raw({ rawPath: outside, kind: 'attr' })], {
+        root: ROOT,
+        assets: ASSETS,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        exists: (path) => {
+          asked.push(path);
+          return true;
+        },
+      });
+
+      expect(asked).toEqual([]);
+    });
+
+    it.skipIf(!onWindows)('resolves one inside the project to its asset, however spelled', () => {
+      const lowercaseDrive = `${ROOT.charAt(0).toLowerCase()}${ROOT.slice(1)}`;
+      for (const rawPath of [
+        `${toPosix(ROOT)}/src/assets/logo.png`,
+        join(ROOT, 'src', 'assets', 'logo.png'),
+        `${toPosix(lowercaseDrive)}/src/assets/logo.png`,
+      ]) {
+        const reference = expectResolution(resolveOne({ rawPath, kind: 'attr' }), 'resolved');
+        expect(reference.resolvedPath, rawPath).toBe(join(ROOT, 'src/assets/logo.png'));
+      }
+    });
+
+    it.skipIf(!onWindows)('is broken inside the project when the file is not there', () => {
+      const rawPath = `${toPosix(ROOT)}/src/assets/gone.png`;
+      // In an import too, where a drive path is neither a package nor an alias.
+      for (const kind of ['attr', 'import'] as const) {
+        expect(resolveOne({ rawPath, kind })?.resolution, kind).toBe('broken');
+      }
+    });
+  });
+
   describe('rung 7: an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });

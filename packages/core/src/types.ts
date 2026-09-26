@@ -143,7 +143,10 @@ export type Resolution =
  * in ARCHITECTURE.md.
  */
 export type ResolvedVia =
-  /** Relative to the directory of the referencing file. The ordinary case. */
+  /**
+   * Relative to the directory of the referencing file, the ordinary case. A Windows drive
+   * path inside the project is resolved this way too.
+   */
   | 'file'
   /** A root-relative path against a serving root, or a path through a declared alias. */
   | 'serving-root'

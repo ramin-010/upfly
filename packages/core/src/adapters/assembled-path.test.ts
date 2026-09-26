@@ -148,6 +148,30 @@ describe('provablyNotAFile', () => {
   });
 });
 
+describe('isExternalUrl', () => {
+  // A letter, a colon and a slash or a backslash is a Windows drive. Read as a URL scheme,
+  // `C:/site/hero.png` would be dropped as another host's file, with no report line.
+  it.each([
+    ['a drive path', 'C:/site/img/hero.png'],
+    ['a drive path with backslashes', 'C:\\site\\img\\hero.png'],
+    ['a lowercase drive letter', 'd:/photos/hero.png'],
+  ])('reads %s as a path in every construct', (_name, path) => {
+    for (const kind of ['import', 'attr', 'css-url', 'md', 'json', 'template', 'string'] as const) {
+      expect(isExternalUrl(path, kind), kind).toBe(false);
+    }
+  });
+
+  it.each([
+    ['a scheme', 'https://cdn.example.com/hero.png'],
+    ['a data URI', 'data:image/png;base64,AAAA'],
+    ['a one-letter scheme with no slash after the colon', 'c:hero.png'],
+    ['a two-letter scheme', 'ab:/hero.png'],
+    ['a protocol-relative URL', '//cdn.example.com/hero.png'],
+  ])('still reads %s as a URL', (_name, path) => {
+    expect(isExternalUrl(path, 'attr')).toBe(true);
+  });
+});
+
 /**
  * An optional chain inside a template hole is not the start of a query string, and
  * `#{$mode}` in SCSS is not a fragment. Split there, the extension goes with the discarded

@@ -6749,6 +6749,66 @@
           "column": 26
         }
       ]
+    },
+    {
+      "path": "apps/web/drive-path.html",
+      "entries": [
+        {
+          "raw": "C:/site/img/photo.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "out-of-scope",
+          "why": "A Windows drive path. C: is a drive, not a URL scheme, so this is not another host's URL: it names a file on the author's disk, outside the project, which a browser does not load from the site. It is reported as out of scope with that reason rather than dropped without a word.",
+          "offset": 271,
+          "line": 12,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/drive-path.md",
+      "entries": [
+        {
+          "raw": "C:\\site\\img\\photo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "out-of-scope",
+          "why": "The same drive path written with backslashes, as Windows prints it. In a Markdown destination a backslash escapes only ASCII punctuation, so each one here stays as written, and the path names a file outside the project.",
+          "offset": 192,
+          "line": 6,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/styles/drive-path.css",
+      "entries": [
+        {
+          "raw": "C:\\site\\img\\photo.png",
+          "occurrence": 1,
+          "shape": "css.url.bare",
+          "expect": "dynamic",
+          "why": "A drive path in an unquoted url(). CSS reads each backslash as an escape, so the text is not the path a browser reads, and the adapter reports it as unsafe with that reason. Read as a URL scheme, it would be dropped with no report line.",
+          "offset": 125,
+          "line": 4,
+          "column": 25
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/drive-path.ts",
+      "entries": [
+        {
+          "raw": "C:/site/img/photo.png",
+          "occurrence": 1,
+          "shape": "js.import.static",
+          "expect": "out-of-scope",
+          "why": "An import of a drive path. A bundler on the machine that wrote it could load the file, but it lies outside the project, so it is out of scope for that reason: not a package, not an alias and not a URL.",
+          "offset": 111,
+          "line": 2,
+          "column": 20
+        }
+      ]
     }
   ]
 }

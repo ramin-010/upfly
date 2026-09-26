@@ -35,6 +35,7 @@ import {
   NOT_GLOBBABLE_REASON,
   assembledPathIsGlobbable,
   interpolationChunks,
+  isDrivePath,
   isExternalUrl,
   parseSrcset,
   plausiblePathShape,
@@ -1030,8 +1031,8 @@ function moduleSourceShape(source: BabelNode | null | undefined, construct: Shap
  */
 function isBareSpecifier(value: string): boolean {
   if (value === '') return false;
-  // Relative or root-relative: an ordinary reference to a file in this project.
-  if (value.startsWith('.') || value.startsWith('/')) return false;
+  // Relative, root-relative or on a Windows drive: a reference to a file, not a package.
+  if (value.startsWith('.') || value.startsWith('/') || isDrivePath(value)) return false;
   // Alias-shaped: which alias it is depends on a table only the resolver has.
   if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) return false;
   return true;

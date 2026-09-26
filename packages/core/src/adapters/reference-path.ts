@@ -11,8 +11,21 @@ import type { ReferenceKind } from '../types.js';
 /**
  * A URL scheme: a letter, then letters, digits, `+`, `-` or `.`, then a colon. A relative
  * path would need a colon before its first slash to match, which nobody writes on purpose.
+ * A Windows drive path matches as well, so `isExternalUrl` rules a drive out first.
  */
 const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+
+/** One letter, a colon, then a slash or a backslash. */
+const DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
+
+/**
+ * Whether a path starts at a Windows drive, as `C:/site/hero.png` and `C:\site\hero.png` do.
+ * It names a place on one machine's disk, so it is never a URL scheme, a package or an
+ * alias; the resolver decides whether that place is inside the project.
+ */
+export function isDrivePath(path: string): boolean {
+  return DRIVE_PATH.test(path);
+}
 
 /**
  * Whether a reference points somewhere other than a file in this project: a `data:` URI,
@@ -20,7 +33,9 @@ const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
  * `#fragment` such as `url(#gradient)`, which names an element in the same document.
  *
  * Adapters drop these without a report line. They were never candidate asset references,
- * and reporting `url(data:image/png;base64,…)` as broken would be wrong.
+ * and reporting `url(data:image/png;base64,…)` as broken would be wrong. A Windows drive
+ * path is not one of them: a browser reads `C:` as a scheme, but it names a file on a disk,
+ * which is reported rather than dropped.
  *
  * @param kind Required because a leading `#` depends on it. In a module specifier
  * (`'import'`), `#internal/a.png` is a Node subpath import, which the resolver handles as
@@ -34,6 +49,7 @@ export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
     // being built. Kept, it is reported as dynamic; dropped here, it would vanish.
     return !opensTemplateHole(rawPath);
   }
+  if (isDrivePath(rawPath)) return false;
   return rawPath.startsWith('//') || URL_SCHEME.test(rawPath);
 }
 

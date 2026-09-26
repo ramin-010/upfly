@@ -54,6 +54,10 @@ describe('path.bare-specifier: the disposition beats the construct', () => {
     expect(only(js("export const HERO = '/img/hero.png';")).shape).toBe('js.string.literal');
   });
 
+  it('leaves a Windows drive path on its own construct, since a drive is not a package', () => {
+    expect(only(js("import logo from 'C:/site/img/logo.png';")).shape).toBe('js.import.static');
+  });
+
   it('does not apply to new URL(…, import.meta.url), where a bare path is relative', () => {
     // The same spelling with the opposite meaning, decided entirely by the construct:
     // `new URL('img.png', import.meta.url)` resolves against the module, so calling it

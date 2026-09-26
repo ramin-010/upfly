@@ -7,9 +7,10 @@
  * See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 
-import { dirname, resolve as resolvePath } from 'node:path';
+import { dirname, resolve as resolvePath, win32 } from 'node:path';
 import {
   INTERPOLATIONS,
+  isDrivePath,
   spellingsOf,
   splitPathSuffix,
   staticExtensionOf,
@@ -216,9 +217,21 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
  * walk pruned, reported with the rule responsible, or failing that on a file that exists
  * anyway because a file-level ignore rule such as `*.png` excluded it. The fallback costs a
  * `stat` per candidate path of a reference that did not resolve, which is cheap against a
- * false `broken`.
+ * false `broken`. A Windows drive path outside the project is out of scope with no `stat`:
+ * whether one machine holds that file says nothing about the project.
  */
 function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
+  if (isDrivePath(path) && drivePathInProject(path, context.root) === null) {
+    return {
+      ...raw,
+      resolution: 'out-of-scope',
+      confidence: 'unsafe',
+      resolvedPath: posixDrivePath(path),
+      exclusionReason:
+        'names a file on a Windows drive outside the project, which is not an indexed asset',
+    };
+  }
+
   for (const { path: candidate } of candidatePaths(path, raw, context.root, context.publicDirs)) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
@@ -334,7 +347,7 @@ function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
 function isAliasShaped(path: string, kind: RawReference['kind']): boolean {
   if (path.startsWith('@') || path.startsWith('~') || path.startsWith('#')) return true;
   if (kind !== 'import') return false;
-  return !path.startsWith('.') && !path.startsWith('/');
+  return !path.startsWith('.') && !path.startsWith('/') && !isDrivePath(path);
 }
 
 /** Stands in for an interpolation (`${…}`, `#{…}` or `@{…}`) while a template is globbed. */
@@ -424,7 +437,8 @@ interface Candidate {
  * A relative path resolves against the referencing file. A root-relative one is tried
  * against each serving root whose app directory is an ancestor of the file, nearest first
  * (see `servingRootsFor`), then against the project root, where a plain static site serves
- * `/hero.png` from. See "The resolver's seven outcomes" in ARCHITECTURE.md.
+ * `/hero.png` from. A Windows drive path is absolute, and has a candidate only inside the
+ * project. See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 function candidatePaths(
   path: string,
@@ -432,6 +446,11 @@ function candidatePaths(
   root: string,
   publicDirs: readonly string[],
 ): readonly Candidate[] {
+  if (isDrivePath(path)) {
+    const inside = drivePathInProject(path, root);
+    return inside === null ? [] : [{ path: inside, via: 'file' }];
+  }
+
   if (!path.startsWith('/')) {
     const relative: Candidate[] = [
       { path: toPosix(resolvePath(dirname(raw.file), path)), via: 'file' },
@@ -470,6 +489,28 @@ function candidatePaths(
   // fallback rather than a statement, which is why it is recorded as `project-root`.
   add({ path: toPosix(resolvePath(root, withoutLeadingSlash)), via: 'project-root' });
   return candidates;
+}
+
+/**
+ * A drive path read by Windows rules (`..` collapsed, either slash a separator) and written
+ * with `/`, as the asset index spells paths. The same on every platform, so a report made
+ * on Linux says what one made on Windows does.
+ */
+function posixDrivePath(path: string): string {
+  return win32.resolve(path).replaceAll('\\', '/');
+}
+
+/**
+ * How the asset index spells a drive path that lies inside the project, or `null` when it
+ * lies outside. Windows compares paths without regard to case, so the project root's part
+ * is matched that way and then spelled as the root spells it; the rest keeps its case, as
+ * a relative path's does.
+ */
+function drivePathInProject(path: string, root: string): string | null {
+  const absolute = posixDrivePath(path);
+  const projectRoot = toPosix(resolvePath(root)).replace(/\/$/, '');
+  if (!absolute.toLowerCase().startsWith(`${projectRoot.toLowerCase()}/`)) return null;
+  return `${projectRoot}${absolute.slice(projectRoot.length)}`;
 }
 
 /** `./a/b.png` -> `a/b.png`, leaving `../` alone: that really is file-relative. */
