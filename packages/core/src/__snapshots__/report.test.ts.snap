@@ -156,6 +156,391 @@ Worth knowing
 "
 `;
 
+exports[`buildReport > eleventy, with no serving root found: matches the approved JSON shape 1`] = `
+{
+  "caveats": [
+    {
+      "code": "duplicates-not-checked",
+      "count": 0,
+      "detail": [],
+      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+    },
+    {
+      "code": "not-probed",
+      "count": 0,
+      "detail": [],
+      "message": "images were not decoded, so oversized assets and format opportunities are unknown",
+    },
+    {
+      "code": "unscanned-extensions",
+      "count": 2,
+      "detail": [
+        ".njk — 2 files",
+      ],
+      "message": "1 file type had no adapter, so 2 files went unread",
+    },
+  ],
+  "coverage": {
+    "excludedRoots": [
+      {
+        "path": "node_modules",
+        "reason": "a build or version-control directory named 'node_modules'",
+      },
+    ],
+    "notExercised": [
+      {
+        "mechanism": "probe",
+        "why": "the run did not measure any asset, so oversized and format-opportunity findings could not be produced",
+      },
+    ],
+    "servingRoots": {
+      "declared": false,
+      "dirs": [],
+    },
+    "unscannedExtensions": [
+      {
+        "ext": ".njk",
+        "fileCount": 2,
+      },
+    ],
+    "unscannedFileCount": 2,
+  },
+  "declined": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "diagnosticsFile": null,
+  "findings": [
+    {
+      "checkable": 10,
+      "kind": "serving-root-unknown",
+      "linked": 0,
+      "suppressed": [
+        {
+          "file": "src/css/site.css",
+          "line": 8,
+          "rawPath": "/img/diagram.png",
+          "where": "src/css/site.css:8",
+        },
+        {
+          "file": "src/css/site.css",
+          "line": 12,
+          "rawPath": "/img/diagram.png",
+          "where": "src/css/site.css:12",
+        },
+        {
+          "file": "src/css/site.css",
+          "line": 8,
+          "rawPath": "/img/inline.png",
+          "where": "src/css/site.css:8",
+        },
+        {
+          "file": "src/css/site.css",
+          "line": 2,
+          "rawPath": "/img/texture.png",
+          "where": "src/css/site.css:2",
+        },
+        {
+          "file": "src/posts/first.md",
+          "line": 5,
+          "rawPath": "/img/diagram.png",
+          "where": "src/posts/first.md:5",
+        },
+        {
+          "file": "src/posts/first.md",
+          "line": 9,
+          "rawPath": "/img/inline.png",
+          "where": "src/posts/first.md:9",
+        },
+        {
+          "file": "src/posts/second.md",
+          "line": 8,
+          "rawPath": "/img/diagram.png",
+          "where": "src/posts/second.md:8",
+        },
+        {
+          "file": "src/posts/second.md",
+          "line": 11,
+          "rawPath": "/img/diagram.png",
+          "where": "src/posts/second.md:11",
+        },
+        {
+          "file": "src/posts/second.md",
+          "line": 11,
+          "rawPath": "/img/inline.png",
+          "where": "src/posts/second.md:11",
+        },
+        {
+          "file": "src/posts/second.md",
+          "line": 11,
+          "rawPath": "/img/inline.png",
+          "where": "src/posts/second.md:11",
+        },
+      ],
+      "suppressedBroken": 10,
+    },
+    {
+      "file": "src/posts/second.md",
+      "kind": "broken",
+      "line": 17,
+      "rawPath": "../img/missing-on-purpose.png",
+      "where": "src/posts/second.md:17",
+    },
+    {
+      "asset": "src/img/diagram.png",
+      "bytes": 71744,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+    {
+      "asset": "src/img/inline.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+    {
+      "asset": "src/img/texture.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+    {
+      "asset": "src/img/unused.png",
+      "bytes": 70,
+      "inPublicDir": false,
+      "kind": "dead",
+    },
+    {
+      "asset": "src/img/favicon.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/favicon.png",
+          "quote": "favicon.png",
+          "source": "unscanned-file",
+          "where": "src/_includes/base.njk:4",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/hero.jpg",
+      "bytes": 12557,
+      "evidence": [
+        {
+          "asset": "src/img/hero.jpg",
+          "quote": "hero.jpg",
+          "source": "unscanned-file",
+          "where": "src/index.njk:6",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/logo.png",
+      "bytes": 7195,
+      "evidence": [
+        {
+          "asset": "src/img/logo.png",
+          "quote": "logo.png",
+          "source": "unscanned-file",
+          "where": "src/index.njk:5",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/templated.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/templated.png",
+          "quote": "{{ site.url }}/img/templated.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/first.md:7",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+  ],
+  "keptOriginals": {
+    "assets": [],
+    "bytes": 0,
+    "count": 0,
+  },
+  "references": {
+    "byClassification": {
+      "correctly-refused": 1,
+      "missed-with-an-answer": 0,
+      "not-a-claim": 0,
+      "resolved-with-an-answer": 11,
+    },
+    "byConfidence": {
+      "certain": 0,
+      "high": 0,
+      "medium": 0,
+      "unsafe": 12,
+    },
+    "byResolution": {
+      "broken": 11,
+      "discarded": 0,
+      "dynamic": 1,
+      "out-of-scope": 0,
+      "resolved": 0,
+      "resolved-pattern": 0,
+      "unresolved-alias": 0,
+    },
+    "byResolvedVia": {
+      "file": 0,
+      "project-root": 0,
+      "serving-root": 0,
+      "speculative-root": 0,
+    },
+    "classificationBounds": [
+      {
+        "bound": "Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches, but 4 are not. Two read an imported module constant, which a module graph would resolve (to an absolute URL); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.",
+        "count": 1,
+        "measuredAgainst": "2026-09-25, on five public repositories: astro-docs, eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the engine have changed since, this bound has not been re-measured.",
+        "reason": "assembled-at-runtime",
+      },
+    ],
+    "discarded": null,
+    "discardedCount": 0,
+    "refusalAccuracyIsNotSelfAssessable": true,
+    "unsafe": [
+      {
+        "classification": "correctly-refused",
+        "file": "src/posts/first.md",
+        "rawPath": "{{ site.url }}/img/templated.png",
+        "reason": "contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically",
+        "refusalReason": "assembled-at-runtime",
+        "resolution": "dynamic",
+      },
+    ],
+  },
+  "skipped": [],
+  "staleConversions": [],
+  "summary": {
+    "assetBytes": 91846,
+    "assets": 8,
+    "findings": {
+      "broken": 1,
+      "dead": 4,
+      "duplicate": 0,
+      "format-opportunity": 0,
+      "oversized": 0,
+      "possibly-dead": 4,
+      "serving-root-unknown": 1,
+    },
+    "linkedReferences": 0,
+    "potentialSavingBytes": 0,
+    "probed": false,
+    "referencedAssets": 0,
+    "references": 12,
+    "savingQuality": {},
+    "sourceFiles": 5,
+  },
+  "unusedVectors": {
+    "assets": null,
+    "bytes": 0,
+    "count": 0,
+  },
+  "version": 6,
+}
+`;
+
+exports[`buildReport > eleventy, with no serving root found: matches the approved human rendering 1`] = `
+"Upfly audit
+
+  savings not measured — images were not decoded (--no-probe)
+
+  scanned 5 source files and found 8 images, 91.8 KB in total
+  0 of 12 references resolved, pointing at 0 of those images
+  8 images with no reference Upfly could follow
+  root-relative paths resolved from the project root — Upfly found no public directory and none was declared
+
+1 reference had no answer to find
+
+  none of these is a path that points at a file — each is built at run time, or
+  names something deliberately outside what Upfly indexes
+
+  (the file it was found in, then the path text as written)
+
+  src/posts/first.md  {{ site.url }}/img/templated.png
+    dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
+
+What the counts above are known to get wrong
+
+  1 classified as "assembled-at-runtime", and:
+    Of 18 such references, 14 are a parameter, a prop or instance state, which
+    nothing reaches, but 4 are not. Two read an imported module constant,
+    which a module graph would resolve (to an absolute URL); one is a filename
+    from a build-time glob; one is an environment variable the deploy
+    supplies. The first three have an answer we do not compute, so they are
+    misses this reason absorbs. Read as roughly four in five.
+
+    measured: 2026-09-25, on five public repositories: astro-docs,
+    eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the
+    engine have changed since, this bound has not been re-measured.
+
+Findings — 10 items
+
+  Upfly could not work out where this project serves files from
+    0 of 10 root-relative references resolved, so the rest cannot be judged
+    10 broken-reference findings are withheld: they are almost certainly this one problem
+    declare the directory your site serves from and run again, for example publicDirs: ["src"]
+    the withheld references, which a run with that directory declared will check:
+      src/css/site.css:8  /img/diagram.png
+      src/css/site.css:12  /img/diagram.png
+      src/css/site.css:8  /img/inline.png
+      src/css/site.css:2  /img/texture.png
+      src/posts/first.md:5  /img/diagram.png
+      src/posts/first.md:9  /img/inline.png
+      src/posts/second.md:8  /img/diagram.png
+      src/posts/second.md:11  /img/diagram.png
+      src/posts/second.md:11  /img/inline.png
+      src/posts/second.md:11  /img/inline.png
+
+  broken references (1) — these point at nothing
+    src/posts/second.md:17  ../img/missing-on-purpose.png
+
+  unreferenced images (4)
+    src/img/diagram.png  71.7 KB
+    src/img/inline.png  70 B
+    src/img/texture.png  70 B
+    src/img/unused.png  70 B
+
+  possibly unreferenced (4) — each is named somewhere, but not by a reference Upfly could follow
+
+    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
+      src/index.njk — 2 assets
+        src/img/hero.jpg  12.6 KB
+          named in src/index.njk:6: hero.jpg
+        src/img/logo.png  7.2 KB
+          named in src/index.njk:5: logo.png
+      src/_includes/base.njk — 1 asset
+        src/img/favicon.png  70 B
+          named in src/_includes/base.njk:4: favicon.png
+
+    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (1)
+      src/posts/first.md — 1 asset
+        src/img/templated.png  70 B
+          named in src/posts/first.md:7: {{ site.url }}/img/templated.png
+
+Worth knowing
+
+  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  images were not decoded, so oversized assets and format opportunities are unknown
+  1 file type had no adapter, so 2 files went unread:
+    .njk — 2 files
+"
+`;
+
 exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
 {
   "caveats": [

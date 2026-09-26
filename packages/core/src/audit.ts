@@ -65,6 +65,12 @@ export interface BrokenFinding {
   readonly rawPath: string;
 }
 
+/**
+ * A root-relative broken reference that a `serving-root-unknown` finding replaced, cited
+ * with the same fields its `broken` finding would have had.
+ */
+export type SuppressedBroken = Omit<BrokenFinding, 'kind'>;
+
 /** Which limit an asset exceeded. */
 export type OversizeDimension = 'bytes' | 'width' | 'height';
 
@@ -107,9 +113,8 @@ export interface FormatOpportunityFinding {
  *
  * It replaces the run's root-relative `broken` findings: when almost none of those
  * references resolve, they are one misconfiguration seen many times, not many broken
- * references. `suppressedBroken` counts the findings it replaced, so they reach the report
- * as a number with a reason. The references themselves are counted in the report's
- * `references.byResolution`, not listed.
+ * references. Each reference it replaced is listed in `suppressed`, so none is set aside
+ * where a reader cannot see it.
  * See "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
 export interface ServingRootUnknownFinding {
@@ -118,8 +123,10 @@ export interface ServingRootUnknownFinding {
   readonly linked: number;
   /** Root-relative references the engine could check: linked plus broken. */
   readonly checkable: number;
-  /** How many `broken` findings this replaced. */
+  /** How many `broken` findings this replaced: the length of `suppressed`. */
   readonly suppressedBroken: number;
+  /** The references behind those findings, in the order the findings would have had. */
+  readonly suppressed: readonly SuppressedBroken[];
 }
 
 export type Finding =
@@ -323,6 +330,9 @@ function diagnoseServingRoot(
       linked: health.linked,
       checkable: health.checkable,
       suppressedBroken: explained.length,
+      suppressed: explained
+        .sort(byReportOrder)
+        .map(({ file, line, where, rawPath }) => ({ file, line, where, rawPath })),
     },
     ...unexplained,
   ];

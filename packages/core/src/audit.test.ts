@@ -733,8 +733,7 @@ describe('a run that could not find the serving root', () => {
   });
 
   it('carries the count of what it replaced, so nothing vanishes silently', async () => {
-    // A silent skip is a bug, so the diagnosis counts the findings it replaced. The
-    // references themselves are counted in the report's `references.byResolution`.
+    // A silent skip is a bug, so the diagnosis counts the findings it replaced.
     const { assets, references } = rootRelative(30, 2);
 
     const result = await audit({
@@ -763,6 +762,38 @@ describe('a run that could not find the serving root', () => {
     expect(kinds(result.findings)).toEqual(['serving-root-unknown', 'broken']);
     expect(result.findings[0]).toMatchObject({ suppressedBroken: 19 });
     expect(result.findings[1]).toMatchObject({ rawPath: './genuinely-gone.png' });
+  });
+
+  it('names every reference it withholds, cited as its broken finding would be', async () => {
+    // A count with a reason still leaves the reader unable to see which references were
+    // set aside. Each reference starts its own 40-character line, so `index` is on line
+    // `index + 1`.
+    const { assets, references } = rootRelative(20, 1);
+    const alsoBroken = broken('index.html', './genuinely-gone.png', 9_000);
+    const text = references.map((reference) => reference.rawPath.padEnd(39)).join('\n');
+
+    const result = await audit({
+      graph: graphOf({ assets, references: [...references, alsoBroken] }),
+      sweep: NO_SWEEP,
+      readFile: files({ '/repo/index.html': text }),
+    });
+
+    const [diagnosis, relative] = result.findings;
+    if (diagnosis?.kind !== 'serving-root-unknown') throw new Error('no diagnosis');
+    const cited = (index: number) => ({
+      file: 'index.html',
+      line: index + 1,
+      where: `index.html:${index + 1}`,
+      rawPath: `/missing${index}.png`,
+    });
+    // In path order, as broken findings are: `/missing10.png` sorts before `/missing2.png`.
+    expect(diagnosis.suppressed).toEqual(
+      [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2, 3, 4, 5, 6, 7, 8, 9].map(cited),
+    );
+    expect(diagnosis.suppressedBroken).toBe(diagnosis.suppressed.length);
+    // A relative path is broken whatever the serving root is, so it stays a finding of its
+    // own and out of the list.
+    expect(relative).toMatchObject({ kind: 'broken', rawPath: './genuinely-gone.png' });
   });
 
   it('leaves an ordinary run alone, broken findings and all', async () => {

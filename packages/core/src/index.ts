@@ -11,6 +11,7 @@ export type {
   OversizedFinding,
   PossiblyDeadFinding,
   ServingRootUnknownFinding,
+  SuppressedBroken,
 } from './audit.js';
 export { citeReferences, lineOf } from './citation.js';
 export type { Citation, CitationOptions, CitationResult, UnreadableSource } from './citation.js';

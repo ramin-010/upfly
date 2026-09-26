@@ -585,6 +585,10 @@ function describe(finding: Finding): string[] {
         `    ${finding.linked} of ${finding.checkable} root-relative references resolved, so the rest cannot be judged`,
         `    ${finding.suppressedBroken} broken-reference findings are withheld: they are almost certainly this one problem`,
         '    declare the directory your site serves from and run again, for example publicDirs: ["src"]',
+        // Every one, in the form a broken finding takes: the count alone would not show a
+        // reader which references were set aside.
+        '    the withheld references, which a run with that directory declared will check:',
+        ...finding.suppressed.map((entry) => `      ${entry.where}  ${entry.rawPath}`),
       ];
     case 'broken':
       return [`    ${finding.where}  ${finding.rawPath}`];

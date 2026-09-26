@@ -389,8 +389,10 @@ So two things happen below a floor:
    reports; only the write path stops.
 2. **`audit` replaces every root-relative `broken` finding with one `serving-root-unknown` finding**
    that names the real problem, says how many findings it replaced, and tells the user to declare a
-   serving root. A broken relative path is not affected. The replaced references are counted in the
-   report's `references.byResolution`, not listed one by one.
+   serving root. A broken relative path is not affected. Each replaced reference is listed under the
+   finding, in `suppressed`, with its file, line and path as written, in the order its `broken`
+   finding would have had, so none is set aside where a reader cannot see it. The human report
+   prints each one as it prints a broken finding.
 
 **The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
 Only those depend on a serving root. A repository whose *relative* imports are genuinely broken

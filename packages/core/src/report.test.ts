@@ -20,6 +20,7 @@ import {
 } from './report.js';
 import type { ClassificationBound, ReferenceEntry, Report } from './report.js';
 import { resolveReferences } from './resolve.js';
+import type { ServingRoots } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';
@@ -48,7 +49,18 @@ const PUBLIC_DIRS: Record<string, string> = {
   eleventy: 'src',
 };
 
-async function reportFor(name: string, probed = false, includeDiscarded = false): Promise<Report> {
+/**
+ * No serving root at all: none declared, detected or inferred. On `eleventy`, which serves
+ * `src`, no root-relative reference resolves in this state.
+ */
+const NO_SERVING_ROOT: ServingRoots = { dirs: [], declared: false };
+
+async function reportFor(
+  name: string,
+  probed = false,
+  includeDiscarded = false,
+  servingRoots: ServingRoots = { dirs: [PUBLIC_DIRS[name] ?? 'public'], declared: true },
+): Promise<Report> {
   const root = join(FIXTURES, name);
   const discovery = await discover({ root, adapters: ADAPTERS });
   const readFileText = (path: string) => readFile(path, 'utf8');
@@ -66,7 +78,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     references: resolveReferences(scanned.references, {
       root: discovery.root,
       assets: discovery.assets,
-      servingRoots: { declared: true, dirs: [PUBLIC_DIRS[name] ?? 'public'] },
+      servingRoots,
       excludedRoots: discovery.excludedRoots,
       exists: (path) => existsSync(path),
     }),
@@ -85,7 +97,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     graph,
     sweep,
     readFile: readFileText,
-    publicDirs: [PUBLIC_DIRS[name] ?? 'public'],
+    publicDirs: servingRoots.dirs,
     ...(probes === undefined ? {} : { probes }),
   });
 
@@ -94,7 +106,7 @@ async function reportFor(name: string, probed = false, includeDiscarded = false)
     audit: auditResult,
     discovery,
     sweep,
-    servingRoots: { dirs: [PUBLIC_DIRS[name] ?? 'public'], declared: true },
+    servingRoots,
     includeDiscarded,
     ...(probes === undefined ? {} : { probes }),
   });
@@ -136,6 +148,21 @@ describe('buildReport', () => {
 
   it.each(NAMES)('%s: matches the approved human rendering', async (name) => {
     expect(renderReport(await reportFor(name))).toMatchSnapshot();
+  });
+
+  /**
+   * The snapshots above declare each fixture's serving root, so none holds a
+   * `serving-root-unknown` finding. Without one, `eleventy` resolves no root-relative
+   * reference, and these show the diagnosis with every reference it withholds.
+   */
+  it('eleventy, with no serving root found: matches the approved JSON shape', async () => {
+    expect(await reportFor('eleventy', false, false, NO_SERVING_ROOT)).toMatchSnapshot();
+  });
+
+  it('eleventy, with no serving root found: matches the approved human rendering', async () => {
+    expect(
+      renderReport(await reportFor('eleventy', false, false, NO_SERVING_ROOT)),
+    ).toMatchSnapshot();
   });
 
   describe('no absolute path leaks', () => {
@@ -1765,6 +1792,41 @@ describe('the serving roots the report discloses', () => {
       expect(rendered).not.toMatch(/detecteds/);
       expect(rendered).toContain(`(${dirs.length} in all)`);
     }
+  });
+});
+
+describe('the references withheld when the serving root cannot be found', () => {
+  async function diagnosed() {
+    const report = await reportFor('eleventy', false, false, NO_SERVING_ROOT);
+    const diagnosis = report.findings.find((finding) => finding.kind === 'serving-root-unknown');
+    if (diagnosis?.kind !== 'serving-root-unknown') throw new Error('no diagnosis');
+    return { report, diagnosis };
+  }
+
+  it('names every broken reference it counts, as a finding or under the diagnosis', async () => {
+    // `byResolution` counts every broken reference, so each one has to be findable by
+    // name: as a broken finding, or in the list of those the diagnosis withheld.
+    const { report, diagnosis } = await diagnosed();
+    const broken = report.findings.filter((finding) => finding.kind === 'broken');
+
+    expect(diagnosis.suppressed).toHaveLength(diagnosis.suppressedBroken);
+    expect(broken.length + diagnosis.suppressed.length).toBe(report.references.byResolution.broken);
+    expect(diagnosis.suppressed).toContainEqual({
+      file: 'src/css/site.css',
+      line: 2,
+      where: 'src/css/site.css:2',
+      rawPath: '/img/texture.png',
+    });
+  });
+
+  it('prints each one in the human report, in the form a broken finding takes', async () => {
+    const { report, diagnosis } = await diagnosed();
+    const text = renderReport(report);
+
+    expect(text).toContain('\n      src/css/site.css:2  /img/texture.png\n');
+    expect(text).toContain(
+      diagnosis.suppressed.map((entry) => `      ${entry.where}  ${entry.rawPath}`).join('\n'),
+    );
   });
 });
 

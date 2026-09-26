@@ -257,7 +257,8 @@ export interface ReferenceReport {
   readonly classificationBounds: readonly ClassificationBound[];
   /**
    * Every `dynamic`, `unresolved-alias` and `out-of-scope` reference, listed in full: the
-   * references Upfly could not safely rewrite. `broken` references are findings instead.
+   * references Upfly could not safely rewrite. `broken` references are findings instead,
+   * each a `broken` finding or an entry in a `serving-root-unknown` finding's `suppressed`.
    */
   readonly unsafe: readonly ReferenceEntry[];
   /**
