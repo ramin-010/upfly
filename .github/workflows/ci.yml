@@ -2,8 +2,7 @@ name: CI
 
 on:
   push:
-    # `v3` is where the rewrite lives until it becomes `main` at launch, so CI has to
-    # watch it or nothing runs on any commit in this phase.
+    # The rewrite lives on `v3` until it becomes `main` at launch, so CI watches both.
     branches: [main, v3]
   pull_request:
 
@@ -51,28 +50,16 @@ jobs:
         run: pnpm test
 
   coverage-tree:
-    # 🔴 R91. The answer key and the tree are ONE instrument, and nothing was checking
-    # that they still agree — the coverage tree landed on 2026-09-13 and its own
-    # self-check had never run in CI. A drifted key still reads green, which is exactly
-    # what R75 says a key does, and the measuring harness refuses to produce a matrix
-    # until this passes. So this is the gate in front of the gate.
+    # The answer key and the tree are one instrument: a key that has drifted from the tree
+    # still reads green, and the measuring harness refuses to run until they agree. `check`
+    # says they agree; `prove` then damages them eighteen ways and confirms the check fails
+    # each time, because a check never seen to fail proves nothing.
     #
-    # ⚠️ `prove` is the one that matters, and it runs SECOND on purpose. `check` says the
-    # key and the tree agree; `prove` damages the tree eighteen ways and says the check
-    # can still fail. A check nobody has seen fail is this project's dominant defect
-    # class — four have shipped — and `check` passing tells you nothing about whether it
-    # could ever have told you anything.
+    # Two cells, not six: the key records byte offsets, which match on every platform only
+    # because `.gitattributes` pins `eol=lf`. The Windows cell is where a CRLF checkout would
+    # show; the other four would re-read the same bytes.
     #
-    # ⚠️ Two cells rather than the six-way matrix: the key records BYTE offsets, which
-    # are platform-independent only because `.gitattributes` pins `eol=lf`. Windows is
-    # here to keep that promise honest — a CRLF checkout shifts every offset and this is
-    # where it would show — and rule 5 makes Windows first-class regardless. The other
-    # four cells would re-measure the same bytes.
-    #
-    # ⚠️ `coverage-tree:measure` is DELIBERATELY NOT HERE. It exits non-zero on 46
-    # open questions about the engine and the key, so wiring it today would make CI red
-    # on purpose. It goes in once those are ruled and either fixed or carrying a
-    # `knownGap` — and it needs `pnpm build`, unlike these two, which import nothing.
+    # `coverage-tree:measure` is not run here: it needs `pnpm build`, and these two do not.
     name: coverage tree self-check / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -106,34 +93,21 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The matrix jobs get `dist` as a side effect of `pnpm typecheck`, which is
-      # `tsc --build --force`. This job ran neither, so on a fresh checkout there was
-      # no `packages/core/dist` and the one test that loads the built package could
-      # not be collected. Building here is what makes that test meaningful rather
-      # than merely absent.
+      # The check jobs get `dist` from `pnpm typecheck`, which runs `tsc --build --force`.
+      # This job does not typecheck, and `packages/core/test/smoke.test.ts` loads the built
+      # package, so it builds first.
       - run: pnpm build
       # Thresholds live in vitest.config.ts; this job fails if core drops below them.
       - run: pnpm coverage
 
   bench:
-    # Rule 16: a performance claim is only ever a number `bench/` produced in CI.
-    #
-    # ✅ **This now GATES**, set on 2026-09-13 from three runs per platform that this
-    # job had been printing under `--measure-only`:
-    #
-    #   ubuntu   3299, 4022, 4165 ms   max 4165   drift across runs 21.5%
-    #   windows  4758, 5233, 5641 ms   max 5641   drift across runs 16.9%
-    #
-    # 🔴 **The ceiling is a REGRESSION line, not §3.4's 3 000 ms design target, and the
-    # two must not be confused.** §5.1(g) failed against that target and it was
-    # deliberately not moved; a green build here does not mean it is met. The bench
-    # output prints both on every run so the distinction survives being read quickly.
-    #
-    # ⚠️ **The headroom is sized by the measured drift.** At the old 3 500/5 000 the same
-    # commit reported OVER, within, OVER on ubuntu and within, OVER, OVER on windows —
-    # the verdict flipped between runs of identical code. Max observed + ~30% clears it.
-    # The cost is honest: this catches a regression above ~30% and cannot catch a 10%
-    # one. For that, A/B back to back in one session with `bench/src/noise.ts`.
+    # A performance claim is only ever a number this job produced. It gates on a regression
+    # ceiling per platform (`budget`, in ms), set about 30% above the slowest run measured
+    # on unchanged code, because the headline drifts by up to about 22% between runs. The
+    # ceiling is not the 3,000 ms design target, which the engine does not meet; the output
+    # prints both. It catches a regression above about 30% and cannot see a 10% one: for
+    # that, compare two builds back to back with `bench/src/noise.ts`. See "The gate is a
+    # regression ceiling, not the target" in ARCHITECTURE.md.
     name: bench (gate) / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -153,46 +127,19 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Graph budget across three invocations
-        # Three separate processes, each a median of three runs after a discarded
-        # warm-up. Sampling inside one process controls the filesystem cache and
-        # nothing else — three consecutive invocations once reported medians 17%
-        # apart while each was internally tight to 4–6%.
-        #
-        # ⚠️ Three invocations is enough to catch a machine having a bad day and is NOT
-        # enough to characterise the spread — the range of three draws understates it.
-        # It is not what the ceiling is set from: that came from the run-to-run figures
-        # above, which is the variation this job structurally cannot see.
+        # Three separate processes, each the median of three runs after a discarded warm-up:
+        # sampling inside one process controls the file-system cache and nothing else. Three
+        # invocations catch a machine having a bad day but understate the spread, so the
+        # ceiling comes from run-to-run figures instead.
         env:
           UPFLY_BENCH_BUDGET_MS: ${{ matrix.budget }}
-        #
-        # R134 step 1, as R142 re-ruled it: the run also prints a per-step breakdown —
-        # discover / scan / resolve / graph, with read against parse inside scan. The gate
-        # number above it is untouched and still sampled separately.
-        #
-        # It exists so queued changes can be attributed without a round-trip each: R132
-        # lands in `resolve`, the markdown skip lands in `parse`.
-        # Read it to say WHICH step moved; never quote it as a figure.
-        #
-        # 🔴 **R142: it is SAMPLED — three passes in three processes, with a per-step
-        # median, a per-step spread and `UNUSABLE` beside any step whose own samples
-        # disagree.** One pass could not attribute anything: over a commit touching no
-        # parse code, `parse` moved −2.5% on ubuntu and +12.5% on windows.
-        #
-        # ⚠️ **R143: three passes inside ONE run cannot see what R142 measured.** That
-        # 15-point control was BETWEEN runs, and between-run drift is invisible from
-        # inside a single run by construction (`invocations.ts`). The breakdown prints
-        # that warning itself on every run.
-        #
-        # `--experiments` is no longer passed (R185). It interleaved R141's variants so an
-        # A/B inside one job survived the drift between jobs, and its own condition for
-        # staying was that §5.1(g) should close. R161 closed it as FAILED, and the parse
-        # pool the variants compared was deleted (the last commit holding it is c84a2f3).
-        # Left on, it kept printing a verdict on a closed question that drifted between
-        # PASSES and FAILS from one run to the next, at about four extra minutes per
-        # windows run. The flag still works locally, where experiment 1 remains useful.
-        # This job now builds the graph 18 times: 12 for the headline (3 invocations x 1
-        # discarded warm-up + 3 runs) and 6 for the breakdown (3 processes x 1 warm-up +
-        # 1 pass). The headline command is the repository's `bench:gate` script.
+        # The run also prints a per-step breakdown (discover, scan with read against parse,
+        # resolve, graph), each step sampled in three processes with a median, a spread, and
+        # `UNUSABLE` beside a step whose samples disagree. Read it to say which step moved,
+        # never as a figure: drift between runs cannot be seen from inside one run, and the
+        # breakdown prints that warning itself. `--experiments` is left off, since it adds
+        # about four minutes to a Windows run; it still works locally. The graph is built 18
+        # times, 12 for the headline and 6 for the breakdown. This is the `bench:gate` script.
         run: pnpm --filter upfly-bench run bench -- --graph-only --invocations=3 --runs=3
 
   build:
