@@ -11,7 +11,7 @@
  * ARCHITECTURE.md.
  */
 
-import { TEMPLATE_EXPRESSIONS } from './adapters/reference-path.js';
+import { TEMPLATE_HOLES } from './adapters/reference-path.js';
 import { IMAGE_EXTENSIONS } from './paths.js';
 
 // Constructs that mark a reference position without an extension. `href` also matches
@@ -36,7 +36,7 @@ const ENCODED_SPELLING_TOKENS: readonly string[] = ['&#', '%'];
 
 // A templated destination such as `![logo]({{ site.logo }})` is reported as `dynamic` and
 // has no static extension. Imported, so a new template syntax is covered here too.
-const TEMPLATE_TOKENS: readonly string[] = TEMPLATE_EXPRESSIONS.map(([marker]) => marker);
+const TEMPLATE_TOKENS: readonly string[] = TEMPLATE_HOLES.map(({ opener }) => opener);
 
 const TOKENS: readonly string[] = [
   ...IMAGE_EXTENSIONS.map((extension) => extension.toLowerCase()),

@@ -24,6 +24,7 @@ import {
   isExternalUrl,
   plausiblePathShape,
   splitPathSuffix,
+  templateExpressionReason,
 } from './reference-path.js';
 
 /**
@@ -376,10 +377,11 @@ function shapeOf(input: {
     return rawPath.startsWith('#{') ? 'scss.interpolation.leading' : 'scss.interpolation.trailing';
   }
   if (rawPath.includes('@{')) return 'less.interpolation';
-  //    No `${}` rung: this function never sees one. The JavaScript adapter replaces each
-  //    `${…}` with a same-length comment (`/theme-/*---*/.png`) before passing CSS-in-JS
-  //    here, then restores the text and applies `assembledPathIsGlobbable` itself
-  //    (`withInterpolationRestored`), because only it knows which comments it wrote.
+  //    No `${}` rung. In CSS-in-JS the JavaScript adapter replaces each `${…}` with a
+  //    same-length comment (`/theme-/*---*/.png`) before passing it here, then restores the
+  //    text and applies `assembledPathIsGlobbable` itself (`withInterpolationRestored`),
+  //    because only it knows which comments it wrote. In a stylesheet, `dynamicReason`
+  //    reports a `${…}` as a template engine's.
   if (rawPath.startsWith('$')) return 'scss.variable';
   if (rawPath.startsWith('@')) return 'less.variable';
 
@@ -446,7 +448,9 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
   // of exactly the same length, so `url(${bg})` arrives here as `url(/*-*/)`.
   if (rawPath.includes('/*')) return 'contains a comment or interpolation, not a literal path';
   if (rawPath.includes('\\')) return 'contains a CSS escape sequence';
-  return null;
+  // A hole the dialect does not write, such as the Liquid `{{ site.baseurl }}` that Jekyll
+  // fills in before Sass runs. Only SCSS and Less interpolations, above, can be globbed.
+  return templateExpressionReason(rawPath);
 }
 
 function addReference(input: {

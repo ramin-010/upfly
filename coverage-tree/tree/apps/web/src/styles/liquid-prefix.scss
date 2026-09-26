@@ -1,0 +1,5 @@
+// Jekyll runs Liquid over this stylesheet before Sass compiles it, so the base URL is
+// filled in when the site builds.
+.masthead {
+  background-image: url("{{ site.baseurl }}/img/masthead.png");
+}

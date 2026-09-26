@@ -6600,6 +6600,66 @@
           "column": 90
         }
       ]
+    },
+    {
+      "path": "apps/web/src/styles/extension-hole.less",
+      "entries": [
+        {
+          "raw": "/img/masthead.@{ext}",
+          "occurrence": 1,
+          "shape": "less.interpolation",
+          "expect": "dynamic",
+          "why": "A Less interpolation is the extension, so the path is assembled when the stylesheet compiles. The directory and the name are fixed, so the path is globbed, and no file here matches it, so it is dynamic. A hole in the extension leaves the extension unknown, not ruled out: read as the literal extension `.@{ext}`, which no image has, the reference would vanish with no report line.",
+          "offset": 136,
+          "line": 5,
+          "column": 26
+        }
+      ]
+    },
+    {
+      "path": "apps/web/ejs-extension.html",
+      "entries": [
+        {
+          "raw": "/img/masthead.<%= ext %>",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "dynamic",
+          "why": "No adapter reads `.ejs`, but Express can render `.html` files with EJS, so an EJS expression reaches the HTML adapter. It fills in the extension when the page is served, so the path is not known statically and is dynamic. Read as the literal extension `.<%= ext %>`, which no image has, the reference would vanish with no report line.",
+          "offset": 268,
+          "line": 12,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/ejs-destination.md",
+      "entries": [
+        {
+          "raw": "/img/<%= name %>.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "dynamic",
+          "why": "An EJS expression fills in the name when the site builds, so the path is dynamic. The expression holds spaces, which end a bare link destination, so the markdown adapter has to read a template expression as one piece, or it finds no link here at all.",
+          "offset": 181,
+          "line": 6,
+          "column": 16
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/styles/liquid-prefix.scss",
+      "entries": [
+        {
+          "raw": "{{ site.baseurl }}/img/masthead.png",
+          "occurrence": 1,
+          "shape": "scss.url",
+          "expect": "dynamic",
+          "why": "Liquid fills in the base URL before Sass compiles the stylesheet, so the directory is not known statically and the path is dynamic. Read as a literal path, it names no file and would be reported broken, a mistake nobody made.",
+          "offset": 159,
+          "line": 4,
+          "column": 26
+        }
+      ]
     }
   ]
 }

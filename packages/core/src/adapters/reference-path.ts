@@ -29,15 +29,70 @@ const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
   if (rawPath.startsWith('#')) {
     if (kind === 'import') return false;
-    // `#{…}` opens a SCSS interpolation: `#{$dir}/hero.png` is a path the preprocessor
-    // builds. Kept, it is reported as dynamic; dropped here, it would vanish.
-    return !rawPath.startsWith('#{');
+    // A `#` that opens a template hole, as in the SCSS `#{$dir}/hero.png`, starts a path
+    // being built. Kept, it is reported as dynamic; dropped here, it would vanish.
+    return !opensTemplateHole(rawPath);
   }
   return rawPath.startsWith('//') || URL_SCHEME.test(rawPath);
 }
 
-/** The template holes `staticExtensionOf` flattens: `${…}`, `{{…}}`, `{%…%}` and `#{…}`. */
-const TEMPLATE_HOLE = /\$\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}|#\{[^}]*\}/g;
+/**
+ * One way of writing a hole in a path: text that a template engine, a preprocessor or a
+ * template literal replaces before the path is used.
+ */
+export interface TemplateHole {
+  /** The text that opens the hole, such as `${`. */
+  readonly opener: string;
+  /** The text that closes it, such as `}`. */
+  readonly closer: string;
+  /** What to call it in a report reason, such as "a template literal expression". */
+  readonly name: string;
+  /**
+   * Whether the resolver globs it. Only JavaScript, SCSS and Less paths are marked as
+   * patterns by their adapters; a path holding any other hole is `unsafe`, so it is
+   * `dynamic` without ever reaching the glob.
+   */
+  readonly globbed: boolean;
+}
+
+/**
+ * Every syntax that stands for an unknown part of a path. Each rule in this file that reads
+ * holes derives them from this list, and so do `couldHoldReference`'s tokens and the
+ * markdown adapter's link pattern, so a syntax added here reaches all of them. A rule that
+ * missed one would read the hole's text as part of the path: `hero.@{ext}` would have the
+ * extension `.@{ext}`, which rules out an image. `templateExpressionReason` names the first
+ * hole a path holds, in this order.
+ */
+export const TEMPLATE_HOLES: readonly TemplateHole[] = Object.freeze([
+  {
+    opener: '{{',
+    closer: '}}',
+    name: 'a Handlebars, Mustache, Vue or Jinja expression',
+    globbed: false,
+  },
+  { opener: '{%', closer: '%}', name: 'a Liquid, Jinja or Nunjucks tag', globbed: false },
+  { opener: '<%', closer: '%>', name: 'an EJS or ERB expression', globbed: false },
+  { opener: '${', closer: '}', name: 'a template literal expression', globbed: true },
+  { opener: '#{', closer: '}', name: 'an interpolation', globbed: true },
+  { opener: '@{', closer: '}', name: 'a Less interpolation', globbed: true },
+]);
+
+/**
+ * One hole as regular-expression source: its opener, anything but the first character of
+ * its closer, then its closer.
+ */
+function holeSource({ opener, closer }: TemplateHole): string {
+  return `${escapeRegExp(opener)}[^${escapeRegExp(closer.charAt(0))}]*${escapeRegExp(closer)}`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Every hole in any syntax, as regular-expression source with no capturing group. */
+export const TEMPLATE_HOLE_PATTERN: string = TEMPLATE_HOLES.map(holeSource).join('|');
+
+const ANY_TEMPLATE_HOLE = new RegExp(TEMPLATE_HOLE_PATTERN, 'g');
 
 /**
  * The extension a path shows statically, lowercased, or `''` when it has none or a
@@ -48,7 +103,7 @@ const TEMPLATE_HOLE = /\$\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}|#\{[^}]*\}/g;
  */
 export function staticExtensionOf(rawPath: string): string {
   const { path } = splitPathSuffix(rawPath);
-  const flattened = path.replace(TEMPLATE_HOLE, '*');
+  const flattened = path.replace(ANY_TEMPLATE_HOLE, '*');
   const extension = flattened.slice(flattened.lastIndexOf('.'));
 
   if (!extension.startsWith('.')) return '';
@@ -85,12 +140,9 @@ export function splitPathSuffix(rawPath: string): { path: string; suffix: string
  */
 function maskUnknownSegments(rawPath: string): string {
   return rawPath
-    .replace(UNKNOWN_SEGMENT, (match) => '\u0000'.repeat(match.length))
+    .replace(ANY_TEMPLATE_HOLE, (match) => '\u0000'.repeat(match.length))
     .replace(CHARACTER_REFERENCE, (match) => '\u0000'.repeat(match.length));
 }
-
-/** Every spelling of an unknown segment: `${…}`, `#{…}`, `@{…}`, `{{…}}` and `{%…%}`. */
-const UNKNOWN_SEGMENT = /\$\{[^}]*\}|#\{[^}]*\}|@\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]*%\}/g;
 
 /**
  * A numeric or named character reference. Its `#` is not a fragment delimiter: splitting
@@ -99,28 +151,13 @@ const UNKNOWN_SEGMENT = /\$\{[^}]*\}|#\{[^}]*\}|@\{[^}]*\}|\{\{[^}]*\}\}|\{%[^%]
 const CHARACTER_REFERENCE = /&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /**
- * Template syntaxes that build a path at render time, and what to call each one.
- * `couldHoldReference` reads the markers too, so a syntax added here also keeps files
- * that use it from being skipped unparsed.
+ * The holes the resolver globs, one expression each, in `TEMPLATE_HOLES` order. Adapters
+ * that read a path as text decide its ceiling from these (through `interpolationChunks`)
+ * and the resolver's `matchPattern` globs them, so both read this one subset.
  */
-export const TEMPLATE_EXPRESSIONS: readonly (readonly [marker: string, name: string])[] = [
-  ['{{', 'a Handlebars, Mustache, Vue or Jinja expression'],
-  ['{%', 'a Liquid, Jinja or Nunjucks tag'],
-  ['<%', 'an EJS or ERB expression'],
-  ['${', 'a template literal expression'],
-  ['#{', 'an interpolation'],
-];
-
-/**
- * Every interpolation syntax that stands for one unknown segment of a path. Adapters that
- * read a path as text decide its ceiling from these (through `interpolationChunks`) and the
- * resolver's `matchPattern` globs them, so both read this one list.
- */
-export const INTERPOLATIONS = Object.freeze([
-  /\$\{[^}]*\}/g, // JavaScript and Astro: `${mode}`
-  /#\{[^}]*\}/g, // SCSS: `#{$mode}`
-  /@\{[^}]*\}/g, // Less: `@{mode}`
-]);
+export const INTERPOLATIONS: readonly RegExp[] = Object.freeze(
+  TEMPLATE_HOLES.filter((hole) => hole.globbed).map((hole) => new RegExp(holeSource(hole), 'g')),
+);
 
 /**
  * The literal text between a path's unknown segments, in any of the `INTERPOLATIONS`
@@ -361,10 +398,7 @@ export function provablyNotAFile(rawPath: string): string | null {
   }
 
   const lastSegment = rawPath.slice(rawPath.lastIndexOf('/') + 1);
-  if (
-    lastSegment.startsWith('#') &&
-    !INTERPOLATION_OPENERS.some((o) => lastSegment.startsWith(o))
-  ) {
+  if (lastSegment.startsWith('#') && !opensTemplateHole(lastSegment)) {
     return 'the last segment is a `#fragment`, which names a place in a document rather than a file';
   }
 
@@ -372,10 +406,12 @@ export function provablyNotAFile(rawPath: string): string | null {
 }
 
 /**
- * The three ways an interpolation opens. A last segment such as `#{$mode}.png` is a path
- * being built, not a `#fragment`.
+ * Whether the text opens with a template hole. A last segment such as `#{$mode}.png` is a
+ * path being built, not a `#fragment`.
  */
-const INTERPOLATION_OPENERS: readonly string[] = ['#{', '${', '@{'];
+function opensTemplateHole(text: string): boolean {
+  return TEMPLATE_HOLES.some(({ opener }) => text.startsWith(opener));
+}
 
 /**
  * Why a path is built at render time rather than written literally, or `null` for a
@@ -386,8 +422,8 @@ const INTERPOLATION_OPENERS: readonly string[] = ['#{', '${', '@{'];
  * and the resolver reports it as `dynamic`.
  */
 export function templateExpressionReason(rawPath: string): string | null {
-  for (const [marker, name] of TEMPLATE_EXPRESSIONS) {
-    if (rawPath.includes(marker)) {
+  for (const { opener, name } of TEMPLATE_HOLES) {
+    if (rawPath.includes(opener)) {
       return `contains ${name}: the path is not known statically`;
     }
   }

@@ -132,12 +132,10 @@ const REFUSAL_REASONS: ReadonlyArray<{
     measuredAgainst: null,
   },
   {
-    // The path does not exist until something renders it. Both vocabularies are needed:
-    // `interpolationChunks` knows only the syntaxes a glob is built from (`${}`, `#{}`,
-    // `@{}`), and `templateExpressionReason`, which the HTML and Markdown adapters use to
-    // mark these references `dynamic`, also knows `{{ }}`, `{% %}` and `<% %>`. The glob
-    // check reads the assembled path when there is one, since a `+` chain's source text
-    // holds no `${`.
+    // The path does not exist until something renders it. Two checks, because they read
+    // different text: `templateExpressionReason` finds a hole of any syntax in the source
+    // text, and `interpolationChunks` finds one in the assembled path when there is one,
+    // since a `+` chain's source text holds no `${`.
     id: 'assembled-at-runtime',
     holds: (reference) =>
       reference.resolution === 'dynamic' &&

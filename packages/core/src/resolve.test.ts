@@ -859,6 +859,30 @@ describe('resolveReferences', () => {
       expect(resolveOne({ rawPath: 'hero.${ext}', ceiling: 'medium' })?.resolution).toBe('dynamic');
     });
 
+    // The hole's own text is not the extension, whichever syntax wrote it: read that way,
+    // `.@{ext}` and `.<%= ext %>` rule out an image and the reference vanishes.
+    it.each([
+      ['{{ ext }}', 'unsafe'],
+      ['{% ext %}', 'unsafe'],
+      ['<%= ext %>', 'unsafe'],
+      ['${ext}', 'medium'],
+      ['#{$ext}', 'medium'],
+      ['@{ext}', 'medium'],
+    ] as const)(
+      'keeps the reference when %s fills the extension, with the ceiling %s',
+      (hole, ceiling) => {
+        expect(resolveOne({ rawPath: `/img/masthead.${hole}`, ceiling })?.resolution).toBe(
+          'dynamic',
+        );
+      },
+    );
+
+    it('keeps a path that is one hole with a dot inside it', () => {
+      expect(resolveOne({ rawPath: '<%= user.avatar %>', ceiling: 'unsafe' })?.resolution).toBe(
+        'dynamic',
+      );
+    });
+
     it('does not swallow url($hero), which is what pins rung 3 in place', () => {
       // Why this is a separate check rather than rung 3 moved up the ladder: `$hero` has
       // no static extension, so it is unknown rather than ruled out, and must still be

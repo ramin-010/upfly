@@ -80,6 +80,7 @@ describe('couldHoldReference', () => {
       ['EJS/ERB', '![logo](<%= logo %>)'],
       ['a template literal', '![logo](${logo})'],
       ['an interpolation', '![logo](#{logo})'],
+      ['a Less interpolation', '![logo](@{logo})'],
     ])('%s', (_name, text) => {
       expect(couldHoldReference(text)).toBe(true);
     });

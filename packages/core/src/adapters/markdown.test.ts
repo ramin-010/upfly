@@ -172,6 +172,39 @@ describe('markdownAdapter', () => {
       const references = find('![Logo]({% asset_path logo %})');
       expect(references[0]?.ceiling).toBe('unsafe');
     });
+
+    // A space ends a bare destination, but not inside a template expression: the engine
+    // that fills it runs before any Markdown parser sees the file.
+    it.each([
+      ['a Handlebars expression', '{{ a ? b : c }}'],
+      ['a Liquid tag', '{% a ? b : c %}'],
+      ['an EJS expression', '<%= a ? b : c %>'],
+      ['a template literal expression', '${ a ? b : c }'],
+      ['a SCSS interpolation', '#{ a ? b : c }'],
+      ['a Less interpolation', '@{ a ? b : c }'],
+    ])('finds a destination holding %s with spaces in it', (_syntax, hole) => {
+      const source = `![Team](/img/${hole}.png)`;
+      const references = find(source);
+      expect(slices(source)).toEqual([`/img/${hole}.png`]);
+      expect(references[0]?.ceiling).toBe('unsafe');
+    });
+
+    it('reads an EJS expression as the whole destination, not as angle brackets', () => {
+      const source = '![Logo](<%= logo %>)';
+      expect(slices(source)).toEqual(['<%= logo %>']);
+      expect(find(source)[0]?.ceiling).toBe('unsafe');
+    });
+
+    // Read whole or one character at a time, a run of holes has two readings per hole, and
+    // a destination that never closes would be retried in every combination of them.
+    it.each(['{{a}}', '${a}', '<%a%>'])(
+      'gives up quickly on a run of %s with no closing parenthesis',
+      (hole) => {
+        const started = performance.now();
+        expect(find(`![Team](${hole.repeat(26)} and no closing parenthesis`)).toEqual([]);
+        expect(performance.now() - started).toBeLessThan(1000);
+      },
+    );
   });
 
   describe('query suffixes', () => {

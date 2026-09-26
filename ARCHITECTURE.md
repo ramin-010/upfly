@@ -608,7 +608,7 @@ error is invisible unless the count says something is wrong and the list says wh
 alone any value a construct examined and declined: `alt="/not.png"` is display text, and
 overturning that decision would rewrite it.
 
-Three things they share, and each was a bug before it was a rule:
+Four things they share, and each was a bug before it was a rule:
 
 - **CSS is read in one place.** An HTML `<style>` element, a `style=""` attribute and a
   `styled.div` template all go through the CSS adapter's scanner rather than a second, weaker
@@ -626,6 +626,17 @@ Three things they share, and each was a bug before it was a rule:
 - **A `?query` or `#fragment` sits outside the reference range.** Rewriting swaps `hero.png` for
   `hero.webp` and leaves the author's `?v=2` alone. Including it would also make the path
   unresolvable and produce a false broken finding.
+- **Template holes are one list.** `TEMPLATE_HOLES` in `reference-path.ts` holds every syntax that
+  stands for an unknown part of a path: `{{…}}`, `{%…%}`, `<%…%>`, `${…}`, `#{…}` and `@{…}`.
+  The static-extension test, the suffix split, the fragment and external-URL tests, the
+  template reason, the file skip's tokens and the Markdown link pattern all derive from it,
+  because a rule that misses a syntax reads the hole's text as the path: `hero.@{ext}` had the
+  extension `.@{ext}`, which ruled out an image, and the reference vanished. The glob reads one
+  subset, `${…}`, `#{…}` and `@{…}`, because only JavaScript template literals and SCSS and Less
+  interpolations are ever marked as patterns. Any other templated path is `unsafe`, and so
+  `dynamic`: in HTML and Markdown a path holding any hole, in CSS one holding a hole that is not
+  SCSS's or Less's. The JavaScript adapter takes its holes from the parser instead, so a `{{…}}`
+  inside a JavaScript string is text, sent to the browser as written.
 
 Two places where the same character means opposite things, both settled by `kind`:
 
@@ -1060,8 +1071,8 @@ So the list errs wide (`style` matches the word "styling" in prose) and has four
    `&gt;`, `&quot;`, `&apos;`) cannot spell an extension character, so every entity that hides one
    is numeric and contains `&#`. Percent-decoding applies to any character, and `hero.%70ng` is
    `hero.png`, so the token is `%` rather than `%2`.
-4. Template markers. A templated destination such as `![logo]({{ site.logo }})` is reported as
-   `dynamic` and has no static extension.
+4. Template markers, the opener of every syntax in `TEMPLATE_HOLES`. A templated destination such
+   as `![logo]({{ site.logo }})` is reported as `dynamic` and has no static extension.
 
 The skip decides per file: one token anywhere parses the whole document. A test of one spelling
 therefore needs a file of its own, because a file holding several spellings is parsed if any one of

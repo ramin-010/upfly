@@ -577,3 +577,25 @@ describe('a trailing interpolation is a pattern, not a dead end', () => {
     expect(reference?.note).toContain('query or fragment preserved');
   });
 });
+
+/**
+ * A template engine can run over a stylesheet before Sass or a browser reads it, as Jekyll
+ * does with Liquid. A path holding its expression is built, not written, so it is reported
+ * with the ceiling that makes it `dynamic` rather than looked up as a literal.
+ */
+describe('a template expression in a stylesheet', () => {
+  it.each([
+    ['a Handlebars or Liquid expression', '{{ site.baseurl }}/img/hero.png'],
+    ['a Liquid tag', '/img/{% if dark %}night{% endif %}.png'],
+    ['an EJS expression', '/img/<%= name %>.png'],
+    ['a template literal expression', '/img/${name}.png'],
+  ])('reports a path holding %s as unsafe', (_syntax, path) => {
+    const source = `.a { background: url("${path}"); }`;
+    const [reference] = find(source);
+
+    expect(reference?.rawPath).toBe(path);
+    expect(source.slice(reference?.start, reference?.end)).toBe(path);
+    expect(reference?.ceiling).toBe('unsafe');
+    expect(reference?.note).toMatch(/not known statically/);
+  });
+});

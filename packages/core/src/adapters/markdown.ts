@@ -16,18 +16,33 @@ import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
-import { isExternalUrl, splitPathSuffix, templateExpressionReason } from './reference-path.js';
+import {
+  TEMPLATE_HOLE_PATTERN,
+  isExternalUrl,
+  splitPathSuffix,
+  templateExpressionReason,
+} from './reference-path.js';
 
 /**
  * A destination that is not angle-bracketed.
  *
- * Ordinarily it runs to the first space or paren, but a template expression is
- * allowed to contain spaces: `![Logo]({{ site.baseurl }}/logo.png)` is how Jekyll,
- * Hugo and Eleventy all write a path, and stopping at the first space would find
+ * Ordinarily it runs to the first space or paren, but a template hole, in any syntax in
+ * `TEMPLATE_HOLES`, may contain both: `![Logo]({{ site.baseurl }}/logo.png)` is how
+ * Jekyll, Hugo and Eleventy all write a path, and stopping at the first space would find
  * nothing at all there. Missing it entirely is the worse failure: the image then
  * looks unreferenced, and a later rewrite breaks the page with nothing reported.
+ * A hole is only ever read whole. Were its characters also allowed one at a time, a
+ * run of holes with no closing parenthesis would be retried in every split, which
+ * takes seconds for two dozen `{{a}}` in a row.
  */
-const BARE_DESTINATION = String.raw`(?:\{\{[^}]*\}\}|\{%[^%]*%\}|[^\s()])+`;
+const BARE_DESTINATION = String.raw`(?:${TEMPLATE_HOLE_PATTERN}|(?!${TEMPLATE_HOLE_PATTERN})[^\s()])+`;
+
+/**
+ * An angle-bracketed destination, `<./my logo.png>`. One that is a whole template hole,
+ * such as the EJS `<%= logo %>`, is the hole rather than brackets around `%= logo %`, and
+ * is left to `BARE_DESTINATION`.
+ */
+const ANGLE_DESTINATION = String.raw`(?!${TEMPLATE_HOLE_PATTERN})<([^>\n]*)>`;
 
 /**
  * `![alt](destination "title")`, and the same without the `!` for a plain link.
@@ -38,7 +53,7 @@ const BARE_DESTINATION = String.raw`(?:\{\{[^}]*\}\}|\{%[^%]*%\}|[^\s()])+`;
  * offsets, which is what makes this safe to rewrite.
  */
 const LINK = new RegExp(
-  String.raw`!?\[[^\]]*\]\(\s*(?:<([^>\n]*)>|(${BARE_DESTINATION}))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)`,
+  String.raw`!?\[[^\]]*\]\(\s*(?:${ANGLE_DESTINATION}|(${BARE_DESTINATION}))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)`,
   'gd',
 );
 
@@ -53,7 +68,7 @@ const MARKUP_OPENER = /<[a-zA-Z]/;
 
 /** `[label]: destination "title"`, a CommonMark link reference definition. */
 const DEFINITION = new RegExp(
-  String.raw`^ {0,3}\[[^\]]+\]:[ \t]*(?:<([^>\n]*)>|(${BARE_DESTINATION}))`,
+  String.raw`^ {0,3}\[[^\]]+\]:[ \t]*(?:${ANGLE_DESTINATION}|(${BARE_DESTINATION}))`,
   'gdm',
 );
 

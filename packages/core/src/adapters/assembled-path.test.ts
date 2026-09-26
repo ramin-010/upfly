@@ -14,12 +14,16 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  TEMPLATE_HOLES,
   assembledPathIsGlobbable,
+  interpolationChunks,
+  isExternalUrl,
   provablyNotAFile,
   spell,
   spellingsOf,
   splitPathSuffix,
   staticExtensionOf,
+  templateExpressionReason,
 } from './reference-path.js';
 
 /**
@@ -178,6 +182,63 @@ describe('a delimiter inside an unknown segment is not a delimiter', () => {
     expect(staticExtensionOf('styles/${config?.style ?? "x"}/${item}.json')).toBe('.json');
     // An extension a hole hides stays hidden: unknown is not ruled out.
     expect(staticExtensionOf('src/app/layout.${ext}')).toBe('');
+  });
+});
+
+/**
+ * Every way a path is written with a hole in it. Each rule that reads a path's text has to
+ * treat all of them as an unknown part: a syntax one rule misses is a reference that rule
+ * drops, splits in the wrong place or reports broken. The body holds a dot and a question
+ * mark, which a rule that does not see the hole around them reads as an extension or a
+ * query.
+ */
+const HOLE_SYNTAXES: ReadonlyArray<[syntax: string, opener: string, closer: string]> = [
+  ['a Handlebars expression', '{{', '}}'],
+  ['a Liquid tag', '{%', '%}'],
+  ['an EJS expression', '<%', '%>'],
+  ['a template literal expression', '${', '}'],
+  ['a SCSS interpolation', '#{', '}'],
+  ['a Less interpolation', '@{', '}'],
+];
+
+describe.each(HOLE_SYNTAXES)('%s is an unknown part of a path', (_syntax, opener, closer) => {
+  const hole = `${opener} a.b ? c : d ${closer}`;
+
+  it('hides the extension when it fills the extension', () => {
+    expect(staticExtensionOf(`/img/hero.${hole}`)).toBe('');
+  });
+
+  it('leaves an extension written after it visible', () => {
+    expect(staticExtensionOf(`/img/${hole}.png`)).toBe('.png');
+  });
+
+  it('holds no query or fragment delimiter', () => {
+    const path = `/img/${hole}.png`;
+    expect(splitPathSuffix(path)).toEqual({ path, suffix: '' });
+  });
+
+  it('marks the path as built at render time', () => {
+    expect(templateExpressionReason(`/img/${hole}.png`)).not.toBeNull();
+  });
+
+  it('is neither a fragment nor an external URL at the start of a segment', () => {
+    expect(provablyNotAFile(`/img/${hole}`)).toBeNull();
+    expect(isExternalUrl(`${hole}/hero.png`, 'css-url')).toBe(false);
+  });
+});
+
+describe('TEMPLATE_HOLES', () => {
+  it('holds exactly the syntaxes above, so a new one is tested by every rule', () => {
+    expect(TEMPLATE_HOLES.map(({ opener, closer }) => [opener, closer])).toEqual(
+      HOLE_SYNTAXES.map(([, opener, closer]) => [opener, closer]),
+    );
+  });
+
+  // A pattern is globbed only when its adapter marked it `medium`, which only the
+  // JavaScript, SCSS and Less adapters do, so only their holes split a path into chunks.
+  it('globs the JavaScript, SCSS and Less holes and no others', () => {
+    expect(interpolationChunks('/img/${a}-#{$b}-@{c}.png')).toEqual(['/img/', '-', '-', '.png']);
+    expect(interpolationChunks('/img/{{ a }}-{% b %}-<%= c %>.png')).toHaveLength(1);
   });
 });
 
