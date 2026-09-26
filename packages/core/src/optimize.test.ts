@@ -488,7 +488,7 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     ]);
   });
 
-  it('guards a DRY RUN identically, because the preview must be the decisions', async () => {
+  it('guards a dry run identically, because the preview must be the decisions', async () => {
     // `OptimizeResult.plan` is documented as identical on a dry run and an applied one.
     // A guard that fired only on apply would quietly break that, and the preview would
     // promise a conversion the real run refuses.

@@ -88,7 +88,7 @@ describe('no adapter carries a private copy of rewrite', () => {
     });
   }
 
-  it('would notice a private copy — the control', () => {
+  it('would notice a private copy (the control)', () => {
     // Proves the assertion above can fail: an adapter that supplies its own rewrite,
     // even one that behaves identically, is not the shared function.
     const drifted = defineAdapter({ ...bare, rewrite: rewriteByEdits.bind(null) });

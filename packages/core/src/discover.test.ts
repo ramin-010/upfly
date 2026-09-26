@@ -189,7 +189,7 @@ describe('discover', () => {
       );
     });
 
-    it('records an SVG as an asset AND as unscanned', async () => {
+    it('records an SVG as an asset and as unscanned', async () => {
       const root = await makeTree({ 'icons/sprite.svg': '<svg/>', 'hero.png': '' });
 
       const result = await discover({ root, adapters });

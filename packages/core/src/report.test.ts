@@ -2240,7 +2240,7 @@ describe('renderReport and the accuracy boxes', () => {
     expect(text).not.toContain('could not be resolved safely');
   });
 
-  it('says plainly when they ARE ours', async () => {
+  it('says plainly when they are ours', async () => {
     const text = await withUnsafe([
       entry({ classification: 'missed-with-an-answer', refusalReason: null }),
     ]);

@@ -128,7 +128,7 @@ describe('on a real filesystem', () => {
       expect(await store.createExclusive('lock', 'SECOND')).toBe(true);
     });
 
-    it('only ONE of many simultaneous creates wins', async () => {
+    it('only one of many simultaneous creates wins', async () => {
       // The property the whole design rests on, asserted against the kernel rather
       // than against our own map. Twenty callers race for one path; exactly one may be
       // told it created it, or two runs would both believe they hold the lock.

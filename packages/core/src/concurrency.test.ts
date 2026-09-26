@@ -145,7 +145,7 @@ describe('two runs, one manifest', () => {
     await running;
   });
 
-  it('lets the second transaction through once the lock is GONE', async () => {
+  it('lets the second transaction through once the lock is gone', async () => {
     // A control: remove the held lock and the same second run succeeds. Without it, the
     // refusal above could be firing for another reason (a hash mismatch, a store quirk)
     // and would still read as proof of a lock that was doing nothing.
@@ -209,7 +209,7 @@ describe('a lock its holder did not survive', () => {
     });
   });
 
-  it('still refuses when the holder is ALIVE, which is the same test with one change', async () => {
+  it('still refuses when the holder is alive, which is the same test with one change', async () => {
     // The control for the test above: the same lock file and run, with only the holder's
     // liveness changed. It shows the recovery is caused by the process being gone, not by
     // the lock being readable, old or ours.

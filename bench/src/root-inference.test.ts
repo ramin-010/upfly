@@ -42,7 +42,7 @@ function weightedGap(directories: readonly DirectoryVerdict[]): number {
 }
 
 describe('the root-inference instrument can disagree', () => {
-  it('🔴 returns a NEGATIVE gap when handed a truth that is wrong', () => {
+  it('returns a negative gap when handed a truth that is wrong', () => {
     // The project root serves nothing in this tree; its real roots are four directories
     // below it. If this comes back positive the instrument is not measuring anything.
     expect(wrong.references).toBeGreaterThan(0);
@@ -50,13 +50,13 @@ describe('the root-inference instrument can disagree', () => {
     expect(wrong.directories.filter((v) => v.argmaxCorrect)).toHaveLength(0);
   });
 
-  it('returns a POSITIVE gap when handed the right one', () => {
+  it('returns a positive gap when handed the right one', () => {
     expect(weightedGap(correct.directories)).toBeGreaterThan(0);
   });
 });
 
 describe('the impostor the acceptance bar exists to reject', () => {
-  it('🔴 `docs-examples/public` beats every true root on its own references', () => {
+  it('`docs-examples/public` beats every true root on its own references', () => {
     const impostor = correct.directories.find((v) => v.dir === 'docs-examples/public');
 
     // A directory named `public` that serves nothing scores a perfect rate, higher than the
@@ -67,7 +67,7 @@ describe('the impostor the acceptance bar exists to reject', () => {
     expect(impostor?.truthUnreachable).toBe(true);
   });
 
-  it('is excluded by VOLUME, which is what the bar is actually made of', () => {
+  it('is excluded by volume, which is what the bar is actually made of', () => {
     // The impostor has two references, so a floor of three drops it, and in every directory
     // that passes the floor a true root ranks first.
     expect(correct.directories.find((v) => v.dir === 'docs-examples/public')?.references).toBe(2);

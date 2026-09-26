@@ -83,7 +83,7 @@ function resolveOne(overrides: Partial<RawReference> & { rawPath: string }): Ref
 }
 
 describe('resolveReferences', () => {
-  describe('rung 1 — an unsafe ceiling is dynamic, never broken', () => {
+  describe('rung 1: an unsafe ceiling is dynamic, never broken', () => {
     it.each([
       ['a preprocessor variable', '$hero'],
       ['an interpolated path', '#{$dir}/hero.png'],
@@ -104,7 +104,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 2 — a medium ceiling is a pattern', () => {
+  describe('rung 2: a medium ceiling is a pattern', () => {
     it('links every asset the pattern matches, not just the first', () => {
       // Linking only one would leave the other two looking unreferenced, which is a
       // false `dead asset` finding.
@@ -182,7 +182,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 3 — files we do not track are dropped, not reported', () => {
+  describe('rung 3: files we do not track are dropped, not reported', () => {
     it.each([
       ['a font', './inter.woff2'],
       ['a stylesheet', './styles.css'],
@@ -219,7 +219,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 4 — resolution against the asset set', () => {
+  describe('rung 4: resolution against the asset set', () => {
     it('resolves a relative path against the referencing file', () => {
       const reference = resolveOne({ rawPath: './assets/logo.png' });
       expect(reference?.resolution).toBe('resolved');
@@ -459,7 +459,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 6 — alias-shaped paths are their own bucket', () => {
+  describe('rung 6: alias-shaped paths are their own bucket', () => {
     it.each([
       ['a webpack-style alias', '@/assets/logo.png'],
       ['a tilde alias', '~/assets/logo.png'],
@@ -524,7 +524,7 @@ describe('resolveReferences', () => {
       expect(reference?.resolution).toBe('out-of-scope');
     });
 
-    it('keeps the alias conventions out of the package bucket — the control', () => {
+    it('keeps the alias conventions out of the package bucket (the control)', () => {
       // The converse of the test above, and the reason it is not enough on its own:
       // `@/…` and `@scope/…` differ by one character, and a test that only checked
       // the package side would pass with a rule that swallowed every `@` path.
@@ -540,7 +540,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 5 — a path into an excluded directory is out-of-scope, not broken', () => {
+  describe('rung 5: a path into an excluded directory is out-of-scope, not broken', () => {
     const EXCLUDED = [
       {
         path: join(ROOT, 'legacy'),
@@ -637,7 +637,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 7 — an asserted literal path that points at nothing is broken', () => {
+  describe('rung 7: an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });
       expect(reference?.resolution).toBe('broken');
@@ -654,7 +654,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 8 — an unresolved speculative candidate is discarded', () => {
+  describe('rung 8: an unresolved speculative candidate is discarded', () => {
     it('discards a path-shaped string from JSON', () => {
       const reference = resolveOne({
         rawPath: './icons/nope.png',
@@ -845,7 +845,7 @@ describe('resolveReferences', () => {
       },
     );
 
-    it('keeps a path with no static extension at all — unknown is not ruled out', () => {
+    it('keeps a path with no static extension at all: unknown is not ruled out', () => {
       // `/view/${style}/${name}` shows nothing, so nothing can be concluded. It is
       // counted rather than listed by the report, but it must survive resolution.
       expect(resolveOne({ rawPath: '/view/${style}/${name}', ceiling: 'medium' })?.resolution).toBe(
@@ -853,7 +853,7 @@ describe('resolveReferences', () => {
       );
     });
 
-    it('keeps a hole that IS the extension', () => {
+    it('keeps a hole that is the extension', () => {
       // `hero.${ext}` could be `hero.png`. Ruling it out on the strength of `.*`
       // would be the over-fix, and it is the one this rule is closest to.
       expect(resolveOne({ rawPath: 'hero.${ext}', ceiling: 'medium' })?.resolution).toBe('dynamic');
@@ -916,7 +916,7 @@ describe('the glob understands all three interpolation syntaxes', () => {
     );
   });
 
-  it('falls back to dynamic when the pattern names nothing — never broken', () => {
+  it('falls back to dynamic when the pattern names nothing, never broken', () => {
     // A `medium` reference can only gain links or stay `dynamic`. It never becomes a
     // `broken` finding about a path the author did not write.
     const reference = resolveOne({ rawPath: './nothing/#{$x}.png', ceiling: 'medium' });

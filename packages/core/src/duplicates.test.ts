@@ -69,7 +69,7 @@ describe('grouping by content, never by name', () => {
     ]);
   });
 
-  it('does NOT group two files that merely share a name', () => {
+  it('does not group two files that merely share a name', () => {
     // The other direction: the same name with different bytes is two images. With the
     // test above, this pins the rule both ways.
     const assets = [asset('a/logo.png', 500), asset('b/logo.png', 500)];
@@ -159,7 +159,7 @@ describe('on a real tree', () => {
     expect(sets[0]?.wastedBytes).toBe(280);
   });
 
-  it('reaches the REPORT in recoverable-bytes order, not path order', async () => {
+  it('reaches the report in recoverable-bytes order, not path order', async () => {
     // `audit` sorts every finding into report order, and a comparator without its
     // duplicate branch would undo the order `findDuplicates` returns. A test of
     // `findDuplicates` alone cannot see that, so this one goes through `audit`.

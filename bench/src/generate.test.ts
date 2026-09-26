@@ -90,7 +90,7 @@ function sampleMarkdown(extension: string, count: number, seed: number): Sample 
 
 describe('the generated tree can refute a markdown optimisation', () => {
   it(
-    '🔴 contains documents where skipping the parse5 pass LOSES a reference',
+    'contains documents where skipping the parse5 pass loses a reference',
     () => {
       // 1,200 of each: the real rate is about 1%, so a sample of 100 would hold about one
       // such document, and the test would pass or fail on a single draw.
@@ -149,7 +149,7 @@ describe('the generated tree can refute a markdown optimisation', () => {
 
 describe('the generated tree is written in the language its extension claims', () => {
   it(
-    '🔴 emits `.js` that parses as JavaScript',
+    'emits `.js` that parses as JavaScript',
     () => {
       // Babel rejects TypeScript in a `.js` file, and a rejected file's parse cost is the
       // cost of failing, so a `.js` file with type annotations would skew the timing.

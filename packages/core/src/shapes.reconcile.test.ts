@@ -224,7 +224,7 @@ describe('the reconciliation is proved able to fail', () => {
     ['css.url.bare', 3],
   ]);
 
-  it('goes red when the TREE declares a shape the engine does not', () => {
+  it('goes red when the tree declares a shape the engine does not', () => {
     const problems = reconcile({
       engineIds: BASE,
       treeIds: [...BASE, 'html.picture.newthing'],
@@ -235,7 +235,7 @@ describe('the reconciliation is proved able to fail', () => {
     expect(problems).toEqual([{ direction: 'missing-here', id: 'html.picture.newthing' }]);
   });
 
-  it('goes red when the ENGINE declares a shape the tree does not', () => {
+  it('goes red when the engine declares a shape the tree does not', () => {
     const problems = reconcile({
       engineIds: [...BASE, 'js.invented.shape'],
       treeIds: BASE,
@@ -246,7 +246,7 @@ describe('the reconciliation is proved able to fail', () => {
     expect(problems).toEqual([{ direction: 'missing-in-tree', id: 'js.invented.shape' }]);
   });
 
-  it('stays green for an engine-only shape that is ON the growth list', () => {
+  it('stays green for an engine-only shape that is on the growth list', () => {
     const problems = reconcile({
       engineIds: [...BASE, 'js.new-url'],
       treeIds: BASE,
@@ -292,7 +292,7 @@ describe('the reconciliation is proved able to fail', () => {
       ]);
     });
 
-    it('goes red when adapterEmitsAs names ITSELF', () => {
+    it('goes red when adapterEmitsAs names itself', () => {
       // Self-reference would make the shape permanently excused from its own row.
       const problems = auditEmitsAs(
         [declare({ adapterEmitsAs: ['a.real.shape'], needsToSee: 'the disk' })],
@@ -339,7 +339,7 @@ describe('the reconciliation is proved able to fail', () => {
     });
   });
 
-  it('reports BOTH directions at once rather than stopping at the first', () => {
+  it('reports both directions at once rather than stopping at the first', () => {
     const problems = reconcile({
       engineIds: [...BASE, 'js.invented.shape'],
       treeIds: [...BASE, 'html.picture.newthing'],

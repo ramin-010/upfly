@@ -317,7 +317,7 @@ describe('htmlAdapter', () => {
        * that starts with a space does not, so both spellings are here. Each decodes to
        * valid CSS with no `url()`, so neither yields a reference.
        */
-      it('leaves a style attribute alone — its text is CSS, not a URL', () => {
+      it('leaves a style attribute alone: its text is CSS, not a URL', () => {
         for (const source of [
           '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
           '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
@@ -351,7 +351,7 @@ describe('htmlAdapter', () => {
       expect(references[0]?.ceiling).toBe('unsafe');
     });
 
-    it('says a reference may be hidden when one IS present', () => {
+    it('says a reference may be hidden when one is present', () => {
       const references = find('<div style="margin 0 0 0 15px; background: url(/hero.png)"></div>');
       expect(references).toHaveLength(1);
       expect(references[0]?.note).toMatch(/a reference may be hidden/);
@@ -405,7 +405,7 @@ describe('htmlAdapter', () => {
    * "Character references in HTML attributes" in ARCHITECTURE.md.
    */
   describe('a style attribute whose CSS is spelled with character references', () => {
-    it('reads the CSS a browser sees, and points at the SOURCE text', () => {
+    it('reads the CSS a browser sees, and points at the source text', () => {
       const source = '<span style="background-image: url(&quot;/logo.png&quot;)"></span>';
       const references = find(source);
 
@@ -427,7 +427,7 @@ describe('htmlAdapter', () => {
       expect(source.slice(references[0]?.start ?? 0, references[0]?.end ?? 0)).toBe('/logo.png');
     });
 
-    it('keeps the path ENCODED when the path itself carries a reference', () => {
+    it('keeps the path encoded when the path itself carries a reference', () => {
       // The delimiters decode; the path does not. `rawPath` stays the source text, and
       // the resolver tries its decoded spelling as it does for any escaped path.
       const source = '<span style="background: url(&quot;/a&amp;b.png&quot;)"></span>';
@@ -680,7 +680,7 @@ describe('an image inside <noscript> is markup, not text', () => {
     expect(find(source).map((reference) => reference.rawPath)).toEqual(['/img/hero.png']);
   });
 
-  it('keeps finding the ones around it — the control', () => {
+  it('keeps finding the ones around it (the control)', () => {
     // A parser option is a blunt instrument: this catches a change that fixes noscript
     // and breaks ordinary markup.
     const source =
@@ -702,7 +702,7 @@ describe('an image inside <noscript> is markup, not text', () => {
     expect(find(source).map((reference) => reference.rawPath)).toEqual(['/icon.png']);
   });
 
-  it('🔴 does NOT yet read <template>, and that gap is pinned rather than silent', () => {
+  it('does not yet read <template>, and that gap is pinned rather than silent', () => {
     // parse5 puts a template's children in a separate `content` fragment that `walk` never
     // descends into, a different mechanism from noscript's, which the parser option does
     // not reach. The assertion pins today's wrong behaviour, so whoever closes the gap sees

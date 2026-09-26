@@ -18,8 +18,8 @@ function shapesOf(references: readonly RawReference[]): string[] {
   return references.map((reference) => reference.shape);
 }
 
-describe('css.url.nested means the value walker RECURSED to reach it', () => {
-  it('🔴 a url() at the top level of a comma-separated list is NOT nested', () => {
+describe('css.url.nested means the value walker recursed to reach it', () => {
+  it('a url() at the top level of a comma-separated list is not nested', () => {
     // `linear-gradient(...)` is a sibling, not a parent: the url is a direct child of the
     // value, so it breaks with every other plain double-quoted url(), not with the
     // cross-fade pair below.
@@ -28,7 +28,7 @@ describe('css.url.nested means the value walker RECURSED to reach it', () => {
     expect(shapesOf(css(source))).toEqual(['css.url.double']);
   });
 
-  it('a url() the walker had to recurse into IS nested', () => {
+  it('a url() the walker had to recurse into is nested', () => {
     const source = '.a { background-image: cross-fade(url("/a.png") 40%, url("/b.png")); }';
 
     expect(shapesOf(css(source))).toEqual(['css.url.nested', 'css.url.nested']);
@@ -42,13 +42,13 @@ describe('css.url.nested means the value walker RECURSED to reach it', () => {
     expect(shapesOf(css(source))).toEqual(['css.url.nested']);
   });
 
-  it('🔴 image-set wins over nesting, and the walker never marks it nested anyway', () => {
+  it('image-set wins over nesting, and the walker never marks it nested anyway', () => {
     const source = '.a { mask-image: image-set(url(/icons/mask.svg) 1x); }';
 
     expect(shapesOf(css(source))).toEqual(['css.image-set']);
   });
 
-  it('still marks a custom-property DECLARATION as css.var — the control', () => {
+  it('still marks a custom-property declaration as css.var (the control)', () => {
     // Without this, the `var()` assertion above would pass with the `--` rung deleted.
     const source = ':root { --masthead: url(/img/banner.png); }';
 
@@ -63,7 +63,7 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so', () =>
       text: `const A = styled.div\`\n  background-image: url('${value}');\n\`;\n`,
     });
 
-  it('🔴 globs one unknown segment in the name, exactly as a template literal elsewhere does', () => {
+  it('globs one unknown segment in the name, exactly as a template literal elsewhere does', () => {
     // The CSS pass sees a comment where the `${}` was and calls the url dynamic, so the
     // JavaScript adapter asks `assembledPathIsGlobbable` itself.
     const [reference] = styled('/theme-${mode}.png');
@@ -72,7 +72,7 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so', () =>
     expect(reference?.ceiling).toBe('medium');
   });
 
-  it('🔴 carries the SOURCE text as its path, so the range invariant holds again', () => {
+  it('carries the source text as its path, so the range invariant holds again', () => {
     // The placeholder is the CSS pass's device, not the file's text. As a path it would
     // break `source.slice(start, end) === rawPath`, and the resolver's pattern matcher
     // reads `${…}`, never `/*---*/`.
@@ -93,7 +93,7 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so', () =>
     expect(reference?.rawPath).toBe('${base}/theme-light.png');
   });
 
-  it('leaves a literal url() inside CSS-in-JS on the host too — the control', () => {
+  it('leaves a literal url() inside CSS-in-JS on the host too (the control)', () => {
     // Without it, the assertions above would pass with `hostShape` never applied.
     const [reference] = styled('/img/banner.png');
 

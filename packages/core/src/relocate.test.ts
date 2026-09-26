@@ -402,7 +402,7 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(plan.declined[0]?.reason).toContain('no static path to replace');
   });
 
-  it('refuses a second move of the SAME file, rather than quietly taking the last', () => {
+  it('refuses a second move of the same file, rather than quietly taking the last', () => {
     // `accepted` is keyed on the source, so without this refusal the second move would
     // silently replace the first, and the plan would report one move when asked for two.
     const graph = graphFor({ assets: ['src/a.png'], references: [] });

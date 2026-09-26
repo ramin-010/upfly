@@ -239,7 +239,7 @@ describe('audit', () => {
       expect(result.publicDirDeadCount).toBe(0);
     });
 
-    it('does not count a hedged public asset — only confident ones need the caveat', async () => {
+    it('does not count a hedged public asset: only confident ones need the caveat', async () => {
       const graph = graphOf({
         assets: [asset('public/hero.png')],
         unscannedFiles: [
@@ -641,7 +641,7 @@ describe('audit', () => {
       });
     }
 
-    it('reports it dead when nothing says otherwise — the check that can fail', async () => {
+    it('reports it dead when nothing says otherwise (the check that can fail)', async () => {
       // The control. Every test below asserts that a finding is suppressed, which
       // passes just as well when the finding was never produced. With no roots
       // detected the same asset is reported dead, so the tests below measure the
@@ -661,7 +661,7 @@ describe('audit', () => {
       ]);
     });
 
-    it('does not hedge it either — a hedge would be evasive, not weaker', async () => {
+    it('does not hedge it either: a hedge would be evasive, not weaker', async () => {
       // `possibly-dead` means we do not know, and here we do: Next.js will emit it.
       const result = await auditWith(ROOTS);
 

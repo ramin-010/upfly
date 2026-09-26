@@ -69,7 +69,7 @@ function hedgeReport(asset: string, where: string): Report {
 }
 
 describe('verifyBroken asks every spelling', () => {
-  it('🔴 calls a percent-encoded path FALSE when it names a file that exists', async () => {
+  it('calls a percent-encoded path FALSE when it names a file that exists', async () => {
     const result = await verifyFindings(root, brokenReport('./img/hero%20image.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-false');
@@ -106,7 +106,7 @@ describe('verifyBroken asks every spelling', () => {
  * a false `dead` tells somebody it is safe to delete a file their site serves.
  */
 describe('verifyDead asks every spelling too', () => {
-  it('🔴 calls a percent-spelled mention what it is — the asset is ALIVE', async () => {
+  it('calls a percent-spelled mention what it is: the asset is alive', async () => {
     const result = await verifyFindings(root, deadReport('img/hero image.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-false');
@@ -133,7 +133,7 @@ describe('verifyDead asks every spelling too', () => {
    * on `ambiguous`: it falls through to `confirmed-genuine`, "no mention of this file
    * anywhere, under any image extension", about a name the page does mention.
    */
-  it('🔴 does not certify an asset dead when only an encoded, extension-swapped mention exists', async () => {
+  it('does not certify an asset dead when only an encoded, extension-swapped mention exists', async () => {
     const result = await verifyFindings(root, deadReport('img/only encoded.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('ambiguous');

@@ -590,7 +590,7 @@ describe('the public policy', () => {
       expect(plan.keptOriginals[0]?.reason).toContain('outside a directory this project serves');
     });
 
-    it('keeps the asset OUT of declined, which says it was not converted', () => {
+    it('keeps the asset out of declined, which says it was not converted', () => {
       // The report renders `declined` under "Examined and not converted", so filing a
       // converted asset there would put it under a heading saying the opposite, and two
       // of the report's counts could not both be true. The lists are disjoint and
@@ -666,7 +666,7 @@ describe('the public policy', () => {
       return planOptimization(input({ assets, references, publicPolicy: 'replace', ...over }));
     }
 
-    it('deletes the original whose one reference is rewritten — the positive control', () => {
+    it('deletes the original whose one reference is rewritten (the positive control)', () => {
       const plan = replacing(
         [asset('public/logo.png')],
         [resolved('index.html', '/logo.png', 'public/logo.png')],
@@ -722,7 +722,7 @@ describe('the public policy', () => {
       );
     });
 
-    it('keeps it when a literal naming it IS rewritten but a pattern still needs it', () => {
+    it('keeps it when a literal naming it is rewritten but a pattern still needs it', () => {
       const plan = replacing(theme, [
         resolved('index.html', '/theme-light.png', 'public/theme-light.png'),
         template,

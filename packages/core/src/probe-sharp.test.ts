@@ -223,7 +223,7 @@ describe('createSharpProbe', () => {
     });
   });
 
-  describe('animation — the measurement that would otherwise be a lie', () => {
+  describe('animation: the measurement that would otherwise be a lie', () => {
     it('reports frame count from a plain read', async () => {
       const path = await animatedGif('loop', 6);
 
@@ -233,7 +233,7 @@ describe('createSharpProbe', () => {
       expect(result.pages).toBe(6);
     });
 
-    it('reports the dimensions of ONE frame, not of every frame stacked', async () => {
+    it('reports the dimensions of one frame, not of every frame stacked', async () => {
       const path = await animatedGif('loop2', 6);
 
       const result = await probe.metadata(path);

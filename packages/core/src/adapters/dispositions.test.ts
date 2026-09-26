@@ -36,7 +36,7 @@ describe('path.bare-specifier: the disposition beats the construct', () => {
     expect(only(js(source)).shape).toBe('path.bare-specifier');
   });
 
-  it('🔴 does NOT claim the identical text in a PLAIN STRING, and that is measured', () => {
+  it('does not claim the identical text in a plain string, and that is measured', () => {
     // In an ordinary string the prefix test decides nothing: `some-ui-kit/dist/x.png` and
     // `src/assets/x.png` are the same syntax, and only `node_modules` separates them.
     // Claiming it would label strings such as `loading...` and `v2.0.0` as packages, so the
@@ -54,7 +54,7 @@ describe('path.bare-specifier: the disposition beats the construct', () => {
     expect(only(js("export const HERO = '/img/hero.png';")).shape).toBe('js.string.literal');
   });
 
-  it('🔴 does NOT apply to new URL(…, import.meta.url), where a bare path is relative', () => {
+  it('does not apply to new URL(…, import.meta.url), where a bare path is relative', () => {
     // The same spelling with the opposite meaning, decided entirely by the construct:
     // `new URL('img.png', import.meta.url)` resolves against the module, so calling it
     // a package would report a real, rewritable asset as out of scope.
@@ -78,7 +78,7 @@ describe('path.charref: the spelling beats the construct', () => {
     expect(only(html('<img src="/gallery/a&amp;b.png">')).shape).toBe('path.charref');
   });
 
-  it('🔴 claims it in an feImage too, rather than as the construct it sits in', () => {
+  it('claims it in an feImage too, rather than as the construct it sits in', () => {
     // "The narrowest thing that breaks alone" cannot settle this: both `html.svg.feimage`
     // and the charref decoding take other entries with them. The disposition takes
     // precedence, and the adapter checks for character references before it picks a host
@@ -98,7 +98,7 @@ describe('path.charref: the spelling beats the construct', () => {
 
   // An escaped path can be resolved and rewritten: `rawPath` is the encoded source text,
   // the range covers exactly that text, and `relocate` re-encodes the path it writes.
-  it('is located and resolvable, and the range still covers the ENCODED text', () => {
+  it('is located and resolvable, and the range still covers the encoded text', () => {
     const source = '<img src="/gallery/a&amp;b.png">';
     const reference = only(html(source));
 

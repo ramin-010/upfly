@@ -110,7 +110,7 @@ describe('the matrix counts an outcome the way the key defines it', () => {
     expect(result.findings).toEqual([]);
   });
 
-  it('🔴 counts a DIFFERENT outcome as a miss, and says which way round', () => {
+  it('counts a different outcome as a miss, and says which way round', () => {
     const result = buildMatrix(keyWith({}), observed([{ start: 10, resolution: 'broken' }]));
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ met: 0, missed: 1 });
@@ -118,7 +118,7 @@ describe('the matrix counts an outcome the way the key defines it', () => {
     expect(firstFinding(result).detail).toContain('expected resolved, engine said broken');
   });
 
-  it('🔴 counts silence as a miss where the expect does not allow silence', () => {
+  it('counts silence as a miss where the expect does not allow silence', () => {
     // A refactor that stops finding some `srcset` candidates leaves nothing in the engine's
     // own output to say so: the references are simply not there.
     const result = buildMatrix(keyWith({}), observed([]));
@@ -127,7 +127,7 @@ describe('the matrix counts an outcome the way the key defines it', () => {
     expect(firstFinding(result).detail).toContain('engine said absent');
   });
 
-  it('joins on POSITION, so a right answer at the wrong offset is still a miss', () => {
+  it('joins on position, so a right answer at the wrong offset is still a miss', () => {
     // Offsets are the whole point of the key: a reference found one byte along is a
     // rewrite that lands in the wrong place.
     const result = buildMatrix(keyWith({}), observed([{ start: 11, resolution: 'resolved' }]));
@@ -136,7 +136,7 @@ describe('the matrix counts an outcome the way the key defines it', () => {
   });
 });
 
-describe('the two expects that accept SILENCE as well as an outcome', () => {
+describe('the two expects that accept silence as well as an outcome', () => {
   // The key's `expectSemantics` defines these two as situations rather than behaviours, so
   // an entry is met by the outcome or by no reference at all. Both directions are tested:
   // a permissive rule never tested for what it refuses accepts everything.
@@ -161,7 +161,7 @@ describe('the two expects that accept SILENCE as well as an outcome', () => {
     ['out-of-scope', 'resolved'],
     ['out-of-scope', 'resolved-pattern'],
     ['out-of-scope', 'broken'],
-  ])('🔴 REFUSES %s when the engine said %s', (expectValue, resolution) => {
+  ])('refuses %s when the engine said %s', (expectValue, resolution) => {
     // A refusal row that accepted `resolved` would count a false positive, the dangerous
     // failure, as a pass.
     const result = buildMatrix(
@@ -188,7 +188,7 @@ describe('the two expects that accept SILENCE as well as an outcome', () => {
 });
 
 describe('a throw is a third outcome, never merged into a refusal', () => {
-  it('🔴 does NOT let a crashed file satisfy a `discarded` row', () => {
+  it('does not let a crashed file satisfy a `discarded` row', () => {
     // `discarded` accepts silence, and a crashed adapter is silent too, so without the
     // separation this row would pass for a file the engine could not read at all.
     const result = buildMatrix(
@@ -213,7 +213,7 @@ describe('a throw is a third outcome, never merged into a refusal', () => {
     expect(NON_DEFECT_KINDS).toContain('threw-expected-silence');
   });
 
-  it('🔴 but a throw where a REFERENCE was expected stays a defect', () => {
+  it('but a throw where a reference was expected stays a defect', () => {
     // The control, and without it the case above would pass with every throw excused.
     const result = buildMatrix(keyWith({ expect: 'resolved' }), observed([], 'parse-failed: x'));
 
@@ -227,7 +227,7 @@ describe('a throw is a third outcome, never merged into a refusal', () => {
     expect(rowOf(result, 'html.img.src')).toMatchObject({ missed: 0, threw: 1 });
   });
 
-  it('🔴 still credits a PARTIAL reference the throw carried with it', () => {
+  it('still credits a partial reference the throw carried with it', () => {
     // A throw carries the references collected before it, so a file can be both partly
     // measured and recorded as unscanned. Checking `threw` first would credit such a file
     // with nothing and hide whether those references survive.
@@ -260,7 +260,7 @@ describe('a knownGap is a sanctioned divergence, and a settled one is a defect',
     expect(result.findings).toEqual([]);
   });
 
-  it('🔴 reports a knownGap whose entry now AGREES — the debt was settled', () => {
+  it('reports a knownGap whose entry now agrees: the debt was settled', () => {
     // A gap the engine has closed goes on printing as a debt until someone removes it, and
     // a reader learns to discount the column.
     const result = buildMatrix(
@@ -285,7 +285,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
       gapMechanism: mechanism,
     });
 
-  it('🔴 does NOT call a gap stale when its mechanism was not exercised, even on agreement', () => {
+  it('does not call a gap stale when its mechanism was not exercised, even on agreement', () => {
     const result = buildMatrix(
       gapped('serving-root-detection'),
       observed([{ start: 10, resolution: 'broken' }]),
@@ -300,7 +300,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     expect(firstFinding(result).detail).toContain('which is not evidence');
   });
 
-  it('DOES call it stale once the run exercises that mechanism', () => {
+  it('does call it stale once the run exercises that mechanism', () => {
     // The other direction, so the rule is a condition rather than a blanket refusal. A
     // guard that can only ever say no is one nobody reads.
     const result = buildMatrix(
@@ -325,7 +325,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, notExercised: 0 });
   });
 
-  it('🔴 is NOT counted as a defect, but IS printed under its own heading', () => {
+  it('is not counted as a defect, but is printed under its own heading', () => {
     // Failing on it would keep red every run that leaves the mechanism out on purpose, and
     // a check that is always red gets ignored. So it is printed, in words rather than only
     // as a column of zeroes.
@@ -340,7 +340,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     expect(rendered).toContain('serving-root-detection');
   });
 
-  it('🔴 THROWS on a gapMechanism outside the vocabulary, rather than freezing the entry', () => {
+  it('throws on a gapMechanism outside the vocabulary, rather than freezing the entry', () => {
     // A typo matches nothing in `exercises`, so the entry would become a gap nobody can
     // retire, and it would read as caution. This mistake and the next both fail in the
     // direction that looks fine, which is why they throw instead of adding a row.
@@ -352,7 +352,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     ).toThrow(/unknown gap mechanism/);
   });
 
-  it('🔴 THROWS when the CALLER claims a mechanism that does not exist', () => {
+  it('throws when the caller claims a mechanism that does not exist', () => {
     // The mirror: a misspelled `exercises` entry matches no gap, so the run silently
     // claims less than it does and every affected gap stays frozen.
     expect(() =>
@@ -366,7 +366,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     ).toThrow(/caller claims to exercise/);
   });
 
-  it('🔴 THROWS on a gapMechanism with no knownGap to retire', () => {
+  it('throws on a gapMechanism with no knownGap to retire', () => {
     expect(() =>
       buildMatrix(
         keyWith({ gapMechanism: 'serving-root-detection' }),
@@ -377,7 +377,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
 
   // `observedUnder` supplies a separate run made with the mechanism switched on. An entry
   // naming that mechanism is judged on that run, never on the main run that happens to agree.
-  it("🔴 judges a gap on the mechanism's OWN run, so the declared run's agreement retires nothing", () => {
+  it("judges a gap on the mechanism's own run, so the declared run's agreement retires nothing", () => {
     // Declared roots say `broken`, which agrees; detection says `resolved`. Judged on the
     // declared run, the gap would read as stale merely because the mechanism is listed as
     // exercised.
@@ -399,7 +399,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     });
   });
 
-  it("retires the gap when the mechanism's own run agrees — the other direction", () => {
+  it("retires the gap when the mechanism's own run agrees (the other direction)", () => {
     const result = buildMatrix(
       gapped('serving-root-detection'),
       observed([{ start: 10, resolution: 'resolved' }]),
@@ -414,7 +414,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     expect(rowOf(result, 'html.img.src')).toMatchObject({ staleGap: 1, knownGap: 0 });
   });
 
-  it('🔴 THROWS when a run is supplied for a mechanism the caller does not claim', () => {
+  it('throws when a run is supplied for a mechanism the caller does not claim', () => {
     expect(() =>
       buildMatrix(
         gapped('serving-root-detection'),
@@ -441,7 +441,7 @@ describe('a gap in a mechanism the configuration does not use', () => {
   });
   const outside = { outOfConfiguration: new Set(['serving-root-detection']) };
 
-  it('🔴 judges the entry on its outcome — agreement is MET, and never a retired gap', () => {
+  it('judges the entry on its outcome: agreement is met, and never a retired gap', () => {
     const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), outside);
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({
@@ -475,7 +475,7 @@ describe('a gap in a mechanism the configuration does not use', () => {
     expect(rendered).toContain('neither confirmed nor retired here');
   });
 
-  it('🔴 THROWS when one mechanism is claimed as exercised AND outside the configuration', () => {
+  it('throws when one mechanism is claimed as exercised and outside the configuration', () => {
     // Both at once would judge a gap on its outcome and retire it in the same call.
     expect(() =>
       buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), {
@@ -485,7 +485,7 @@ describe('a gap in a mechanism the configuration does not use', () => {
     ).toThrow(/cannot be both/);
   });
 
-  it('🔴 names every claimed entry a run did not meet — a knownGap one too, which has no finding', () => {
+  it('names every claimed entry a run did not meet, including a knownGap one, which has no finding', () => {
     // The run that uses detection, confirming the gap. A result that pointed readers at
     // the findings would drop this miss: a `knownGap` entry is unmet and has no finding.
     const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'resolved' }]), {
@@ -504,7 +504,7 @@ describe('a gap in a mechanism the configuration does not use', () => {
     ]);
   });
 
-  it('🔴 THROWS on an out-of-configuration mechanism outside the vocabulary', () => {
+  it('throws on an out-of-configuration mechanism outside the vocabulary', () => {
     expect(() =>
       buildMatrix(gapped, observed([{ start: 10, resolution: 'broken' }]), {
         outOfConfiguration: new Set(['serving-root-detektion']),
@@ -513,8 +513,8 @@ describe('a gap in a mechanism the configuration does not use', () => {
   });
 });
 
-describe('it joins in BOTH directions', () => {
-  it('🔴 reports a reference the engine claimed where the key lists nothing', () => {
+describe('it joins in both directions', () => {
+  it('reports a reference the engine claimed where the key lists nothing', () => {
     // The more dangerous direction: a miss is a gap in coverage, but an unkeyed claim is
     // the engine asserting something nobody sanctioned, and `optimize` rewrites what the
     // engine asserts.
@@ -559,7 +559,7 @@ describe('a shape disagreement is a defect only where no layer is declared', () 
     expect(onlyDisagreement(result).explained).toBe(true);
   });
 
-  it('🔴 does NOT explain it when the declaration names a different shape', () => {
+  it('does not explain it when the declaration names a different shape', () => {
     // The rot an exemption list cannot report. A declaration that no longer matches what
     // the adapter emits must stop excusing it.
     const result = buildMatrix(key, seen, {
@@ -616,7 +616,7 @@ describe('the rendering', () => {
       for (const bucket of BUCKETS) expect(header).toContain(bucket.label);
     });
 
-    it("🔴 says so loudly when a row's printed columns do not sum to its `exp`", () => {
+    it("says so loudly when a row's printed columns do not sum to its `exp`", () => {
       // Built by hand rather than through `buildMatrix`, because this state cannot occur
       // while `BUCKETS` is the single source. The page must still catch it if it ever does.
       const damaged = {
@@ -658,20 +658,20 @@ describe("the matrix's own arithmetic, proved able to fail", () => {
     expect(reconcile([row({})], keyOf(3), []).closes).toBe(true);
   });
 
-  it('🔴 goes red when a row loses an entry between its buckets', () => {
+  it('goes red when a row loses an entry between its buckets', () => {
     const result = reconcile([row({ met: 2 })], keyOf(3), []);
 
     expect(result.closes).toBe(false);
     expect(result.problems[0]).toContain('buckets sum to 2, expected 3');
   });
 
-  it('🔴 goes red when a row double-counts one', () => {
+  it('goes red when a row double-counts one', () => {
     const result = reconcile([row({ met: 3, missed: 1 })], keyOf(3), []);
 
     expect(result.closes).toBe(false);
   });
 
-  it('🔴 goes red when the rows do not account for every key entry', () => {
+  it('goes red when the rows do not account for every key entry', () => {
     // The failure mode that matters most: a file group silently skipped. The rows all add
     // up individually and the table reads fine.
     const result = reconcile([row({})], keyOf(9), []);
@@ -680,7 +680,7 @@ describe("the matrix's own arithmetic, proved able to fail", () => {
     expect(result.problems[0]).toContain('account for 3 entries, the key holds 9');
   });
 
-  it('🔴 goes red when a non-met entry produced no finding', () => {
+  it('goes red when a non-met entry produced no finding', () => {
     // A miss with no finding to explain it is a silent skip, the bug this tool exists to
     // find.
     const result = reconcile([row({ met: 2, missed: 1 })], keyOf(3), []);

@@ -59,7 +59,7 @@ describe('assembledPathIsGlobbable', () => {
     });
   });
 
-  describe('unknowns in a DIRECTORY segment are not unknowns in the name', () => {
+  describe('unknowns in a directory segment are not unknowns in the name', () => {
     it('counts only what follows the last slash', () => {
       // Two interpolations, one of them a directory. The name has one unknown, so the
       // glob is still anchored by a filename pattern.
@@ -83,7 +83,7 @@ describe('assembledPathIsGlobbable', () => {
 });
 
 describe('provablyNotAFile', () => {
-  describe('rules on what the text PROVES', () => {
+  describe('rules on what the text proves', () => {
     const proven: ReadonlyArray<[path: string, matcher: RegExp]> = [
       ['/scratch2/${projectId}/adminpanel/', /directory/],
       ['/scratch2-studios/${studioId}/adminpanel/', /directory/],
@@ -100,7 +100,7 @@ describe('provablyNotAFile', () => {
     }
   });
 
-  describe('🔴 rules on nothing else, however obvious the answer looks to a person', () => {
+  describe('rules on nothing else, however obvious the answer looks to a person', () => {
     const kept: readonly string[] = [
       // A route, but `item.name` could end in `.png`.
       '/view/${styleName}/${item.name}',
@@ -212,7 +212,7 @@ describe('spellingsOf', () => {
    * promises never to produce, so `&eacute;` stays unreadable rather than becoming a wrong
    * answer.
    */
-  it('offers NOTHING decoded when one reference is outside the bound', () => {
+  it('offers nothing decoded when one reference is outside the bound', () => {
     expect(spellingsOf('caf&eacute;.png').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);
@@ -224,7 +224,7 @@ describe('spellingsOf', () => {
     expect(spellingsOf('a%ZZb.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
   });
 
-  it('leaves a bare ampersand alone — `c&s.png` is a real filename in the corpus', () => {
+  it('leaves a bare ampersand alone: `c&s.png` is a real filename in the corpus', () => {
     expect(spellingsOf('/images/c&s.png').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);

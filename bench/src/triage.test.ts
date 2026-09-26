@@ -79,7 +79,7 @@ describe('triage of the hits the graph did not link', () => {
     });
   });
 
-  describe('rules that must NOT fire — each of these is a real miss', () => {
+  describe('rules that must not fire: each of these is a real miss', () => {
     it('leaves a frontmatter path alone', () => {
       // `src/docs/languages/sass.md:9`: `logoImage: "/img/logos/sass.svg"` is a
       // genuine reference in YAML frontmatter that no adapter reads. Renaming the

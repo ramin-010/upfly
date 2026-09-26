@@ -90,7 +90,7 @@ describe('searching for what the move left behind', () => {
     expect(result.survivors[0]?.text).toContain('/img/hero.png');
   });
 
-  it('does NOT match a reference to the new location', async () => {
+  it('does not match a reference to the new location', async () => {
     // The premise of the whole design. `moved/hero.png` shares a basename with the old
     // path and must not match. If this ever passes with a basename search, the test data
     // no longer satisfies its premise: the old and new directories must differ.
@@ -184,7 +184,7 @@ describe('searching for what the move left behind', () => {
     expect(rendered).toContain('/img/hero.png');
   });
 
-  it('says a survivor is an occurrence to CHECK, not a reference we broke', async () => {
+  it('says a survivor is an occurrence to check, not a reference we broke', async () => {
     // It reads text, so it cannot tell a broken reference from prose or a changelog. The
     // honest word is the whole point: reporting a coincidence costs a glance, and the
     // alternative wording would make a coincidence look like a defect.

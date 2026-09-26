@@ -35,11 +35,11 @@ describe('Astro body expressions are read as JavaScript', () => {
     expect(text.slice(reference?.start, reference?.end)).toBe('/img/a.png');
   });
 
-  it('reads an identifier as a value, not a path — the fence import is the reference', () => {
+  it('reads an identifier as a value, not a path: the fence import is the reference', () => {
     expect(body('<img src={hero} alt="" />').references).toEqual([]);
   });
 
-  it("🔴 does not claim somebody else's server — the external-URL rule applies here too", () => {
+  it("does not claim somebody else's server: the external-URL rule applies here too", () => {
     const { references } = body(
       '<img src={`https://avatars.githubusercontent.com/u/${id}?s=64`} alt="" />',
     );
@@ -57,7 +57,7 @@ describe('Astro body expressions are read as JavaScript', () => {
     }
   });
 
-  it("keeps today's reading for a value parse5 cut at a space — never a worse one", () => {
+  it("keeps today's reading for a value parse5 cut at a space, never a worse one", () => {
     // `{ … }` with spaces reaches the body reader as `{`, not braced at both ends.
     const { references } = body('<img src={ `/theme-${mode}.png` } alt="" />');
     expect(references.some((reference) => reference.shape.startsWith('js.template'))).toBe(false);

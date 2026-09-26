@@ -31,7 +31,7 @@ async function load(files: Record<string, string>): Promise<AliasMap> {
 
 const from = (relative: string) => toPosix(resolve(ROOT, relative));
 
-describe('loadAliases — tsconfig', () => {
+describe('loadAliases: tsconfig', () => {
   it('reads a wildcard mapping and expands it to an absolute path', async () => {
     const map = await load({
       'tsconfig.json': '{ "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }',
@@ -44,7 +44,7 @@ describe('loadAliases — tsconfig', () => {
     ]);
   });
 
-  it('parses JSONC — comments and trailing commas — rather than throwing on them', async () => {
+  it('parses JSONC, comments and trailing commas included, rather than throwing on them', async () => {
     // `shadcn-ui/apps/v4/tsconfig.json` carries a four-line comment inside `paths`.
     // `JSON.parse` throws on this input; the whole point is that this does not.
     const map = await load({
@@ -144,8 +144,8 @@ describe('loadAliases — tsconfig', () => {
   });
 });
 
-describe('loadAliases — Vite', () => {
-  it('reads a string-literal alias as a PREFIX replacement, not an exact match', async () => {
+describe('loadAliases: Vite', () => {
+  it('reads a string-literal alias as a prefix replacement, not an exact match', async () => {
     // Vite and tsconfig mean different things by a key. A tsconfig `paths` key is a
     // pattern where `*` says "prefix"; a Vite string key is always a prefix replacement,
     // so `{'@': './src'}` turns `@/x.png` into `./src/x.png`. Treating it as an exact
@@ -192,7 +192,7 @@ describe('loadAliases — Vite', () => {
   });
 });
 
-describe('expandAlias — scope', () => {
+describe('expandAlias: scope', () => {
   it('does not apply a package-local alias to a file outside that package', async () => {
     const map = await load({
       'packages/ui/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }',

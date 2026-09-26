@@ -203,7 +203,7 @@ describe('only a folder a project owns is a serving root', () => {
     expect(detectServingRoots(tree).dirs).toEqual(['legacy/public']);
   });
 
-  it('knows Hugo, Laravel and Angular by their files — each untested on a real repository', () => {
+  it('knows Hugo, Laravel and Angular by their files: each untested on a real repository', () => {
     expect(detectServingRoots(walk(['static'], ['hugo.toml'])).dirs).toEqual(['static']);
     expect(detectServingRoots(walk(['static'], ['config.toml'])).dirs).toEqual(['static']);
     expect(detectServingRoots(walk(['public'], ['composer.json'])).dirs).toEqual(['public']);

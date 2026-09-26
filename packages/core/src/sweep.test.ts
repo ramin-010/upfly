@@ -100,7 +100,7 @@ function graphOf(input: {
 }
 
 describe('sweepForMentions', () => {
-  describe('haystack (a) — files nobody read', () => {
+  describe('haystack (a): files nobody read', () => {
     it('finds an asset named in an unscanned file, and cites the line', async () => {
       const graph = graphOf({
         assets: [asset('img/hero.png')],
@@ -251,7 +251,7 @@ describe('sweepForMentions', () => {
     });
   });
 
-  describe('haystack (b) — paths we read but could not resolve', () => {
+  describe('haystack (b): paths we read but could not resolve', () => {
     it('rescues an asset named only inside a dynamic reference', async () => {
       // `templated.png` is named by a path in a file we parsed perfectly. The
       // reference is `dynamic`, so it links nothing and the asset looks dead while
@@ -314,7 +314,7 @@ describe('sweepForMentions', () => {
       expect(result.mentions.has('icons/app.png')).toBe(true);
     });
 
-    it('does NOT sweep a broken reference', async () => {
+    it('does not sweep a broken reference', async () => {
       // Its target is known: nothing. It is already its own finding, and
       // `hero.png: dead` beside `./wrong-dir/hero.png: broken` tells a reader more
       // than hedging `hero.png` would, which would hide the pair.
@@ -331,7 +331,7 @@ describe('sweepForMentions', () => {
       expect(result.mentions.size).toBe(0);
     });
 
-    it('does NOT sweep an out-of-scope reference', async () => {
+    it('does not sweep an out-of-scope reference', async () => {
       // Target known, and known not to be an indexed asset.
       const graph = graphOf({
         assets: [asset('hero.png')],
@@ -359,7 +359,7 @@ describe('sweepForMentions', () => {
     });
   });
 
-  describe('haystack (c) — files we read but did not understand', () => {
+  describe('haystack (c): files we read but did not understand', () => {
     it('rescues an asset named only by a construct no adapter reads', async () => {
       // A name in a file an adapter did read, with no reference that links the asset.
       // Neither other source covers it, so without this one the asset would be
@@ -407,7 +407,7 @@ describe('sweepForMentions', () => {
       return { scanned, result };
     }
 
-    it('rescues a literal filename through the real scan — the control', async () => {
+    it('rescues a literal filename through the real scan (the control)', async () => {
       // First, because the test below asserts that a mention is absent, and an absence
       // passes just as well when the pipeline was never connected. This is the same
       // source shape with the name written out, and it must hedge.
@@ -427,7 +427,7 @@ describe('sweepForMentions', () => {
       ]);
     });
 
-    it('cannot rescue a filename that is assembled at runtime — the resolver must', async () => {
+    it('cannot rescue a filename that is assembled at runtime: the resolver must', async () => {
       // The limit of every basename sweep: `background-${dir}.png` never contains the
       // string `background-ltr.png`, so there is nothing to find. This asserts what the
       // sweep cannot do, not that the finding is correct. The resolver covers the case:

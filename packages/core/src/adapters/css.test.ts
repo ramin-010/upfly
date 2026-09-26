@@ -394,7 +394,7 @@ describe('a parenthesis inside quotes is a character, not a function call', () =
     expect(reference?.note).toBeUndefined();
   });
 
-  it('treats a quoted path with parentheses AND spaces as a literal path', () => {
+  it('treats a quoted path with parentheses and spaces as a literal path', () => {
     const [reference] = find(
       'a { background-image: url("/img/3_Community/Timeline Background (Base).svg"); }',
     );
@@ -403,7 +403,7 @@ describe('a parenthesis inside quotes is a character, not a function call', () =
     expect(reference?.ceiling).toBe('high');
   });
 
-  it('still refuses an UNQUOTED function call — the control', () => {
+  it('still refuses an unquoted function call (the control)', () => {
     // The assertion above would pass with the check deleted outright. This is what
     // stops that: a real SCSS function call must stay `unsafe`.
     const [reference] = find('a { background-image: url(map-get($images, hero)); }');
@@ -454,7 +454,7 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
     expect(slices(source, references)).toEqual([expected]);
   });
 
-  it('marks it a GUESS, which is what keeps a wrong one out of the report', () => {
+  it('marks it a guess, which is what keeps a wrong one out of the report', () => {
     const [reference] = cssAdapter.findReferences({
       file: '/project/styles.scss',
       text: "$hero: '/img/hero.jpg';\n",
@@ -487,7 +487,7 @@ describe('a path in a preprocessor variable declaration is a reference', () => {
     expect(cssAdapter.findReferences({ file: `/project/${file}`, text: source })).toEqual([]);
   });
 
-  it('does not disturb the url() that USES the variable', () => {
+  it('does not disturb the url() that uses the variable', () => {
     // The use stays `dynamic`: there is nothing static to resolve, and nobody typed a
     // wrong path. Both are emitted, at different positions, because the declaration names
     // the file and the use names the variable.
@@ -541,7 +541,7 @@ describe('a trailing interpolation is a pattern, not a dead end', () => {
       '.a { background: url("#{$root}/photo.png"); }',
     ],
     ['two unknowns in one name', '.a { background: url("/icons/#{$theme}-#{$size}.png"); }'],
-  ])('%s stays unsafe — globbing it would sweep in strangers', (_name, source) => {
+  ])('%s stays unsafe: globbing it would sweep in strangers', (_name, source) => {
     expect(ceilingOf(source)).toBe('unsafe');
   });
 
@@ -556,7 +556,7 @@ describe('a trailing interpolation is a pattern, not a dead end', () => {
    * only the first. Split there, `/theme-#{$mode}.png` would become the path `/theme-`,
    * which has no image extension, so the resolver would drop it with no report line.
    */
-  it('🔴 keeps the WHOLE path: a `#{` is an interpolation, not a fragment', () => {
+  it('keeps the whole path: a `#{` is an interpolation, not a fragment', () => {
     const source = '.a { background: url("/theme-#{$mode}.png"); }';
     const [reference] = cssAdapter.findReferences({ file: '/project/s.scss', text: source });
 

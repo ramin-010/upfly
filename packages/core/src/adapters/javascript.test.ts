@@ -860,7 +860,7 @@ body`,
       );
     });
 
-    it('leaves a literal that is already a complete path to the string rule — it re-reads nothing', () => {
+    it('leaves a literal that is already a complete path to the string rule: it re-reads nothing', () => {
       const literal = only("export const f = (v: string) => '/img/hero.jpg' + '?v=' + v;");
       expect(literal.rawPath).toBe('/img/hero.jpg');
       expect(literal.shape).toBe('js.string.literal');
@@ -872,14 +872,14 @@ body`,
       expect(template.assembledPath).toBeUndefined();
     });
 
-    it('reads a chain once, whole — never again as the shorter chains inside it', () => {
+    it('reads a chain once, whole, never again as the shorter chains inside it', () => {
       const chain = only(
         "export const f = (b: string, d: string) => '/a/' + b + '/c-' + d + '.png';",
       );
       expect(chain.assembledPath).toBe('/a/${}/c-${}.png');
     });
 
-    it('treats a parenthesised sum as ONE unknown, because the brackets may add numbers', () => {
+    it('treats a parenthesised sum as one unknown, because the brackets may add numbers', () => {
       const chain = only("export const f = (i: number) => '/img/' + (i + 1) + '.png';");
       expect(chain.assembledPath).toBe('/img/${}.png');
       expect(chain.ceiling).toBe('medium');

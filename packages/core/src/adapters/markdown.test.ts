@@ -325,7 +325,7 @@ describe('markdownAdapter', () => {
      * example is not a reference and the live one after it is still found.
      */
 
-    it('does not let an info-string fence close a block — it may only open one', () => {
+    it('does not let an info-string fence close a block: it may only open one', () => {
       // Documentation opens fences with ```astro or ```ts title="…" throughout, and
       // reading one of those as a close puts the mask out of step.
       const text = [
@@ -411,7 +411,7 @@ describe('maskInactiveRegions', () => {
     expect(countNewlines(maskInactiveRegions(text))).toBe(countNewlines(text));
   });
 
-  it('masks an import inside a fence — the defect this export exists to prevent', () => {
+  it('masks an import inside a fence: the defect this export exists to prevent', () => {
     // Documentation teaching a reader how to write an import is not an import.
     const text = ['```astro', "import stars from '~/stars/docline.png';", '```'].join('\n');
 
@@ -426,7 +426,7 @@ describe('maskInactiveRegions', () => {
     expect(maskInactiveRegions(text)).not.toContain('docline.png');
   });
 
-  it('leaves text outside a fence alone — the control', () => {
+  it('leaves text outside a fence alone (the control)', () => {
     // Proves the four assertions above can fail: a masker that blanked everything
     // would satisfy every `not.toContain` while being useless.
     const text = [
@@ -450,7 +450,7 @@ describe('maskInactiveRegions', () => {
  * maintains and could take away.
  */
 describe('the parse5 pass is skipped only when there is nothing for it to find', () => {
-  it('🔴 still finds a reference that ONLY the HTML pass can see', () => {
+  it('still finds a reference that only the HTML pass can see', () => {
     const text = '# Title\n\n<img src="/only-html.png" alt="">\n';
     const found = markdownAdapter.findReferences({ file: 'doc.md', text });
 
@@ -460,7 +460,7 @@ describe('the parse5 pass is skipped only when there is nothing for it to find',
     expect(found[0]?.shape).toBe('md.raw-html');
   });
 
-  it('🔴 still finds one inside a style attribute, which is the subtlest shape', () => {
+  it('still finds one inside a style attribute, which is the subtlest shape', () => {
     const text = '# Title\n\n<div style="background-image: url(\'/bg.png\')"></div>\n';
     const found = markdownAdapter.findReferences({ file: 'doc.md', text });
 
@@ -480,7 +480,7 @@ describe('the parse5 pass is skipped only when there is nothing for it to find',
    * only `<img>` is fenced has nothing for the HTML pass to find, and the fenced one is
    * documentation, not a reference.
    */
-  it('🔴 skips a document whose only markup is inside a fence, and reports nothing from it', () => {
+  it('skips a document whose only markup is inside a fence, and reports nothing from it', () => {
     const text = '# Title\n\n```html\n<img src="/inside-a-fence.png">\n```\n\n![real](/real.png)\n';
     const found = markdownAdapter.findReferences({ file: 'doc.md', text });
 
@@ -535,7 +535,7 @@ describe('MDX top-level ESM is read as JavaScript', () => {
     ]);
   });
 
-  it('finds a path-shaped string in an `export const`, as a guess — the speculative rule', () => {
+  it('finds a path-shaped string in an `export const`, as a guess (the speculative rule)', () => {
     const text = "# A post\n\nexport const banner = '/img/hero.jpg';\n";
     const [found] = mdx(text);
 
@@ -544,12 +544,12 @@ describe('MDX top-level ESM is read as JavaScript', () => {
     expect(found?.asserted).toBe(false);
   });
 
-  it('🔴 leaves an `import` inside a code fence inert — it is an example, not code', () => {
+  it('leaves an `import` inside a code fence inert: it is an example, not code', () => {
     const text = ['# Usage', '', '```mdx', "import hero from './hero.png';", '```', ''].join('\n');
     expect(mdx(text)).toEqual([]);
   });
 
-  it('🔴 does not read a PARAGRAPH line that begins with the keyword — MDX cannot interrupt one', () => {
+  it('does not read a paragraph line that begins with the keyword: MDX cannot interrupt one', () => {
     // Prose can wrap onto a line that begins with the keyword ("lists every public\nexport
     // and option."). Read as code, that is a parse failure. The first case is worse: it is
     // valid JavaScript, so ignoring the paragraph would emit a phantom import, a wrong
@@ -594,7 +594,7 @@ describe('MDX top-level ESM is read as JavaScript', () => {
     expect(summary(jsx)).toEqual([{ raw: '/img/b.png', shape: 'js.jsx.attribute', exact: true }]);
   });
 
-  it('reads JSX inside an ESM block ONCE — as JavaScript, never also as markup', () => {
+  it('reads JSX inside an ESM block once, as JavaScript, never also as markup', () => {
     const text = 'export const Hero = () => <img src="/img/c.png" />;\n';
     expect(summary(text)).toEqual([{ raw: '/img/c.png', shape: 'js.jsx.attribute', exact: true }]);
   });
@@ -633,7 +633,7 @@ describe('indented code blocks are masked, and only they are', () => {
   const md = (text: string) =>
     markdownAdapter.findReferences({ file: '/site/guide.md', text }).map((r) => r.rawPath);
 
-  it('masks an indented block after a blank line — the case that was claimed', () => {
+  it('masks an indented block after a blank line: the case that was claimed', () => {
     const text = [
       'An example:',
       '',
@@ -650,7 +650,7 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md(text)).toEqual([]);
   });
 
-  it('masks a block that follows a heading directly — a heading is a whole block', () => {
+  it('masks a block that follows a heading directly: a heading is a whole block', () => {
     expect(md('# Example\n    <img src="/in-code.png">\n')).toEqual([]);
   });
 
@@ -659,7 +659,7 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md('Text.\n\n  \t<img src="/tabbed.png">\n')).toEqual([]);
   });
 
-  it("🔴 keeps a LIST ITEM's indented continuation live — it is the item, not code", () => {
+  it("keeps a list item's indented continuation live: it is the item, not code", () => {
     const text = [
       '- A list item whose picture sits in its own paragraph:',
       '',
@@ -672,7 +672,7 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md(text)).toEqual(['/in-list.png', '/deeper-in-list.png']);
   });
 
-  it('🔴 masks again once the list has ended', () => {
+  it('masks again once the list has ended', () => {
     const text = [
       '1. An ordered item.',
       '',
@@ -683,12 +683,12 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md(text)).toEqual([]);
   });
 
-  it("🔴 keeps a PARAGRAPH's indented next line live — indented code cannot interrupt one", () => {
+  it("keeps a paragraph's indented next line live: indented code cannot interrupt one", () => {
     const text = 'A sentence that goes on\n    <img src="/lazy.png" alt="to the next line">\n';
     expect(md(text)).toEqual(['/lazy.png']);
   });
 
-  it('🔴 keeps indented table rows live across a commented-out row (eleventy-docs cjs-esm.md)', () => {
+  it('keeps indented table rows live across a commented-out row (eleventy-docs cjs-esm.md)', () => {
     // The mask turns the comment into spaces, so reading the mask for blank lines would
     // end the HTML block there and blank the live rows after it.
     const text = [
@@ -706,7 +706,7 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md(text)).toEqual(['/in-table.png']);
   });
 
-  it('🔴 keeps the inside of a <pre> live across a blank line — that HTML block does not end there', () => {
+  it('keeps the inside of a <pre> live across a blank line: that HTML block does not end there', () => {
     const text = [
       '<pre>',
       'Output:',
@@ -722,7 +722,7 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(md(text)).toEqual([]);
   });
 
-  it('🔴 never masks anything in MDX, which has no indented code — JSX is indented', () => {
+  it('never masks anything in MDX, which has no indented code: JSX is indented', () => {
     const text = ['<div>', '', '    <img src="/in-jsx.png" alt="live" />', '', '</div>'].join('\n');
     const found = markdownAdapter.findReferences({ file: '/site/post.mdx', text });
     expect(found.map((reference) => reference.rawPath)).toEqual(['/in-jsx.png']);
