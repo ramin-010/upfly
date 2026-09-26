@@ -28,7 +28,7 @@ import type {
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import type { ShapeId } from '../shapes.js';
+import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -782,16 +782,18 @@ function collectFromJsxElement(node: JSXOpeningElement, context: Context): void 
   const attributes = node.attributes.filter(
     (attribute): attribute is JSXAttribute => attribute.type === 'JSXAttribute',
   );
-  const element: ClaimedElement = {
-    attribute: (name) => {
-      const found = attributes.find((attribute) => markupName(attribute) === name);
-      return found === undefined ? undefined : jsxStringValue(found.value);
-    },
+  const other = (name: string): string | undefined => {
+    const found = attributes.find((attribute) => markupName(attribute) === name);
+    return found === undefined ? undefined : jsxStringValue(found.value);
   };
 
   for (const attribute of attributes) {
     const name = markupName(attribute);
     const component = COMPONENT_URL_ATTRIBUTES.get(name);
+    const element: ClaimedElement = {
+      attribute: other,
+      valueText: () => jsxValueText(attribute.value, context),
+    };
     const shape = component ?? urlPosition(tag, name, element)?.jsx;
     if (shape === undefined) {
       const value = attribute.value;
@@ -829,6 +831,20 @@ function jsxStringValue(value: JSXAttribute['value']): string | undefined {
 }
 
 /**
+ * A JSX value as the static text a claim reads, each unknown part written `${}`: a string,
+ * or a template literal. `null` for anything else, a `+` chain or a choice included, since
+ * no one text stands for it.
+ */
+function jsxValueText(value: JSXAttribute['value'], context: Context): string | null {
+  const text = jsxStringValue(value);
+  if (text !== undefined) return text;
+  if (value?.type === 'JSXExpressionContainer' && value.expression.type === 'TemplateLiteral') {
+    return templateChunks(value.expression, context).chunks.join(HOLE);
+  }
+  return null;
+}
+
+/**
  * Emit a reference for a JSX attribute value, whatever shape it takes.
  *
  * Every position the element pass reads comes through here, so each kind of value is read
@@ -854,12 +870,20 @@ function addJsxAttributeValue(
       addLiteralReference(expression, context, 'high', 'attr', shape, label, isSrcSet);
       return;
     }
+    // A position that keeps the file's format keeps its shape on a template too: the shape
+    // is where the planner reads that the reference is never rewritten, and a template's
+    // own shape says nothing of it.
+    const formatKept = whyFormatKept(shape) !== null;
     if (expression.type === 'TemplateLiteral') {
-      addTemplateReference(expression, context, 'attr', templateShape(expression, context), label);
+      const templated = formatKept ? shape : templateShape(expression, context);
+      addTemplateReference(expression, context, 'attr', templated, label);
+      return;
     }
     // Anything else (an identifier, a call, a conditional) is not read as a path here.
     // Literals inside it still reach the speculative rules, and an import behind it is
-    // read on its own.
+    // read on its own. Where the format is kept they are declined instead, because a guess
+    // that resolves may be rewritten.
+    if (formatKept) declineValue(expression, context);
   }
 }
 

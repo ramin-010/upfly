@@ -256,6 +256,14 @@ The counts reach the JSON as `references.byResolvedVia`, so a consumer can tell 
 ordinary resolution, and the planner has something to cite when it declines one: a silent decline
 would be a skip nobody could see.
 
+One more thing decides it, and it is the reference's shape rather than how it resolved. A shape
+that declares `formatKept` in `SHAPES` is one `optimize` never repoints at a converted file: a
+link preview's image in `<meta content>` and an image in `<a href>`, in HTML and in JSX. The
+reference is linked, so its asset is never reported dead; the planner declines to move it and says
+why, and under `replace` the original it names is kept. This is not one of `rewriteRefusal`'s
+tests, which `relocate.ts` repeats, because a move keeps the format: `upfly move` still repoints
+such a reference to the file's new place.
+
 ### Serving roots
 
 A root-relative `/hero.png` means nothing until you know which directory the site serves. The
@@ -655,21 +663,37 @@ produce exactly the silent corruption this design exists to prevent.
 |---|---|---|---|
 | `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
-| `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, `<style>`, `style=""` | `parse5` |
+| `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, a link preview's image in `<meta content>`, an image in `<a href>`, `<style>`, `style=""` | `parse5` |
 | `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | regex over masked text; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 
 An attribute names a file in JSX exactly where it does in HTML, because both adapters read one
 list, `URL_POSITIONS` in `url-attributes.ts`. A position is a tag, an attribute and, where those
-two do not decide, a claim read from the rest of the element: a `<link href>` names an image only
-when its `rel` says it is an icon or a preloaded image (`linkImageClaim`). Each row names the shape
+two do not decide, a claim read from the element: a `<link href>` names an image only when its
+`rel` says it is an icon or a preloaded image (`linkImageClaim`). Each row names the shape
 each adapter gives its reference, so a row added to the list is read in both, and
 `url-attributes.test.ts` checks that the same markup yields the same paths at the same offsets in
 a page and in a component. JSX keeps one rule of its own beside the list: `src`, `srcSet` and
 `poster` are read on any element, because a component such as `<Image>` hands them on to an
 `<img>`. The JSX reader decides each attribute at the element, and every attribute is either read
 or declined, never neither.
+
+Two more claims make the list read what a page names only in its head or in a link. A `<meta
+content>` names a link preview's image when its `property` or `name` is `og:image`,
+`og:image:url`, `og:image:secure_url`, `twitter:image`, `twitter:image:src` or
+`msapplication-TileImage`, in any case (`metaImageClaim`). An `<a href>` names an image when its
+value shows a raster extension in one of the spellings the resolver tries (`anchorImageClaim`), so
+`<a href="/about">`, a PDF and a vector claim nothing. Such an image is often named nowhere else,
+and before the claims it was reported dead while the site used it. Both references link their
+asset and are never rewritten: the sites that fetch previews may not read a converted format, and a
+person following a link expects the format it names. The rule lives on the shape, as `formatKept`
+in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what it does
+there. Because the shape carries the rule, it survives where another shape would otherwise take
+over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the
+HTML adapter found, and a JSX template, which elsewhere takes a template's shape. For the same
+reason the JSX reader declines, rather than guesses inside, a value at such a position that is not
+one string or template, such as a choice between two paths.
 
 The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
 template's markup in a separate fragment, and that markup is live: a script clones it into the
@@ -841,8 +865,8 @@ and carries the result as a flag, `entityEscaped`.
 
 The flag is acted on only inside a reference position, once the attribute has been judged to hold a
 reference. Acting on it earlier, for every attribute of every element, would turn escaped `alt`
-text, other sites' links and `<meta content>` values into references the engine says it could not
-handle. That is the mirror image of a silent skip: failures the engine invented, reported as
+text, other sites' links and `<meta content>` values that name no image into references the engine
+says it could not handle. That is the mirror image of a silent skip: failures the engine invented, reported as
 `unsafe`, which make it look worse than it is and bury the real ones.
 
 At a reference position an escaped value goes through one helper, so every position answers the
@@ -921,6 +945,11 @@ That rule chooses within a kind. Between kinds, a disposition takes precedence: 
 character references, or an absolute URL, is keyed by its `path.*` shape whatever attribute holds
 it, because its spelling is what would take it out. Every disposition carries a `path.*` id, so its
 kind, and with it the precedence, is visible in the name.
+
+One kind of shape outranks all of this: a shape that declares `formatKept`. The shape is the only
+place the planner learns that a reference must never be rewritten, so a percent-encoded link
+preview stays `html.meta.content.image` rather than becoming `html.percent-encoded`, and a Markdown
+or Astro host keeps it rather than relabelling it as its own.
 
 Because the choice depends on which part of the engine could fail, no function can derive a shape
 from the syntax. Each adapter names the shape where it emits a reference, and `ShapeId` is derived
@@ -1437,7 +1466,7 @@ that links to it. So under `replace` an asset ends one of three ways:
 | the asset | outcome |
 |---|---|
 | every reference to it moves | converted, original deleted |
-| some move, and one the plan cannot move still needs the old file (a pattern, a refused literal, a path with no extension to change) | converted, original kept, and `keptOriginals` says which reference needs it |
+| some move, and one the plan cannot move still needs the old file (a pattern, a refused literal, a path with no extension to change, a link preview or a link to the image) | converted, original kept, and `keptOriginals` says which reference needs it |
 | no reference would move: nothing links to it, or only references the plan cannot move | not converted, and `declined` names what holds it |
 
 What `replace` never produces is a converted copy nothing asks for beside an original that has to

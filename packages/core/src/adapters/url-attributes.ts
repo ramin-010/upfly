@@ -4,11 +4,14 @@
  * does in a page.
  *
  * A position is a tag, an attribute and, where those two do not decide, a claim read from the
- * rest of the element: a `<link href>` names an image only when its `rel` says it is an icon
- * or a preloaded image. See "The six that exist" in ARCHITECTURE.md.
+ * element: a `<link href>` names an image only when its `rel` says it is an icon or a
+ * preloaded image, and an `<a href>` only when its value spells a raster extension. See "The
+ * six that exist" in ARCHITECTURE.md.
  */
 
+import { isImageExtension, isVectorExtension } from '../paths.js';
 import type { ShapeId } from '../shapes.js';
+import { spellingsOf, staticExtensionOf } from './reference-path.js';
 
 /** What a claim may read of the element whose attribute it judges. */
 export interface ClaimedElement {
@@ -17,6 +20,11 @@ export interface ClaimedElement {
    * the element has none or its value is not plain text.
    */
   attribute(name: string): string | undefined;
+  /**
+   * The judged value as static text, each unknown part written `${}`, or `null` when it has
+   * no text of its own, such as a JSX expression that names a variable.
+   */
+  valueText(): string | null;
 }
 
 /**
@@ -69,6 +77,11 @@ export const URL_POSITIONS: readonly UrlPosition[] = [
   { tag: 'object', attribute: 'data', html: 'html.object.data', jsx: 'js.jsx.attribute' },
   { tag: 'track', attribute: 'src', html: 'html.track.src', jsx: 'js.jsx.attribute' },
   { tag: 'link', attribute: 'href', html: linkImageClaim, jsx: 'js.jsx.attribute' },
+
+  // A link preview's image and a link to an image. Their shapes keep the file's format, so
+  // `optimize` never repoints them; see `formatKept` in `shapes.ts`.
+  { tag: 'meta', attribute: 'content', html: metaImageClaim, jsx: 'js.jsx.meta.content.image' },
+  { tag: 'a', attribute: 'href', html: anchorImageClaim, jsx: 'js.jsx.a.href.image' },
 
   // Inline SVG. An `<svg>` inside a page or a component is not an `.svg` file, so no SVG
   // reader would cover these elements. Both spellings count: `href` is the SVG 2 form, and
@@ -131,4 +144,43 @@ function linkImageClaim(element: ClaimedElement): ShapeId | null {
     return 'html.link.href.preload';
   }
   return null;
+}
+
+/**
+ * The names a page gives its link-preview image, lowercase: Open Graph's, Twitter's and
+ * the Windows tile's. Read from both `property` and `name`, since pages write Open Graph
+ * names in either.
+ */
+const PREVIEW_IMAGE_NAMES: ReadonlySet<string> = new Set([
+  'og:image',
+  'og:image:url',
+  'og:image:secure_url',
+  'twitter:image',
+  'twitter:image:src',
+  'msapplication-tileimage',
+]);
+
+/** Whether a `<meta>` names its content as a link-preview image, whatever its case. */
+function metaImageClaim(element: ClaimedElement): ShapeId | null {
+  for (const attribute of ['property', 'name']) {
+    const name = element.attribute(attribute)?.trim().toLowerCase();
+    if (name !== undefined && PREVIEW_IMAGE_NAMES.has(name)) return 'html.meta.content.image';
+  }
+  return null;
+}
+
+/**
+ * Whether an `<a href>` names an image: its value shows a raster extension in some
+ * spelling, the kind of image `optimize` converts. The spellings are the resolver's, so
+ * `hero%2Epng` counts. A link to a page, a document or a vector claims nothing, and a value
+ * with no text of its own, such as a variable, cannot show an extension.
+ */
+function anchorImageClaim(element: ClaimedElement): ShapeId | null {
+  const text = element.valueText();
+  if (text === null) return null;
+  const raster = spellingsOf(text, 'attr').some(({ path }) => {
+    const extension = staticExtensionOf(path);
+    return isImageExtension(extension) && !isVectorExtension(extension);
+  });
+  return raster ? 'html.a.href.image' : null;
 }

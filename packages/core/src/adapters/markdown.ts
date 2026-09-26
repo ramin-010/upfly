@@ -11,7 +11,7 @@
 
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import type { ShapeId } from '../shapes.js';
+import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
@@ -318,6 +318,9 @@ function blankRanges(text: string, ranges: readonly Line[]): string {
  * repository to fill a row of its own.
  */
 function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference {
+  // A link preview or a link to an image keeps its shape in any host, because the shape is
+  // where the planner reads that it is never rewritten.
+  if (whyFormatKept(reference.shape) !== null) return reference;
   if (reference.shape === 'html.style.attribute' || reference.shape === 'html.style.element') {
     return { ...reference, shape: 'md.style-attribute' };
   }

@@ -17,6 +17,7 @@ import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
 import type { ServingRoots } from './resolve.js';
+import { whyFormatKept } from './shapes.js';
 import type { Edit, Reference } from './types.js';
 
 /** What happens to the original when a public asset is converted. */
@@ -638,7 +639,9 @@ type Obstacle =
  * question be asked before the plan exists.
  */
 function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | null {
-  const refusal = rewriteRefusal(reference, input);
+  // The shape's rule sits apart from `rewriteRefusal`, whose tests `relocate.ts` repeats:
+  // a move keeps the file's format, so a link preview still follows its image there.
+  const refusal = rewriteRefusal(reference, input) ?? whyFormatKept(reference.shape);
   if (refusal !== null) return { kind: 'refused', why: refusal };
   if (reference.resolution === 'resolved-pattern') return { kind: 'pattern' };
   if (withExtension(reference.rawPath, input.format) === reference.rawPath) {

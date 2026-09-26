@@ -13,6 +13,7 @@
  * half blanked, so every offset it returns already indexes the `.astro` file.
  */
 
+import { whyFormatKept } from '../shapes.js';
 import type { RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
@@ -107,9 +108,13 @@ function readExpression(
   if (start < opener.length || end + 2 > body.length) return null;
   const synthetic = `${blank(body.slice(0, start - opener.length))}${opener}${body.slice(start, end)}/>`;
 
+  // The value is read as a `src`, so what it yields carries a `src`'s shapes. At a position
+  // that keeps the file's format, everything it yields takes that position's shape back,
+  // guesses included: the shape is where the planner reads that it is never rewritten.
+  const formatKept = whyFormatKept(reference.shape) !== null;
   try {
-    return findJavaScriptReferences({ file, text: synthetic, extension: '.tsx' }).map(
-      asExpressionShape,
+    return findJavaScriptReferences({ file, text: synthetic, extension: '.tsx' }).map((found) =>
+      formatKept ? { ...found, shape: reference.shape } : asExpressionShape(found),
     );
   } catch {
     return null;
@@ -151,6 +156,8 @@ function asFenceShape(reference: RawReference): RawReference {
  * keeps a separate row, because style extraction is a separate mechanism, as it is in HTML.
  */
 function asBodyShape(reference: RawReference): RawReference {
+  // Kept whole for the reason `readExpression` gives.
+  if (whyFormatKept(reference.shape) !== null) return reference;
   if (reference.shape === 'html.style.element' || reference.shape === 'html.style.attribute') {
     return { ...reference, shape: 'astro.style.element' };
   }

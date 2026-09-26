@@ -156,6 +156,52 @@ describe('a page that is not UTF-8', () => {
   });
 });
 
+describe('an image a link preview or a download link names', () => {
+  it('keeps that text and its original, while the img beside it moves to the converted file', async () => {
+    const root = await copy();
+    // `images/logo.png` is shown here and named by the page's link preview; `images/hero.jpg`
+    // is shown by index.html and offered for download here.
+    const page = [
+      '<!doctype html>',
+      '<html lang="en">',
+      '  <head>',
+      '    <meta property="og:image" content="images/logo.png" />',
+      '  </head>',
+      '  <body>',
+      '    <img src="images/logo.png" alt="Logo" />',
+      '    <a href="images/hero.jpg" download>Download the picture</a>',
+      '  </body>',
+      '</html>',
+      '',
+    ].join('\n');
+    await writeFile(join(root, 'share.html'), page);
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'share.html'), 'utf8')).toBe(
+      page.replace('<img src="images/logo.png"', '<img src="images/logo.webp"'),
+    );
+    const after = await files(root);
+    for (const kept of ['images/logo.png', 'images/hero.jpg']) {
+      expect(after).toContain(kept);
+      expect(optimize.plan.keptOriginals.map((entry) => entry.asset)).toContain(kept);
+    }
+    // Both images did convert: the originals stay because of the two references alone.
+    expect(after).toEqual(expect.arrayContaining(['images/logo.webp', 'images/hero.webp']));
+    expect(optimize.plan.declined.filter((entry) => entry.path === 'share.html')).toEqual([
+      { path: 'share.html', line: null, reason: expect.stringContaining('follows') },
+      { path: 'share.html', line: null, reason: expect.stringContaining('link preview') },
+    ]);
+  });
+});
+
 describe('an image removed after the scan read it', () => {
   it('is a refusal with a code and a sentence, not a crash', async () => {
     const root = await copy();

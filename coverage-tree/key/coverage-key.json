@@ -152,6 +152,18 @@
       "motivation": "A stylesheet link and a manifest link sit in the same attribute as an icon and must not be treated alike. This row is what `linkImageClaim` refuses, so it is homogeneous and a zero is the correct reading; a non-zero count would be the failure."
     },
     {
+      "id": "html.meta.content.image",
+      "label": "meta@content naming a link-preview image",
+      "spec": "4a",
+      "motivation": "A page names the picture its link preview shows in a meta tag (og:image, twitter:image, msapplication-TileImage), and often nowhere else, so an engine that skips the tag reports a used image dead. The meta tag's property or name is the claim. Linked and never rewritten: the sites that fetch previews read the file named here, and may not decode a converted format."
+    },
+    {
+      "id": "html.a.href.image",
+      "label": "a@href naming an image",
+      "spec": "4a",
+      "motivation": "A link that hands over an image file: a download link, or a caption that opens the full picture. The value's extension is the claim, so a link to a page or a PDF stays out. Linked and never rewritten: a person following the link expects the format it names."
+    },
+    {
       "id": "html.object.data",
       "label": "object@data",
       "spec": "4a",
@@ -384,6 +396,18 @@
       "label": "a literal path in a JSX attribute",
       "spec": "4c",
       "motivation": "Asserted, unlike a bare string, because the attribute says what it is."
+    },
+    {
+      "id": "js.jsx.meta.content.image",
+      "label": "a JSX meta@content naming a link-preview image",
+      "spec": "4c",
+      "motivation": "The same meta tag, written by a layout component. The JSX reader takes the position from the list the HTML adapter reads, so it can break without the HTML row, and the other way round."
+    },
+    {
+      "id": "js.jsx.a.href.image",
+      "label": "a JSX a@href naming an image",
+      "spec": "4c",
+      "motivation": "The same link, written in a component. Its own row for the reason the meta tag has one: the JSX reader is a second reader of the shared list."
     },
     {
       "id": "js.cssinjs",
@@ -6946,6 +6970,198 @@
           "offset": 164,
           "line": 3,
           "column": 33
+        }
+      ]
+    },
+    {
+      "path": "apps/web/og-image.html",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "html.meta.content.image",
+          "expect": "resolved",
+          "why": "The Open Graph image, the picture a link preview shows. The page names it only here, so the image is used by this page whether or not anything else links it.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 196,
+          "line": 7,
+          "column": 40
+        }
+      ]
+    },
+    {
+      "path": "apps/web/twitter-image.html",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.meta.content.image",
+          "expect": "resolved",
+          "why": "The picture Twitter's large card shows, claimed by the meta tag's name attribute rather than its property.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 203,
+          "line": 7,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "path": "apps/web/tile-image.html",
+      "entries": [
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "html.meta.content.image",
+          "expect": "resolved",
+          "why": "The tile Windows shows for a pinned site. The name is written in mixed case, as the favicon generators print it, and a meta name is read without regard to case.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 214,
+          "line": 7,
+          "column": 51
+        }
+      ]
+    },
+    {
+      "path": "apps/web/image-link.html",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "html.a.href.image",
+          "expect": "resolved",
+          "why": "A download link to the picture itself. The href ends in an image extension, which is what makes a link an image reference; a link to a page does not.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 135,
+          "line": 8,
+          "column": 17
+        }
+      ]
+    },
+    {
+      "path": "apps/web/gallery-link.html",
+      "entries": [
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "html.a.href.image",
+          "expect": "resolved",
+          "why": "A link that opens the full picture in a new tab, with other attributes around the href.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 133,
+          "line": 8,
+          "column": 17
+        }
+      ]
+    },
+    {
+      "path": "apps/web/upper-link.html",
+      "entries": [
+        {
+          "raw": "/gallery/Banner.PNG",
+          "occurrence": 1,
+          "shape": "html.a.href.image",
+          "expect": "resolved",
+          "why": "An uppercase extension. The claim reads the extension without regard to case, as the resolver does, so .PNG names an image as .png does.",
+          "target": "apps/web/public/gallery/Banner.PNG",
+          "offset": 132,
+          "line": 8,
+          "column": 17
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/SocialImage.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "The Open Graph image, written by a layout component. The same position as in og-image.html, read from the one list both adapters share.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 159,
+          "line": 3,
+          "column": 45
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/TwitterImage.tsx",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "Twitter's card image in a component, claimed by the name attribute.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 142,
+          "line": 3,
+          "column": 46
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/TileImage.tsx",
+      "entries": [
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "The Windows tile image in a component, its value a string in braces, which is the same string written another way.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 166,
+          "line": 3,
+          "column": 57
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/DownloadLink.tsx",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A download link in a component, handing over the picture itself.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 136,
+          "line": 4,
+          "column": 14
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/GalleryLink.tsx",
+      "entries": [
+        {
+          "raw": "/gallery/photo.png",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A link opening the full picture, in a component, with other attributes around the href.",
+          "target": "apps/web/public/gallery/photo.png",
+          "offset": 115,
+          "line": 4,
+          "column": 14
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/PhotoLink.tsx",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A link whose value is a template literal with no holes, which is one path written with backticks. It keeps the link's shape rather than a template's, because the shape is what tells the planner never to rewrite it.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 141,
+          "line": 3,
+          "column": 20
         }
       ]
     }

@@ -13,7 +13,7 @@
 
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { UpflyError } from '../errors.js';
-import type { ShapeId } from '../shapes.js';
+import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -129,8 +129,8 @@ function collectFromElement(element: ParsedElement, context: Context): void {
     // parse5 decodes character references, so `src="a&amp;b.png"` is 11 characters of
     // source and 7 of value, and no range into the source spells the decoded path. Only a
     // reference position may decide what that means, so the flag travels with the
-    // attribute: deciding here would report every escaped `alt` or `<meta content>` as a
-    // reference the engine could not handle.
+    // attribute: deciding here would report every escaped `alt`, or `<meta content>` that
+    // names no image, as a reference the engine could not handle.
     // See "Character references in HTML attributes" in ARCHITECTURE.md.
     const entityEscaped = raw !== attribute.value;
 
@@ -171,15 +171,16 @@ function collectFromAttribute(input: {
   // one helper, so a new position gets the same answer. It drops another host's URL first,
   // as `addAttributeReference` does for an unescaped one: an entity in a query string
   // (`?w=1&amp;h=2`) does not make that file ours.
-  const escaped = (isSrcset = false): void => {
+  const escaped = (shape: ShapeId | 'srcset'): void => {
+    const isSrcset = shape === 'srcset';
     if (escapedIsSomebodyElses(raw, isSrcset)) return;
     // A `srcset` is a list, so its one range is not one path and there is nothing to
     // decode for a lookup. It stays unsafe; only single-URL attributes are resolved decoded.
     if (isSrcset) {
-      addEntityEscapedReference({ start, end }, context);
+      addEntityEscapedReference({ start, end }, context, 'path.charref');
       return;
     }
-    addCharacterReferenceReference(raw, decodedValue, { start, end }, context);
+    addCharacterReferenceReference(raw, decodedValue, { start, end }, context, charrefShape(shape));
   };
 
   if (name === 'style') {
@@ -198,12 +199,13 @@ function collectFromAttribute(input: {
 
   const position = urlPosition(tagName, name, {
     attribute: (other) => attributeValue(element, other),
+    valueText: () => raw,
   });
   if (position === null) return;
 
   if (position.html === 'srcset') {
     if (entityEscaped) {
-      escaped(true);
+      escaped('srcset');
       return;
     }
     const candidates = parseSrcset(raw);
@@ -219,10 +221,20 @@ function collectFromAttribute(input: {
   }
 
   if (entityEscaped) {
-    escaped();
+    escaped(position.html);
     return;
   }
   addAttributeReference(raw, start, context, position.html);
+}
+
+/**
+ * The shape of a path spelled with character references at a position of this shape:
+ * `path.charref`, because the spelling is what would break it, unless the position keeps
+ * the file's format. That shape is where the planner reads that the reference is never
+ * rewritten, so it outranks the spelling.
+ */
+function charrefShape(shape: ShapeId): ShapeId {
+  return whyFormatKept(shape) === null ? 'path.charref' : shape;
 }
 
 function attributeValue(element: ParsedElement, name: string): string | undefined {
@@ -508,12 +520,13 @@ function addCharacterReferenceReference(
   parserValue: string,
   range: { start: number; end: number },
   context: Context,
+  shape: ShapeId,
 ): void {
   const decoded = spellingsOf(raw).find(({ spelling }) => spelling === 'html-entities');
   const decodable =
     decoded?.path === parserValue && !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
   if (!decodable) {
-    addEntityEscapedReference(range, context);
+    addEntityEscapedReference(range, context, shape);
     return;
   }
 
@@ -523,23 +536,29 @@ function addCharacterReferenceReference(
     end: range.end,
     rawPath: raw,
     kind: 'attr',
-    shape: 'path.charref',
+    shape,
     ceiling: 'high',
     asserted: true,
     note: 'the path is spelled with HTML character references; it is resolved decoded and rewritten re-encoded',
   });
 }
 
-function addEntityEscapedReference(range: { start: number; end: number }, context: Context): void {
+/**
+ * @param shape `path.charref` wherever the spelling outranks the attribute, as it does for
+ *   an absolute URL: the spelling is what would break this reference. See `charrefShape`.
+ */
+function addEntityEscapedReference(
+  range: { start: number; end: number },
+  context: Context,
+  shape: ShapeId,
+): void {
   context.references.push({
     file: context.file,
     start: range.start,
     end: range.end,
     rawPath: context.text.slice(range.start, range.end),
     kind: 'attr',
-    // The shape names the path's spelling rather than the attribute, as for an absolute
-    // URL: the spelling is what would break this reference.
-    shape: 'path.charref',
+    shape,
     ceiling: 'unsafe',
     asserted: true,
     note: 'contains HTML character references, so the path text cannot be located exactly',
@@ -582,7 +601,8 @@ function addAttributeReference(raw: string, start: number, context: Context, sha
     kind: 'attr',
     // The encoding outranks the attribute, as it does for `path.absolute-url`: what would
     // break a percent-encoded path (a filename with spaces, say) is the decoder, not `<img src>`.
-    shape: isPercentEncoded(path) ? 'html.percent-encoded' : shape,
+    // A position that keeps the file's format outranks both, as in `charrefShape`.
+    shape: isPercentEncoded(path) && whyFormatKept(shape) === null ? 'html.percent-encoded' : shape,
     ceiling: 'high',
     asserted: true,
     ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),

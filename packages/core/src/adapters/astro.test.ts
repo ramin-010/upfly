@@ -69,3 +69,31 @@ describe('Astro body expressions are read as JavaScript', () => {
     expect(reference?.shape).toBe('astro.template.literal');
   });
 });
+
+describe('a preview image or an image link in an Astro body keeps its shape', () => {
+  // The shape is the one mark the planner reads, so neither the body's label nor the
+  // `src` the braced value is read as may replace it.
+  it('as written in the markup', () => {
+    const { references } = body(
+      '<meta property="og:image" content="/img/banner.png" /><a href="/img/team.jpg">Team</a>',
+    );
+    expect(references.map((reference) => reference.shape)).toEqual([
+      'html.meta.content.image',
+      'html.a.href.image',
+    ]);
+  });
+
+  it('as a braced value, whatever the expression yields', () => {
+    for (const markup of [
+      `<meta property="og:image" content={'/img/banner.png'} />`,
+      '<meta property="og:image" content={`/img/banner.png`} />',
+      '<meta property="og:image" content={`/img/banner-${mode}.png`} />',
+    ]) {
+      const { references } = body(markup);
+      expect(
+        references.map((reference) => reference.shape),
+        markup,
+      ).toEqual(['html.meta.content.image']);
+    }
+  });
+});

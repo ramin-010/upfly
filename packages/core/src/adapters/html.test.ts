@@ -132,6 +132,61 @@ describe('htmlAdapter', () => {
     });
   });
 
+  describe('link previews and links to images', () => {
+    const found: ReadonlyArray<[name: string, source: string, shape: string]> = [
+      [
+        'an Open Graph image',
+        '<meta property="og:image" content="/img/banner.png">',
+        'html.meta.content.image',
+      ],
+      [
+        'a Twitter image',
+        '<meta name="twitter:image" content="/img/hero.jpg">',
+        'html.meta.content.image',
+      ],
+      [
+        'a Windows tile image',
+        '<meta name="msapplication-TileImage" content="/icons/icon-192.png">',
+        'html.meta.content.image',
+      ],
+      ['a download link', '<a href="/img/team.jpg" download>x</a>', 'html.a.href.image'],
+      ['an uppercase extension', '<a href="/gallery/Banner.PNG">x</a>', 'html.a.href.image'],
+    ];
+
+    it.each(found)('reads %s under its own shape', (_name, source, shape) => {
+      const references = find(source);
+      expect(references.map((reference) => reference.shape)).toEqual([shape]);
+      expect(slices(source)).toEqual(paths(source));
+    });
+
+    it('reads nothing from a meta tag or a link that names no image', () => {
+      expect(find('<meta name="description" content="/img/logo.png">')).toEqual([]);
+      expect(find('<a href="/files/report.pdf">x</a>')).toEqual([]);
+      expect(find('<a href="/about">x</a>')).toEqual([]);
+      expect(find('<a href="/icons/mask.svg">x</a>')).toEqual([]);
+    });
+
+    it('keeps the position shape on an encoded path, where the spelling shape would lose it', () => {
+      // The planner reads the rule against rewriting from the shape, so a spelling shape
+      // here would let `optimize` convert the image a link preview names.
+      const percent = find('<meta property="og:image" content="/img/my%20banner.png">');
+      expect(percent.map(({ shape, ceiling }) => [shape, ceiling])).toEqual([
+        ['html.meta.content.image', 'high'],
+      ]);
+      const entity = find('<a href="/gallery/a&amp;b.png">x</a>');
+      expect(entity.map(({ shape, ceiling }) => [shape, ceiling])).toEqual([
+        ['html.a.href.image', 'high'],
+      ]);
+    });
+
+    it('reports a templated link to an image as unsafe rather than skipping it', () => {
+      const references = find('<a href="{{ site.baseurl }}/img/team.jpg">x</a>');
+      expect(references.map(({ shape, ceiling }) => [shape, ceiling])).toEqual([
+        ['html.a.href.image', 'unsafe'],
+      ]);
+    });
+  });
+
   describe('CSS carried inside HTML', () => {
     it('finds a url() in a style attribute', () => {
       const source = '<div style="background: url(bg.png)"></div>';

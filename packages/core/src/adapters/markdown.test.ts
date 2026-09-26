@@ -95,6 +95,21 @@ describe('markdownAdapter', () => {
       const source = '![a](./a.png)\n\n<img src="./b.png">';
       expect(paths(source)).toEqual(['./a.png', './b.png']);
     });
+
+    it('keeps the shape of a preview image or an image link, which says it is never rewritten', () => {
+      // Relabelled as raw HTML, these would lose the one mark the planner reads.
+      const source = [
+        '<meta property="og:image" content="/img/banner.png">',
+        '',
+        '<a href="/img/team.jpg">The team</a> and <img src="/img/hero.jpg" alt="">',
+      ].join('\n');
+      const found = markdownAdapter.findReferences({ file: '/docs/page.md', text: source });
+      expect(found.map((reference) => reference.shape)).toEqual([
+        'html.meta.content.image',
+        'html.a.href.image',
+        'md.raw-html',
+      ]);
+    });
   });
 
   describe('never mistakes documentation for a reference', () => {

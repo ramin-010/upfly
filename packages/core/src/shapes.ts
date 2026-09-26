@@ -79,7 +79,22 @@ export interface ShapeDeclaration {
    * check against the code.
    */
   readonly needsToSee?: string;
+  /**
+   * Why `optimize` never repoints a reference of this shape at a converted file, as a
+   * sentence the plan prints; absent when nothing about the shape stops it. The reference
+   * still links its asset, so the asset is never reported dead, and `--replace` keeps the
+   * original the reference names. A move keeps the format, so `upfly move` still repoints it.
+   */
+  readonly formatKept?: string;
 }
+
+/** Said of a link-preview image, which other sites fetch as the page names it. */
+const PREVIEW_FORMAT_KEPT =
+  'a link preview names this image, and the sites that fetch previews may not read a converted format';
+
+/** Said of a link to an image, which hands over the file itself. */
+const LINK_FORMAT_KEPT =
+  'a link hands this file to whoever follows it, who expects the format the link names';
 
 /**
  * Every reference shape the engine knows, and what it reports for each.
@@ -145,6 +160,31 @@ export const SHAPES = [
       'A `<link href>` whose `rel` names neither an icon nor a preloaded image, such as a ' +
       'stylesheet or a web app manifest. `linkImageClaim` refuses it and nothing is emitted: ' +
       'the file is real, but it is read as a source file, not indexed as an image.',
+  },
+  // The two positions whose format is kept. Each keeps its shape through a percent-encoded
+  // or entity-encoded spelling and through a host's relabelling, because the shape is where
+  // the planner reads the rule.
+  {
+    id: 'html.meta.content.image',
+    label: 'meta@content naming a link-preview image',
+    emission: 'engine',
+    formatKept: PREVIEW_FORMAT_KEPT,
+    why:
+      'The picture a link preview shows, named in `<meta content>` under an Open Graph, ' +
+      'Twitter or Windows tile name (`og:image`, `twitter:image`, `msapplication-TileImage`) ' +
+      'and claimed by `metaImageClaim` in `url-attributes.ts`. It links its asset, so the ' +
+      'image is never reported dead, and `optimize` never repoints it.',
+  },
+  {
+    id: 'html.a.href.image',
+    label: 'a@href naming an image',
+    emission: 'engine',
+    formatKept: LINK_FORMAT_KEPT,
+    why:
+      'A link that hands over an image file, such as a download link, claimed by ' +
+      '`anchorImageClaim` in `url-attributes.ts` when its value spells a raster extension. ' +
+      'It links its asset, so the image is never reported dead, and `optimize` never ' +
+      'repoints it.',
   },
   { id: 'html.object.data', label: 'object@data', emission: 'engine' },
   {
@@ -314,6 +354,26 @@ export const SHAPES = [
     id: 'js.jsx.attribute',
     label: 'a literal path in a JSX attribute',
     emission: 'engine',
+  },
+  {
+    id: 'js.jsx.meta.content.image',
+    label: 'a JSX meta@content naming a link-preview image',
+    emission: 'engine',
+    formatKept: PREVIEW_FORMAT_KEPT,
+    why:
+      'The link-preview image of `html.meta.content.image`, written by a component. The JSX ' +
+      'reader takes the position from the list the HTML adapter reads, so each can break ' +
+      'without the other. A template value keeps this shape, since a template shape would ' +
+      'lose the rule against rewriting.',
+  },
+  {
+    id: 'js.jsx.a.href.image',
+    label: 'a JSX a@href naming an image',
+    emission: 'engine',
+    formatKept: LINK_FORMAT_KEPT,
+    why:
+      'The link to an image of `html.a.href.image`, written by a component, read from the ' +
+      'same list. A template value keeps this shape, as for the link-preview image.',
   },
   { id: 'js.cssinjs', label: 'CSS-in-JS carrying a url()', emission: 'engine' },
 
@@ -689,4 +749,21 @@ export const UNTESTED_SHAPE_IDS: readonly string[] = [
 
 export function shapeById(id: string): ShapeDeclaration | undefined {
   return SHAPES.find((shape) => shape.id === id);
+}
+
+const FORMAT_KEPT: ReadonlyMap<string, string> = new Map(
+  (SHAPES as readonly ShapeDeclaration[]).flatMap((shape) =>
+    shape.formatKept === undefined ? [] : [[shape.id, shape.formatKept] as const],
+  ),
+);
+
+/**
+ * Why a reference of this shape is never repointed at a converted file, or `null` when its
+ * shape does not stop it. The planner asks, and so does each adapter that would otherwise
+ * label such a reference by its spelling or its host, which would hide the rule.
+ *
+ * @param shape a shape id, as a reference carries it
+ */
+export function whyFormatKept(shape: string): string | null {
+  return FORMAT_KEPT.get(shape) ?? null;
 }

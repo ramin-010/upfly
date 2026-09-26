@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildGraph } from './graph.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
 import type { AssetProbe } from './probe.js';
+import { SHAPES, whyFormatKept } from './shapes.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 const ROOT = '/repo';
@@ -253,6 +254,82 @@ describe('references it refuses to rewrite', () => {
 
     expect(plan.rewrites).toEqual([]);
     expect(plan.declined[0]?.reason).toContain('shows the asset is alive but not that this text');
+  });
+});
+
+/**
+ * A link preview is fetched by other sites, which may not decode a converted format, and a
+ * link hands the file itself to whoever follows it. Such a reference links its asset, so the
+ * asset is alive, but no plan repoints it, and under `replace` its original stays.
+ */
+describe('a reference whose shape keeps the format: a link preview, a link to an image', () => {
+  const assets = [asset('public/img/banner.png')];
+  const preview = resolved('index.html', '/img/banner.png', 'public/img/banner.png', {
+    shape: 'html.meta.content.image',
+  });
+  const image = resolved('index.html', '/img/banner.png', 'public/img/banner.png', {
+    start: 60,
+    end: 75,
+  });
+
+  it('is left as it is while the image beside it moves, with the reason given', () => {
+    const plan = planOptimization(input({ assets, references: [preview, image] }));
+
+    expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
+      'public/img/banner.png',
+    ]);
+    expect(plan.rewrites).toEqual([
+      {
+        file: 'index.html',
+        edits: [
+          { start: 60, end: 75, replacement: '/img/banner.webp', expected: '/img/banner.png' },
+        ],
+      },
+    ]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'index.html',
+        line: null,
+        reason: expect.stringMatching(
+          /^a link preview .+, so public\/img\/banner\.png was converted without this reference moving$/,
+        ),
+      },
+    ]);
+  });
+
+  it('keeps the original under replace while the preview still names it', () => {
+    const plan = planOptimization(
+      input({ assets, references: [preview, image], publicPolicy: 'replace' }),
+    );
+
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['public/img/banner.png', false],
+    ]);
+    expect(plan.keptOriginals[0]?.reason).toContain(
+      '`index.html` names it as `/img/banner.png`, and this run does not rewrite that reference',
+    );
+  });
+
+  it('converts nothing under replace for an image only a preview or a link names', () => {
+    for (const shape of ['html.meta.content.image', 'js.jsx.a.href.image'] as const) {
+      const only = { ...preview, shape } as Reference;
+      const plan = planOptimization(input({ assets, references: [only], publicPolicy: 'replace' }));
+
+      expect(plan.conversions, shape).toEqual([]);
+      expect(reasonsByPath(plan)['public/img/banner.png'], shape).toContain(
+        '`index.html` names it as `/img/banner.png`, and this run does not rewrite that reference',
+      );
+    }
+  });
+
+  it('reads the rule from the shape table, where the preview and link shapes alone carry it', () => {
+    const kept = SHAPES.filter((shape) => whyFormatKept(shape.id) !== null).map((s) => s.id);
+    expect(kept).toEqual([
+      'html.meta.content.image',
+      'html.a.href.image',
+      'js.jsx.meta.content.image',
+      'js.jsx.a.href.image',
+    ]);
   });
 });
 

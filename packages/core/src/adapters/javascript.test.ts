@@ -840,18 +840,90 @@ body`,
       expect(slices(source)).toEqual(expected);
     });
 
-    it('does not turn every href into a candidate', () => {
-      // The reason the map is keyed by tag rather than by attribute name: a bare `href`
-      // set would have made every link a candidate, including links to non-images.
+    it('reads an href by the tag it sits on, and a link only when it names an image', () => {
+      // An `<image>` href is always a file. A link's is an image only when its value spells a
+      // raster extension, so a link to a document or a page yields nothing.
       expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
-      expect(find('<a href="/a/hero.png">x</a>')).toEqual([]);
-      expect(find('<a href={`/a/hero.png`}>x</a>')).toEqual([]);
+      expect(find('<a href="/about">x</a>')).toEqual([]);
+      expect(paths('<a href="/a/hero.png">x</a>')).toEqual(['/a/hero.png']);
+      expect(paths('<a href={`/a/hero.png`}>x</a>')).toEqual(['/a/hero.png']);
     });
 
     it('reads a + chain in an image href as a guess, as it does in a src', () => {
       const [chain] = find("<image href={'/a/' + s + '.png'} />");
       expect(chain?.shape).toBe('js.concat.pattern');
       expect(chain?.asserted).toBe(false);
+    });
+  });
+
+  /**
+   * A link-preview image in `<meta content>` and an image in `<a href>` are read as the HTML
+   * adapter reads them, under shapes that tell the planner never to rewrite them.
+   */
+  describe('link previews and links to images', () => {
+    const meta: ReadonlyArray<[name: string, source: string, expected: string]> = [
+      [
+        'an Open Graph name',
+        '<meta property="og:image" content="/img/banner.png" />',
+        '/img/banner.png',
+      ],
+      ['a Twitter name', '<meta name="twitter:image" content="/img/hero.jpg" />', '/img/hero.jpg'],
+      [
+        'the Windows tile name',
+        '<meta name="msapplication-TileImage" content="/icons/icon-192.png" />',
+        '/icons/icon-192.png',
+      ],
+      [
+        'a name in capitals',
+        '<meta property="OG:IMAGE" content="/img/banner.png" />',
+        '/img/banner.png',
+      ],
+      [
+        'an Open Graph name, its value in braces',
+        `<meta property="og:image" content={'/img/banner.png'} />`,
+        '/img/banner.png',
+      ],
+    ];
+
+    it.each(meta)('reads a preview image under %s', (_name, source, expected) => {
+      const found = find(source);
+      expect(found.map((reference) => reference.rawPath)).toEqual([expected]);
+      expect(slices(source)).toEqual([expected]);
+      expect(found[0]?.shape).toBe('js.jsx.meta.content.image');
+    });
+
+    it('reads no meta tag that names no preview image, whatever its content spells', () => {
+      expect(find('<meta name="description" content="/img/logo.png" />')).toEqual([]);
+      expect(find('<meta content="/img/logo.png" />')).toEqual([]);
+    });
+
+    it('reads a link to an image under the link shape, a template included', () => {
+      expect(find('<a href="/img/team.jpg" download>x</a>')[0]?.shape).toBe('js.jsx.a.href.image');
+      const [pattern] = find('<a href={`/img/${n}.png`}>x</a>');
+      expect(pattern?.rawPath).toBe('/img/${n}.png');
+      expect(pattern?.shape).toBe('js.jsx.a.href.image');
+      expect(pattern?.ceiling).toBe('medium');
+    });
+
+    it('reads no link to a vector, which is never converted', () => {
+      expect(find('<a href="/icons/mask.svg">x</a>')).toEqual([]);
+    });
+
+    it('keeps the position shape on a template with no holes, which a template shape would lose', () => {
+      // A template shape carries no rule against rewriting, so the planner would convert a
+      // preview image written with backticks.
+      const [reference] = find('<meta property="og:image" content={`/img/banner.png`} />');
+      expect(reference?.shape).toBe('js.jsx.meta.content.image');
+      expect(reference?.ceiling).toBe('high');
+    });
+
+    it('declines a preview value it cannot read as one path rather than guessing inside it', () => {
+      // Guessed, the literals here would be rewritable strings standing in a preview image.
+      expect(
+        find(`<meta property="og:image" content={big ? '/img/a.png' : '/img/b.png'} />`),
+      ).toEqual([]);
+      expect(find(`<meta property="og:image" content={'/img/a.png' + '?v=' + v} />`)).toEqual([]);
+      expect(find(`<a href={'/img/a.png' + '?download=1'}>x</a>`)).toEqual([]);
     });
   });
 
