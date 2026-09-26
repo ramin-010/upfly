@@ -408,11 +408,6 @@
       "em-dash": 2,
       "emphasis": 2
     },
-    "packages/core/src/discover.ts": {
-      "em-dash": 6,
-      "emphasis": 5,
-      "long-comment": 6
-    },
     "packages/core/src/duplicates.test.ts": {
       "internal-reference": 1,
       "em-dash": 8,
@@ -568,23 +563,11 @@
       "internal-reference": 5,
       "em-dash": 4
     },
-    "packages/core/src/probe-sharp.ts": {
-      "internal-reference": 4,
-      "em-dash": 3,
-      "long-comment": 6
-    },
     "packages/core/src/probe.test.ts": {
       "internal-reference": 3,
       "em-dash": 7,
       "emphasis": 4,
       "emoji": 3
-    },
-    "packages/core/src/probe.ts": {
-      "internal-reference": 21,
-      "em-dash": 29,
-      "emphasis": 28,
-      "emoji": 14,
-      "long-comment": 38
     },
     "packages/core/src/reference.ts": {
       "internal-reference": 4,
@@ -640,13 +623,6 @@
       "em-dash": 7,
       "emphasis": 3,
       "emoji": 2
-    },
-    "packages/core/src/scan.ts": {
-      "internal-reference": 15,
-      "em-dash": 25,
-      "emphasis": 10,
-      "emoji": 2,
-      "long-comment": 25
     },
     "packages/core/src/serving-roots.test.ts": {
       "internal-reference": 8,

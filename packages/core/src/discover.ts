@@ -1,23 +1,13 @@
 /**
  * Walk a project and find its images and its adapter-claimed source files.
  *
- * This is one of only three modules in the engine allowed to touch the filesystem
- * (the `ImageProbe` implementation and `execute` are the others). Everything
- * downstream — scanning, resolution, the graph, the audit, the planner — is a pure
- * function over what this returns or over an injected port, which is what lets the
- * rest of the engine be tested without a disk.
+ * One of the few modules that touch the disk: the stages after it are pure functions of
+ * what it returns or of an injected port. It also records every file no adapter claims,
+ * which the audit sweeps for the names of unreferenced assets before calling one dead.
  *
- * It also records what it did *not* read: every file no adapter claims lands in
- * `unscannedFiles` with its path. The audit sweeps those for the filenames of
- * zero-reference assets, so a `dead` finding can be made confidently instead of
- * hedged globally.
- *
- * Why a hand-written walker rather than a glob library: the performance budget is
- * won by *pruning*, not by matching. A repo's `node_modules` holds more files than
- * everything else combined, and the only way to stay under the budget is to never
- * descend into it. A glob has to consider each path in order to reject it; we drop
- * the whole subtree on a single directory-name lookup. Walking also lets us take
- * the one `stat` we need in the same pass instead of a second one later.
+ * A hand-written walker rather than a glob library, because the speed comes from never
+ * entering directories such as `node_modules`, not from faster matching. See "Discovery"
+ * in ARCHITECTURE.md.
  */
 
 import type { Dirent } from 'node:fs';
@@ -39,9 +29,9 @@ import type {
 /**
  * Directory names never descended into, matched by name at any depth.
  *
- * A plain name lookup rather than an ignore pattern because this is the hot path:
- * it runs once per directory entry in the repo. These are version-control and
- * build-output directories only — nothing a user keeps a source image in.
+ * A name lookup rather than an ignore pattern, because it runs for every directory in the
+ * repository. Only dependency, cache, build-output and version-control directories, and
+ * Upfly's own `.upfly`: nothing a user keeps a source image in.
  */
 export const DEFAULT_IGNORED_DIRECTORIES: readonly string[] = Object.freeze([
   '.astro',
@@ -67,10 +57,10 @@ const DEFAULT_IGNORED_DIRECTORY_SET = new Set(DEFAULT_IGNORED_DIRECTORIES);
 export const IGNORE_FILE_NAME = '.upflyignore';
 
 /**
- * How many directories are read concurrently.
+ * How many directory reads, or image `stat` calls, run at once by default.
  *
- * Directory reads are IO-bound, so this is deliberately higher than the core
- * count — the limit exists to avoid exhausting file descriptors, not to match CPUs.
+ * The work is IO-bound, so the limit is there to avoid exhausting file descriptors, not
+ * to match the number of cores.
  */
 const DEFAULT_CONCURRENCY = 16;
 
@@ -83,7 +73,7 @@ export interface DiscoverOptions {
   readonly ignoreFile?: string;
   /** Extra gitignore-syntax patterns, applied as if appended to the ignore file. */
   readonly extraIgnores?: readonly string[];
-  /** Directories read in parallel. Defaults to 16. */
+  /** Directories read, and images sized, in parallel. Defaults to 16. */
   readonly concurrency?: number;
 }
 
@@ -163,9 +153,8 @@ async function assertDirectory(root: string): Promise<void> {
 /**
  * Build the extension to adapter lookup, rejecting overlaps.
  *
- * Two adapters claiming `.md` would make the winner depend on array order, which
- * is exactly the kind of quiet non-determinism a contribution surface should not
- * have. Failing loudly here costs a contributor one clear error message.
+ * Two adapters claiming `.md` would make the winner depend on array order, so an overlap
+ * is an error a contributor sees at once rather than a silent choice.
  */
 function mapExtensionsToAdapters(adapters: readonly Adapter[]): ReadonlyMap<string, string> {
   const claimed = new Map<string, string>();
@@ -187,10 +176,8 @@ function mapExtensionsToAdapters(adapters: readonly Adapter[]): ReadonlyMap<stri
 /**
  * The compiled ignore matcher, plus the patterns it was built from.
  *
- * The patterns are kept so that an excluded directory can name the rule that
- * excluded it. `ignore` reports *whether* a path matches but not *which* pattern
- * did, and "excluded by some rule you wrote" is a much worse report line than
- * "excluded by `legacy/`" when someone is working out why their asset vanished.
+ * `ignore` reports whether a path matches but not which pattern did, so the patterns are
+ * kept to let the report say "excluded by `legacy/`" rather than "excluded by a rule".
  */
 interface IgnoreRules {
   readonly matcher: Ignore;
@@ -281,12 +268,10 @@ interface WalkInput {
 /**
  * Breadth-first, one level at a time, reading up to `concurrency` directories at once.
  *
- * Level-by-level rather than a shared work queue because it is obvious: every
- * directory in a level is independent, so a level goes out as batched `Promise.all`s
- * and the child directories become the next level. A work queue would parallelise
- * marginally better at the very top of the tree, but needs active-worker bookkeeping
- * to avoid workers exiting while a peer is still producing work — not a trade worth
- * making in a module that has to stay explainable.
+ * A shared work queue would parallelise slightly better near the top of the tree, but
+ * needs bookkeeping so that no worker exits while another is still producing work.
+ * Levels keep it simple: each goes out as batched `Promise.all`s, and the directories
+ * found become the next level.
  */
 async function walk(input: WalkInput): Promise<void> {
   let level = [input.root];
@@ -353,8 +338,8 @@ function classifyEntry(
     if (reason !== null) {
       input.state.ignoredCount += 1;
       // Recorded, not merely counted: the resolver prefix-tests references against
-      // these so that a path into an excluded directory is reported as
-      // `out-of-scope` rather than as a broken reference that does not exist.
+      // these, so a path into an excluded directory is reported as `out-of-scope`
+      // rather than `broken`.
       input.state.excludedRoots.push({ path, relative, reason });
       return;
     }
@@ -384,10 +369,10 @@ function classifyEntry(
   const extension = extensionOf(entry.name);
   if (isImageExtension(extension)) {
     input.state.assetCandidates.push({ path, relative, extension });
-    // An SVG is an asset *and* a container. `<image href>`, `<use href>` and a
-    // `<style>` block inside one are all real references, and no adapter reads
-    // them — so it is also a file we did not scan. Recording it is what stops an
-    // asset mentioned only inside an icon sprite being called confidently dead.
+    // An SVG is an asset and a container. `<image href>`, `<use href>` and a `<style>`
+    // block inside one are real references that no adapter reads, so it is also a file
+    // we did not scan. Recording it stops an asset mentioned only inside an icon sprite
+    // from being called dead.
     if (extension === SVG_EXTENSION) {
       input.state.unscannedFiles.push(unclaimed(path, relative, extension));
     }
@@ -404,9 +389,8 @@ function classifyEntry(
   // "files Upfly could not read" would make the tool look confused about itself.
   if (path === input.ignoreFilePath) return;
 
-  // Everything else: enumerated, claimed by nobody, therefore never read. The audit
-  // sweeps these for the filenames of zero-reference assets, which is why the path
-  // is kept rather than only a count per extension.
+  // Everything else was claimed by nobody and never read. The path is kept, not only a
+  // count per extension, because the audit's sweep reads these files.
   input.state.unscannedFiles.push(unclaimed(path, relative, extension));
 }
 

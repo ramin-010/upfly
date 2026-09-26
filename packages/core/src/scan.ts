@@ -1,27 +1,11 @@
 /**
  * Read every source file and hand it to the adapter that claimed it.
  *
- * Nothing owned this loop before, and that mattered: `css.ts` and `javascript.ts`
- * throw `ADAPTER_PARSE_FAILED` on a parse failure — correctly, since returning `[]`
- * would report a file full of references as clean — but a throw nobody catches means
- * one unparseable `.scss` in a five-thousand-file repository kills the whole audit.
- *
- * So this module owns error handling across every adapter, and a file it could not
- * read becomes a *reported* entry rather than an exception. That is rule 9 twice
- * over: the failure reaches the report, and it also feeds the audit's per-asset
- * sweep, because a file we could not parse is a file whose references we do not
- * know — exactly the same condition as an extension no adapter claims.
- *
- * `readFile` is injected rather than imported, the same shape as the resolver's
- * `exists` port and the `ImageProbe`. That keeps this module pure, keeps the count
- * of filesystem-touching modules at three, and lets the module that owns error
- * handling for every adapter be tested against an in-memory file map instead of a
- * temp tree full of deliberately broken files.
- *
- * It deliberately does *not* return the file texts. Holding an entire repository's
- * source in memory to save a later re-read would trade a bounded cost for an
- * unbounded one, and the only consumer that needs the text again — the rewrite in
- * Phase 2 — reads each file at the moment it edits it anyway.
+ * This is the one place that handles adapter failure. A file that cannot be read or
+ * parsed becomes an `unscanned` entry instead of an exception, so one unparseable `.scss`
+ * cannot stop an audit, and the audit's sweep treats it like a file no adapter claimed.
+ * `readFile` is injected, so that handling is tested against an in-memory file map. See
+ * "Scanning: one place that owns adapter failure" in ARCHITECTURE.md.
  */
 
 import { lineOf } from './citation.js';
@@ -33,10 +17,10 @@ import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.j
 /**
  * Reads a file's text. Injected so this module stays pure.
  *
- * The real implementation is `(path) => readFile(path, 'utf8')`. Encoding is
- * deliberately the caller's concern: offsets are UTF-16 code units into whatever
- * string this returns, so as long as the same decoding is used to read and to
- * rewrite, a byte-order mark or an unusual encoding stays consistent.
+ * The real implementation is `(path) => readFile(path, 'utf8')`. Encoding is the
+ * caller's concern: offsets are UTF-16 code units into whatever string this returns, so
+ * as long as the same decoding is used to read and to rewrite, a byte-order mark or an
+ * unusual encoding stays consistent.
  */
 export type ReadFilePort = (absolutePath: string) => Promise<string>;
 
@@ -44,10 +28,8 @@ export type ReadFilePort = (absolutePath: string) => Promise<string>;
  * An asset filename found in a file's text, in a form no adapter turned into a
  * reference.
  *
- * Collected **here**, while the text is already in memory, rather than by re-reading
- * every source file later. The audit's `possibly-dead` sweep needs it, and reading
- * 7,521 files a second time to get it cost 12 s against a fraction of a second for
- * one regex pass over text we are already holding.
+ * Collected here, while the text is in memory, so the audit's `possibly-dead` sweep never
+ * reads a source file a second time.
  */
 export interface ScannedMention {
   /** Lowercased asset basename, e.g. `hero.png`. */
@@ -61,14 +43,11 @@ export interface ScannedMention {
 }
 
 /**
- * What a parser said, on its way somewhere that is not a report (R60).
+ * A parser's own error message, for `ScanOptions.onDiagnostic` and never for the report.
  *
- * The mirror of `ProbeDiagnostic`, and deliberately the same shape: the report
- * carries our classification, and the library's verbatim wording goes to a channel
- * nothing deterministic reads. `bench` writes it beside the report as
- * `<repo>.diagnostics.txt`; a caller that supplies no sink simply drops it, which is
- * the point — an absent sink *drops* the text rather than storing it, so nothing can
- * quietly acquire an unstable string it has nowhere to put.
+ * The counterpart of `ProbeDiagnostic`: the report carries our description of the
+ * failure, and the library's wording, which changes between versions, goes here. `bench`
+ * writes these beside its report as `<repo>.diagnostics.txt`.
  */
 export interface ScanDiagnostic {
   /** POSIX-relative path of the file that would not parse. */
@@ -86,21 +65,18 @@ export interface ScanOptions {
   readonly adapters: readonly Adapter[];
   readonly readFile: ReadFilePort;
   /**
-   * Lowercased basenames of every asset `discover` found.
+   * Lowercased basenames of every asset `discover` found. Omit it and no mentions are
+   * collected.
    *
-   * Supplied so the token pass can be done here, for free, instead of by a second
-   * read of the whole tree. A superset of what the audit needs — which assets are
-   * *unreferenced* is not known until the graph exists — so the sweep intersects
-   * later. Omit it and no mentions are collected.
+   * All assets rather than the unreferenced ones, which are not known until the graph
+   * exists; the sweep narrows them later.
    */
   readonly assetBasenames?: ReadonlySet<string>;
   /** Files read in parallel. Defaults to 16. */
   readonly concurrency?: number;
   /**
-   * Where a parser's own error text goes, if anywhere.
-   *
-   * Optional, and omitting it is a real answer rather than a degraded one: the text
-   * is not needed to produce a correct report, only to debug an adapter.
+   * Where a parser's own error text goes, if anywhere. The report does not need it; it
+   * helps only to debug an adapter.
    */
   readonly onDiagnostic?: (diagnostic: ScanDiagnostic) => void;
 }
@@ -117,10 +93,8 @@ export interface ScanResult {
    */
   readonly unscanned: readonly UnscannedFile[];
   /**
-   * Asset filenames seen in the text but not turned into references.
-   *
-   * Empty unless `assetBasenames` was given. This is the audit's third haystack,
-   * gathered as a side effect of a read that had to happen anyway.
+   * Asset filenames seen in the text but not turned into references. Empty unless
+   * `assetBasenames` was given.
    */
   readonly mentions: readonly ScannedMention[];
 }
@@ -129,32 +103,24 @@ export interface ScanResult {
 const DEFAULT_CONCURRENCY = 16;
 
 /**
- * The default adapters proven never to throw for a reason unrelated to
- * `couldHoldReference`'s tokens — see the comment at its call site in `parseOne`.
- * `css`, `javascript` and `astro` (frontmatter is `javascript`) are deliberately absent:
- * postcss and Babel both reject syntactically invalid input on its own terms, and that
- * failure has to keep reaching `unscanned` regardless of whether the input could ever
- * have held a reference (§5.1(e)).
+ * Adapters that throw only on text holding one of `couldHoldReference`'s tokens, so a
+ * file without any can skip the parse. `css`, `javascript` and `astro` are absent: their
+ * parsers reject invalid input whether or not it holds a reference, and that failure
+ * must still be reported.
  *
- * ⚠️ **`markdown` has ONE exception since R167, kept in on purpose and stated here so
- * nobody has to rediscover it.** An `.mdx` document's top-level `import`/`export` blocks
- * now go through Babel, so a token-free `.mdx` whose ESM will not parse is skipped rather
- * than reported `parse-failed`. Accepted because (a) no reference can be lost — with no
- * token there is nothing to find, which is this list's whole premise; (b) MDX itself
- * refuses to compile that document, so its author already knows; and (c) the price of
- * the alternative was measured: 1,637 of 2,905 real `.mdx` files carry ESM, almost all
- * of it component imports, and taking `.mdx` out would parse every one of them to find
- * nothing.
+ * One exception is accepted: a token-free `.mdx` file whose `import`/`export` blocks do
+ * not parse is skipped rather than reported. It holds nothing to find, and MDX itself
+ * refuses to compile it. See "Skipping files that cannot hold a reference" in
+ * ARCHITECTURE.md.
  */
 const SKIPPABLE_ADAPTER_ID_SET = new Set(['html', 'json', 'markdown']);
 
 /**
  * Read and parse every source file.
  *
- * @throws {UpflyError} `ADAPTER_NOT_REGISTERED` if a file names an adapter that was
- * not supplied. That is a wiring mistake — scanning with a different adapter set
- * than discovery used — and it is loud on purpose: the quiet alternative is a file
- * silently going unread and an asset silently looking dead.
+ * @throws {UpflyError} `ADAPTER_NOT_REGISTERED` if a file names an adapter that was not
+ * supplied, which means `discover` was given a different adapter set. Skipping the file
+ * instead would leave it unread and could make an asset look dead.
  */
 export async function scanSources(options: ScanOptions): Promise<ScanResult> {
   const byId = new Map(options.adapters.map((adapter) => [adapter.id, adapter]));
@@ -167,9 +133,8 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
 
   for (let index = 0; index < files.length; index += concurrency) {
     const batch = files.slice(index, index + concurrency);
-    // `Promise.all` preserves input order, so batching does not make the output
-    // depend on which read finished first. Rule 11 needs that to be true by
-    // construction rather than by a sort applied afterwards.
+    // `Promise.all` preserves input order, so the output does not depend on which read
+    // finished first, and the report is the same for the same input without a later sort.
     const scanned = await Promise.all(
       batch.map((file) =>
         scanOne(file, adapterFor(file, byId), options.readFile, options.assetBasenames),
@@ -177,20 +142,14 @@ export async function scanSources(options: ScanOptions): Promise<ScanResult> {
     );
 
     for (const result of scanned) {
-      // Both, not either. R20: an adapter for a composite format finds references and
-      // *then* meets the part it cannot parse, so a failure and a set of correct
-      // references are not alternatives. The `if/else` this replaces discarded them
-      // here even when `scanOne` had carefully preserved them one layer down — which
-      // is where the defect actually lived, and a test written against the adapter
-      // alone would never have reached it.
+      // Both, not either: a file that failed can still carry the references found
+      // before the failure.
       references.push(...result.references);
       if (result.failure !== null) unscanned.push(result.failure);
       mentions.push(...result.mentions);
-      // Emitted here rather than inside the concurrent map above, so diagnostics
-      // arrive in source-file order instead of in whichever order the reads finished.
-      // Nothing deterministic reads this channel, so the ordering is not load-bearing
-      // -- but a debugging aid whose lines shuffle between runs is a worse debugging
-      // aid, and the ordered loop was already here.
+      // Emitted here rather than inside the concurrent map, so diagnostics arrive in
+      // source-file order. Nothing deterministic reads them, but debugging output that
+      // reorders between runs is harder to use.
       if (result.diagnostic !== null) options.onDiagnostic?.(result.diagnostic);
     }
   }
@@ -214,7 +173,7 @@ interface ScannedFile {
   /** `null` when the file was read and parsed. */
   readonly failure: UnscannedFile | null;
   readonly mentions: readonly ScannedMention[];
-  /** `null` unless a third-party parser said something (R60). */
+  /** `null` unless a third-party parser said something. */
   readonly diagnostic: ScanDiagnostic | null;
 }
 
@@ -228,8 +187,7 @@ async function scanOne(
   try {
     text = await readFile(file.path);
   } catch (error) {
-    // A file that vanished or became unreadable between the walk and the read.
-    // §5.1(e) requires exactly this to degrade rather than crash.
+    // A file that vanished or became unreadable after the walk: reported, not thrown.
     return {
       references: [],
       failure: unscannedFile(file, 'unreadable', describe(error)),
@@ -242,11 +200,10 @@ async function scanOne(
 }
 
 /**
- * Everything one file costs after its bytes are in hand: the mention pass, the adapter,
- * and the error handling around both. The two parts that are easy to get wrong and silent
- * when wrong live here: `UpflyError.partial`, which keeps the references an adapter found
- * before it met a part it could not parse, and the diagnostic channel, whose parser
- * wording must never reach a report.
+ * Everything done with one file's text: the mention pass, the adapter, and the error
+ * handling around both. Two things here fail silently when wrong: keeping the references
+ * an adapter found before it failed (`UpflyError.partial`), and sending the parser's own
+ * wording to the diagnostic channel rather than to the report.
  */
 function parseOne(
   file: SourceFile,
@@ -255,28 +212,13 @@ function parseOne(
   assetBasenames: ReadonlySet<string> | undefined,
 ): ScannedFile {
   // One pass over text already in memory. Done before the adapter runs so that a
-  // file which fails to parse still contributes its mentions — that file is exactly
+  // file which fails to parse still contributes its mentions: that file is exactly
   // the one whose references we do not know.
   const mentions = collectMentions(file, text, assetBasenames);
 
-  // R162: a substring test thousands of times cheaper than a parse. `couldHoldReference`'s
-  // token list only speaks for what a reference needs to exist — it says nothing about
-  // whether the underlying TEXT is syntactically valid for its language, and `html.ts`'s own
-  // doc comment settles that half for HTML ("no such thing as an unparseable document"),
-  // `markdown.ts` and `json.ts`'s adapters are both regex/string-walk and never throw either
-  // (`markdown.ts` re-throws only what the HTML pass throws, which needs a `style` token —
-  // and, since R167, an `.mdx` ESM block Babel rejects, the one exception, stated at
-  // `SKIPPABLE_ADAPTER_ID_SET`). `css.ts`, `javascript.ts` and
-  // `astro.ts` (whose frontmatter IS `javascript.ts`) all wrap a real parser — postcss,
-  // Babel — that DOES reject syntactically invalid input independent of whether a reference
-  // is anywhere in it, and §5.1(e)'s hostile-input gate requires that failure to still reach
-  // `unscanned` as `parse-failed` (`hostile.test.ts`'s `broken.scss` caught exactly this:
-  // `a { color: ; ;; }} unclosed` holds none of the tokens and still has to be reported). So
-  // the skip is scoped to the three adapters proven not to throw on syntax alone, never to
-  // the three that can. If none of the tokens are present on one of those three, no
-  // reference — certain or dynamic — could come out of this text, so the parse is skipped
-  // rather than run for an empty result. Not a decline: an adapter run here would report
-  // nothing either, so rule 9 has nothing to say about a file with zero references in it.
+  // Skip the parse when no reference could come out of this text. Not a decline that
+  // needs reporting: the adapter would have returned nothing either. Only for the
+  // adapters in `SKIPPABLE_ADAPTER_ID_SET`, whose comment says why.
   if (SKIPPABLE_ADAPTER_ID_SET.has(adapter.id) && !couldHoldReference(text)) {
     return { references: [], failure: null, mentions, diagnostic: null };
   }
@@ -289,16 +231,11 @@ function parseOne(
       diagnostic: null,
     };
   } catch (error) {
-    // Every throw, not only `ADAPTER_PARSE_FAILED`. Adapters are the contribution
-    // surface, and a bug in a community adapter must not take down an audit of a
-    // repository that adapter barely touches. The message is carried into the
-    // report, so a broken adapter is visible rather than merely survivable.
-    //
-    // R20: a composite format finds references and *then* meets the part it cannot
-    // parse — one `<style>` block with unparseable CSS inside a Markdown file threw
-    // away every `![](hero.png)` above it. Those are correct, so they are kept. The
-    // file is still recorded as `parse-failed` and still reaches the report: rule 9
-    // is about the failure being visible, not about discarding what was found.
+    // Every throw, not only `ADAPTER_PARSE_FAILED`: a bug in a community adapter must
+    // not stop the audit, and its message still reaches the report. A composite format
+    // can find references before meeting a part it cannot parse (unparseable CSS in a
+    // Markdown `<style>` block). Those references are correct, so they are kept, and the
+    // file is still reported as `parse-failed`.
     return {
       references: partialOf(error),
       failure: unscannedFile(file, 'parse-failed', describe(error)),
@@ -308,14 +245,7 @@ function parseOne(
   }
 }
 
-/**
- * Every asset filename this text names.
- *
- * A superset of what the audit will use: which assets are unreferenced is not known
- * until the graph exists, so this collects mentions of *any* asset and the sweep
- * intersects. Cheap enough to always do — the text is in hand, and the alternative
- * measured at twelve seconds.
- */
+/** Every asset filename this text names, from the set in `assetBasenames`. */
 function collectMentions(
   file: SourceFile,
   text: string,
@@ -326,9 +256,9 @@ function collectMentions(
   const found: ScannedMention[] = [];
   const seen = new Set<string>();
 
-  // `imageFilenameCandidates` rather than a bare pattern, so a spaced filename is seen
-  // here exactly as the sweep sees it (R26). The two lookups are identical and a hole
-  // in one of them is how a confident `dead` survived §5.1.
+  // `imageFilenameCandidates` rather than a local pattern, so a filename, spaces
+  // included, is found here exactly as the sweep finds it in unread files. If the two
+  // lookups differ, an asset named only in a scanned file can be reported as dead.
   for (const [token, offset] of imageFilenameCandidates(text)) {
     const basename = token.toLowerCase();
     // One mention per basename per file: a hundred repeats of the same name are one
@@ -348,24 +278,22 @@ function collectMentions(
 }
 
 /**
- * References an adapter had already found when it failed.
+ * The parser's own words, if it gave any, for the diagnostic channel.
  *
- * The single place `UpflyError.partial` is narrowed — it is typed `unknown[]` there
- * so `errors.ts` need not depend on `types.ts`, and this is the one consumer.
- */
-/**
- * The parser's own words, if it said any, addressed to the diagnostic channel.
- *
- * ⚠️ **Read off the error and never off `UnscannedFile`.** The report value has one
- * `detail` field and it holds our sentence; this text takes a different route out of
- * the engine and rejoins nothing. That is what makes rule 11 a property of the shape
- * rather than a rule a future renderer has to remember (R60).
+ * Read off the error, never off `UnscannedFile`, whose one `detail` field holds the
+ * error's message. With no field for the parser's wording, it has no path into the report.
  */
 function diagnosticOf(error: unknown, file: SourceFile, adapter: Adapter): ScanDiagnostic | null {
   if (!(error instanceof UpflyError) || error.diagnostic === '') return null;
   return { relative: file.relative, adapterId: adapter.id, detail: error.diagnostic };
 }
 
+/**
+ * References an adapter had already found when it failed.
+ *
+ * The one place `UpflyError.partial` is narrowed: it is typed `unknown[]` so that
+ * `errors.ts` need not depend on `types.ts`.
+ */
 function partialOf(error: unknown): RawReference[] {
   return error instanceof UpflyError ? [...(error.partial as RawReference[])] : [];
 }
@@ -388,19 +316,12 @@ function unscannedFile(
  * The failure message, with this file's absolute path written the way the rest of
  * the report writes paths.
  *
- * Adapters are handed an absolute path and several of them interpolate it into the
- * message they throw — `Could not parse ${file}: …`. That message is carried
- * verbatim into the report, so on a repository with one unparseable file the output
- * contains `E:\…\combined.cjs` and rule 11 is quietly false: the same repository
- * audited from two checkouts produces different bytes.
- *
- * It is scrubbed **here** rather than in the five adapter throw sites because this
- * is the layer that knows both spellings, and because adapters are the contribution
- * surface — a community adapter's message cannot be relied on to be clean, which is
- * the same argument that makes this function catch every throw rather than ours.
- *
- * Found by §5.1(f) on `eleventy-docs`. No fixture tree contains a file that fails to
- * parse, so the report's own absolute-path guard had nothing to fire on.
+ * Adapters are handed an absolute path and some put it in the message they throw, which
+ * reaches the report, so the same repository checked out in two places would produce
+ * different reports. Done here rather than in each adapter, because this layer knows both
+ * spellings and a community adapter's message cannot be relied on to be clean. The
+ * report's own absolute-path test cannot catch a regression, since no fixture tree holds
+ * a file that fails to parse; `scan.test.ts` covers it.
  */
 function withoutAbsolutePath(message: string, file: SourceFile): string {
   if (message === '') return message;

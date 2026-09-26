@@ -1,33 +1,12 @@
 /**
- * Read what an image *is*, without writing anything.
+ * Measure images: dimensions from a header read, and the size of an in-memory encode in
+ * each requested format.
  *
- * Two of the four audit findings need pixels: `oversized` needs dimensions, and
- * `format opportunities` must be **measured** rather than guessed — the build plan
- * is explicit that a saving we report is a saving we encoded. So the engine needs a
- * decoder, and it needs one that cannot write.
- *
- * `ImageProbe` is a port, injected the same way as the resolver's `exists` and
- * `scan`'s `readFile`. The real implementation is `createSharpProbe`, which lives
- * beside `discover` as one of the three modules allowed to touch a disk; everything
- * that consumes probe results takes the data and stays pure.
- *
- * **The port has two methods, and the split is the whole design.** Measured here on
- * sharp 0.35.4 / libvips 8.18.6:
- *
- * | source | `metadata()` | webp | avif |
- * |---|---|---|---|
- * | 400×300 | 2 ms | 56 ms | 317 ms |
- * | 1200×800 | 1 ms | 370 ms | 2 975 ms |
- * | 2400×1600 | 1 ms | 2 620 ms | 9 026 ms |
- *
- * Reading a header is free and independent of pixel count; encoding is three orders
- * of magnitude dearer and AVIF is roughly eight times WebP. One combined `probe()`
- * would force every caller to pay for both, so dimensions are always affordable and
- * encoding is something a caller asks for by name.
- *
- * Nothing here decides *which* assets deserve an encode — that is the audit's policy
- * and lives in one place. This module measures what it is asked to measure, and says
- * so when it could not.
+ * `oversized` needs the dimensions, and a format opportunity must come from a real encode
+ * rather than an estimate. A header read costs about a millisecond at any size and an
+ * encode three orders of magnitude more, so `ImageProbe` keeps them as separate methods
+ * and a caller asks for encodes by format. See "The probe, and why it has two methods" in
+ * ARCHITECTURE.md.
  */
 
 import { compareStrings, extensionOf, isVectorExtension } from './paths.js';
@@ -49,29 +28,27 @@ export interface ImageMetadata {
 }
 
 /**
- * Read-only access to image pixels. Injected; never writes.
+ * Reads image headers, measures encodes and writes encoded files. `createSharpProbe` is
+ * the real implementation.
  *
- * Both methods reject rather than returning a sentinel, because a caller that
- * ignores the difference between "1×1" and "could not read" would report nonsense.
- * `probeAssets` turns every rejection into a recorded reason.
+ * `audit` measures through it and `optimize` writes through it, so a file is written by
+ * the same code that measured it. Methods reject rather than return a sentinel, so that
+ * "1×1" and "could not read" cannot be confused; `probeAssets` turns every rejection into
+ * a recorded reason.
  */
 export interface ImageProbe {
   /**
-   * The quality each format is encoded at, by this probe.
+   * The quality this probe encodes each format at.
    *
-   * Here rather than on `ProbeOptions` because the same object both measures and
-   * writes. `audit` reports what this probe measured and `optimize` writes what this
-   * probe encodes, so there is no second setting for them to drift apart on: if the
-   * number is wrong, both are wrong together, which is the honest failure rather
-   * than the one where audit advertises a product optimize does not ship.
+   * On the probe rather than on `ProbeOptions`, so `audit` and `optimize`, which share
+   * the probe, cannot use different settings.
    */
   readonly quality: Readonly<Record<EncodeFormat, number>>;
   /**
    * Header-only read.
    *
-   * Must report the dimensions of **one frame**, not of every frame stacked
-   * together, and must report `pages` so a caller can tell an animation from a
-   * still without a second read.
+   * Must report the dimensions of one frame, not of every frame stacked together, and
+   * `pages`, so a caller can tell an animation from a still without a second read.
    */
   metadata(path: string): Promise<ImageMetadata>;
   /**
@@ -85,36 +62,21 @@ export interface ImageProbe {
     readonly format: EncodeFormat;
     readonly animated: boolean;
     /**
-     * Encode exactly rather than at this probe's quality (R131).
-     *
-     * ⚠️ **The POLICY of when to ask for this lives in core, not in the port.** A port
-     * that decided for itself which images deserve lossless would be making a planning
-     * decision the report could not explain, and `probeAssets` would have no honest
-     * setting to record beside the bytes.
+     * Encode losslessly instead of at `quality`. When to ask for it is decided by
+     * `probeAssets`, not by the port, so the report can say which setting produced the
+     * bytes.
      */
     readonly lossless?: boolean;
   }): Promise<number>;
-  /**
-   * Encode to a file instead of to a byte count, and report the bytes written.
-   *
-   * The writing half of the same port, so the encode `optimize` performs is built by
-   * the same code that built the one `audit` measured. Anything that has to be got
-   * right once - the plain metadata read, honouring `animated`, the quality above -
-   * is got right for both at the same time.
-   */
+  /** Encode to a file and report the bytes written. */
   encodeToFile(input: {
     readonly path: string;
     readonly format: EncodeFormat;
     readonly animated: boolean;
     readonly destination: string;
     /**
-     * 🔴 **Must match the setting the saving was MEASURED at (R131).**
-     *
-     * `audit` advertises a saving and `optimize` writes the file that delivers it. If
-     * the plan chose lossless because it measured fewer bytes and the write then used
-     * quality 80, the file on disk is not the file that was promised — and the saving
-     * the user was shown was real but is no longer the one they got. `PlannedConversion`
-     * carries the setting for exactly this reason.
+     * Must match the setting the saving was measured at, or the file written is not the
+     * one whose saving was reported. `PlannedConversion.quality` carries it here.
      */
     readonly lossless?: boolean;
   }): Promise<number>;
@@ -123,54 +85,37 @@ export interface ImageProbe {
 /**
  * Why a measurement was not taken. Machine-readable so a report can group by it.
  *
- * ⚠️ **Enumerated by what the USER can do, never by what the library said (R64).**
- * R60 correctly took libvips' wording out of the report, and the measured cost was
- * that 21 failures across the corpus collapsed into 2 sentences and lost 5
- * distinguishable causes — 20 of them under one code carrying four different
- * meanings, and `Input image exceeds pixel limit`, the single most actionable string
- * we had, becoming the vaguest.
- *
- * The repair is not to mirror libvips' failure modes back in, which is an open-ended
- * list that grows on every upgrade. It is to ask what a reader would *do* about each,
- * which has only three answers: supply a real image, fix the SVG, or make the image
- * smaller. **That enumeration is bounded** — it does not grow when libvips adds a
- * message — and every code below is decided from our own data: the asset's extension
- * and its measured dimensions, never from matching the text of an error.
+ * The failure codes follow what a user can do about the failure: supply a real image,
+ * fix the SVG, or make the image smaller. Each is decided from our own data (the
+ * extension, the measured dimensions), never from the library's error text, so the list
+ * does not grow when libvips adds a message. See "The recorded reason is ours, and the
+ * library's is not in the report" in ARCHITECTURE.md.
  */
 export type ProbeSkipCode =
   /**
-   * Not readable as an image at all. Measured: 8 of the corpus's 21 failures.
-   *
-   * What a user does: nothing, or supply a real image. Usually a file with an image
-   * extension that is not one — an HTML error page saved as `.png`, a Git LFS
-   * pointer, a zero-byte placeholder.
+   * Not readable as an image at all: usually a file with an image extension that is not
+   * an image, such as an HTML error page saved as `.png`, a Git LFS pointer or a
+   * zero-byte placeholder.
    */
   | 'not-an-image'
   /**
-   * An SVG the vector parser would not read. Measured: 12 of 21, in three flavours —
-   * no usable width/height, malformed XML, and a file past the XML parser's buffer.
-   *
-   * What a user does: fix the SVG. One code rather than three because the action is
-   * the same in all three cases, and because the three are distinguishable only by
-   * reading libvips' wording, which is precisely what must not decide this.
+   * An SVG the vector parser would not read: no usable width and height, malformed XML,
+   * or a file too large for the XML parser. One code for all three, because the fix is
+   * the same and only libvips' wording tells them apart.
    */
   | 'svg-unreadable'
   /**
-   * The image decoded, but it is larger than we will decode again to measure an
-   * encode. Measured: 1 of 21, and the most actionable of the five causes.
-   *
-   * 🔴 **Not optional, and not foldable back into `encode-failed`.** Folding it in is
-   * the one regression R60 actually caused, and it is the only one of the five with a
-   * fix the reader controls: resize the image, or raise `MAX_ENCODE_PIXELS`.
+   * The header read, but the image is larger than `MAX_ENCODE_PIXELS`, the most we
+   * decode to measure an encode. Kept apart from `encode-failed` because it has a clear
+   * fix: resizing the image.
    */
   | 'too-large-to-encode'
   /**
    * The header read, but the encode failed for a reason we cannot attribute.
    *
-   * The residual, and it stays: deleting it would turn an unclassifiable failure into
-   * a silent one, which rule 9 makes a P0. It should be rare — no instance in the
-   * corpus once `too-large-to-encode` takes the pixel-limit case — and an instance of
-   * it is a prompt to look, not a category to grow.
+   * The residual: without it, a failure nothing classifies would be missing from the
+   * report. It should be rare, and an instance is a prompt to investigate rather than a
+   * reason to add codes.
    */
   | 'encode-failed'
   /** An SVG: encoding it measures a rasterisation, not a saving. */
@@ -180,38 +125,27 @@ export type ProbeSkipCode =
   /** Deliberately not measured, to bound how long the audit takes. */
   | 'beyond-encode-cap';
 
-/** A measurement that was not taken, and why. Rule 9 applies to numbers too. */
+/**
+ * A measurement that was not taken, and why. It reaches the report like any other
+ * skipped item, with its reason.
+ */
 export interface ProbeSkip {
   /** `metadata`, or the format whose encode was skipped. */
   readonly measurement: 'metadata' | EncodeFormat;
   /** Groupable: a report counts capped assets without matching on prose. */
   readonly code: ProbeSkipCode;
   /**
-   * Rendered verbatim in the report, and written here rather than quoted from
-   * anywhere else.
-   *
-   * It used to be the imaging library's own error text for the two failure codes,
-   * which broke the promise that the same inputs produce a byte-identical report.
-   * Reading four corrupt SVGs 160 times gave the full libvips message 114 times and a
-   * truncated one 46, so both the entry and the sort order changed between runs of an
-   * unchanged repository. The library's wording is also not ours to put in front of a
-   * user: it is free to change between versions, and it describes libvips rather than
-   * describing what Upfly did.
-   *
-   * The underlying text is not lost. It goes to `ProbeOptions.onDiagnostic`, which is
-   * a channel nothing deterministic reads.
+   * Rendered verbatim in the report. Written by Upfly, never the library's error text,
+   * which varies between runs and versions; that text goes to `ProbeOptions.onDiagnostic`.
    */
   readonly reason: string;
 }
 
 /**
- * What a third-party imaging library said, on its way somewhere that is not a report.
+ * A failing imaging library's own message, for `ProbeOptions.onDiagnostic`.
  *
- * Deliberately not a field on `ProbeSkip`. A field would sit inside the value the
- * report is built from, and keeping it out of the output would then be a rule somebody
- * has to keep remembering. There is no field, so there is nothing for a renderer to
- * print or for a sort to key on, which is a property of the shape rather than of
- * anyone's care.
+ * Not a field on `ProbeSkip`, so the report, which is built from `ProbeSkip`, has no way
+ * to print it or sort on it.
  */
 export interface ProbeDiagnostic {
   /** POSIX-relative path of the asset being measured. */
@@ -228,15 +162,9 @@ export interface ProbeDiagnostic {
 /**
  * How an encode was produced: a lossy quality setting, or exactly.
  *
- * 🔴 **R131. `'lossless'` is a setting, not a quality of 100**, and the difference is the
- * reason this is a union rather than a number. A lossless WebP is bit-exact; a lossy one
- * at 100 is not, and writing `100` would be precisely the lie the `quality` field's own
- * comment exists to prevent. A sentinel — `0`, `-1`, `100` — reads as a setting to every
- * consumer that formats it and is not one.
- *
- * R129 measured what makes this worth carrying: across 5,857 images lossless produces
- * fewer bytes than webp 80 on **1,736** of them, **1,689 of which are PNG**, and on those
- * it beats the lossy encode by 30.2% median at perfect fidelity.
+ * `'lossless'` is a setting, not a quality of 100. A lossless WebP is bit-exact and a
+ * lossy one at 100 is not, so any number standing in for it (`0`, `-1`, `100`) would
+ * misdescribe the encode to everything that formats it.
  */
 export type EncodeSetting = number | 'lossless';
 
@@ -247,36 +175,26 @@ export interface EncodedSize {
   /**
    * The setting this byte count was produced at.
    *
-   * Carried on the measurement rather than looked up beside it, so a saving cannot
-   * be written down anywhere without the setting that produced it. A 95% saving at
-   * quality 50 and a 44% saving at quality 90 are both true and describe different
-   * products, so the number alone does not mean anything.
+   * Carried on the measurement, so a saving is never written down without its setting:
+   * 95% at quality 50 and 44% at quality 90 describe different files.
    *
-   * ⚠️ **Since R131 this varies PER IMAGE, not per run.** Two PNGs in the same run can
-   * carry `80` and `'lossless'`, because the choice is made by comparing their byte
-   * counts. Anything that summarises this across assets has to aggregate rather than
-   * assign — see `savingQuality` in `report.ts`, which did the latter.
+   * It varies per image, not per run: two PNGs in one run can carry `80` and
+   * `'lossless'`. A summary across assets must collect the settings rather than keep
+   * one, as `savingQuality` in `report.ts` does.
    */
   readonly quality: EncodeSetting;
 }
 
 /**
- * The quality each format is encoded at, chosen by measurement.
+ * The quality each format is encoded at by default.
  *
- * See notes/validation/encode-quality.md for the run these came from: 30 images
- * sampled deterministically from the five validation repositories, scored on both
- * bytes saved and how far the decoded pixels moved from the original.
- *
- * webp 80 is the highest setting in the measured grid at which no sampled image grew,
- * and it holds every lossless source above 36 dB. Raising it does not rescue the two
- * worst cases, which are already-lossy JPEGs sitting near 34 dB whatever we do; it
- * only taxes the other 28 images, costing 10 points of median saving between 80 and
- * 90 to buy 1 dB on a case that was never ours to fix.
- *
- * avif 75 rather than 80, because AVIF is a more efficient encoder and the same
- * number does not mean the same thing on both scales. At 75 it clears every sampled
- * image of the 35 dB mark with room to spare while still saving about as much as webp
- * does at 80.
+ * Chosen with `bench/src/encode-quality.ts` on 30 images sampled from the five validation
+ * repositories, scored on bytes saved and on how far the decoded pixels moved. webp 80 is
+ * the highest quality at which no sampled image grew, and it keeps every lossless source
+ * above 36 dB. Raising it does not help the two worst cases, already-lossy JPEGs near
+ * 34 dB at any setting, and 90 costs 10 points of median saving. avif 75, because the two
+ * scales differ: at 75 AVIF keeps every sample above 35 dB and saves about as much as
+ * webp 80.
  */
 export const DEFAULT_ENCODE_QUALITY: Readonly<Record<EncodeFormat, number>> = Object.freeze({
   webp: 80,
@@ -284,18 +202,11 @@ export const DEFAULT_ENCODE_QUALITY: Readonly<Record<EncodeFormat, number>> = Ob
 });
 
 /**
- * The largest source we will decode in order to measure an encode, in pixels.
+ * The largest source decoded to measure an encode, in pixels.
  *
- * ⚠️ **Adopted as ours rather than left to the library, and that is the point (R64).**
- * The number is sharp's own historical default (`0x3FFF²`), so declaring it changes no
- * behaviour — what changes is who owns it. `too-large-to-encode` has to be decided
- * from our own data, and the only honest way to say *this image is past the limit* is
- * to compare measured dimensions against a limit we set. Reading libvips' `Input image
- * exceeds pixel limit` instead would put the classification back under a string that
- * is free to change, which is the whole defect R60 fixed.
- *
- * It is also what makes the reason actionable: *raise the limit* names something we
- * can actually offer, rather than a libvips build flag nobody can reach.
+ * Equal to sharp's default `limitInputPixels` and passed to sharp explicitly, so that
+ * `too-large-to-encode` is decided by comparing measured dimensions with a limit we own,
+ * never by reading libvips' error text.
  */
 export const MAX_ENCODE_PIXELS = 0x3fff * 0x3fff;
 
@@ -307,100 +218,58 @@ export interface AssetProbe {
   readonly metadata: ImageMetadata | null;
   /** Measured encodes, sorted by format. Only ever formats that were requested. */
   readonly encoded: readonly EncodedSize[];
-  /** Every measurement not taken, with a reason. Never silently empty-handed. */
+  /** Every measurement not taken, with a reason. */
   readonly skipped: readonly ProbeSkip[];
 }
 
 export interface ProbeOptions {
-  /** The port. Required — there is no default, so nothing probes by accident. */
+  /** The port. Required, so nothing probes by accident. */
   readonly probe: ImageProbe;
   /**
-   * Formats to measure each asset against.
+   * Formats to measure each asset against. An empty list measures dimensions only.
    *
-   * Required and un-defaulted here, because the default belongs to config rather
-   * than to the engine: locked decision 3 makes **webp** the conversion target,
-   * with avif opt-in via `--format avif`, and the audit measures the format it
-   * would actually convert to. Measuring a format the tool would not produce is
-   * work nobody asked for. An empty list measures dimensions only.
+   * No default here: the conversion target is the configuration's decision (webp unless
+   * avif is chosen), and the audit measures only the format it would convert to.
    */
   readonly formats: readonly EncodeFormat[];
   /**
    * How many assets to encode at all. Unbounded when absent.
    *
-   * **A count, and not a byte threshold or a time budget**, for two reasons that
-   * the obvious alternatives fail on. Encode cost scales with *pixel count*, not
-   * file size, so a byte threshold bounds nothing on a repository of three
-   * thousand large images — which is exactly what §5.1(c)'s "large public
-   * directory" requirement guarantees we will meet. And a duration budget would
-   * break rule 11: byte-identical output for the same inputs means a slow machine
-   * must not measure fewer assets than a fast one.
-   *
-   * Selection is **largest source first**, ties broken by path, so the choice is
-   * a deterministic function of the repository. Everything beyond the cap is
-   * reported as unmeasured with `beyond-encode-cap` — silence would read as "no
-   * opportunity here", which rule 9 forbids.
-   *
-   * Two CLI spellings reach this one option: `--max-encodes <n>` sets it, and
-   * `--probe-all` clears it. The report points at `--probe-all`, because that is
-   * the name a user needs at the moment they notice a number is missing.
-   *
-   * The cap degrades exactly one of the four audit findings. `dead` and `broken`
-   * need no probe at all and `oversized` needs only the header, so the cheap
-   * findings stay complete however low this goes. The default belongs in `bench/`
-   * (rule 16), not in a guess here.
+   * A count, because encode cost follows pixel count rather than file size, and a time
+   * budget would make the report depend on the machine. The largest sources are chosen,
+   * ties broken by path, and the rest are reported as `beyond-encode-cap`. Only format
+   * opportunities lose detail: `dead`, `broken` and `oversized` need no encode. The CLI
+   * sets it with `--max-encodes <n>` and clears it with `--probe-all`. See "The cap is a
+   * count, not a threshold or a deadline" in ARCHITECTURE.md.
    */
   readonly maxEncodedAssets?: number;
   /**
    * Assets to measure whatever the cap says.
    *
-   * R35 requires every asset a pattern reference could match to be measured. A
-   * pattern is one edit covering N assets, so rewriting it is only safe if all N
-   * convert alike — which means an unmeasured target does not cost detail, it makes
-   * the condition impossible to establish and the pattern permanently undecidable. A
-   * cap that limits what we report is a convenience; a cap that limits what we can
-   * prove is a correctness bug.
-   *
-   * ⚠️ `Asset` objects rather than paths, and that is the whole point of the type.
-   * The cap is keyed on `asset.path`, which is absolute, while much of the planner
-   * speaks in project-relative paths; a set of bare strings here would line up with
-   * the probe by convention alone, and the day either side changed convention every
-   * pattern would become undecidable in total silence. Taking the objects means
-   * there is no string to be the wrong kind of string.
+   * A pattern reference is rewritten only if every asset it matches converts alike, so
+   * one unmeasured match leaves the pattern undecidable. `Asset` objects rather than
+   * paths: the cap is keyed on the absolute `asset.path` while the planner mostly uses
+   * relative paths, and objects leave no string to get wrong.
    */
   readonly alwaysMeasure?: readonly Asset[];
   /**
-   * Assets measured at once. Defaults to 4.
-   *
-   * Deliberately small: libvips already multithreads inside a single encode, so this
-   * pool multiplies an already-parallel workload. Four concurrent encodes measured
-   * 3.5× faster than four serial ones on a 12-thread machine, but the right number
-   * is a `bench/` question, not a guess — see rule 16.
+   * Assets measured at once. Defaults to 4, kept small because libvips already
+   * multithreads inside each encode.
    */
   readonly concurrency?: number;
   /**
-   * Where a failing library's own words go, when a caller wants them.
+   * Receives a failing library's own message, when a caller wants it. Without a sink the
+   * text is dropped; the report needs only the skip's `code` and `reason`.
    *
-   * Absent by default, and an absent sink means the text is dropped rather than
-   * stored: a caller who has nowhere to put it does not silently acquire an unstable
-   * string. What Upfly concluded is in the skip's `code` and `reason` either way, so
-   * nothing a report needs depends on anyone passing this.
-   *
-   * Called during measurement, so an implementation that throws would fail the probe
-   * of an asset that had already failed for a different reason. Callers append to a
-   * list or write a line; they do not do work here.
+   * Called during measurement, and a sink that throws makes `probeAssets` reject, so
+   * append to a list or write a line and do nothing more.
    */
   readonly onDiagnostic?: (diagnostic: ProbeDiagnostic) => void;
 }
 
 const DEFAULT_CONCURRENCY = 4;
 
-/**
- * What the report says when a measurement failed, by the code that classifies it.
- *
- * One sentence per code, written once, so two runs of an unchanged repository produce
- * the same bytes. The library's text that used to stand here is not stable enough to
- * put in an artefact that rule 11 is a promise about.
- */
+/** What the report says when a measurement failed: one fixed sentence per code. */
 const FAILURE_REASON: Record<
   'not-an-image' | 'svg-unreadable' | 'too-large-to-encode' | 'encode-failed',
   string
@@ -413,14 +282,9 @@ const FAILURE_REASON: Record<
 };
 
 /**
- * Thousands separators, by hand, because `toLocaleString` is not allowed here.
- *
- * ⚠️ **The first version of this used `toLocaleString('en-US')` and an explicit locale
- * is not enough.** Number formatting goes through ICU, and a Node built with
- * `small-icu` can format the same number differently — so the same repository would
- * render different bytes on two machines, which is rule 11 broken by exactly the
- * mechanism the renderer already forbids `toLocaleString` for. Found by reading the
- * rendered report, not by a test.
+ * Thousands separators, by hand. `toLocaleString` is unsafe even with an explicit locale:
+ * a Node built with `small-icu` can format the same number differently, and the report
+ * must be the same bytes on every machine.
  */
 function groupDigits(value: number): string {
   const digits = String(value);
@@ -434,13 +298,8 @@ function groupDigits(value: number): string {
 }
 
 /**
- * A short form of the same failure, for the encode entry that follows it.
- *
- * ⚠️ **The long reason cannot be reused here, and reading the rendered report is what
- * showed it.** Appending to it produced `this file could not be read as an image, so
- * nothing about it could be measured, so there is nothing to encode` — two `so` clauses
- * in one sentence, on every such asset in the report. The metadata entry directly above
- * has already said what went wrong; this one only has to say what follows from it.
+ * A short form of the header failure, for the encode entries that follow it. The
+ * metadata entry has already said what went wrong; these only say what follows from it.
  */
 const ENCODE_FOLLOWS: Record<'not-an-image' | 'svg-unreadable', string> = {
   'not-an-image': 'this file could not be read as an image, so there is nothing to encode',
@@ -448,27 +307,20 @@ const ENCODE_FOLLOWS: Record<'not-an-image' | 'svg-unreadable', string> = {
 };
 
 /**
- * Which of the two header failures this asset is, decided by its extension.
- *
- * ⚠️ **From our data, not from libvips' message, and that is the whole point of R64.**
- * The corpus's 20 header failures are 8 files that are not images and 12 SVGs the
- * vector parser refused, and libvips distinguishes them only in prose we have
- * promised not to print. The extension separates them perfectly and costs nothing:
- * a `.svg` that will not read is an SVG to fix, and anything else is not an image.
+ * Which of the two header failures this asset is, decided by its extension rather than
+ * by the library's message: a `.svg` that will not read is an SVG to fix, and anything
+ * else is not an image.
  */
 function headerFailureCode(asset: Asset): 'not-an-image' | 'svg-unreadable' {
   return isVectorExtension(extensionOf(asset.path)) ? 'svg-unreadable' : 'not-an-image';
 }
 
 /**
- * Whether this asset is past the pixel budget, which is arithmetic rather than prose.
+ * Whether this asset is past `MAX_ENCODE_PIXELS`.
  *
- * `pages` is included because an animated source is decoded with every frame stacked
- * into one strip, so a ten-frame GIF presents ten times its own area to the decoder —
- * which is exactly the case a per-frame count would misjudge.
- *
- * Returns false when the metadata never read: that asset already has a header code,
- * and claiming it is also too large would be inventing a second cause from nothing.
+ * `pages` counts because an animated source is decoded with every frame stacked into one
+ * strip, so a ten-frame GIF presents ten times its own area to the limit. False when the
+ * header never read: that asset already has a header code.
  */
 function isBeyondPixelBudget(metadata: ImageMetadata | null): boolean {
   if (metadata === null) return false;
@@ -476,12 +328,11 @@ function isBeyondPixelBudget(metadata: ImageMetadata | null): boolean {
 }
 
 /**
- * Measure every asset.
+ * Measure every asset: its dimensions, and its encoded size in each requested format.
  *
  * Never rejects for a bad image. A zero-byte file, a truncated PNG, a text file
  * with a `.png` extension and a file that vanished mid-run all become an
- * `AssetProbe` carrying `metadata: null` and a reason — §5.1(e) requires the run to
- * degrade rather than crash, and rule 9 requires the reason to reach the report.
+ * `AssetProbe` carrying `metadata: null` and a reason for the report.
  */
 export async function probeAssets(
   assets: readonly Asset[],
@@ -493,9 +344,9 @@ export async function probeAssets(
 
   for (let index = 0; index < assets.length; index += concurrency) {
     const batch = assets.slice(index, index + concurrency);
-    // `Promise.all` preserves input order, so the output order is a property of the
-    // asset list rather than of which encode happened to finish first (rule 11).
-    // The cap changes *which* assets are encoded, never the order they come back in.
+    // `Promise.all` preserves input order, so the output order follows the asset list,
+    // not which encode finished first. The cap changes which assets are encoded, never
+    // the order they come back in.
     results.push(...(await Promise.all(batch.map((asset) => probeOne(asset, options, withinCap)))));
   }
 
@@ -503,14 +354,13 @@ export async function probeAssets(
 }
 
 /**
- * The assets whose encodes will be attempted: the largest sources, up to the cap.
+ * The assets whose encodes will be attempted: the largest sources up to the cap, plus
+ * `alwaysMeasure`. `null` when nothing is capped.
  *
- * Assets that could never be encoded anyway — a vector, or one already in every
- * requested format — are excluded from the running *before* the cap applies, so
- * they cannot occupy a slot they will not use and quietly turn "the 500 largest"
- * into "some number below 500". That test is by extension, which is all we know
- * before a header is read; a mislabelled file is caught later by `metadata.format`
- * and merely returns its slot unused.
+ * Assets that could never be encoded (a vector, or one already in every requested
+ * format) are removed before the cap applies, so they cannot hold a slot they will not
+ * use. That test is by extension, all that is known before a header read; a mislabelled
+ * file is caught later by `metadata.format` and leaves its slot unused.
  */
 function assetsWithinCap(
   assets: readonly Asset[],
@@ -522,17 +372,14 @@ function assetsWithinCap(
   const eligible = assets.filter((asset) => couldEncode(asset, options.formats));
   if (eligible.length <= cap) return null;
 
-  // Exempt before the cap is applied rather than added back afterwards: added back,
-  // they would take slots from the largest assets and quietly turn "the 500 largest"
-  // into some smaller number. Exempted, the cap still means what it says and these
-  // sit outside it.
+  // Exempt assets are left out of the ranking rather than added to it, so they take no
+  // slot and the cap still counts the largest of the rest.
   const exempt = new Set((options.alwaysMeasure ?? []).map((asset) => asset.path));
   const ordered = [...eligible]
     .filter((asset) => !exempt.has(asset.path))
     .sort(
-      // Largest source first, ties broken by path so two runs over the same
-      // repository choose the same assets — rule 11 reaches the *selection*, not
-      // only the output order.
+      // Largest source first, ties broken by path, so two runs over the same
+      // repository choose the same assets.
       (a, b) => b.bytes - a.bytes || compareStrings(a.relative, b.relative),
     );
 
@@ -583,39 +430,26 @@ async function probeOne(
       skipped.push({
         measurement: format,
         code: 'beyond-encode-cap',
-        // Names `--probe-all` rather than `--max-encodes`: both exist, but this
-        // string is what a user meets at the moment they want the missing number,
-        // and a discoverable name matters more there than orthogonality does.
+        // Names `--probe-all` rather than `--max-encodes`: this is what a user reads
+        // at the moment they want the missing number.
         reason: `not among the ${options.maxEncodedAssets} largest assets measured (run with --probe-all to measure the rest)`,
       });
       continue;
     }
 
     try {
-      // The measurement has to describe an image equivalent to the original. Without
-      // this a ten-frame GIF encodes to a single frame and reports a saving of ~92%
-      // that is only achievable by throwing nine frames away.
+      // Encode every frame: a GIF encoded as its first frame alone reports a saving that
+      // is only achievable by throwing the other frames away.
       const animated = (metadata?.pages ?? 1) > 1;
       const lossyBytes = await options.probe.encodedBytes({ path: asset.path, format, animated });
 
-      // 🔴 R131 / R129. For a PNG source, measure the exact encode too and keep whichever
-      // is smaller. **Lossless is bit-exact, so when it also produces fewer bytes it wins
-      // on both axes and there is nothing left to weigh** — which is why this needs no
-      // "text-heavy" classifier and never consults a perceptual metric. That matters:
-      // PSNR rated text-heavy images HIGHER at every quality and would have argued for
-      // LOWERING quality on exactly this class (R47). A byte comparison against an exact
-      // encode cannot be inverted by a metric it does not use.
-      //
-      // ⚠️ **PNG only, and the trigger is the source container rather than the picture.**
-      // R129 measured 5,857 images: lossless wins 1,736 times and 1,689 of those are PNG,
-      // while a JPEG source wins 7 times in 1,693 and loses by 135% median, because
-      // encoding already-lossy pixels exactly preserves their artefacts at full price.
-      // Restricting to PNG keeps 97.3% of the benefit and skips 34% of the second encodes,
-      // which are not free: lossless measures at 1.30x the lossy encode.
-      //
-      // ⚠️ **ONE entry is recorded, not two.** Everything downstream — `measuredSavings`,
-      // `formatOpportunity`, the report's per-format grouping — assumes at most one
-      // measurement per format and would silently take whichever came last.
+      // For a PNG source going to WebP, also measure a lossless encode and keep whichever
+      // is smaller. Lossless is bit-exact, so when it is also smaller there is nothing to
+      // weigh and no quality metric is consulted. PNG only: an already-lossy source such
+      // as a JPEG almost never gains. One entry is recorded, because `measuredSavings` in
+      // `plan.ts`, the audit's format opportunities and the report's per-format grouping
+      // all assume one measurement per format. See "Lossless WebP for PNG sources" in
+      // ARCHITECTURE.md.
       const tryLossless = format === 'webp' && asset.extension === '.png';
       const losslessBytes = tryLossless
         ? await options.probe.encodedBytes({ path: asset.path, format, animated, lossless: true })
@@ -628,10 +462,8 @@ async function probeOne(
         bytes: useLossless ? losslessBytes : lossyBytes,
       });
     } catch (error) {
-      // R64. The pixel limit is the one failure of the five with a fix the reader
-      // controls, and folding it into a generic encode failure is the single
-      // regression R60 caused. Decided by arithmetic against our own limit, not by
-      // reading libvips' `Input image exceeds pixel limit`.
+      // Decided by arithmetic against our own limit, not by reading libvips'
+      // `Input image exceeds pixel limit`.
       fail(format, isBeyondPixelBudget(metadata) ? 'too-large-to-encode' : 'encode-failed', error);
     }
   }
@@ -646,9 +478,8 @@ function encodeSkipReason(
   format: EncodeFormat,
 ): Pick<ProbeSkip, 'code' | 'reason'> | null {
   if (metadata === null) {
-    // The same split as the metadata failure above, for the same reason: this asset
-    // already has a code saying whether it is an unreadable SVG or not an image, and
-    // the encode entry saying something vaguer would contradict it in the same report.
+    // The same code as the metadata failure, so the encode entry cannot contradict it
+    // with something vaguer in the same report.
     const code = headerFailureCode(asset);
     return { code, reason: ENCODE_FOLLOWS[code] };
   }

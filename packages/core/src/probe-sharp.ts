@@ -1,15 +1,10 @@
 /**
- * The real `ImageProbe`, backed by sharp. It both measures and writes.
+ * The real `ImageProbe`, backed by sharp. It both measures and writes, and is one of the
+ * few modules that touch the disk.
  *
- * One of the small number of modules allowed to touch a disk, alongside `discover`
- * and the transaction's file store.
- *
- * sharp is imported lazily on purpose. It is a native module, and v2's worst bug was
- * a native module built for one platform and broken everywhere else for months. A
- * top-level import would load the binary the moment anything in `upfly-core` is
- * imported, so `upfly audit --no-probe` would fail on a machine with a mismatched
- * binary even though it needs no pixels at all. Deferring the import to the moment
- * somebody asks for a probe keeps that escape hatch real.
+ * sharp is imported lazily. It is a native module, and a top-level import would load its
+ * binary whenever `upfly-core` is imported, so `upfly audit --no-probe` would fail on a
+ * machine whose sharp binary does not load, although it reads no pixels at all.
  */
 
 import { mkdir } from 'node:fs/promises';
@@ -20,72 +15,47 @@ import { DEFAULT_ENCODE_QUALITY, MAX_ENCODE_PIXELS } from './probe.js';
 /**
  * Build the sharp-backed probe.
  *
- * The quality is fixed when the probe is built, and the same object then serves both
- * `audit` and `optimize`. That is what makes them unable to disagree: there is one
- * setting, held in one place, and neither command carries its own.
- *
- * Async because of the lazy import. The rejection is worth catching: on a broken
- * native install this is where the user finds out, and it is a much better place than
- * halfway through an audit.
+ * The quality is fixed here, and the same probe serves `audit` and `optimize`, so the two
+ * cannot use different settings. Async because sharp is imported on first use: it rejects
+ * when sharp's native binary cannot load, before any image has been read.
  */
 export async function createSharpProbe(
   quality: Readonly<Record<EncodeFormat, number>> = DEFAULT_ENCODE_QUALITY,
 ): Promise<ImageProbe> {
   const { default: sharp } = await import('sharp');
 
-  // libvips memoises operations, and holding an operation means holding the file it
-  // read open for the lifetime of the process. On Windows that makes a file this
-  // probe has looked at undeletable by the same process: a recursive remove of a tree
-  // the run had just measured failed with EBUSY on the same file six times over
-  // sixteen seconds, while a fresh shell deleted it instantly. No amount of waiting
-  // wins against a handle nobody is going to release, and the retry that appears to
-  // fix it becomes folklore.
-  //
-  // It is set here rather than by the caller because a caller who forgets gets a
-  // failure that looks like a virus scanner or a flaky disk, which is the version of
-  // this that already cost a day.
-  //
-  // The cost of turning it off is not known. An applied run decodes the same source up
-  // to three times, for the header, for the measurement and for the file it writes, so
-  // there was something here for the cache to do. Correctness decides it either way,
-  // because a file the process cannot delete is not a tradeable amount of slowness,
-  // but nobody should quote this as free until it has been measured.
+  // libvips caches operations, and a cached operation holds its input file open for the
+  // life of the process, so on Windows the process cannot delete a file it has probed and
+  // no retry helps. Turned off here rather than by the caller, because a caller who forgets
+  // gets a failure that looks like a virus scanner or a flaky disk. What the cache would
+  // save is unmeasured: an applied run decodes each source up to three times (header,
+  // measurement, written file).
   sharp.cache(false);
 
   /**
    * Build the output pipeline for one encode.
    *
-   * Both methods below go through here, so a measurement and the file it predicts
-   * are produced by the same settings by construction rather than by two call sites
-   * being kept in step.
+   * Both encoding methods use it, so a measurement and the file it predicts always share
+   * their settings.
    */
   const encoder = (path: string, format: EncodeFormat, animated: boolean, lossless = false) => {
-    // `{ animated }` is not optional in spirit. Without it sharp keeps the first
-    // frame and nothing else: a ten-frame fixture encodes to 616 bytes instead of
-    // 8370, so every animated GIF would report a saving only achievable by
-    // destroying the animation.
+    // Without `animated`, sharp encodes the first frame alone, and every animated GIF
+    // would report a saving only achievable by destroying the animation.
     //
-    // `limitInputPixels` is passed explicitly at exactly sharp's own default, so it
-    // changes no behaviour and moves no measurement. What it changes is ownership:
-    // R64 classifies a too-large source by comparing its measured dimensions against
-    // `MAX_ENCODE_PIXELS`, and that comparison is only honest if the limit being
-    // compared to is the limit actually in force. Leaving it implicit would mean our
-    // arithmetic and libvips' threshold could drift apart on an upgrade, and the
-    // symptom would be a `too-large-to-encode` reason attached to the wrong images.
+    // `MAX_ENCODE_PIXELS` equals sharp's default `limitInputPixels`, so passing it changes
+    // no output. It is passed so that the limit in force stays the one
+    // `too-large-to-encode` is computed against, even if sharp's default changes.
     const pipeline = sharp(path, { animated, limitInputPixels: MAX_ENCODE_PIXELS });
     switch (format) {
       case 'webp':
-        // R131: `lossless` and `quality` are alternatives, not a pair — sharp ignores
-        // `quality` when `lossless` is set, and passing both would put a number in the
-        // call that has no effect on the output and every appearance of having one.
+        // sharp ignores `quality` when `lossless` is set, so the two are never passed
+        // together: a number with no effect would look as if it had one.
         return lossless
           ? pipeline.webp({ lossless: true })
           : pipeline.webp({ quality: quality.webp });
       case 'avif':
-        // Deliberately not offered for AVIF. R47 measured `avif 75` holding on the class
-        // this exists for — 25.6% saving, worst textured SSIM 0.9934 — and R129's 5,857
-        // images say nothing about lossless AVIF. An option nobody measured is an option
-        // nobody should be able to select.
+        // No lossless AVIF: `avif 75` already holds up on the images lossless helps, and
+        // lossless AVIF has not been measured, so it is not offered.
         return pipeline.avif({ quality: quality.avif });
       default: {
         const unhandled: never = format;
@@ -98,12 +68,9 @@ export async function createSharpProbe(
     quality,
 
     async metadata(path: string): Promise<ImageMetadata> {
-      // Deliberately a plain read, not `{ animated: true }`. For an animated GIF the
-      // animated read reports every frame stacked into one strip - sharp's own
-      // 370x285 ten-frame fixture comes back as 370x2850 - which would make an
-      // "oversized by dimensions" finding wrong by a factor of ten. The plain read
-      // gives one frame's dimensions and still reports `pages`, so it answers both
-      // questions in one pass.
+      // A plain read, not `{ animated: true }`: the animated read reports every frame
+      // stacked into one strip, so an oversized-by-dimensions finding would be wrong by
+      // the frame count. The plain read gives one frame's size and still reports `pages`.
       const result = await sharp(path).metadata();
 
       return {
@@ -121,11 +88,10 @@ export async function createSharpProbe(
     },
 
     async encodeToFile({ path, format, animated, destination, lossless }): Promise<number> {
-      // The staged tree mirrors the project tree, so a destination is routinely
-      // several directories deep inside a run directory that did not exist a moment
-      // ago. sharp reports that as "unable to open for write", which reads like a
-      // permissions problem and is not one. A port that writes a file owns getting
-      // somewhere to write it.
+      // The staged tree mirrors the project, so a destination is often several
+      // directories deep in a run directory that did not exist a moment ago. sharp
+      // reports a missing directory as "unable to open for write", which reads like a
+      // permissions problem, so the port creates it.
       await mkdir(dirname(destination), { recursive: true });
       const { size } = await encoder(path, format, animated, lossless).toFile(destination);
       return size;
