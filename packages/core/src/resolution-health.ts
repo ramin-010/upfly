@@ -1,40 +1,32 @@
 /**
- * Whether a run found its serving root, and therefore whether its `broken` findings
- * mean anything.
- *
- * When almost no root-relative reference resolves, the finding is not that those
- * references are broken. The finding is that the engine could not work out where the
- * project serves files from, and every `broken` under it is a symptom being reported
- * as a diagnosis. Measured on eleventy-docs: 2 of 16 root-relative references link,
- * and the other 14 are reported broken while their targets sit on disk.
- *
- * Deliberately narrow. Only root-relative paths depend on a serving root, so only
- * those are counted; a repository whose relative imports are genuinely broken scores
- * normally here and keeps its findings, and the diagnosis this produces is correct by
- * construction rather than by being the most likely explanation.
+ * Whether a run found its serving root, and so whether its `broken` findings can be
+ * believed. When almost no root-relative reference resolves, the finding is not that those
+ * references are broken but that the engine could not work out where the project serves
+ * files from. Only root-relative references depend on a serving root, so only they are
+ * counted, and a project whose relative imports are genuinely broken keeps its findings.
+ * See "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
 
 import type { Graph } from './graph.js';
 import { isLinked } from './reference.js';
 
 /**
- * Below this share of root-relative references linking, the run is not reportable.
+ * The share of checkable root-relative references that must link for the serving root to
+ * count as found. Below it, given at least `MINIMUM_ROOT_RELATIVE` of them, the audit
+ * replaces the root-relative `broken` findings with one `serving-root-unknown` finding, and
+ * the planner refuses.
  *
- * Measured rather than chosen, across the five validation repositories in both
- * states: configured or correctly detected, and with no serving root found at all.
- * The numbers are in ARCHITECTURE.md under "Serving roots". The two populations do
- * not overlap and do not come close to overlapping, so this sits in the gap rather
- * than at the edge of either.
+ * Measured on the five validation repositories, with a serving root and with none found:
+ * the two populations do not come close to overlapping, and this sits in the gap. See
+ * "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
 export const RESOLUTION_FLOOR = 0.25;
 
 /**
- * Fewer root-relative references than this and the share is not a measurement.
- *
- * A repository with one root-relative reference that happens to be genuinely broken
- * would otherwise score zero and have its one true finding suppressed. Judgement
- * rather than measurement, and stated as such: the smallest real instance in the
- * corpus is eleventy-docs at 16.
+ * Fewer checkable root-relative references than this and the share is not a measurement,
+ * so the floor does not apply. Otherwise a project whose one root-relative reference is
+ * genuinely broken would score zero and see that true finding replaced by a wrong
+ * diagnosis. A judgement rather than a measurement.
  */
 export const MINIMUM_ROOT_RELATIVE = 10;
 

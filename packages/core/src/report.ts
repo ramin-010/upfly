@@ -1,25 +1,12 @@
 /**
- * Assemble everything the pipeline learned into the shape people and agents read.
+ * Assembles everything a run learned into the report people and agents read.
  *
- * The JSON is **public API** (rule 6): versioned, snapshot-tested, and changed only
- * deliberately. An agent reading `upfly audit --json` is as much a consumer as a
- * person reading the terminal, and it is the one that cannot ask what a field meant.
- *
- * Three properties this module exists to guarantee:
- *
- * **No absolute path ever reaches the output.** §5.1(f) runs the same repository
- * from two working directories and requires byte-identical JSON, and half the data
- * upstream carries both an absolute `path` and a POSIX `relative` — `SkippedEntry`,
- * `ExcludedRoot`, `UnscannedFile`, `Reference.file`. Projecting to the relative form
- * is this module's job, and there is a test that greps the serialised report for the
- * root.
- *
- * **Deterministic** (rule 11): every list sorted, no timestamps, no durations, and
- * no locale-dependent formatting anywhere near a number.
- *
- * **Nothing is dropped.** Every skip from every stage lands in one flat `skipped`
- * list. Rule 9 says a silent skip is a P0 bug, and a single list is much harder to
- * forget to append to than five per-stage ones.
+ * The JSON is public API: versioned, snapshot-tested, and changed only on purpose. No
+ * absolute path may reach it, though much of the data upstream carries one beside a POSIX
+ * `relative`; a test greps the serialised report for the root. The same input gives a
+ * byte-identical report, so every list is sorted and nothing depends on time or locale.
+ * Every stage's skips land in one `skipped` list, each with a reason. See "The report" in
+ * ARCHITECTURE.md.
  */
 
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
@@ -50,79 +37,39 @@ import type {
 import { groupUnscanned } from './unscanned.js';
 
 /**
- * Schema version of the JSON report.
+ * The report's schema version, carried in `Report.version`.
  *
- * Bumped when a field changes meaning or disappears — never for an addition, since
- * a consumer that ignores unknown fields keeps working.
- *
- * **2 — R22.** `findings` no longer holds every finding the audit produced: an
- * unreferenced vector nothing can act on is demoted to `unusedVectors`, and
- * `summary.findings` counts the itemised set so the two can never disagree. That is a
- * change of meaning in the array a consumer is most likely to read, so it earns the
- * bump even though `unusedVectors` and `staleConversions` are themselves additions.
- * The alternative — leaving the vectors in place and flagging them — would have kept
- * the version at 1 by making an agent and a person disagree about the same run.
- *
- * ⚠️ **Deliberately NOT bumped for `byResolvedVia` (R36).** It is a pure addition — no
- * existing field changes meaning and no consumer that ignores unknown keys is
- * affected — so the rule above applies as written. The `ResolvedVia` *type* did change
- * (`project-root` split in two), but that is the exported TypeScript API rather than
- * the report schema, and it belongs to package versioning. Bumping here for an
- * addition would train readers to ignore the number.
- *
- * ⚠️ **Deliberately NOT bumped for `diagnosticsFile` or for R64's probe codes either**,
- * and both halves follow the rule above rather than bending it. `diagnosticsFile` is a
- * pure addition; nothing that existed changes meaning. R64 replaced `header-unreadable`
- * with `not-an-image` and `svg-unreadable` and added `too-large-to-encode` — which
- * *sounds* like a breaking change and is not one **here**, because `SkippedItem` carries
- * `what`, `stage` and `reason` and never a code. `ProbeSkipCode` is the exported
- * TypeScript API, so it belongs to package versioning, exactly as `ResolvedVia` did.
- * Checked rather than assumed: the fixtures cannot show it, because not one of them has
- * an asset that fails to decode.
+ * Bumped when a field changes meaning or disappears, never for an addition, since a
+ * consumer that ignores unknown fields keeps working. A change to an exported TypeScript
+ * type that the JSON does not show, such as a new `ProbeSkipCode`, is versioned with the
+ * package instead.
  */
 export const REPORT_SCHEMA_VERSION = 6;
 
-/** The numbers people screenshot. */
+/** The run's headline numbers. */
 export interface ReportSummary {
   readonly assets: number;
   readonly assetBytes: number;
   readonly sourceFiles: number;
   readonly references: number;
-  /** References that point at an asset — via `isLinked`, so patterns count. */
+  /** References linked to an asset, pattern references included. */
   readonly linkedReferences: number;
   /** Assets with at least one reference. */
   readonly referencedAssets: number;
   readonly findings: Readonly<Record<Finding['kind'], number>>;
   /**
-   * Best measured saving per asset, summed.
-   *
-   * The best, not the total: an asset measured against both webp and avif would
-   * otherwise be counted twice and the headline number would be a fiction.
+   * The best measured saving per asset, summed. The best rather than the total, so an
+   * asset measured against both webp and avif counts once.
    */
   readonly potentialSavingBytes: number;
   /**
-   * Every setting each measured format's savings were produced at, sorted, deduplicated.
+   * Every setting each format's savings were measured at, sorted and deduplicated. Empty
+   * when there is no format opportunity.
    *
-   * Derived from the measurements themselves rather than from configuration, so it
-   * always describes the run that produced `potentialSavingBytes` even if the
-   * configuration changed afterwards. Empty when nothing was probed.
-   *
-   * A saving without this is not a figure. The same image saves 95% at quality 50
-   * and 44% at quality 90, and a reader who is not told which cannot know what they
-   * are being offered.
-   *
-   * 🔴 **A LIST since R131, and it was a scalar that LIED the moment settings varied.**
-   * The old field was built by `savingQuality[finding.to] = finding.quality` — assignment
-   * inside a loop, so it recorded whichever finding came last. That was invisible while
-   * quality was fixed per format, and R131 is exactly the change that makes it vary: a
-   * run can now encode one PNG at 80 and the next losslessly, because the choice is made
-   * per image by comparing byte counts. A scalar would have reported one of them and
-   * silently dropped the other.
-   *
-   * ⚠️ **The SHAPE is B11's call, not the parent chat's**, and is raised in STATE.md.
-   * R131 ruled the per-entry type (`number | 'lossless'`); this field follows from it but
-   * was not itself ruled. A list keeps every setting rather than inventing a `'mixed'`
-   * sentinel, which would tell a reader that settings differed without telling them how.
+   * A saving means little without its setting, and the setting varies per image: a PNG's
+   * webp saving is measured lossless when that encode is smaller. Taken from the
+   * measurements rather than the configuration, so it describes the run that produced
+   * `potentialSavingBytes`.
    */
   readonly savingQuality: Readonly<Partial<Record<EncodeFormat, readonly EncodeSetting[]>>>;
   /** `false` when the run was `--no-probe`; oversized and opportunities are absent. */
@@ -130,132 +77,81 @@ export interface ReportSummary {
 }
 
 /**
- * R109's four boxes, as a FIELD the engine publishes rather than a rule four consumers
- * each re-derive (R111).
+ * How a reference is scored: whether it had an answer, and whether the engine gave one.
  *
- * |  | the engine acted | the engine refused |
+ * |  | the engine answered | the engine refused |
  * |---|---|---|
- * | **there is an answer** | **A** resolved it — success | **B** missed it — the only ordinary failure |
- * | **there is no answer** | **D** claimed it anyway — the dangerous failure | **C** refused it — success |
+ * | there is an answer | `resolved-with-an-answer` | `missed-with-an-answer` |
+ * | there is no answer | a wrong answer | `correctly-refused` |
  *
- * \U0001f534 **THE ENGINE CANNOT CLASSIFY D, AND THE SCHEMA SAYS SO OUT LOUD RATHER THAN OMITTING
- * IT.** D is *we were wrong and do not know it* — a false link, a false `broken`, a false
- * `dead`. By construction the engine believes every one of those was right, so a
- * self-reported D would always be zero. **A consumer computing REFUSAL ACCURACY = C / (C + D)
- * against a self-reported D gets 100% for free**, which is the decoy-oracle failure moved
- * into the schema — precisely what R111 exists to prevent. D comes from an independent
- * oracle (`bench/src/verify.ts`), and R119 and R121 are what happens when that oracle shares
- * the engine's assumptions.
- *
- * \U0001f534 **AND THE DEFAULT IS AGAINST US.** *"There is no answer"* is our own judgement, so
- * `correctly-refused` requires a NAMED property of the reference drawn from the closed list
- * in `REFUSAL_REASONS`. Anything else is `missed-with-an-answer`. **If we cannot say why an
- * answer was impossible, we assume there was one and we missed it.** Adding a new refusal
- * reason is then a visible edit to a named list rather than a one-line tweak that moves a
- * reference from B to C and improves the headline (R109's guard 2).
+ * The engine cannot report its own wrong answers, since it believes each one, so that box
+ * has no value here: counting it takes an independent check such as `bench/src/verify.ts`.
+ * See "Scoring references for accuracy" in ARCHITECTURE.md.
  */
 export type ReferenceClass =
-  /** A — the engine found where it points. `broken` is HERE: we resolved it and told the truth. */
+  /** The engine found where it points. Includes `broken`: the target is known, and missing. */
   | 'resolved-with-an-answer'
-  /** B — an answer existed and we did not get it. The only ordinary failure. */
+  /** An answer existed and the engine did not find it. */
   | 'missed-with-an-answer'
-  /** C — no answer existed and we declined, for a reason we can name about the reference. */
+  /** No answer existed, and the engine declined for a reason it can name. */
   | 'correctly-refused'
   /**
-   * Not in any box: a path-shaped guess nobody asserted.
-   *
-   * ⚠️ **Kept out of both accuracy figures on purpose.** A string in a lockfile that looks
-   * like a path was never a claim about an asset, so scoring ourselves on it measures the
-   * engine against work that was never its job — R109's original objection, one level down.
+   * A path-shaped guess nobody asserted, such as a string in a lockfile. Left out of both
+   * accuracy figures, since it was never a claim about an asset.
    */
   | 'not-a-claim';
 
 /**
- * The closed list of properties that prove a reference HAS NO ANSWER.
+ * The closed list of properties that prove a reference has no answer.
  *
- * \U0001f534 **This list is the guard on R109's trap, and its being a list is the guard.** Each
- * entry names something about the REFERENCE — its text, or a rule we published — that makes
- * an answer impossible for anyone, not merely hard for us. *"We cannot handle it"* is not on
- * the list and must never be added.
- *
- * ⚠️ Adding an entry moves references from `missed-with-an-answer` to `correctly-refused`
- * and improves the headline. **That is a reviewable edit here, not a one-line tweak
- * somewhere else**, which is the whole reason the test is a list membership rather than a
- * chain of conditions.
+ * Each names a property of the reference itself, such as its text or where it points,
+ * never a limit of the engine. Adding one moves references from
+ * `missed-with-an-answer` to `correctly-refused` and raises the accuracy figure, so it has
+ * to be a visible edit to this list.
  */
 const REFUSAL_REASONS: ReadonlyArray<{
   readonly id: string;
   readonly holds: (reference: Reference) => boolean;
   /**
-   * What this reason is known to get WRONG, measured, or `null` when nothing is known.
-   *
-   * 🔴 **A refusal reason moves references out of *our miss* and into *correctly
-   * refused*, which raises the headline. If we know it over-claims, the number cannot be
-   * published without that knowledge attached** — so the bound travels in the schema
-   * beside the count rather than in prose a consumer never reads. R74's habit: state the
-   * blind spot where the figure is, not in a footnote somewhere else.
+   * What this reason is known to over-claim, as measured, or `null` when nothing is known.
+   * It reaches the report beside the count, so the known error travels with the figure.
    */
   readonly bound: string | null;
   /**
-   * WHAT the bound was measured against, and WHEN — required whenever `bound` is set.
-   *
-   * 🔴 **A bound nobody can check is R117 inside the schema.** The measurement is prose
-   * in a string field: a person can verify it and a machine cannot, and it goes stale the
-   * moment the corpus changes. **So it carries its own provenance**, and a reader who
-   * knows the corpus has moved can tell at a glance that the sentence beside the count no
-   * longer describes anything.
-   *
-   * ⚠️ It cannot be enforced automatically and is not pretending to be. What it does is
-   * make the staleness VISIBLE rather than silent, which is the difference between a
-   * figure that ages and one that quietly lies.
+   * What the bound was measured against, and when. Set it whenever `bound` is set, so a
+   * reader can tell when the measurement no longer describes the engine or the repositories.
    */
   readonly measuredAgainst: string | null;
 }> = [
   {
-    // A deliberate boundary we published: a real file we choose not to index (R92).
-    // The target is KNOWN — we simply do not act on it — so nothing was missed.
+    // The target is known but outside what Upfly acts on (an excluded directory, a
+    // package), so nothing was missed.
     id: 'out-of-scope',
     holds: (reference) => reference.resolution === 'out-of-scope',
     bound: null,
     measuredAgainst: null,
   },
   {
-    // The path does not exist until something renders — a property of the written text,
-    // and R112 measured that 46 of 62 such unknowns are a parameter or a prop, which no
-    // analysis reaches.
-    //
-    // 🔴 **BOTH shared predicates, and the first version used only one.**
-    // `interpolationChunks` is the RESOLVER's vocabulary — `${}`, `#{}`, `@{}`, the three
-    // syntaxes a glob can be built from — and it does not know `{{ }}` or `{% %}`. Those
-    // are 49 of the `dynamic` references on the five validation repositories, all of them
-    // genuinely assembled at render time, and every one would have been filed as **our
-    // miss**. The test caught it on the first run.
-    //
-    // ⚠️ **`templateExpressionReason` is the function that made these `dynamic` in the
-    // first place**, so using it to explain why they were refused keeps one vocabulary
-    // instead of inventing a sixth list (R76).
-    //
-    // ⚠️ Asked of the ASSEMBLED path when there is one (R175): a `+` chain's source text
-    // holds no `${`, so `base + '/icon-' + size + '.png'` would otherwise be filed as our
-    // miss while its template twin is filed here.
+    // The path does not exist until something renders it. Both vocabularies are needed:
+    // `interpolationChunks` knows only the syntaxes a glob is built from (`${}`, `#{}`,
+    // `@{}`), and `templateExpressionReason`, which the HTML and Markdown adapters use to
+    // mark these references `dynamic`, also knows `{{ }}`, `{% %}` and `<% %>`. The glob
+    // check reads the assembled path when there is one, since a `+` chain's source text
+    // holds no `${`.
     id: 'assembled-at-runtime',
     holds: (reference) =>
       reference.resolution === 'dynamic' &&
       (templateExpressionReason(reference.rawPath) !== null ||
         interpolationChunks(provenPath(reference)).length > 1),
-    // ⚠️ RE-MEASURED BY B15 on the final Phase 2 engine, with R112's own classifier, and the
-    // population moved for two recorded reasons: R176 stopped collecting 39 templates that
-    // were never images (versions, i18n keys, `layout.${ext}` naming `.tsx`), and R175 made
-    // the `+` chains R112 had to sweep out of the source by hand visible to the engine.
     bound:
       'Of 18 such references, 14 are a parameter, a prop or instance state, which nothing reaches, but 4 are not. Two read an imported module constant, which a module graph would resolve (to an absolute URL); one is a filename from a build-time glob; one is an environment variable the deploy supplies. The first three have an answer we do not compute, so they are misses this reason absorbs. Read as roughly four in five.',
     measuredAgainst:
       '2026-09-25, on five public repositories: astro-docs, eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the engine have changed since, this bound has not been re-measured.',
   },
   {
-    // R118: the attribute could not be parsed as CSS AND provably holds no url-taking
-    // function, so there is no reference inside it to find. The adapter established that
-    // and said so; this reads its answer rather than re-deriving it.
+    // A style attribute the HTML adapter could not read that holds no url-taking function,
+    // so there is no reference in it to find. The adapter decides that and says so in its
+    // note, and this matches the note's wording rather than deciding again.
     id: 'no-reference-in-it-to-find',
     holds: (reference) => (reference.note ?? '').includes('no reference in it to find'),
     bound: null,
@@ -264,12 +160,9 @@ const REFUSAL_REASONS: ReadonlyArray<{
 ];
 
 /**
- * Which of R109's boxes this reference is in.
- *
- * ⚠️ **`broken` is `resolved-with-an-answer` and that is not generosity (R109).** We found
- * where the reference points and reported the truth: the file is not there. That is the
- * user's defect and our success. Counting it against ourselves was part of the mistake
- * R109 was issued to correct.
+ * Which accuracy class a reference falls in. `broken` counts as `resolved-with-an-answer`:
+ * the engine found where the reference points, and the missing file is the project's
+ * defect, not a miss.
  */
 export function classifyReference(reference: Reference): ReferenceClass {
   if (reference.resolution === 'discarded') return 'not-a-claim';
@@ -285,11 +178,10 @@ export function classifyReference(reference: Reference): ReferenceClass {
     if (reason.holds(reference)) return 'correctly-refused';
   }
 
-  // \U0001f534 THE DEFAULT, and it is deliberately the unflattering one. An `unresolved-alias`
-  // lands here: alias-shaped with no rule that maps it is OUR gap until somebody shows it
-  // is not — a bundler config we did not read would have resolved it. So does a character
-  // reference outside the decoder's bound (R118), and a style attribute that failed to
-  // parse while containing a `url()`.
+  // Anything no reason explains counts as a miss. That includes an `unresolved-alias` (a
+  // bundler config Upfly did not read may resolve it), a path whose character references
+  // cannot be located exactly, and a style attribute that could not be read but holds a
+  // url-taking function.
   return 'missed-with-an-answer';
 }
 
@@ -307,22 +199,16 @@ export interface ReferenceEntry {
   readonly file: string;
   readonly rawPath: string;
   readonly resolution: Resolution;
-  /** The adapter's note, or the exclusion rule — whichever explains this one. */
+  /** The exclusion rule for `out-of-scope`, otherwise the adapter's note or a default. */
   readonly reason: string;
   /**
-   * Which of R109's boxes this reference is in — a FIELD, not a derivation (R111).
-   *
-   * 🔴 **If the CLI derived it, the CLI, the extension, the agent contract and `bench/`
-   * would each hold a copy of the rule and the copies would drift.** That is R76's two
-   * vocabularies and R87's exemption list, in the schema. The engine decides once.
+   * The reference's accuracy class. The engine decides it once, so consumers do not each
+   * keep a copy of the rule that could drift.
    */
   readonly classification: ReferenceClass;
   /**
-   * WHICH named property made this a correct refusal, or `null` when it is not one.
-   *
-   * ⚠️ R109's guard 1: box C is ITEMISED, never totalled. A count of refusals is a
-   * number anyone can inflate; a list of refusals with a reason each is something a
-   * reader can disagree with.
+   * The reason that made this a correct refusal, or `null` when it is not one. Each
+   * refusal is listed with its reason, not only counted, so a reader can dispute one.
    */
   readonly refusalReason: string | null;
 }
@@ -335,10 +221,8 @@ export interface ClassificationBound {
   /** The measured over-claim, in words a reader can check. */
   readonly bound: string;
   /**
-   * What that measurement was taken against, and when.
-   *
-   * 🔴 Present so a reader can tell whether the sentence still applies. A bound with no
-   * provenance is unfalsifiable, which is the failure R117 names — here, in the schema.
+   * What that measurement was taken against, and when, so a reader can tell whether it
+   * still applies.
    */
   readonly measuredAgainst: string;
 }
@@ -347,56 +231,35 @@ export interface ReferenceReport {
   readonly byResolution: Readonly<Record<Resolution, number>>;
   readonly byConfidence: Readonly<Record<Confidence, number>>;
   /**
-   * How each linked reference reached its target, counted (R36).
-   *
-   * ⚠️ **This is not decoration: it is the only thing in the report that says which
-   * links may be rewritten.** R15 holds that a link resolved by guessing at the base
-   * proves the asset is *alive* without licensing an edit to the string — and until
-   * this landed, `resolvedVia` appeared in the report zero times, so a consumer could
-   * not tell a guess from an ordinary resolution and the planner would have had no
-   * reason to give when it declined one. A silent decline is a rule 9 P0.
-   *
-   * Only `resolved` and `resolved-pattern` references have a `resolvedVia`, so these
-   * counts sum to those two entries of `byResolution` and to nothing else.
+   * How each linked reference reached its target, counted. A link found by guessing at the
+   * base proves the asset is used but does not license rewriting the text, and these counts
+   * are how a consumer tells such links from ordinary ones. They sum to the `resolved` and
+   * `resolved-pattern` entries of `byResolution`. See "A link says the asset is alive;
+   * `resolvedVia` says whether the text may be edited" in ARCHITECTURE.md.
    */
   readonly byResolvedVia: Readonly<Record<ResolvedVia, number>>;
   /**
-   * Every reference in exactly one of R109's boxes, so neither accuracy figure can be
-   * assembled wrongly (R111).
-   *
-   * **RESOLUTION ACCURACY = A / (A + B)** — `resolved-with-an-answer` over itself plus
-   * `missed-with-an-answer`. That is the answer to *"how accurate is it"*.
-   *
-   * 🔴 **REFUSAL ACCURACY = C / (C + D) CANNOT BE COMPUTED FROM THIS OBJECT, AND THAT IS
-   * DELIBERATE.** D is *we claimed something that was not there and do not know it*, which
-   * the engine cannot self-report — a self-reported D is always zero and would hand every
-   * consumer a free 100%. D comes from an independent oracle, and R119 and R121 are what
-   * happens when that oracle shares the engine's assumptions.
+   * Every reference counted in exactly one accuracy class. Resolution accuracy is
+   * `resolved-with-an-answer` over itself plus `missed-with-an-answer`. Refusal accuracy
+   * cannot be computed from the report: it needs the references the engine answered
+   * wrongly, which only an independent check can find.
    */
   readonly byClassification: Readonly<Record<ReferenceClass, number>>;
   /**
-   * Always `true`. See {@link byClassification} — it marks the absence of D as a decision
-   * rather than an oversight, which is the difference between a schema that is honest and
-   * one that merely looks complete.
+   * Always `true`. It marks the missing refusal accuracy as a decision rather than an
+   * oversight; see {@link byClassification}.
    */
   readonly refusalAccuracyIsNotSelfAssessable: true;
   /**
-   * The known over-claims among the refusal reasons THIS RUN used, with their measurement.
-   *
-   * 🔴 **Empty means no reason in play is known to over-claim — it does NOT mean the
-   * figure is exact.** A non-empty entry means `correctly-refused` is too high by a
-   * measured amount and `missed-with-an-answer` is too low by the same amount, so a
-   * consumer printing a resolution accuracy has this sitting next to the number it would
-   * otherwise print alone.
+   * The refusal reasons this run used that are known to over-claim, with their measurement.
+   * An entry means `correctly-refused` is too high, and `missed-with-an-answer` too low, by
+   * what its bound describes. Empty means no reason in use is known to over-claim, not that
+   * the figures are exact.
    */
   readonly classificationBounds: readonly ClassificationBound[];
   /**
-   * The "I could not be sure" bucket, in full: `dynamic`, `unresolved-alias` and
-   * `out-of-scope`.
-   *
-   * Listed because this is the honesty that earns trust for the rest of the
-   * report — it is exactly the set surfaced as "N references I couldn't safely
-   * rewrite". `broken` is not here: it is a finding, with a line number.
+   * Every `dynamic`, `unresolved-alias` and `out-of-scope` reference, listed in full: the
+   * references Upfly could not safely rewrite. `broken` references are findings instead.
    */
   readonly unsafe: readonly ReferenceEntry[];
   /**
@@ -407,16 +270,10 @@ export interface ReferenceReport {
    */
   readonly discardedCount: number;
   /**
-   * The discarded candidates themselves, when `includeDiscarded` asked for them.
-   *
-   * `null` — not `[]` — when they were not requested, because an empty array would
-   * read as "there were none", which is the same class of lie as silence reading
-   * as "no opportunity here".
-   *
-   * The list has to be reachable for a specific reason: the JSON adapter is
-   * deliberately generous, so if it ever starts eating genuine references the
-   * count tells you something is wrong while only the list tells you *what*. You
-   * cannot debug that from an integer, and §1.1 promises these are inspectable.
+   * The discarded candidates themselves when `includeDiscarded` asked for them, otherwise
+   * `null`, since an empty array would read as "there were none". If the JSON adapter ever
+   * swallows real references, the count shows something is wrong and only this list shows
+   * what.
    */
   readonly discarded: readonly ReferenceEntry[] | null;
 }
@@ -427,49 +284,32 @@ export interface CoverageReport {
   readonly unscannedFileCount: number;
   readonly excludedRoots: readonly { readonly path: string; readonly reason: string }[];
   /**
-   * Where a root-relative `/hero.png` was resolved from, and whether the project said
-   * so or the engine worked it out.
-   *
-   * Here because a guess the report does not disclose is the defect R49 was: the
-   * zero-false-`broken` figure was measured five times against serving roots somebody
-   * had tuned by hand, which is configuration no first run produces. `declared: false`
-   * already carries the distinction through the resolver and the planner; this is what
-   * carries it to the person reading the output.
-   *
-   * The same type the resolver was handed, rather than a copy of its shape, so the
-   * report cannot describe a run that did not happen.
+   * The serving roots that root-relative paths such as `/hero.png` were resolved against,
+   * and whether the project declared them or the engine worked them out, so a guess never
+   * passes for a declaration. It is the value the resolver was given, so the report cannot
+   * describe a different run.
    */
   readonly servingRoots: ServingRoots;
   /**
-   * The mechanisms THIS RUN did not put to work, distinct from what it refused (R96, R111).
-   *
-   * 🔴 **R96 is the reason this exists and it is the worst bug the project has had, because
-   * it made us look BETTER.** A `knownGap` saying *"the resolver climbs ancestors looking for
-   * a directory named `public`, so it will wrongly resolve this"* was tested under DECLARED
-   * serving roots — a configuration in which that climb never runs. The entry came out
-   * `broken`, agreed with the key, and the harness printed *"the gap is closed"*, **retiring a
-   * live defect and deleting the only written record of it.**
-   *
-   * ⚠️ **"Not exercised" is not "refused", and conflating them is the whole point.** A
-   * refusal is something the engine considered and declined, and it is in `unsafe` with a
-   * reason. This is machinery that never ran, so **the report says nothing about it either
-   * way** — and a consumer that treats silence as a pass is making the mistake R96 names.
+   * Mechanisms this run did not use, as distinct from references it refused. A refusal is
+   * in `unsafe` with a reason; a mechanism that never ran was not tested either way, so a
+   * clean result says nothing about it.
    */
   readonly notExercised: readonly NotExercised[];
 }
 
 /** One mechanism this run did not put to work, and why not. */
 export interface NotExercised {
-  /** A stable id a consumer can match on: `serving-root-detection`, `probe`, `aliases`. */
+  /** A stable id a consumer can match on: `serving-root-detection` or `probe`. */
   readonly mechanism: string;
-  /** Why it did not run — a fact about this run's INPUTS, never about the engine. */
+  /** Why it did not run: a fact about this run's inputs, never about the engine. */
   readonly why: string;
 }
 
 /** Where a skip happened, so a reader can tell a parse failure from a bad symlink. */
 export type SkipStage = 'discovery' | 'scan' | 'sweep' | 'citation' | 'measurement';
 
-/** One thing the engine declined to do. Rule 9's home in the report. */
+/** One thing the engine declined to do, and why. */
 export interface SkippedItem {
   /** POSIX-relative path of the file or asset involved. */
   readonly what: string;
@@ -478,18 +318,11 @@ export interface SkippedItem {
 }
 
 /**
- * One unreferenced vector, as it appears behind the flag.
+ * One unreferenced vector, as listed when `includeUnusedVectors` is set.
  *
- * A union rather than an optional `evidence`, mirroring the invariant
- * `PossiblyDeadFinding` already holds: no evidence means `dead`, so a hedge without its
- * citation is unrepresentable rather than merely discouraged.
- *
- * ⚠️ **It carries everything the finding carried, and that is load-bearing rather than
- * tidy.** §5.1(d)'s independent oracle walks `report.findings`, so the first version of
- * R22 silently removed 145 assets from the verification pass — astro-docs' verdict count
- * fell from 150 to 24 — and "0 confirmed-false" would have been quoted over a denominator
- * that had shrunk by 70% with nothing saying so. Demoting a finding from the default
- * report must not demote it out of being checked.
+ * A union like the findings it comes from, so a `possibly-dead` entry cannot lack its
+ * evidence. It keeps everything the finding carried because `bench/src/verify.ts` checks
+ * these entries exactly as it checks `findings`.
  */
 export type UnusedVectorEntry =
   | {
@@ -507,30 +340,11 @@ export type UnusedVectorEntry =
     };
 
 /**
- * R22: unreferenced vectors, counted rather than itemised.
+ * The assets a plan examined and offered no action on.
  *
- * **The argument is that we offer no action, not that vectors are small** — that
- * second claim was measured and is false: SVG is 96% of `shadcn-ui`'s hedged bytes.
- * We already decline to encode a vector (`VECTOR_EXTENSIONS`) and §8 decision 7 says
- * Upfly never deletes an asset, so itemising an unused one proposes the only two
- * things we will not do. On `astro-docs` this is 126 of 150 unreferenced-asset
- * findings, which is why the list was unreadable rather than merely long.
- *
- * Rule 9 is satisfied by `count` — nothing is silently dropped. `bytes` is here
- * because §8 decision 7 leaves the reader holding the decision, and a total is what
- * turns a list into one: `eleventy-docs`'s nine vectors are 210 KB, and nine
- * filenames would not have said that.
- */
-/**
- * The assets the planner looked at and offered no action on.
- *
- * R22's shape, verbatim, because it is R22's situation: one counted line carrying the
- * total size, itemised behind a flag, because there is nothing to offer rather than
- * because the list is long. The discriminator is whether a user can act, never how
- * many there are.
- *
- * Empty on a run that never planned. Declines only exist once something has decided
- * what to convert, so an audit-only report carries a zero here rather than a guess.
+ * Shaped like `unusedVectors`, and for the same reason: a count with the total size,
+ * itemised only on request, because there is nothing to offer rather than because the list
+ * is long. Zero for an audit-only run, which makes no plan.
  */
 export interface DeclinedReport {
   readonly count: number;
@@ -577,27 +391,17 @@ export interface UnusedVectorReport {
   /** Their total size, which is the fact that makes the count actionable. */
   readonly bytes: number;
   /**
-   * The vectors themselves, when `includeUnusedVectors` asked for them.
-   *
-   * `null` — not `[]` — when they were not requested, for the same reason
-   * `ReferenceReport.discarded` is: an empty array reads as "there were none", which
-   * is the same class of lie as silence reading as "no opportunity here".
+   * The vectors themselves when `includeUnusedVectors` asked for them, otherwise `null`,
+   * since an empty array would read as "there were none".
    */
   readonly assets: readonly UnusedVectorEntry[] | null;
 }
 
 /**
- * R23: an unreferenced vector standing beside a broken reference to its raster twin.
- *
- * Both halves are already findings on their own. Said together they mean *"you
- * converted this by hand and forgot the reference"*, which neither says alone — and
- * it is the one case where an unused vector **does** have an action, so these stay
- * itemised in `findings` rather than being demoted by R22.
- *
- * ⚠️ Deliberately **not** phrased as a conclusion. The pairing is two facts and their
- * proximity; the reader decides whether it is a forgotten conversion or a
- * coincidence of naming. R15's rule — a weak resolution must not drive an action —
- * applies to sentences as much as to rewrites.
+ * An unreferenced vector beside a broken reference to a raster with the same name, such as
+ * `hero.svg` and a broken `hero.png`. Together they suggest a conversion done by hand with
+ * the reference left behind, which gives the vector an action, so it stays in `findings`.
+ * The report states the two facts and leaves the conclusion to the reader.
  */
 export interface StaleConversion {
   /** POSIX-relative path of the unreferenced vector. */
@@ -616,11 +420,8 @@ export interface Caveat {
     | 'nothing-to-measure'
     | 'not-probed'
     /**
-     * Duplicates were not looked for, which is not the same as none being found.
-     *
-     * ⚠️ Without this line an absent check renders as `identical copies (0 sets)` —
-     * or as nothing at all — and a reader concludes the repository is clean. Rule 9
-     * calls that a silent skip, and it is the sixth this phase would have had.
+     * Duplicates were not looked for, which is not the same as none being found. Without
+     * this caveat the report would show no duplicates and read as clean.
      */
     | 'duplicates-not-checked'
     | 'encode-capped'
@@ -642,8 +443,8 @@ export interface Caveat {
   /**
    * The specifics, when a count alone would not be actionable.
    *
-   * "no adapter reads these file types" is a shrug; naming `.njk (2 files)` is how
-   * a user finds out which adapter they want.
+   * "no adapter reads these file types" is a shrug; naming `.njk` and its file count is
+   * how a user finds out which adapter they want.
    */
   readonly detail: readonly string[];
 }
@@ -652,38 +453,33 @@ export interface Report {
   readonly version: number;
   readonly summary: ReportSummary;
   /**
-   * Every finding there is something to do about, in the audit's report order.
-   *
-   * ⚠️ **Not every finding the audit produced** (R22, schema 2). An unreferenced
-   * vector is in `unusedVectors` instead — unless it pairs with a broken reference to
-   * its raster twin, which gives it an action and keeps it here. `summary.findings`
-   * counts this array, so the two always agree.
+   * Every finding there is something to do about, in the audit's order. Not every finding
+   * the audit produced: an unreferenced vector moves to `unusedVectors` unless it is part of
+   * a stale conversion, and an original kept beside its linked converted file moves to
+   * `keptOriginals`. `summary.findings` counts this array. See "`findings` holds what there
+   * is something to do about" in ARCHITECTURE.md.
    */
   readonly findings: readonly Finding[];
-  /** R22: the unreferenced vectors this report declines to itemise, and their size. */
+  /**
+   * The unreferenced vectors this report does not itemise, with their total size: Upfly
+   * neither converts a vector nor deletes an asset, so it has no action to offer for them.
+   */
   readonly unusedVectors: UnusedVectorReport;
   /** Originals kept beside the converted file their references now use. */
   readonly keptOriginals: KeptOriginalReport;
-  /** R54: the assets a plan examined and offered no action on. */
+  /** The assets a plan examined and offered no action on. */
   readonly declined: DeclinedReport;
-  /** R23: unreferenced vectors beside a broken reference to their raster twin. */
+  /** Unreferenced vectors beside a broken reference to their raster twin. */
   readonly staleConversions: readonly StaleConversion[];
   readonly references: ReferenceReport;
   readonly coverage: CoverageReport;
   /** Everything declined, from every stage, sorted. */
   readonly skipped: readonly SkippedItem[];
   /**
-   * Where a reader can find what the third-party libraries actually said, or `null`.
-   *
-   * R64's second half. R60 moved libvips', PostCSS's and Babel's own wording out of
-   * this artefact and into a diagnostic channel, which was right — the text is not
-   * ours and it changes on a dependency upgrade — but it left a reader who wants that
-   * detail with nowhere to look and nothing telling them one exists. **Naming the
-   * file is what keeps rule 9 true across the move**: the text was relocated, not
-   * dropped, and the report says so.
-   *
-   * A filename is deterministic content, so rule 11 is untouched — which is the whole
-   * reason this is a name rather than the text it names.
+   * The file holding what the third-party libraries said during the run, or `null`. Their
+   * wording changes between versions, so it stays out of the report, and this name tells a
+   * reader where it went. See "The recorded reason is ours, and the library's is not in the
+   * report" in ARCHITECTURE.md.
    */
   readonly diagnosticsFile: string | null;
   readonly caveats: readonly Caveat[];
@@ -696,30 +492,20 @@ export interface ReportInput {
   readonly discovery: DiscoveryResult;
   readonly sweep: SweepResult;
   /**
-   * The serving roots the resolver was given, passed on rather than re-derived.
-   *
-   * Required, not optional. A report that could omit this could describe a guessed
-   * resolution as though it were a declared one, which is the single thing this field
-   * exists to prevent, and an optional field would let every caller forget.
+   * The serving roots the resolver was given, passed on rather than re-derived. Required,
+   * so no caller can build a report that passes a guessed root off as a declared one.
    */
   readonly servingRoots: ServingRoots;
   /** Absent for a `--no-probe` run. */
   readonly probes?: readonly AssetProbe[];
   /**
-   * Include the discarded candidates in full. Off by default (`--include-discarded`).
-   *
-   * Off because the list is usually thousands of lockfile strings; available
-   * because a count alone cannot tell you *which* reference the JSON adapter
-   * started eating.
+   * Include the discarded candidates in full (`--include-discarded`). Off by default,
+   * because the list is usually thousands of lockfile strings.
    */
   readonly includeDiscarded?: boolean;
   /**
-   * Itemise the unreferenced vectors R22 demotes. Off by default
-   * (`--include-unused-svg`).
-   *
-   * Off because on `astro-docs` they are 126 of 150 unreferenced-asset findings and
-   * there is no action to offer for any of them; available because a reader who wants
-   * to audit our judgement should not have to take the count on trust.
+   * List the unreferenced vectors counted in `unusedVectors` (`--include-unused-svg`). Off
+   * by default, since there is no action to offer for any of them.
    */
   readonly includeUnusedVectors?: boolean;
   /**
@@ -733,20 +519,17 @@ export interface ReportInput {
   /** Itemise the declined assets. Off by default (`--include-declined`). */
   readonly includeDeclined?: boolean;
   /**
-   * The name of the file this run wrote the libraries' own error text to.
-   *
-   * Optional, and absent is the honest answer for a caller that writes no such file —
-   * naming one that does not exist would send a reader looking for nothing. `bench`
-   * supplies it; the CLI will when it starts writing one.
-   *
-   * A **name**, not a path: an absolute path in the report would break rule 11 the
-   * moment the same repository was audited from two checkouts, which is a defect this
-   * codebase has already had once.
+   * The name of the file this run wrote the libraries' own messages to. Leave it out when
+   * no such file is written, so the report does not send a reader looking for nothing. A
+   * name rather than a path, so the report is the same from any checkout.
    */
   readonly diagnosticsFile?: string;
 }
 
-/** Build the report. Pure, and the only place that decides what the public shape is. */
+/**
+ * Build the report from the results of a run, such as `runPipeline`'s output. Pure, and the
+ * only place that decides the report's public shape.
+ */
 export function buildReport(input: ReportInput): Report {
   const vectors = partitionUnusedVectors(input.audit.findings);
   const originals = partitionKeptOriginals(vectors.itemised, input.graph);
@@ -778,7 +561,7 @@ export function buildReport(input: ReportInput): Report {
   };
 }
 
-/** The last path segment, tolerating either separator — a raw path is as written. */
+/** The last path segment. Either separator counts, since a raw path is as written. */
 function baseNameOf(rawPath: string): string {
   const cut = Math.max(rawPath.lastIndexOf('/'), rawPath.lastIndexOf('\\'));
   return cut === -1 ? rawPath : rawPath.slice(cut + 1);
@@ -791,19 +574,6 @@ function stemOf(rawPath: string): string {
   return dot <= 0 ? '' : base.slice(0, dot);
 }
 
-/**
- * R22 and R23 in one pass, because they partition the same set.
- *
- * Order matters and is the whole design: R23's pairs are found **first**, and a paired
- * vector stays itemised. Demoting first and pairing afterwards would need the demoted
- * list back again, and the version of this that ran R22 alone would have hidden
- * exactly the 'you forgot the reference' cases R23 exists to surface.
- *
- * The audit still emits every finding (`audit.findings` is unchanged) — the graph's
- * account of what is unreferenced is not what R22 disputes. What the report decides is
- * which of them it can offer a reader an action for.
- */
-/** Whether this finding is an unreferenced vector — the set R22 partitions. */
 function isUnusedVector(finding: Finding): finding is DeadFinding | PossiblyDeadFinding {
   return (
     (finding.kind === 'dead' || finding.kind === 'possibly-dead') &&
@@ -811,20 +581,17 @@ function isUnusedVector(finding: Finding): finding is DeadFinding | PossiblyDead
   );
 }
 
-/** One broken reference, reduced to what R23 needs to say about it. */
+/** A broken reference, reduced to what a stale conversion reports. */
 interface BrokenRaster {
   readonly rawPath: string;
   readonly where: string;
 }
 
 /**
- * Broken references to a *raster*, indexed by filename stem.
- *
- * ⚠️ **Vectors are excluded, and that exclusion is the whole guard.** A broken reference
- * to another vector says nothing about a conversion: all 20 of `shadcn-ui`'s broken
- * references are `/next.svg`, `/vercel.svg` and `/vite.svg` from framework scaffolds, and
- * pairing those against its 10 unreferenced vectors would have invented ten conversion
- * stories out of matching filenames.
+ * Broken references to a raster, indexed by filename stem. A broken reference to a vector
+ * says nothing about a conversion: framework scaffolds reference `/next.svg` and
+ * `/vite.svg`, and pairing those with unreferenced vectors of the same name would invent
+ * conversions.
  */
 function brokenRasterStems(findings: readonly Finding[]): ReadonlyMap<string, BrokenRaster[]> {
   const byStem = new Map<string, BrokenRaster[]>();
@@ -842,7 +609,7 @@ function brokenRasterStems(findings: readonly Finding[]): ReadonlyMap<string, Br
   return byStem;
 }
 
-/** R23: the pairs, and the vectors they rescue from R22's demotion. */
+/** The stale conversions, and the vectors they keep itemised. */
 function findStaleConversions(findings: readonly Finding[]): {
   staleConversions: readonly StaleConversion[];
   paired: ReadonlySet<string>;
@@ -853,9 +620,8 @@ function findStaleConversions(findings: readonly Finding[]): {
 
   for (const finding of findings) {
     if (!isUnusedVector(finding)) continue;
-    // Exact and case-sensitive. `Hero.png` is a different file from `hero.png` on the
-    // platform most of this runs on, and a hint nobody asked for costs more trust than
-    // one we declined to offer.
+    // Stems match exactly, case included: `Hero.png` and `hero.png` can be two files, and
+    // a wrong hint costs more trust than a missing one.
     for (const broken of byStem.get(stemOf(finding.asset)) ?? []) {
       staleConversions.push({
         vector: finding.asset,
@@ -887,6 +653,10 @@ function asUnusedVector(finding: DeadFinding | PossiblyDeadFinding): UnusedVecto
       };
 }
 
+/**
+ * Splits the findings into those the report itemises and the unused vectors it only
+ * counts. Stale conversions are found first, since a paired vector stays itemised.
+ */
 function partitionUnusedVectors(findings: readonly Finding[]): {
   itemised: readonly Finding[];
   demoted: readonly UnusedVectorEntry[];
@@ -951,13 +721,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
   };
   for (const finding of findings) counts[finding.kind] += 1;
 
-  // Best per asset, not the sum of every measurement: an asset measured against
-  // both webp and avif would otherwise be counted twice.
   const bestSaving = new Map<string, number>();
-  // Accumulated into a set per format, not assigned: see `savingQuality`'s comment.
-  // Rule 11 wants byte-identical output for identical input, so the settings are sorted
-  // deterministically — numbers ascending, then `'lossless'`, which has no place on a
-  // numeric scale and is therefore given a fixed one rather than a compared one.
   const settings = new Map<EncodeFormat, Set<EncodeSetting>>();
   for (const finding of findings) {
     if (finding.kind !== 'format-opportunity') continue;
@@ -969,6 +733,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
 
   const savingQuality: Partial<Record<EncodeFormat, readonly EncodeSetting[]>> = {};
   for (const [format, seen] of settings) {
+    // A fixed order, so the output is byte-identical: numbers ascending, then `'lossless'`.
     savingQuality[format] = [...seen].sort((a, b) => {
       if (a === b) return 0;
       if (a === 'lossless') return 1;
@@ -1007,9 +772,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   const byConfidence: Record<Confidence, number> = { certain: 0, high: 0, medium: 0, unsafe: 0 };
   for (const reference of graph.references) byConfidence[reference.confidence] += 1;
 
-  // Only a linked reference has a `resolvedVia`, so `isLinked` is the gate rather
-  // than a hand-written comparison against two resolution values (R15's lesson, and
-  // the reason `isLinked` is exported at all).
+  // Only a linked reference has a `resolvedVia`.
   const byResolvedVia: Record<ResolvedVia, number> = {
     file: 0,
     'serving-root': 0,
@@ -1041,8 +804,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
         reason: reason.id,
         count,
         bound: reason.bound,
-        // A bound without its provenance is exactly the thing this field exists to stop,
-        // so the fallback SAYS so rather than printing an empty string.
+        // A bound with no recorded measurement says so, rather than printing nothing.
         measuredAgainst: reason.measuredAgainst ?? 'not recorded — treat this bound as unverified',
       });
     }
@@ -1101,12 +863,8 @@ function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {
 }
 
 /**
- * The declined assets, sized from the graph.
- *
- * Deliberately tolerant of a declined path the graph does not know: the planner
- * declines by project-relative path and the graph is keyed the same way, so a miss
- * means the two disagree, and reporting the asset with zero bytes is better than
- * dropping it. Dropping it is the silence rule 9 forbids.
+ * The declined assets, sized from the graph. A declined path the graph does not know means
+ * the planner and the graph disagree; it is reported with zero bytes rather than dropped.
  */
 function declinedReport(input: ReportInput): DeclinedReport {
   const declined = input.declined ?? [];
@@ -1129,8 +887,7 @@ function coverageReport(input: ReportInput): CoverageReport {
   return {
     unscannedExtensions: input.graph.unscannedExtensions,
     unscannedFileCount: input.graph.unscannedFiles.length,
-    // Projected to `relative`: `ExcludedRoot` also carries an absolute `path`, and
-    // letting that through is precisely the leak §5.1(f) tests for.
+    // `ExcludedRoot` also carries an absolute `path`, which must not reach the report.
     excludedRoots: input.discovery.excludedRoots.map((root) => ({
       path: root.relative,
       reason: root.reason,
@@ -1141,10 +898,8 @@ function coverageReport(input: ReportInput): CoverageReport {
 }
 
 /**
- * What this run did not exercise, decided from its INPUTS.
- *
- * ⚠️ Every entry is a fact about what the caller supplied, not a judgement about the
- * engine. That is what keeps this list from becoming a place to park excuses.
+ * What this run did not exercise. Each entry is a fact about what the caller supplied,
+ * never a judgement about the engine, so the list cannot become a place for excuses.
  */
 function notExercised(input: ReportInput): NotExercised[] {
   const entries: NotExercised[] = [];
@@ -1167,13 +922,6 @@ function notExercised(input: ReportInput): NotExercised[] {
 }
 
 /**
- * Every skip from every stage, in one list.
- *
- * One list rather than five, because rule 9 is easier to keep when there is a single
- * place to append to — and because the human renderer prints this *first*, which
- * only works if it is one thing to print.
- */
-/**
  * Probe outcomes that are conclusions rather than failures.
  *
  * Keyed on `ProbeSkipCode` rather than on the message, which is what that field is
@@ -1184,6 +932,7 @@ const DETERMINED_NOT_WORTH_MEASURING: ReadonlySet<ProbeSkipCode> = new Set([
   'already-target-format',
 ]);
 
+/** Every skip from every stage, in one list, so there is a single place to append to. */
 function collectSkips(input: ReportInput): SkippedItem[] {
   const items: SkippedItem[] = [];
 
@@ -1195,8 +944,8 @@ function collectSkips(input: ReportInput): SkippedItem[] {
     });
   }
 
-  // Unclaimed extensions are coverage, not failure — they belong in `coverage`.
-  // A file an adapter claimed and could not read is a failure, and belongs here.
+  // A file no adapter claims is coverage, reported under `coverage`. A file an adapter
+  // claimed and could not read is a failure, and belongs here.
   for (const file of input.graph.unscannedFiles) {
     if (file.reason === 'unclaimed-extension') continue;
     items.push({ what: file.relative, stage: 'scan', reason: `${file.reason}: ${file.detail}` });
@@ -1212,12 +961,9 @@ function collectSkips(input: ReportInput): SkippedItem[] {
 
   for (const probe of input.probes ?? []) {
     for (const skip of probe.skipped) {
-      // A determination is not a failure (R21). `vector` and
-      // `already-target-format` are Upfly working out that there is nothing to gain
-      // and saying so — filing them here made `140 things Upfly could not handle`
-      // false for 134 of the 140 on `astro-docs`, and repeated one sentence 126
-      // times. They are counted in a caveat instead; the per-asset detail is
-      // untouched in the JSON, so rule 9 holds and nothing is hidden.
+      // A vector, or an image already in the target format, is Upfly finding there is
+      // nothing to gain, not a failure. These are counted in the `nothing-to-measure`
+      // caveat instead.
       if (DETERMINED_NOT_WORTH_MEASURING.has(skip.code)) continue;
       items.push({
         what: probe.relative,
@@ -1236,11 +982,9 @@ function collectSkips(input: ReportInput): SkippedItem[] {
 }
 
 /**
- * How many assets needed no measurement, and why, grouped by reason.
- *
- * One asset can contribute two entries — an SVG measured against both webp and avif
- * — so assets are counted once and the per-reason breakdown counts measurements.
- * The headline is the number of *images*, which is what a reader is counting.
+ * How many assets needed no measurement, and why, grouped by reason. An asset can be
+ * skipped once per format, so the total counts assets and the breakdown counts
+ * measurements.
  */
 function countDeterminations(input: ReportInput): { total: number; detail: string[] } {
   const assets = new Set<string>();
@@ -1261,9 +1005,8 @@ function countDeterminations(input: ReportInput): { total: number; detail: strin
 
   return {
     total: assets.size,
-    // `thing — count`, matching the other detail lists, rather than `count thing`
-    // which rendered as "126 a vector". It is also the shape that cannot disagree
-    // with itself at one.
+    // The label first and the count last, like the other detail lists, so the count
+    // never has to agree with the label's grammar.
     detail: [...byCode]
       .sort((a, b) => b[1] - a[1] || compareStrings(a[0], b[0]))
       .map(([code, count]) => `${label[code] ?? code} — ${count}`),
@@ -1278,16 +1021,9 @@ function caveats(
 ): Caveat[] {
   const list: Caveat[] = [];
 
-  // R22. Rule 9 lives here: the demoted vectors are declined, so they reach the
-  // report with a reason. The reason is the honest one — there is no action we would
-  // offer — and not "they are small", which is measurably false.
-  //
-  // ⚠️ `not listed` is a participle, not a finite verb, and that is deliberate. The
-  // first draft of this line read `${plural(n, 'unreferenced vector')} ... are not
-  // listed`, which says "1 unreferenced vector are not listed" — the fifth instance
-  // of that bug in this file, written directly underneath a comment about avoiding
-  // it. There is nothing here for the count to disagree with now, and
-  // "there is no action to offer" has an invariant subject.
+  // The demoted vectors reach the report here with the real reason, that there is no action
+  // to offer, and not that vectors are small, which is often false. `not listed` is a
+  // participle, so no verb has to agree with the count.
   if (vectors.demoted.length > 0) {
     const bytes = vectors.demoted.reduce((total, entry) => total + entry.bytes, 0);
     list.push({
@@ -1297,15 +1033,9 @@ function caveats(
       detail: [],
     });
   }
-  // Counted over what this report actually lists, not over what the audit produced.
-  //
-  // `publicDirDeadCount` is computed before unreferenced vectors are demoted, and the
-  // demotion happens here, so quoting it directly puts a number in a caveat that the
-  // findings underneath cannot account for. Measured on railsgirls-com the moment the
-  // caveat became reachable: 950 claimed against 903 `dead` findings listed, with a
-  // second caveat saying 61 SVGs were not listed, and no arithmetic a reader can do
-  // that reconciles the three. This project has already shipped that exact shape once,
-  // as a suppressed count of 116 against 115 checkable references.
+  // Counted over the findings this report lists. The audit's `publicDirDeadCount` also
+  // counts the vectors and kept originals moved out of `findings`, so quoting it would
+  // give a number the listed findings cannot account for.
   const demotedAssets = new Set([...vectors.demoted, ...kept].map((entry) => entry.asset));
   const deadInPublic = input.audit.findings.filter(
     (finding) =>
@@ -1313,12 +1043,9 @@ function caveats(
   ).length;
 
   if (deadInPublic > 0) {
-    // A project serving from its own root is a different sentence, not a louder one.
-    // "Under the public directory" is meaningless when the public directory is the
-    // whole repository, and the honest consequence is stronger than the general case:
-    // there is no directory to exclude, so the reference graph cannot show that any
-    // unreferenced file is unreachable. Saying that plainly is worth more than a
-    // number the reader cannot act on.
+    // A project served from its own root gets a different sentence: "under the public
+    // directory" would mean the whole repository, and with no directory to exclude, the
+    // reference graph cannot show that any unreferenced file is unreachable.
     const servesFromRoot = input.servingRoots.dirs.includes('');
     list.push({
       code: 'public-dir-dead',
@@ -1330,11 +1057,9 @@ function caveats(
     });
   }
 
-  // R17. This line is load-bearing arithmetic, not a footnote: these assets have
-  // zero references and produce no finding, so without it the headline's "N not
-  // referenced" exceeds the dead and possibly-dead findings by an amount nothing
-  // in the report explains. Naming the convention is the difference between a
-  // reader trusting the gap and hunting for the bug.
+  // These assets have no reference and no finding, so without this line the headline's
+  // count of images with no reference would exceed the `dead` and `possibly-dead`
+  // findings with nothing in the report to explain the gap.
   const convention = input.audit.conventionLinked;
   if (convention.length > 0) {
     list.push({
@@ -1345,10 +1070,6 @@ function caveats(
     });
   }
 
-  // R21: the count of things Upfly decided were not worth measuring, as one line
-  // rather than 134. `astro-docs` is 126 vectors and 8 files already in the target
-  // format — every one a successful determination, and the reader's question was
-  // exactly right: *"if you can identify that, doesn't that count?"*
   const determined = countDeterminations(input);
   if (determined.total > 0) {
     list.push({
@@ -1390,24 +1111,13 @@ function caveats(
     });
   }
 
-  // R21: three different things were sharing one sentence, and only one of them is
-  // a gap anybody can close.
-  //
-  //   `.astro` (82 files) is a real coverage gap — an adapter would read it.
-  //   `.mp4`, `.otf`, `.ttf`, `.ico` are **binary**. There is nothing to read and no
-  //   adapter will ever change that, so listing them as something we failed to do is
-  //   the same error as filing a vector under "could not handle".
-  //   `.svg` is a third case entirely: it is tracked as an image asset *and* can
-  //   itself hold references (`<image href>`), so it is deliberately in both places.
-  //
-  // Splitting them is what turns a list into three statements a reader can act on
-  // differently. The counts still add up to the same total.
+  // Unread files make three caveats rather than one, because a reader acts on each group
+  // differently. See `groupUnscanned`.
   const groups = groupUnscanned(input.graph.unscannedExtensions);
 
-  // 🔴 R77. Stated once per run rather than inside 49 identical decline reasons, and
-  // stated at all because **the bound is the interesting half**: the guard makes `replace`
-  // safe for a path that is WRITTEN DOWN, and a path a program assembles at runtime is not
-  // written down anywhere. Without this line a reader takes the refusals for completeness.
+  // Said once per run rather than in every decline reason. The detail matters most: the
+  // check finds only paths that are written down, so without it a reader would take these
+  // refusals as covering paths a program assembles at runtime too.
   const heldBack = (input.declined ?? []).filter((entry) =>
     entry.reason.includes(MENTION_SURVIVES),
   );
@@ -1430,8 +1140,6 @@ function caveats(
       code: 'unscanned-extensions',
       count: files,
       message: `${plural(groups.adapterCould.length, 'file type')} had no adapter, so ${plural(files, 'file')} went unread`,
-      // Naming them is the point: this is how a user discovers which adapter they
-      // want, and it is the difference between a shrug and a next step.
       detail: groups.adapterCould.map(
         (entry) =>
           `${entry.ext === '' ? '(no extension)' : entry.ext} — ${plural(entry.fileCount, 'file')}`,
@@ -1444,11 +1152,7 @@ function caveats(
     list.push({
       code: 'binary-file-types',
       count: files,
-      // Invariant subject, so the count cannot disagree with the verb. Written as
-      // `${plural(files,'file')} are binary…` first, which reads "1 file are
-      // binary" — the third instance of that bug in this file, committed an hour
-      // after writing the note about avoiding it. A construction that cannot carry
-      // it beats remembering to check.
+      // An invariant subject, so no verb has to agree with the count.
       message: `binary formats have no text for an adapter to read, so no adapter ever will (${plural(files, 'file')} here)`,
       detail: groups.binary.map((entry) => `${entry.ext} — ${plural(entry.fileCount, 'file')}`),
     });

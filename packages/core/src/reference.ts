@@ -1,9 +1,9 @@
 /**
  * The accessors every consumer of a `Reference` must use.
  *
- * They live here, beside the types, rather than in the resolver, so that the graph
- * builder, the audit and the planner can ask "is this linked?" without importing the
- * module that decides it.
+ * They live in this small module rather than in the resolver, so that the graph builder,
+ * the audit and the planner can ask "is this linked?" without importing the module that
+ * decides it.
  */
 
 import type { RawReference, Reference } from './types.js';
@@ -11,10 +11,9 @@ import type { RawReference, Reference } from './types.js';
 /**
  * Whether this reference points at one or more assets in the graph.
  *
- * **Use this instead of comparing `resolution` by hand.** There are two linked
- * outcomes, not one, and `if (ref.resolution === 'resolved')` compiles fine, runs
- * fine, and silently ignores every pattern reference — a false negative the compiler
- * cannot see, which is exactly the class §5.1(b) exists to catch.
+ * Use this rather than comparing `resolution` by hand: two outcomes are linked, and
+ * `ref.resolution === 'resolved'` compiles and silently skips every pattern reference.
+ * See "Ask `isLinked`, never `resolution === 'resolved'`" in ARCHITECTURE.md.
  */
 export function isLinked(
   reference: Reference,
@@ -26,9 +25,9 @@ export function isLinked(
  * Every asset this reference points at: one for `resolved`, one or more for
  * `resolved-pattern`, none for anything else.
  *
- * The `switch` is exhaustive against a `never`-typed default on purpose. Adding a
- * seventh outcome later must break the build here rather than quietly returning an
- * empty array and un-linking a whole category of reference.
+ * The `switch` has a `never`-typed default, so a new outcome breaks the build here
+ * rather than quietly returning an empty array and un-linking a whole category of
+ * reference.
  */
 export function linkedPaths(reference: Reference): readonly string[] {
   switch (reference.resolution) {
@@ -52,13 +51,13 @@ export function linkedPaths(reference: Reference): readonly string[] {
 }
 
 /**
- * The path a reference stands for: what its text PROVES, which is `rawPath` except for a
- * `+` chain or a template with a same-file constant written in (R175).
+ * The path a reference's text proves: `rawPath`, except for a `+` chain or a template
+ * with a same-file constant written in, where it is `assembledPath`.
  *
- * **Use this wherever the question is WHAT PATH this is** — a glob, a static extension, a
- * classification. Keep `rawPath` wherever the question is WHERE the text is. One accessor
- * rather than `?? rawPath` at each call site, because a rule asked in some places and not
- * others is the defect R106 and R170 each found a week apart.
+ * Use this wherever the question is what path this is (a glob, a static extension, a
+ * classification), and `rawPath` wherever it is where the text is. One accessor rather
+ * than `?? rawPath` at each call site, so the rule cannot hold in some places and be
+ * missed in others.
  */
 export function provenPath(reference: RawReference): string {
   return reference.assembledPath ?? reference.rawPath;

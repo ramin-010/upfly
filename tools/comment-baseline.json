@@ -367,17 +367,6 @@
       "em-dash": 2,
       "emphasis": 2
     },
-    "packages/core/src/audit.ts": {
-      "internal-reference": 10,
-      "em-dash": 27,
-      "emphasis": 8,
-      "emoji": 7,
-      "long-comment": 9
-    },
-    "packages/core/src/citation.ts": {
-      "em-dash": 5,
-      "long-comment": 3
-    },
     "packages/core/src/concurrency.test.ts": {
       "internal-reference": 2,
       "em-dash": 7,
@@ -413,13 +402,6 @@
       "em-dash": 8,
       "emphasis": 3,
       "emoji": 7
-    },
-    "packages/core/src/duplicates.ts": {
-      "internal-reference": 1,
-      "em-dash": 7,
-      "emphasis": 7,
-      "emoji": 4,
-      "long-comment": 4
     },
     "packages/core/src/edits.ts": {
       "em-dash": 1
@@ -463,12 +445,6 @@
       "emphasis": 5,
       "emoji": 8,
       "long-comment": 8
-    },
-    "packages/core/src/format.ts": {
-      "internal-reference": 1,
-      "em-dash": 3,
-      "emphasis": 4,
-      "emoji": 2
     },
     "packages/core/src/graph.test.ts": {
       "em-dash": 6,
@@ -569,11 +545,6 @@
       "emphasis": 4,
       "emoji": 3
     },
-    "packages/core/src/reference.ts": {
-      "internal-reference": 4,
-      "em-dash": 2,
-      "emphasis": 2
-    },
     "packages/core/src/relocate.test.ts": {
       "internal-reference": 8,
       "em-dash": 8,
@@ -587,29 +558,12 @@
       "emoji": 10,
       "long-comment": 18
     },
-    "packages/core/src/report-human.ts": {
-      "internal-reference": 29,
-      "em-dash": 43,
-      "emphasis": 29,
-      "emoji": 15,
-      "long-comment": 41
-    },
     "packages/core/src/report.test.ts": {
       "internal-reference": 47,
       "em-dash": 39,
       "emphasis": 20,
       "emoji": 16,
       "long-comment": 5
-    },
-    "packages/core/src/report.ts": {
-      "internal-reference": 88,
-      "em-dash": 76,
-      "emphasis": 51,
-      "emoji": 30,
-      "long-comment": 46
-    },
-    "packages/core/src/resolution-health.ts": {
-      "long-comment": 1
     },
     "packages/core/src/resolve.test.ts": {
       "internal-reference": 16,
@@ -660,12 +614,6 @@
       "emphasis": 1,
       "emoji": 3,
       "long-comment": 5
-    },
-    "packages/core/src/unscanned.ts": {
-      "internal-reference": 6,
-      "em-dash": 3,
-      "emphasis": 6,
-      "emoji": 3
     },
     "packages/core/test/smoke.test.ts": {
       "internal-reference": 1,

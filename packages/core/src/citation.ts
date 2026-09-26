@@ -1,20 +1,14 @@
 /**
- * Turn a reference's offset into something a person can navigate to.
+ * Turns a reference's offset into a line a person can open.
  *
- * `RawReference` carries `start` — a UTF-16 offset — because that is what a rewrite
- * needs and what every parser produces. A report needs a line, and nothing in the
- * engine holds one: `scan` deliberately does not retain file texts, since keeping a
- * whole repository's source in memory to save a later re-read trades a bounded cost
- * for an unbounded one.
+ * A reference carries a UTF-16 offset, which is what a rewrite needs, and `scan` does not
+ * keep file texts, since holding a repository's source in memory to save a re-read trades a
+ * bounded cost for an unbounded one. So a line costs a re-read, and this module reads each
+ * file once however many references it cites. Both callers cite a bounded set: the audit
+ * only broken references, the sweep only references that name an unreferenced asset.
  *
- * So a line costs a re-read, and this module makes that re-read happen **once per
- * file** rather than once per reference. Both callers are bounded before they get
- * here — the audit cites only broken references, the sweep only references that
- * named a zero-reference asset — so the set is tens of files, not thousands.
- *
- * A file that cannot be re-read loses its line, not its citation. The finding still
- * names the file and the path; rule 9 means the failure is reported rather than
- * making the reference quietly vanish from the report.
+ * A file that cannot be re-read loses its line, not its citation, and the failure is
+ * reported.
  */
 
 import { compareStrings, relativePath } from './paths.js';
@@ -39,7 +33,7 @@ export interface UnreadableSource {
 }
 
 export interface CitationResult {
-  /** Keyed by reference identity — the same objects that were passed in. */
+  /** Keyed by reference identity: the same objects that were passed in. */
   readonly citations: ReadonlyMap<Reference, Citation>;
   /** Files that could not be re-read, sorted by `relative`. */
   readonly unreadable: readonly UnreadableSource[];

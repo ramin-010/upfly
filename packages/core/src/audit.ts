@@ -1,24 +1,15 @@
 /**
- * Turn the graph, the probe and the sweep into findings.
+ * Turns the graph, the sweep, the probe results and the content hashes into findings.
  *
- * Four kinds, and they cost wildly different amounts to produce — which is the
- * design constraint, not an incidental fact:
+ * The findings cost very different amounts. `broken`, `serving-root-unknown`, `dead` and
+ * `possibly-dead` need only the graph and the sweep, and `duplicate` needs the content
+ * hashes. `oversized` needs a header read per asset, about 1 ms, and `format-opportunity`
+ * a real encode, up to seconds each, so a low encode cap degrades that one finding alone.
+ * Without a probe neither size finding is produced.
+ * See "The cap is a count, not a threshold or a deadline" in ARCHITECTURE.md.
  *
- * | finding | needs |
- * |---|---|
- * | `dead` / `possibly-dead` | the graph, plus the sweep for the hedge |
- * | `broken` | the graph alone |
- * | `oversized` | one header read per asset, ~1 ms |
- * | `format-opportunity` | a real encode, up to seconds per asset |
- *
- * Only the last is expensive, so only the last degrades when the probe is capped or
- * absent. That is what makes `--no-probe` and a low `maxEncodedAssets` safe rather
- * than merely fast: a user who turns them down still gets three complete findings
- * out of four.
- *
- * Pure, over the data those stages produced plus a `readFile` port — the same shape
- * as `scan`'s. The port is only ever used to turn an offset into a line, and only
- * for references that are already going into the report.
+ * Pure apart from the `readFile` port, which only turns a broken reference's offset into
+ * a line.
  */
 
 import { citeReferences } from './citation.js';
@@ -33,31 +24,31 @@ import { type ResolutionHealth, resolutionHealth } from './resolution-health.js'
 import type { ReadFilePort } from './scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
-/** An asset nothing references, and nothing we could not read mentions either. */
+/** An asset nothing references, whose filename the sweep found nowhere else either. */
 export interface DeadFinding {
   readonly kind: 'dead';
   /** POSIX-relative path. */
   readonly asset: string;
   readonly bytes: number;
   /**
-   * Whether it sits under the public directory.
-   *
-   * Not a hedge — see `AuditResult.publicDirDeadCount`. A public asset may be
-   * referenced from outside the repository entirely, but that is a bare
-   * possibility with no evidence behind it, and hedging on bare possibility is
-   * how the first version of the `possibly-dead` rule degenerated into a label
-   * that fired on everything. The report carries one caveat line instead.
+   * Whether it sits under a public directory. Such an asset may be linked from outside
+   * the repository (a CMS, an email template, another site), which Upfly cannot see. It
+   * stays `dead`, because hedging on a possibility with no evidence would hedge every
+   * public asset, and the report adds one caveat instead.
    */
   readonly inPublicDir: boolean;
 }
 
-/** An asset nothing references, but something we could not read mentions by name. */
+/**
+ * An asset nothing references, whose filename the sweep found somewhere: in a file no
+ * adapter could read, in a path that did not resolve, or in text no adapter understood.
+ */
 export interface PossiblyDeadFinding {
   readonly kind: 'possibly-dead';
   readonly asset: string;
   readonly bytes: number;
   readonly inPublicDir: boolean;
-  /** Why it is hedged. Non-empty by construction — no evidence means `dead`. */
+  /** Why it is hedged. Never empty: an asset with no evidence is `dead`. */
   readonly evidence: readonly [Mention, ...Mention[]];
 }
 
@@ -68,7 +59,7 @@ export interface BrokenFinding {
   readonly file: string;
   /** One-based line, or `null` if the file could not be re-read. */
   readonly line: number | null;
-  /** `file:line` — what §5.1(d)'s adversarial review opens. */
+  /** `file:line`, or the file alone when the line is unknown. */
   readonly where: string;
   /** The path exactly as written. */
   readonly rawPath: string;
@@ -98,7 +89,7 @@ export interface FormatOpportunityFinding {
   /** What the encode actually produced, in memory. */
   readonly wouldBe: number;
   readonly savedBytes: number;
-  /** Whole percent, floored — a report number, not a float to compare against. */
+  /** Whole percent, rounded down. */
   readonly savedPercent: number;
   /**
    * The encode quality this saving was measured at.
@@ -114,15 +105,12 @@ export interface FormatOpportunityFinding {
 /**
  * The engine could not work out where this project serves files from.
  *
- * It replaces the `broken` findings of the same run rather than joining them. When
- * almost no root-relative reference resolves, those are not broken references: they
- * are one misconfiguration seen N times, and reporting them individually states a
- * symptom as a diagnosis. Measured on eleventy-docs, that is 14 `broken` findings
- * whose targets are all present on disk.
- *
- * `suppressedBroken` is what keeps rule 9: the count of what this replaced is part of
- * the finding, and every one of those references is still itemised in the report's
- * own `references` section, so nothing is hidden, only re-explained.
+ * It replaces the run's root-relative `broken` findings: when almost none of those
+ * references resolve, they are one misconfiguration seen many times, not many broken
+ * references. `suppressedBroken` counts the findings it replaced, so they reach the report
+ * as a number with a reason. The references themselves are counted in the report's
+ * `references.byResolution`, not listed.
+ * See "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
 export interface ServingRootUnknownFinding {
   readonly kind: 'serving-root-unknown';
@@ -144,16 +132,11 @@ export type Finding =
   | DuplicateFinding;
 
 /**
- * Two or more assets shipping the same pixels (§1.1, approved 2026-09-11).
+ * Two or more assets with byte-identical content.
  *
- * 🔴 **Set-scoped, not asset-scoped, and that is not a shortcut.** Every other finding
- * names one asset because the fault is that asset's. A duplicate is a fault of the
- * *relationship* — no single copy is wrong, and saying `hero.png` is a duplicate
- * without naming what it duplicates is not something a reader can act on.
- *
- * ⚠️ It names no winner. Which copy should survive is a question about intent — one
- * may be a deliberate fallback, or referenced by something the graph cannot see — and
- * §8 decision 7 settles that we never pick and never delete.
+ * It names the whole set, because no single copy is at fault. It names no copy to keep:
+ * one may be a deliberate fallback, or referenced by something the graph cannot see, so
+ * Upfly never picks one and never deletes.
  */
 export interface DuplicateFinding {
   readonly kind: 'duplicate';
@@ -168,12 +151,12 @@ export interface DuplicateFinding {
 export interface AuditThresholds {
   /** Bytes above which an asset is oversized. Defaults to 500 000. */
   readonly maxBytes?: number;
-  /** Pixels. Defaults to 4 000 — beyond any sensible display width. */
+  /** Pixels. Defaults to 4 000, beyond any sensible display width. */
   readonly maxWidth?: number;
   /** Pixels. Defaults to 4 000. */
   readonly maxHeight?: number;
   /**
-   * Absolute floor: nothing smaller than this is ever reported. Defaults to 1 KiB.
+   * Absolute floor: a saving smaller than this is never reported. Defaults to 1 KiB.
    *
    * A 40% saving on a 200-byte icon is 80 bytes. Reporting it is noise that pushes
    * the findings people can act on further down the page.
@@ -189,11 +172,10 @@ export interface AuditThresholds {
   /**
    * Absolute arm, in bytes. Defaults to 100 000.
    *
-   * Catches big files that shrink a little. **Percentage is a bad proxy for value
-   * once a file is large**: an 8 MB asset that shrinks 9% saves 720 KB and is very
-   * likely the single biggest win in the repository, yet a percentage-only rule
-   * hides it. The two arms are an `or` under the floor's `and`, so neither kind of
-   * win can be lost.
+   * Catches big files that shrink a little. Percentage is a bad proxy for value once a
+   * file is large: an 8 MB asset that shrinks 9% saves 720 KB and is likely the biggest
+   * win in the repository, yet a percentage-only rule hides it. The two arms are an
+   * `or` under the floor's `and`, so neither kind of win can be lost.
    */
   readonly largeSavingBytes?: number;
 }
@@ -201,16 +183,16 @@ export interface AuditThresholds {
 export interface AuditOptions {
   readonly graph: Graph;
   /**
-   * What the sweep found. Required: without it every zero-reference asset would
-   * be reported as confidently `dead`, which is the false positive R8 exists to
-   * prevent. Pass an empty result only when there is genuinely nothing unread.
+   * What the sweep found. Required, because without it every asset with no reference
+   * would be reported `dead`, including those named where no adapter could see them.
+   * Pass an empty result only when nothing went unread.
    */
   readonly sweep: SweepResult;
   /**
-   * Probe results, keyed by nothing — matched on `relative`.
+   * Probe results, matched to assets by `relative`.
    *
-   * Absent means `--no-probe`: `oversized` and `format-opportunity` are simply not
-   * produced, and the report says so rather than showing zero of each.
+   * Absent means `--no-probe`: `oversized` and `format-opportunity` are not produced,
+   * and the report says so rather than showing zero of each.
    */
   readonly probes?: readonly AssetProbe[];
   /** Used only to turn a broken reference's offset into a line. */
@@ -220,24 +202,18 @@ export interface AuditOptions {
   /**
    * Directories whose framework reads certain filenames without being told to.
    *
-   * From `detectConventionRoots(discovery)` — a pure function over the file list, so
-   * this module stays off the disk. Absent means the check does not run, which is
-   * correct for a project that is not one of those frameworks and is what the other
-   * two validation repositories exercise.
+   * From `detectConventionRoots`, which works from the file list, so this module stays
+   * off the disk. Absent means the check does not run.
    */
   readonly conventionRoots?: readonly ConventionRoot[];
   readonly thresholds?: AuditThresholds;
   /**
-   * Content hashes by POSIX-relative path, for the `duplicate` finding.
-   *
-   * ⚠️ **Absent means the check did not run**, and the report says so rather than
-   * showing zero — the same distinction `probes` already carries, and the reason rule 9
-   * calls a silent skip a P0. "No duplicates" and "nobody looked" are different
-   * answers and a reader cannot tell them apart from a count.
+   * Content hashes by POSIX-relative path, for the `duplicate` finding. Absent means the
+   * check did not run, which `AuditResult.duplicatesChecked` reports.
    *
    * Only the assets `hashCandidates` selects need be present: an asset whose size no
    * other asset shares cannot be a duplicate, so one missing from this map is one
-   * nothing could have matched rather than one we failed to check.
+   * nothing could have matched rather than one that went unchecked.
    */
   readonly contentHashes?: ReadonlyMap<string, string>;
 }
@@ -245,23 +221,14 @@ export interface AuditOptions {
 export interface AuditResult {
   /** Every finding, ordered for the report. */
   readonly findings: readonly Finding[];
-  /**
-   * How many `dead` findings sit under the public directory.
-   *
-   * The rider on R10: those assets may be referenced from outside the repository —
-   * a CMS, an email template, another site — and we can never know. One caveat
-   * line naming the count is honest; hedging each of them on a bare possibility is
-   * not, and is exactly how the global hedge degenerated.
-   */
+  /** How many `dead` findings sit under a public directory. See `DeadFinding.inPublicDir`. */
   readonly publicDirDeadCount: number;
   /**
-   * Unreferenced assets a framework reads by filename, and why (R17).
+   * Unreferenced assets a framework reads by filename, and why.
    *
-   * They produce **no** `dead` finding, because they are not dead. Rule 9 is why
-   * this is a list rather than nothing: without it the headline's "N not
-   * referenced" would exceed the findings by an unexplained amount, and silently
-   * dropping an asset from a report is the failure this project exists to be the
-   * opposite of.
+   * They produce no `dead` finding, because they are not dead. They are listed so that
+   * the headline's count of unreferenced images does not exceed the findings by an
+   * unexplained amount.
    */
   readonly conventionLinked: readonly ConventionLink[];
   /** Source files that could not be re-read to cite a line, sorted. */
@@ -269,20 +236,16 @@ export interface AuditResult {
   /** Whether a probe ran at all. `false` means oversized and opportunities are absent. */
   readonly probed: boolean;
   /**
-   * Whether duplicates were looked for at all.
-   *
-   * ⚠️ Separate from the count, because **"none found" and "nobody looked" are
-   * different answers** and a zero cannot tell them apart. Rule 9 calls the second one
-   * a silent skip, and the report prints a caveat rather than an implied zero.
+   * Whether duplicates were looked for at all. Separate from the count, because a zero
+   * cannot tell "none found" from "nobody looked", and when nobody looked the report
+   * prints a caveat rather than an implied zero.
    */
   readonly duplicatesChecked: boolean;
 }
 
 /**
- * Product judgement, not measurements — so they are documented defaults rather than
- * settled numbers, and §5.1(c)/(d) validates them against real repositories by
- * recording the finding distribution and asking whether a threshold produced noise
- * or hid something. Config overrides all of them (§1.2).
+ * Product judgement rather than measurements, so they are documented defaults, not
+ * settled numbers. A caller overrides any of them through `AuditOptions.thresholds`.
  */
 const DEFAULT_THRESHOLDS = {
   maxBytes: 500_000,
@@ -301,24 +264,22 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   const { findings: broken, unreadableSources } = await brokenFindings(options);
   // One diagnosis instead of N symptoms. See `resolutionHealth`: below the floor the
   // engine has not established where root-relative paths are served from, and a
-  // `broken` finding produced in that state is a statement about our configuration
-  // rather than about the user's code.
+  // `broken` finding produced in that state is a statement about the serving roots it
+  // used rather than about the user's code.
   const health = resolutionHealth(options.graph);
   const reported: (BrokenFinding | ServingRootUnknownFinding)[] = health.servingRootUnknown
     ? diagnoseServingRoot(broken, health)
     : broken;
   const { findings: dead, conventionLinked } = deadFindings(options, publicPrefixes);
-  // `AssetProbe` measures pixels and `discover` measured bytes, so the two are
-  // joined here — the one place that holds both — rather than by threading the
-  // graph down into every size rule.
+  // `AssetProbe` measures pixels and `discover` measured bytes. They are joined here, the
+  // one place that holds both, rather than by passing the graph into every size rule.
   const bytesByAsset = new Map(
     options.graph.assets.map((node) => [node.asset.relative, node.asset.bytes]),
   );
   const probeFindings =
     options.probes === undefined ? [] : sizeFindings(options.probes, thresholds, bytesByAsset);
 
-  // §1.1's fifth finding. Set-scoped, so it joins the list rather than being derived
-  // per asset like the other four.
+  // Set-scoped, so it joins the list rather than being derived per asset like the others.
   const duplicates: Finding[] =
     options.contentHashes === undefined
       ? []
@@ -344,16 +305,10 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
 }
 
 /**
- * Replace the broken findings this diagnosis explains, and only those.
- *
- * ⚠️ It explains root-relative references and nothing else. A file-relative path that
- * points at nothing is broken whatever the serving root turns out to be, so folding it
- * into this finding would hide a real defect behind an unrelated explanation and leave
- * the user with no way to see it.
- *
- * Measured on unconfigured shadcn-ui: 116 broken findings, of which 115 are
- * root-relative. The first version of this suppressed all 116, and the odd one out was
- * a genuinely broken relative path.
+ * Replace the broken findings this diagnosis explains, and only those: the root-relative
+ * ones. A file-relative path that points at nothing is broken whatever the serving root
+ * turns out to be, so folding it in would hide a real defect behind an unrelated
+ * explanation.
  */
 function diagnoseServingRoot(
   broken: readonly BrokenFinding[],
@@ -374,11 +329,10 @@ function diagnoseServingRoot(
 }
 
 /**
- * `dead` and `possibly-dead`, decided per asset by the sweep.
- *
- * The evidence, not a global flag, is what separates them — and a hedge from an
- * unresolved reference cites file, line and the raw path, which is the difference
- * between a hint and an instruction.
+ * `dead` and `possibly-dead`, decided per asset by what the sweep found rather than by a
+ * global flag. A hedge cites where the asset's name was found, so it tells the reader
+ * where to look. See "`possibly-dead`, and why "zero references" is usually a lie" in
+ * ARCHITECTURE.md.
  */
 function deadFindings(
   options: AuditOptions,
@@ -394,10 +348,8 @@ function deadFindings(
   for (const node of unreferencedAssets(options.graph)) {
     const asset = node.asset.relative;
 
-    // R17. Before the hedge, not after: an asset a framework reads by filename is
-    // **alive**, and `possibly-dead` would be evasive rather than merely weaker —
-    // a hedge says *we do not know*, and here we do. It is checked first for the
-    // same reason: nothing below this line has anything true to say about it.
+    // Before the hedge: an asset a framework reads by filename is alive, and
+    // `possibly-dead` would say "we do not know" when we do.
     const convention = conventionLinkFor(asset, roots);
     if (convention !== null) {
       conventionLinked.push(convention);
@@ -451,7 +403,7 @@ async function brokenFindings(
   return { findings, unreadableSources: unreadable };
 }
 
-/** `oversized` and `format-opportunity` — the two that need pixels. */
+/** `oversized` and `format-opportunity`, the two that need pixels. */
 function sizeFindings(
   probes: readonly AssetProbe[],
   thresholds: Required<AuditThresholds>,
@@ -510,11 +462,8 @@ function* opportunities(
     // without anyone reasoning about float formatting.
     const savedPercent = Math.floor((savedBytes / bytes) * 100);
 
-    // Floor AND (relative OR absolute). The floor kills icon noise; the two arms
-    // catch the two unlike kinds of win — a small file that shrinks a lot, and a
-    // large one that shrinks a little. Requiring both arms would drop a 720 KB
-    // saving on an 8 MB asset for shrinking "only" 9%, which is the finding a
-    // user most wants to see.
+    // The floor, and then either arm: a small file that shrinks a lot, or a large one
+    // that shrinks a little. See `AuditThresholds.largeSavingBytes`.
     if (savedBytes < thresholds.minSavingBytes) continue;
     if (savedPercent < thresholds.minSavingPercent && savedBytes < thresholds.largeSavingBytes) {
       continue;
@@ -535,29 +484,13 @@ function* opportunities(
 }
 
 /**
- * Serving roots as path prefixes, with a trailing slash.
+ * Public directories as path prefixes with a trailing slash, where `''` stays as the
+ * prefix of every path.
  *
- * A root of `''` — a plain static site serving from the project root — yields no
- * prefix at all rather than one matching everything: marking every asset public
- * would make the caveat meaningless.
- */
-/**
- * Public directories as path prefixes, where the empty string means the whole tree.
- *
- * A project can serve from its own root. A hand-written static site with no build step
- * is the ordinary case: there is no `public/`, the repository *is* what gets uploaded,
- * and every file in it is reachable from outside. That is spelled `''`.
- *
- * This used to filter `''` out. The filter looks defensive and reads as though it is
- * removing a meaningless entry, but `''` is not meaningless here: it is the statement
- * that everything is public, and dropping it produced an empty prefix list, which says
- * the opposite. Every asset then scored `inPublicDir: false`, `publicDirDeadCount`
- * summed to zero, and the caveat warning that an unreferenced image may be linked from
- * outside the repository was never emitted at all. On `railsgirls-com` that was 903
- * unreferenced assets offered with no such warning, on the one repository in the corpus
- * where the whole tree is the public directory.
- *
- * An empty prefix matches every path, which is what it should mean.
+ * A project can serve from its own root: a hand-written static site has no `public/`,
+ * and every file in the repository is reachable from outside. Filtering `''` out would
+ * mark no asset public and drop the caveat that an unreferenced image may be linked from
+ * outside the repository.
  */
 function normalisePublicDirs(publicDirs: readonly string[] | undefined): readonly string[] {
   return (publicDirs ?? []).map((publicDir) =>
@@ -566,10 +499,8 @@ function normalisePublicDirs(publicDirs: readonly string[] | undefined): readonl
 }
 
 /**
- * Report order: by kind, then by the asset or file the finding is about.
- *
- * Deterministic, and grouped the way a reader wants it — every broken reference
- * together, every dead asset together — rather than interleaved by path.
+ * Report order: by kind, then by the asset or file the finding is about, so every broken
+ * reference sits together and every dead asset together rather than interleaved by path.
  */
 const KIND_ORDER: Record<Finding['kind'], number> = {
   // Ahead of everything, because when it is present it is the reason the rest of the
@@ -580,8 +511,8 @@ const KIND_ORDER: Record<Finding['kind'], number> = {
   'possibly-dead': 2,
   oversized: 3,
   'format-opportunity': 4,
-  // Last, and deliberately: it is the only finding with no single asset at fault, so
-  // it reads as a footnote to the list rather than an accusation inside it.
+  // Last: it is the only finding with no single asset at fault, so it reads as a
+  // footnote to the list rather than an accusation inside it.
   duplicate: 5,
 };
 
@@ -589,15 +520,10 @@ function byReportOrder(a: Finding, b: Finding): number {
   const byKind = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
   if (byKind !== 0) return byKind;
 
-  // 🔴 Duplicates order by what is worth recovering, not by path. Every other kind
-  // sorts by path because every other kind is about one asset and a reader scans for a
-  // name; a duplicate set is about an amount, and the largest is the one worth acting
-  // on first.
-  //
-  // ⚠️ **This lives here because sorting it in `findDuplicates` did not survive.** It
-  // was sorted correctly there and then re-sorted by this function, so the report
-  // rendered 562 B, then 2.5 KB, then 136.4 KB — caught by reading the rendered report
-  // on `scratch-www`, not by a test, which is the fourth time this phase.
+  // Duplicates order by bytes worth recovering, largest first, not by path: every other
+  // kind is about one asset and a reader scans for a name, but a set is about an amount.
+  // `audit` sorts every finding with this function, so without this branch the order
+  // `findDuplicates` returns would be lost.
   if (a.kind === 'duplicate' && b.kind === 'duplicate') {
     return b.wastedBytes - a.wastedBytes || compareStrings(subjectOf(a), subjectOf(b));
   }

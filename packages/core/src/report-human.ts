@@ -1,21 +1,13 @@
 /**
- * Render a report for a person.
+ * Renders a report for a person: the headline numbers, then what was skipped, then the
+ * findings, so a limitation is read before the list it limits. The same report always
+ * renders the same text, so nothing here uses timestamps, durations, `toLocaleString` or
+ * `Intl`. Colour is left to the CLI.
+ * See "The human renderer prints the skipped list before the findings" in ARCHITECTURE.md.
  *
- * Two rules shape this, and they pull against each other.
- *
- * **The numbers people screenshot come first, then the skipped list — before the
- * findings.** That ordering is deliberate and slightly uncomfortable: it puts what
- * the tool *could not do* above what it found. The previous generation of this
- * project failed by failing silently, and a limitation printed after eighty findings
- * is a limitation nobody reads. If the skipped list is long, that is information.
- *
- * **Deterministic** (rule 11). No timestamps, no durations, and no `toLocaleString`
- * anywhere — locale-dependent formatting would make the same repository render
- * differently on two machines, which is the same class of bug as sorting with
- * `localeCompare`. Every number here is formatted by hand.
- *
- * No colour codes either. Colour is the CLI's business, since it is the layer that
- * knows about TTYs and `NO_COLOR`.
+ * A line whose number can be 1 is phrased so that no word has to agree with it: a noun
+ * phrase (`3 images with no reference`) or an invariant verb (`did not resolve`). `count`
+ * pluralises only the noun it is handed, so a verb beside it goes wrong at one.
  */
 
 import { staticExtensionOf } from './adapters/reference-path.js';
@@ -39,24 +31,12 @@ export function renderReport(report: Report): string {
 }
 
 /**
- * The first six lines, and the only ones that reliably get read.
+ * The first lines, and the only ones that reliably get read.
  *
- * §5.1(d) asks whether the numbers are obvious within ten seconds, and this is the
- * text that gets the ten seconds. It failed that twice over (R21 #4, R25 #2):
- *
- * - `132 references across 2 681 source files — 13 linked` sat directly above
- *   `5 referenced, 150 not`, two overlapping counts with **no stated relationship**.
- *   Nothing on the page let a reader work out that the 13 resolving references point
- *   at 5 distinct images; they had to guess whether `13` and `5` were the same thing
- *   counted differently.
- * - `4.2 MB of measured savings available` — the one line anybody actually wants —
- *   was **fourth**, and it was a **floor** that did not say so. The encode cap left
- *   80 of shadcn-ui's 195 images unmeasured, and the only mention of that sat forty
- *   lines below in a caveat.
- *
- * So: **the first line is what a reader can act on, and everything under it is
- * provenance.** A number that is a floor says so in the same sentence — a footnote
- * elsewhere in the document is how "4.2 MB" gets quoted as if it were the total.
+ * The first line is what a reader can act on, and the lines under it say where it came
+ * from. A number that is a lower bound says so in the same sentence, because a footnote
+ * elsewhere is how it gets quoted as the total. Two counts that overlap, such as the
+ * references that resolved and the images they point at, state how they relate.
  */
 function headline(report: Report): string[] {
   const { summary } = report;
@@ -69,19 +49,7 @@ function headline(report: Report): string[] {
     `  ${savingsLine(summary, capped)}`,
     '',
     `  scanned ${count(summary.sourceFiles, 'source file')} and found ${count(summary.assets, 'image')}, ${bytes(summary.assetBytes)} in total`,
-    // `resolved` and `pointing`, not `resolve` and `they point`: both are invariant,
-    // so neither can disagree with a count of one. Latent rather than live — measured
-    // scope today is zero, because no fixture has a single reference — but this is the
-    // same construction as the line below, which WAS live, and the lesson this project
-    // keeps relearning is to remove the possibility rather than to notice it later.
     `  ${summary.linkedReferences} of ${count(summary.references, 'reference')} resolved, pointing at ${summary.referencedAssets} of those images`,
-    // ⚠️ No finite verb, and that is the whole point. This read `${…} have no
-    // reference…`, which renders "the other 1 image have no reference" — the
-    // subject–verb agreement bug for the seventh time in this renderer. It could not
-    // fire until the Astro adapter landed, because every fixture had a plural count
-    // here; the astro fixture's three hedged assets became ordinary links and left
-    // exactly one unreferenced image behind. A noun phrase has no verb to disagree
-    // with, so the fix is structural rather than another reminder to remember.
     `  ${count(unreferenced, 'image')} with no reference Upfly could follow`,
     ...vectorLine(report),
     ...keptOriginalLine(report),
@@ -91,27 +59,11 @@ function headline(report: Report): string[] {
 }
 
 /**
- * Where root-relative paths came from, printed only when nobody declared it.
- *
- * A guess the report does not disclose is the defect R49 was. The zero-false-`broken`
- * figure was measured five times over, every time against serving roots somebody had
- * tuned by hand, which is configuration a first run does not have. `declared: false`
- * already carries that through the resolver and the planner; this is what carries it
- * to the person reading the output, and every `broken` finding below it depends on
- * the engine having guessed right.
- *
- * Silent when the project declared its roots, because then there is nothing to own up
- * to and this headline has twice been found too long.
- *
- * Three names then a count: twelve paths would bury the sentence that matters, and the
- * full list is in `coverage.servingRoots` for anyone checking the engine's homework.
- *
- * ⚠️ No noun agrees with a number anywhere in these two sentences, and that is the
- * point rather than a style choice. The first draft read `${count(dirs.length,
- * 'directory Upfly detected')}`, which renders "12 directory Upfly detecteds", because
- * `count` pluralises by appending to whatever it is handed. That is the agreement bug
- * this renderer has now produced eight times. `(N in all)` cannot disagree with
- * anything, so there is nothing left to get right.
+ * Where root-relative paths were resolved from, printed only when the project declared no
+ * serving root. A root-relative `broken` finding below is only as good as that guess, so
+ * the reader is told it was one. Three names and a count, because the full list is in
+ * `coverage.servingRoots`; `(N in all)` keeps any noun from having to agree with it.
+ * See "Serving roots" in ARCHITECTURE.md.
  */
 function servingRootLine(report: Report): string[] {
   const { dirs, declared } = report.coverage.servingRoots;
@@ -131,30 +83,13 @@ function servingRootLine(report: Report): string[] {
 }
 
 /**
- * R22's counted line, in the headline rather than only in the caveats.
+ * The unreferenced SVGs, counted in the headline beside the count they are part of.
  *
- * ⚠️ **This line exists because R22 would otherwise have recreated R21 #4.** The line
- * above says `150 images with no reference Upfly could follow`; the findings
- * list beneath it now holds 24, because 126 were demoted. Two overlapping counts with
- * no stated relationship is the precise defect R21 #4 was raised about, and burying
- * the explanation forty lines down in the caveats is what R21 #4's own lesson forbids:
- * a limitation printed after eighty findings is a limitation nobody reads.
- *
- * So the relationship is stated where the ten seconds are spent, and the caveat keeps
- * carrying it for the JSON. That is the same split `encode-capped` already uses — the
- * cap is in `savingsLine` *and* in a caveat — and it is the one place in this renderer
- * where saying it twice is right rather than a violation of R25 #3.
- *
- * `including` ties it to the preceding line on purpose: it is a subset of the
- * unreferenced count, not a fourth independent number.
- *
- * ⚠️ **`including` is also what makes the line agreement-proof, and the first version
- * was not.** It read `${n} of those are unreferenced vectors`, which renders
- * "1 of those are unreferenced vectors" — the verb-agreement bug for the sixth time in
- * this renderer, written by a chat that had read the warning about it twice and had
- * already hit it once the same hour. Only reading the rendered output caught it. There
- * is no finite verb here now: `including` takes a noun phrase, and
- * "Upfly will neither convert a vector nor delete an asset" has an invariant subject.
+ * They are counted rather than listed as findings, so without this line the unreferenced
+ * count above would be larger than the findings below with no stated reason. `including`
+ * marks them as part of that count, and takes a noun phrase with no verb to agree. The
+ * `unused-vectors` caveat repeats it, as `encode-capped` repeats `savingsLine`.
+ * See "The report" in ARCHITECTURE.md.
  */
 function vectorLine(report: Report): string[] {
   const { count: vectors, bytes: vectorBytes } = report.unusedVectors;
@@ -177,13 +112,11 @@ function keptOriginalLine(report: Report): string[] {
 }
 
 /**
- * What a reader can act on, in one sentence including its own caveat.
+ * What a reader can act on, in one sentence that carries its own caveat.
  *
- * Four cases, and the third is the one that matters: a capped run has measured *some*
- * of the images, so its number is a lower bound and has to be readable as one. It
- * deliberately does not say "floor" or "lower bound" — it says how many were left
- * out, which is the fact underneath the jargon and the thing that tells a reader what
- * to do next.
+ * A capped run measured only some of the images, so its number is a lower bound. Rather
+ * than say "lower bound", the sentence says how many went unmeasured and which flag
+ * measures them, which tells the reader what to do next.
  */
 function savingsLine(summary: Report['summary'], capped: number): string {
   if (!summary.probed) {
@@ -199,15 +132,10 @@ function savingsLine(summary: Report['summary'], capped: number): string {
 }
 
 /**
- * The quality a saving was measured at, phrased to sit inside the sentence.
- *
- * ⚠️ The report used to open with a headline like "166.3 MB of savings found so far"
- * and name no quality anywhere in the file. The same images save 95% at quality 50
- * and 44% at quality 90, so that sentence was not a measurement a reader could act
- * on; it was a number whose meaning depended on a setting they could not see.
- *
- * Reads the qualities out of the report rather than out of configuration, so it
- * describes the run that produced the bytes beside it.
+ * The quality a saving was measured at, phrased to sit inside the sentence. A saving means
+ * little without it: the same images can save 95% at quality 50 and 44% at quality 90.
+ * Read from the report rather than from configuration, so it describes the run that
+ * produced the bytes beside it.
  */
 function atQuality(summary: Report['summary']): string {
   const entries = Object.entries(summary.savingQuality).sort(([a], [b]) => compareStrings(a, b));
@@ -230,13 +158,9 @@ function settingsPhrase(settings: readonly (number | 'lossless')[]): string {
 }
 
 /**
- * What each stage's failures were, said as the thing that happened.
- *
- * ⚠️ The sweep's label used to read `could not be searched`, which under a heading
- * about what Upfly "could not handle" and beside conversion messages read as *"why
- * are we trying to convert fonts?"* (R21). They are fonts too large to grep for a
- * filename — nothing to do with conversion — so the label now says which search and
- * why, and the two kinds no longer look like one kind.
+ * The label over each stage's skipped items, saying what happened to them. The sweep's
+ * entries are files, often fonts, too large to search for asset filenames, so their label
+ * names that search and cannot be read as a failed conversion.
  */
 const STAGE_LABEL: Record<SkipStage, string> = {
   discovery: 'could not be read',
@@ -247,18 +171,16 @@ const STAGE_LABEL: Record<SkipStage, string> = {
 };
 
 /**
- * What the engine declined to do — printed **before** the findings.
+ * What the engine declined to do, printed before the findings.
  *
- * The unsafe references live here too. They are not failures, but they are the same
- * kind of statement: paths the engine will not touch, and the number a user is
- * entitled to see before believing anything else in the report.
+ * The unsafe references are here too. They are not failures, but they are paths the
+ * engine will not touch, and a user should see that number before believing the rest.
  */
 function skippedSection(report: Report): string[] {
   const { skipped, references } = report;
-  // The discarded count belongs to this guard too. Leaving it out made the line
-  // below unreachable on exactly the common case — a clean repository with no
-  // skips and no unsafe references, but a `package.json` full of path-shaped
-  // strings. Every fixture tree has zero of those, so nothing caught it.
+  // The discarded count is part of this guard: a repository with no skips and no unsafe
+  // references often still has a `package.json` full of path-shaped strings, and the
+  // count line for those is at the end of this section.
   if (skipped.length === 0 && references.unsafe.length === 0 && references.discardedCount === 0) {
     return ['Nothing was skipped.', ''];
   }
@@ -266,12 +188,8 @@ function skippedSection(report: Report): string[] {
   const lines: string[] = [];
 
   if (skipped.length > 0) {
-    // ⚠️ Neutral on purpose. "could not handle" was false for 134 of astro-docs'
-    // 140 (R21) — determinations filed as failures — and the obvious replacement,
-    // "could not do", is false in the same way for what remains: shadcn-ui's 80 are
-    // a **deliberate cap** and the sweep's are a size limit. Upfly did not do them;
-    // only some of them are things it could not do. Each row carries its own
-    // reason, so the heading does not need to characterise them all.
+    // A neutral heading, because not every entry is a failure: the encode cap is a choice
+    // and the sweep's entries are a size limit. Each row carries its own reason.
     lines.push(`Skipped — ${count(skipped.length, 'thing')}, each with its reason`, '');
     for (const [stage, items] of groupByStage(skipped)) {
       lines.push(`  ${STAGE_LABEL[stage]}:`);
@@ -283,12 +201,11 @@ function skippedSection(report: Report): string[] {
       lines.push('');
     }
 
-    // R64. The reasons above are ours, deliberately: a third-party library's wording
-    // is not stable enough for an artefact promised to be byte-identical. But a reader
-    // who wants to know what libvips or PostCSS actually said was left with nowhere to
-    // look and no hint that anywhere existed — the text had been moved, and only half
-    // of rule 9 was being kept. One line closes that, and a filename is deterministic
-    // content, so the promise above is untouched.
+    // The reasons above are Upfly's own wording, because a library's can change between
+    // runs and the report must not. What libvips or PostCSS said is in a separate file,
+    // named here.
+    // See "The recorded reason is ours, and the library's is not in the report" in
+    // ARCHITECTURE.md.
     if (report.diagnosticsFile !== null) {
       lines.push(
         `  What the underlying libraries said about these is in ${report.diagnosticsFile}.`,
@@ -300,30 +217,16 @@ function skippedSection(report: Report): string[] {
   }
 
   if (references.unsafe.length > 0) {
-    // Listed only when the path could still name an image; counted otherwise (R21).
-    //
-    // The resolver drops what a static suffix rules out — `${name}.tsx` needs no
-    // resolution — so what arrives here is either "shows an image extension" or
-    // "shows no extension at all". The second kind is genuinely unknowable:
-    // `/view/${style}/${name}` could be anything, and with no extension it can never
-    // glob to an asset either. Printing fifty of those buries the eight a person
-    // could act on, and one counted line satisfies rule 9 without the wall.
+    // Listed only when the path shows an image filename; counted otherwise. The resolver
+    // has already dropped paths whose static extension is not an image, so the rest show
+    // no static extension (`/view/${style}/${name}`): nothing a reader can check, and
+    // listing them buries the few they can. The count still reports every one.
     const listed = references.unsafe.filter((entry) => showsAnImageFilename(entry.rawPath));
     const counted = references.unsafe.length - listed.length;
 
-    // The two columns are `where it was found` and `what was found` (R21). Reading
-    // `api-reference.mdx  script-src 'self' …` cold, the question it provoked was
-    // whether the `.mdx` was being treated as an image — which nothing on the page
-    // answered. One line of header costs less than the doubt did.
-    // 🔴 **R109's distinction, in the HEADING, because the heading was the defect.**
-    // *"N references could not be resolved safely"* is one sentence over two opposite
-    // things — a path that does not exist until something renders, which nobody could
-    // resolve, and one we simply failed on — and it reads as *N things we got wrong*.
-    // **That is precisely the reading R109 was issued to correct**, and it was still live
-    // here after the JSON had been fixed: rendered on `eleventy-docs` the page said
-    // *"56 references could not be resolved safely"* immediately above *"56 of them had
-    // no answer to find, and 0 we could not resolve"*. The heading contradicted the line
-    // under it.
+    // The heading keeps apart references that had no answer to find (built at run time,
+    // or deliberately out of scope) and ones Upfly failed to resolve. One heading over
+    // both would read as that many mistakes.
     const refused = references.unsafe.filter(
       (entry) => entry.classification === 'correctly-refused',
     );
@@ -347,28 +250,22 @@ function skippedSection(report: Report): string[] {
         '',
       );
     }
-    // Only when there is a list to head. A column key above an empty list is its
-    // own small piece of noise, and this section is often entirely counted.
+    // A key for the two columns, since a reader seeing an `.mdx` file beside a path asks
+    // whether the `.mdx` is being treated as an image. Printed only above a list: this
+    // section is often entirely counted.
     if (listed.length > 0) {
       lines.push('  (the file it was found in, then the path text as written)', '');
     }
     for (const entry of listed) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
       lines.push(`    ${entry.resolution} — ${entry.reason}`);
-      // ⚠️ **Only where it ADDS something.** A refusal's `reason` already says why it is
-      // one — *names a file inside an npm package* is not improved by *no answer to find
-      // (out-of-scope)* underneath it, and printing both on every entry was a wall of
-      // restatement. What the reader cannot otherwise tell is which entries are OURS, so
-      // that is the line that prints.
+      // Only for Upfly's own misses. A refusal's `reason` already says why it was refused;
+      // what the reader cannot otherwise tell is which entries Upfly got wrong.
       if (entry.classification !== 'correctly-refused') {
         lines.push('    — and this one is ours: an answer exists and we did not find it');
       }
     }
     if (counted > 0) {
-      // Phrased to sidestep verb agreement rather than to get it right: this file
-      // has shipped "1 file were not read" and "1 path-shaped string were not an
-      // asset reference" already, and a noun phrase cannot have the bug. Reads the
-      // same at 1 and at 52.
       lines.push(
         listed.length === 0
           ? '  none with a filename to check — each builds its path at runtime'
@@ -379,17 +276,16 @@ function skippedSection(report: Report): string[] {
   }
 
   if (references.classificationBounds.length > 0) {
-    // 🔴 **R122: the resolution accuracy this report can compute MUST NOT BE QUOTED, and
-    // the reason is printed rather than assumed to be known.** It measures where the
-    // engine draws its own boundary, not whether the engine is right — so the known
-    // over-claim goes on the page beside the counts it inflates, not in a footnote.
+    // An accuracy worked out from these counts measures where the engine draws its own
+    // boundary, not whether it is right, and a refusal reason known to over-claim
+    // inflates it. So the measured over-claim prints beside the counts, not in a footnote.
     lines.push('What the counts above are known to get wrong', '');
     for (const entry of references.classificationBounds) {
       lines.push(`  ${entry.count} classified as "${entry.reason}", and:`);
       for (const line of wrapWords(entry.bound, 74)) lines.push(`    ${line}`);
       lines.push('');
-      // The provenance prints too. A bound a reader cannot date is one they cannot check,
-      // and an unfalsifiable caveat is worth less than no caveat at all.
+      // What it was measured against prints too: a bound a reader cannot date is one they
+      // cannot check.
       for (const line of wrapWords(`measured: ${entry.measuredAgainst}`, 74)) {
         lines.push(`    ${line}`);
       }
@@ -398,32 +294,18 @@ function skippedSection(report: Report): string[] {
   }
 
   if (references.discardedCount > 0) {
-    // Name the flag that actually produces the list. `--json` alone gives a bare
-    // integer, and pointing someone at data that is not there costs more trust
-    // than saying nothing would.
-    // ⚠️ It says *did not resolve*, not "was not a reference" — which is what it
-    // said, and which the data contradicts. On `astro-docs`, **117 of the 118**
-    // discarded strings name a file that genuinely is an asset in that repository:
-    // `src/data/logos.ts` holds `{ file: 'gitbook.svg' }` a hundred and seventeen
-    // times, joined to a base directory at runtime. They are asset references. They
-    // simply do not resolve as written.
-    //
-    // Worse, the old wording contradicted the same report a page later: those
-    // identical strings are the R10 haystack's evidence, so the findings section
-    // cites them as proof an asset is alive while this line called them not
-    // references at all. Second time a confident sentence in this renderer was false
-    // about the majority of what it described, and the same file caused both.
-    // No singular/plural branch any more: "did not resolve" agrees either way,
-    // where "was/were not an asset reference" needed one. The verb-agreement bug
-    // this file has already had twice is now unreachable here rather than fixed.
+    // The hint names the flag that produces the list, since `--json` alone gives only
+    // the count. "Did not resolve", not "was not a reference": many of these do name a
+    // real asset, such as `{ file: 'gitbook.svg' }` joined to a directory at run time,
+    // and the possibly-dead evidence below may cite them as proof an asset is alive.
     const hint = references.discarded === null ? ' (use --include-discarded to list them)' : '';
     lines.push(
       `${count(references.discardedCount, 'path-shaped string')} did not resolve to an asset${hint}`,
       '',
     );
 
-    // Asked for explicitly, so shown — the flag would otherwise appear to do
-    // nothing unless `--json` were passed alongside it.
+    // Printed when asked for, or `--include-discarded` would appear to do nothing
+    // without `--json`.
     for (const entry of references.discarded ?? []) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
     }
@@ -434,17 +316,9 @@ function skippedSection(report: Report): string[] {
 }
 
 /**
- * Does this raw path show an image filename a person could go and check?
- *
- * Named for what it tests rather than for the decision it feeds. The first draft was
- * `couldBeAnImage`, whose doc claimed it was also true for a path showing no
- * extension — which is the opposite of what the code does, and a path with a hole
- * where the filename should be genuinely *could* be an image. Both the name and the
- * comment described a different function from the one underneath them.
- *
- * The real question is narrower and answerable: is there a filename here to look at?
- * A path that shows one gets listed; one that does not gets counted, because there is
- * nothing for a reader to do with it.
+ * Whether this raw path shows an image filename a person could go and check. False for a
+ * path with no static extension, even though it may well name an image: there is nothing
+ * in it for a reader to look up.
  */
 function showsAnImageFilename(rawPath: string): boolean {
   const extension = staticExtensionOf(rawPath);
@@ -452,18 +326,12 @@ function showsAnImageFilename(rawPath: string): boolean {
 }
 
 /**
- * R23, rendered first because it is the most actionable thing in the report.
+ * Each unreferenced vector that shares its stem with a broken reference to a raster,
+ * rendered first because it is the most actionable thing in the report: the broken
+ * reference is a broken image on the site, and the vector is the likely explanation.
  *
- * A broken reference to a file that does not exist is a broken image on the site, and
- * an unreferenced vector with the same stem is the likely explanation. Neither finding
- * says that alone.
- *
- * ⚠️ **Hedged on purpose.** `may have been` is the whole sentence's honesty: the
- * pairing is two facts and their proximity, and `hero.svg` next to a broken
- * `hero.png` could as easily be two unrelated files a designer named alike. R15
- * established that a weak resolution must not drive an action; a weak inference must
- * not drive a confident sentence either. Both facts are printed so the reader can
- * judge, and `may` is invariant, so the count has no verb to disagree with.
+ * `may have been` is the honest verb: `hero.svg` beside a broken `hero.png` could be two
+ * unrelated files named alike. Both facts print so the reader can judge.
  */
 function staleConversionSection(report: Report): string[] {
   if (report.staleConversions.length === 0) return [];
@@ -479,12 +347,9 @@ function staleConversionSection(report: Report): string[] {
 }
 
 function findingsSection(report: Report): string[] {
-  // ⚠️ `No findings.` became a lie the moment R22 started demoting. A repository whose
-  // only unreferenced assets are vectors produces an empty `findings` array and a
-  // non-zero `unusedVectors.count`, and the old line would have reported "nothing to
-  // see here" over 126 demoted items. None of the three validation repos reaches this
-  // branch — all of them have other findings — which is exactly the condition that
-  // makes fixtures unable to test it, so it has a hand-built case in report.test.ts.
+  // An empty `findings` does not mean nothing was found: unreferenced SVGs and kept
+  // originals are counted outside it. No fixture reaches this branch, so report.test.ts
+  // builds a case by hand.
   if (report.findings.length === 0) {
     const counted = [
       report.unusedVectors.count > 0 && count(report.unusedVectors.count, 'unreferenced SVG'),
@@ -500,7 +365,7 @@ function findingsSection(report: Report): string[] {
 
   for (const finding of report.findings) {
     // Hedges are not a flat list: they are three different statements about why an
-    // asset has no references, and they are rendered as such. See below.
+    // asset has no references, and `possiblyDeadSection` renders them as such.
     if (finding.kind === 'possibly-dead') {
       if (previous !== 'possibly-dead') {
         if (previous !== null) lines.push('');
@@ -510,10 +375,8 @@ function findingsSection(report: Report): string[] {
       continue;
     }
 
-    // Both size findings are one statement about one file (R21). All five of
-    // astro-docs' `oversized` assets were also in `format-opportunity`, in two
-    // sections a page apart with nothing connecting them, so the same image was
-    // reported twice and its total story was in neither place.
+    // Both size findings are one statement about one file, so `sizeSection` prints them
+    // together.
     if (finding.kind === 'oversized' || finding.kind === 'format-opportunity') {
       if (previous !== 'oversized') {
         if (previous !== null) lines.push('');
@@ -549,7 +412,7 @@ const MENTION_RANK: readonly MentionSource[] = [
 
 /**
  * What each source means to the person reading, which is the only axis that
- * matters here: the three differ in what the user can *do*.
+ * matters here: the three differ in what the user can do.
  */
 const MENTION_HEADING: Record<MentionSource, string> = {
   'unscanned-file': 'in a file no adapter reads — an adapter or a config entry would resolve these',
@@ -560,21 +423,12 @@ const MENTION_HEADING: Record<MentionSource, string> = {
 };
 
 /**
- * The hedges, split by what the evidence actually is and grouped by the file that
- * named them.
+ * The hedges, split by what the evidence is and grouped by the file that named them.
  *
- * The single heading this replaced — *"named somewhere Upfly cannot read"* — was
- * **false for the majority of the findings it headed**: 119 of 140 on `astro-docs`,
- * 5 of 10 on `eleventy-docs`, 5 of 8 on `shadcn-ui` have no `unscanned-file`
- * evidence at all. `src/data/logos.ts` is ordinary TypeScript that parses perfectly;
- * `'gitbook.svg'` simply is not a resolvable path. A user who follows that citation
- * opens a readable file and concludes the tool is broken — so one wrong sentence
- * costs the credibility of a finding that was right.
- *
- * Grouping is by **citing file**, not by source. "120 assets are named in
- * `src/data/logos.ts`" is a fact somebody can act on; "120 unresolved-reference" is
- * our internal taxonomy, and one file explaining 86% of a repository's hedges is the
- * whole finding.
+ * Many hedged assets are named only in a file Upfly read and parsed, so a single heading
+ * such as "named somewhere Upfly cannot read" would be false for them, and a reader
+ * following it would find a readable file. Grouping by citing file gives a fact somebody
+ * can act on: one data file can explain most of a repository's hedges.
  */
 function possiblyDeadSection(report: Report): string[] {
   const findings = report.findings.filter(
@@ -596,8 +450,8 @@ function possiblyDeadSection(report: Report): string[] {
       byFile.set(file, [...(byFile.get(file) ?? []), finding]);
     }
 
-    // Biggest cause first, because that is the one worth acting on — with ties
-    // broken on the path, so rule 11 survives two files naming the same number.
+    // Biggest cause first, because that is the one worth acting on. Ties break on the
+    // path, so the same report always prints in the same order.
     const files = [...byFile].sort(
       (a, b) => b[1].length - a[1].length || compareStrings(a[0], b[0]),
     );
@@ -647,19 +501,15 @@ type Opportunity = Extract<Finding, { kind: 'format-opportunity' }>;
 /**
  * Everything about an image's size, once per image.
  *
- * `oversized` and `format-opportunity` are two measurements of the same thing, and
- * printing them in separate sections meant `landing-page-book.png` appeared twice
- * with nothing linking the entries — 551 KB in one place, "340 KB as webp" in
- * another, and the sentence a reader actually wants ("551 KB, and 340 KB as webp")
- * in neither. On `astro-docs` **all five** oversized assets were also opportunities.
- *
- * Both counts stay in the heading, so nothing is hidden by the merge.
+ * `oversized` and `format-opportunity` often describe the same file, and in separate
+ * sections the line a reader wants ("551 KB, and 340 KB as webp") appears in neither.
+ * Both counts stay in the heading, so the merge hides nothing.
  */
 function sizeSection(report: Report): string[] {
   const merged = new Map<string, { over: Oversized | null; opportunities: Opportunity[] }>();
 
-  // First-encounter order, which is the report's own deterministic finding order —
-  // rule 11 holds without a second sort.
+  // First-encounter order is the report's own deterministic finding order, so no second
+  // sort is needed.
   for (const finding of report.findings) {
     if (finding.kind !== 'oversized' && finding.kind !== 'format-opportunity') continue;
     const entry = merged.get(finding.asset) ?? { over: null, opportunities: [] };
@@ -683,11 +533,8 @@ function sizeSection(report: Report): string[] {
     lines.push(`    ${asset}  ${bytes(first.bytes)}${shape}`);
 
     if (entry.over !== null) {
-      // One line each, not `over ${exceeded.join(' and ')}` — which rendered as
-      // "over bytes and width", a phrase in no language. `exceeded` holds the
-      // dimension *names*, and joining internal identifiers into a sentence is the
-      // same shape of defect as the headings R21 was raised about. Separate lines
-      // also sidestep "limit" vs "limits".
+      // One line per limit, each in words: `exceeded` holds identifiers, and joining them
+      // reads "over bytes and width". Separate lines also avoid "limit" against "limits".
       for (const dimension of entry.over.exceeded) lines.push(`      ${OVERSIZE_LABEL[dimension]}`);
     }
     for (const opportunity of entry.opportunities) {
@@ -712,17 +559,16 @@ function headingFor(kind: Finding['kind'], report: Report): string {
     case 'dead':
       return `unreferenced images (${total})`;
     case 'possibly-dead':
-      // Unreachable: `findingsSection` routes these through `possiblyDeadSection`,
-      // which heads each of the three evidence kinds separately. Kept so the
-      // exhaustive switch still compiles and an eighth finding still breaks it.
+      // Unreachable, as are `oversized` and `format-opportunity`: `findingsSection`
+      // prints those three kinds through `possiblyDeadSection` and `sizeSection`. The
+      // cases keep the switch exhaustive, so a new kind still fails to compile.
       return `possibly unreferenced (${total})`;
     case 'oversized':
       return `oversized images (${total})`;
     case 'format-opportunity':
       return `smaller as another format (${total}) — measured, not estimated`;
-    // ⚠️ "sets", not "images": the count is of GROUPS and the heading has to say which,
-    // or 171 reads as 171 files when it is 176. That confusion is R21 #4's shape, and
-    // this renderer has produced the noun-agreement half of it eight times.
+    // The count is of sets, not images, and the heading says so, or it reads as a number
+    // of files.
     case 'duplicate':
       return `identical copies (${total} ${total === 1 ? 'set' : 'sets'}) — the same bytes shipped more than once`;
     default: {
@@ -744,11 +590,10 @@ function describe(finding: Finding): string[] {
       return [`    ${finding.where}  ${finding.rawPath}`];
     case 'dead':
       return [`    ${finding.asset}  ${bytes(finding.bytes)}`];
+    // Unreachable, as are `oversized` and `format-opportunity`; see `headingFor`.
     case 'possibly-dead':
       return [
         `    ${finding.asset}  ${bytes(finding.bytes)}`,
-        // The citation is the whole point of hedging per asset rather than
-        // globally: it turns a warning into somewhere to look.
         ...finding.evidence.map((mention) => `      named in ${mention.where}: ${mention.quote}`),
       ];
     case 'oversized':
@@ -759,9 +604,8 @@ function describe(finding: Finding): string[] {
       return [
         `    ${finding.asset}  ${bytes(finding.bytes)} → ${bytes(finding.wouldBe)} as ${finding.to}  (saves ${bytes(finding.savedBytes)}, ${finding.savedPercent}%)`,
       ];
-    // Every path on its own line, because the set IS the finding — naming one copy and
-    // counting the rest would put the reader back where they started. No winner is
-    // marked: which copy should survive is a question about intent (§8 decision 7).
+    // Every path on its own line, because the set is the finding. No copy is marked as
+    // the one to keep: which should survive depends on intent the engine cannot see.
     case 'duplicate':
       return [
         `    ${bytes(finding.bytes)} each, ${bytes(finding.wastedBytes)} recoverable by keeping one:`,
@@ -775,15 +619,12 @@ function describe(finding: Finding): string[] {
 }
 
 /**
- * What the plan looked at and offered nothing for.
- *
- * R54, which is R22's shape applied to R22's situation. One counted line with the
- * total size, and the list only when it was asked for, because the reason to withhold
- * it is that there is no action to offer rather than that it is long.
+ * What the plan looked at and offered nothing for: one counted line with the total size,
+ * and the list only when asked for, because there is no action to offer for these.
  *
  * Silent when there is nothing to say, which includes every audit-only run: a report
- * built without a plan has no declines, and printing "0 images" would invite a reader
- * to conclude the planner had run and found nothing.
+ * built without a plan has no declines, and "0 images" would suggest the planner ran and
+ * found nothing.
  */
 function declinedSection(report: Report): string[] {
   const { count: declined, bytes: declinedBytes, assets } = report.declined;
@@ -793,8 +634,6 @@ function declinedSection(report: Report): string[] {
   const lines = [
     'Examined and not converted',
     '',
-    // No noun agreeing with a number: `count` pluralises the head noun and this
-    // renderer has produced eight agreement bugs, every one caught by reading.
     `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, with no conversion to offer${hint}`,
     '',
   ];
@@ -825,24 +664,6 @@ function caveatSection(report: Report): string[] {
 const REPEAT_LIMIT = 3;
 
 /**
- * Items sharing a reason, with the reason said once and every name kept.
- *
- * `--probe-all` appeared **81 times** in `shadcn-ui`'s report — once on each of 80
- * capped assets, plus the caveat — which is the wall the 126 repeated SVG lines
- * made.
- *
- * ⚠️ The first version of this fix dropped the names and printed only a count, and
- * that was wrong for the case right next to it: `eleventy-docs` has ten `.js` files
- * that are really Nunjucks templates, and *which ten* is the actionable part — a
- * reader renames those or configures them. The capped assets and the template files
- * differ in whether the individual identity matters, which is not something a count
- * threshold can tell.
- *
- * So the sentence moves up and the names stay under it. Eighty short lines instead
- * of eighty long identical ones, and nothing is lost from either the page or the
- * JSON.
- */
-/**
  * A parse failure's reason without the codes the JSON keeps for machines. The heading above
  * it already says the file could not be parsed.
  */
@@ -852,6 +673,13 @@ function plainParseReason(reason: string): string {
   return rest === '' ? reason : rest;
 }
 
+/**
+ * Items sharing a reason, with the reason said once and every name kept.
+ *
+ * Repeating one reason on every line makes a wall: a capped run would print the same
+ * `--probe-all` sentence for each unmeasured asset. The names still all print, because
+ * they are often the actionable part, such as which `.js` files are really templates.
+ */
 function collapseByReason(items: readonly SkippedItem[]): string[] {
   const byReason = new Map<string, SkippedItem[]>();
   for (const item of items) {
@@ -886,15 +714,6 @@ function groupByStage(items: readonly SkippedItem[]): [SkipStage, SkippedItem[]]
 function count(value: number, noun: string): string {
   return `${value} ${noun}${value === 1 ? '' : 's'}`;
 }
-
-/**
- * Bytes, formatted by hand.
- *
- * Deliberately not `Intl.NumberFormat` or `toLocaleString`: those are
- * locale-dependent, so the same repository would render `1.5 MB` on one machine and
- * `1,5 MB` on another and rule 11's byte-identical output would quietly be false.
- * Decimal units, because that is what file managers show.
- */
 
 function dimensions(width: number | null, height: number | null): string {
   return width === null || height === null ? '' : `, ${width}×${height}`;

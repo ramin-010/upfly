@@ -1,21 +1,10 @@
 /**
- * Assets that ship the same pixels more than once.
+ * Assets whose bytes are identical, as happens when someone copies an image.
  *
- * The finding that answers *"what happens when someone copies an image?"* — which
- * nothing else in the plan covered until Rinkal asked. Approved 2026-09-11 and
- * measured on `RBU-Website` at **171 sets, 176 duplicate files, 15.6 MB wasted**,
- * including a folder duplicated wholesale (`public/animationn/` and
- * `public/animationn copy/`).
- *
- * 🔴 **Grouped by CONTENT HASH, never by name**, and that was Rinkal's own correction
- * with a measurement behind it: his site holds a 0.9 MB pair — `programoffered.webp`
- * and `sideimage-gurkirt.webp` — whose names have nothing in common. **A name-based
- * check misses it entirely.** Nothing here reads a filename.
- *
- * ⚠️ **It is a FINDING, not a mutation.** Report the set and the recoverable bytes;
- * **never pick a winner and never delete** (§8 decision 7). Which copy is the real one
- * is a question about intent, and the engine has no way to know — one may be a
- * deliberate fallback, or referenced by something we cannot see.
+ * Grouped by content hash, never by name: a copy is often renamed, and two files whose
+ * names share nothing can hold the same image. It is a finding, not a change: it reports
+ * each set and the bytes that keeping one copy would recover, and never picks a copy to
+ * keep, since that depends on intent the engine cannot see.
  */
 
 import { compareStrings } from './paths.js';
@@ -30,28 +19,21 @@ export interface DuplicateSet {
   /** The size of one copy. */
   readonly bytes: number;
   /**
-   * What deleting every copy but one would recover: `bytes × (copies − 1)`.
-   *
-   * ⚠️ Deliberately **not** the total the set occupies. One copy has to survive, so
-   * reporting `bytes × copies` would offer a saving that cannot be taken — the same
-   * defect as quoting an encode saving that needs the original deleted to be real.
+   * What deleting every copy but one would recover: `bytes × (copies − 1)`. Not the total
+   * the set occupies, because one copy has to survive.
    */
   readonly wastedBytes: number;
 }
 
 /**
- * The assets worth hashing, which is almost never all of them.
+ * The assets worth hashing for `findDuplicates`: those whose size another asset shares,
+ * sorted by path.
  *
- * 🔴 **Two byte-identical files must have the same size**, so an asset whose size no
- * other asset shares cannot be a duplicate and does not need to be read. This is what
- * makes the check cheap in fact rather than in the spec's assumption that "the bytes
- * are already read" — nothing in the pipeline reads asset bytes today, and hashing a
- * repository's every image would have added a full extra pass over 5,370 files on
- * `railsgirls-com`.
- *
- * Zero-byte files are excluded: they are all identical to each other, which is true
- * and useless, and a repository with forty empty placeholders would produce one
- * enormous set that buries every real one.
+ * Byte-identical files have equal sizes, so an asset with a unique size cannot be a
+ * duplicate and never needs to be read. Hashing reads a whole file, so this is what keeps
+ * the check cheap. Zero-byte files are left out: they are all identical, which is true
+ * and useless, and a repository of empty placeholders would produce one large set that
+ * buries the real ones.
  */
 export function hashCandidates(assets: readonly Asset[]): readonly Asset[] {
   const bySize = new Map<number, Asset[]>();
@@ -69,11 +51,10 @@ export function hashCandidates(assets: readonly Asset[]): readonly Asset[] {
 }
 
 /**
- * Group assets into sets of identical bytes.
+ * Groups assets into sets of identical bytes, largest recoverable size first.
  *
- * `hashes` maps a POSIX-relative path to its content hash, and only the assets in it
- * are considered — which is exactly `hashCandidates`, so an asset absent from the map
- * is one nothing could have matched rather than one we failed to check.
+ * `hashes` maps a POSIX-relative path to its content hash, and only the assets in it are
+ * considered, so it needs to hold only the assets `hashCandidates` returns.
  */
 export function findDuplicates(
   assets: readonly Asset[],
