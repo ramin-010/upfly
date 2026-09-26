@@ -24,8 +24,9 @@ export type MentionSource =
   /** In a path we read but could not resolve: `dynamic`, alias-shaped, or speculative. */
   | 'unresolved-reference'
   /**
-   * In a file an adapter did read, in a form it did not understand: a template literal
-   * in an object property parses fine and yields no reference. The last resort, used
+   * In a file an adapter did read, in a form it did not understand: a spaced file name
+   * with no slash, such as `{ file: 'My Logo.png' }`, parses fine and yields no reference,
+   * because it has the shape of a UI label. The last resort, used
    * only for an asset the other two sources did not explain.
    */
   | 'scanned-file';
@@ -66,8 +67,8 @@ export interface SweepOptions {
   /**
    * Asset filenames `scan` saw in files it did read, from `ScanResult.mentions`.
    *
-   * A scanned file can hold a reference in a form no adapter understands (a template
-   * literal in an object property parses fine and yields no reference), and neither other
+   * A scanned file can hold a reference in a form no adapter understands (a spaced file
+   * name with no slash parses fine and yields no reference), and neither other
    * source covers it. Collected during the scan, which already holds the text, so the
    * check is cheap enough to stay always on: `dead` means the filename appears nowhere in
    * the codebase, and a claim that holds only behind a flag is not that claim.

@@ -528,8 +528,9 @@ always have been: a coverage statement, and how a user finds out they want an ad
 The sweep reads three things: files **no adapter claimed**, the raw path of every reference we
 **could not resolve**, and the asset filenames `scan` saw in the files it **did** read, collected
 while each file's text was already in memory, so no source file is read twice. That last one
-covers a name that parses fine and yields no reference, such as a template literal in an object
-property.
+covers a name that parses fine and yields no reference, such as `{ file: 'My Logo.png' }`, a spaced
+file name with no slash, which has the shape of a UI label (see "What counts as a path-shaped
+string").
 
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
 `unresolved-alias` and `discarded`. A reference whose target is known is no evidence of use.
@@ -548,7 +549,7 @@ Two things belong in that swept text for reasons that are not obvious. **An SVG 
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real
 references and no adapter reads them, so `.svg` is recorded as unread even though it is also an
 asset. And **a reference we read but could not resolve names no asset**: eleventy's
-`![](({{ site.url }}/img/templated.png)` is `dynamic`, so `templated.png` links to nothing and
+`![Templated]({{ site.url }}/img/templated.png)` is `dynamic`, so `templated.png` links to nothing and
 looks dead while being demonstrably alive, the same manufactured false positive arriving from the
 other direction; its raw path is part of the swept text for that reason. Directories the user
 *excluded* are deliberately not swept: an ignore rule is an instruction, not a gap in our coverage.
