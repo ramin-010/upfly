@@ -9,6 +9,7 @@
 
 import type { Graph } from './graph.js';
 import { isLinked } from './reference.js';
+import type { Reference } from './types.js';
 
 /**
  * The share of checkable root-relative references that must link for the serving root to
@@ -60,7 +61,7 @@ export function resolutionHealth(graph: Graph): ResolutionHealth {
   for (const reference of graph.references) {
     // The only references a serving root can decide. A file-relative path resolves
     // the same way whatever the serving root is.
-    if (!reference.rawPath.startsWith('/')) continue;
+    if (!dependsOnServingRoot(reference.rawPath)) continue;
 
     if (isLinked(reference)) {
       linked += 1;
@@ -78,4 +79,19 @@ export function resolutionHealth(graph: Graph): ResolutionHealth {
     rate,
     servingRootUnknown: checkable >= MINIMUM_ROOT_RELATIVE && rate < RESOLUTION_FLOOR,
   };
+}
+
+/**
+ * The `broken` references whose findings a run that could not find its serving root
+ * withholds: the root-relative ones. Their target is unknown rather than missing, so an
+ * asset one of them names may be in use. Empty when the serving root was found.
+ */
+export function withheldReferences(graph: Graph): readonly Reference[] {
+  if (!resolutionHealth(graph).servingRootUnknown) return [];
+  return graph.byResolution.broken.filter((reference) => dependsOnServingRoot(reference.rawPath));
+}
+
+/** Whether a serving root decides where this path points: whether it is root-relative. */
+export function dependsOnServingRoot(rawPath: string): boolean {
+  return rawPath.startsWith('/');
 }

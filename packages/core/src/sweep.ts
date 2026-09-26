@@ -14,6 +14,7 @@ import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings, imageFilenameCandidates } from './paths.js';
+import { withheldReferences } from './resolution-health.js';
 import type { ReadFilePort, ScannedMention } from './scan.js';
 import type { Reference } from './types.js';
 
@@ -21,7 +22,10 @@ import type { Reference } from './types.js';
 export type MentionSource =
   /** In a file no adapter could read: an unclaimed extension, or a parse failure. */
   | 'unscanned-file'
-  /** In a path we read but could not resolve: `dynamic`, alias-shaped, or speculative. */
+  /**
+   * In a path we read but could not resolve: `dynamic`, alias-shaped, speculative, or
+   * root-relative in a run that could not find its serving root.
+   */
   | 'unresolved-reference'
   /**
    * In a file an adapter did read, in a form it did not understand: a spaced file name
@@ -252,14 +256,17 @@ async function sweepUnresolvedReferences(
  *
  * A known target is no such evidence. `broken` points at nothing and is its own finding:
  * `./wrong-dir/hero.png: broken` beside `hero.png: dead` tells a reader more than a hedge
- * would. `out-of-scope` is known not to be an indexed asset. A new resolution outcome
- * belongs here only if its target is unknown.
+ * would. The exception is a root-relative one that a run with no serving root withholds:
+ * it has no finding of its own, and its target is unknown rather than missing.
+ * `out-of-scope` is known not to be an indexed asset. A new resolution outcome belongs
+ * here only if its target is unknown.
  */
 function unknownTargetReferences(graph: Graph): readonly Reference[] {
   return [
     ...graph.byResolution.dynamic,
     ...graph.byResolution['unresolved-alias'],
     ...graph.byResolution.discarded,
+    ...withheldReferences(graph),
   ];
 }
 

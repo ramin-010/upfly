@@ -796,6 +796,43 @@ describe('a run that could not find the serving root', () => {
     expect(relative).toMatchObject({ kind: 'broken', rawPath: './genuinely-gone.png' });
   });
 
+  it('hedges an asset that a discarded root-relative guess names', async () => {
+    // A root-relative path in a data file is a guess, so it is discarded rather than
+    // withheld: no finding, and listed only on request. Its target is as unknown as a
+    // withheld one's, so the asset it names is hedged rather than reported dead.
+    const { assets, references } = rootRelative(20, 1);
+    const guess: Reference = {
+      ...raw('data.json', '/img/logo.png', 10),
+      kind: 'json',
+      shape: 'json.config.value',
+      asserted: false,
+      resolution: 'discarded',
+      confidence: 'unsafe',
+      resolvedPath: null,
+    };
+    const graph = graphOf({
+      assets: [...assets, asset('src/img/logo.png'), asset('src/img/unused.png')],
+      references: [...references, guess],
+    });
+    const readFile = files({ '/repo/data.json': '{ "logo": "/img/logo.png" }\n' });
+
+    const result = await audit({
+      graph,
+      sweep: await sweepForMentions({ graph, readFile }),
+      readFile,
+    });
+
+    const verdicts = result.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead'
+        ? [[finding.asset, finding.kind]]
+        : [],
+    );
+    expect(verdicts).toEqual([
+      ['src/img/unused.png', 'dead'],
+      ['src/img/logo.png', 'possibly-dead'],
+    ]);
+  });
+
   it('leaves an ordinary run alone, broken findings and all', async () => {
     const { assets, references } = rootRelative(20, 19);
 

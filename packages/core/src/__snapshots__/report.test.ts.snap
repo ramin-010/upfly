@@ -288,28 +288,48 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
       "where": "src/posts/second.md:17",
     },
     {
-      "asset": "src/img/diagram.png",
-      "bytes": 71744,
-      "inPublicDir": false,
-      "kind": "dead",
-    },
-    {
-      "asset": "src/img/inline.png",
-      "bytes": 70,
-      "inPublicDir": false,
-      "kind": "dead",
-    },
-    {
-      "asset": "src/img/texture.png",
-      "bytes": 70,
-      "inPublicDir": false,
-      "kind": "dead",
-    },
-    {
       "asset": "src/img/unused.png",
       "bytes": 70,
       "inPublicDir": false,
       "kind": "dead",
+    },
+    {
+      "asset": "src/img/diagram.png",
+      "bytes": 71744,
+      "evidence": [
+        {
+          "asset": "src/img/diagram.png",
+          "quote": "/img/diagram.png",
+          "source": "unresolved-reference",
+          "where": "src/css/site.css:12",
+        },
+        {
+          "asset": "src/img/diagram.png",
+          "quote": "/img/diagram.png",
+          "source": "unresolved-reference",
+          "where": "src/css/site.css:8",
+        },
+        {
+          "asset": "src/img/diagram.png",
+          "quote": "/img/diagram.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/first.md:5",
+        },
+        {
+          "asset": "src/img/diagram.png",
+          "quote": "/img/diagram.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/second.md:11",
+        },
+        {
+          "asset": "src/img/diagram.png",
+          "quote": "/img/diagram.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/second.md:8",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
     },
     {
       "asset": "src/img/favicon.png",
@@ -340,6 +360,32 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
       "kind": "possibly-dead",
     },
     {
+      "asset": "src/img/inline.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/inline.png",
+          "quote": "/img/inline.png",
+          "source": "unresolved-reference",
+          "where": "src/css/site.css:8",
+        },
+        {
+          "asset": "src/img/inline.png",
+          "quote": "/img/inline.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/first.md:9",
+        },
+        {
+          "asset": "src/img/inline.png",
+          "quote": "/img/inline.png",
+          "source": "unresolved-reference",
+          "where": "src/posts/second.md:11",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+    {
       "asset": "src/img/logo.png",
       "bytes": 7195,
       "evidence": [
@@ -362,6 +408,20 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
           "quote": "{{ site.url }}/img/templated.png",
           "source": "unresolved-reference",
           "where": "src/posts/first.md:7",
+        },
+      ],
+      "inPublicDir": false,
+      "kind": "possibly-dead",
+    },
+    {
+      "asset": "src/img/texture.png",
+      "bytes": 70,
+      "evidence": [
+        {
+          "asset": "src/img/texture.png",
+          "quote": "/img/texture.png",
+          "source": "unresolved-reference",
+          "where": "src/css/site.css:2",
         },
       ],
       "inPublicDir": false,
@@ -430,11 +490,11 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     "assets": 8,
     "findings": {
       "broken": 1,
-      "dead": 4,
+      "dead": 1,
       "duplicate": 0,
       "format-opportunity": 0,
       "oversized": 0,
-      "possibly-dead": 4,
+      "possibly-dead": 7,
       "serving-root-unknown": 1,
     },
     "linkedReferences": 0,
@@ -509,13 +569,10 @@ Findings — 10 items
   broken references (1) — these point at nothing
     src/posts/second.md:17  ../img/missing-on-purpose.png
 
-  unreferenced images (4)
-    src/img/diagram.png  71.7 KB
-    src/img/inline.png  70 B
-    src/img/texture.png  70 B
+  unreferenced images (1)
     src/img/unused.png  70 B
 
-  possibly unreferenced (4) — each is named somewhere, but not by a reference Upfly could follow
+  possibly unreferenced (7) — each is named somewhere, but not by a reference Upfly could follow
 
     named in a file no adapter reads — an adapter or a config entry would resolve these (3)
       src/index.njk — 2 assets
@@ -527,7 +584,20 @@ Findings — 10 items
         src/img/favicon.png  70 B
           named in src/_includes/base.njk:4: favicon.png
 
-    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (1)
+    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (4)
+      src/css/site.css — 3 assets
+        src/img/diagram.png  71.7 KB
+          named in src/css/site.css:12: /img/diagram.png
+          named in src/css/site.css:8: /img/diagram.png
+          named in src/posts/first.md:5: /img/diagram.png
+          named in src/posts/second.md:11: /img/diagram.png
+          named in src/posts/second.md:8: /img/diagram.png
+        src/img/inline.png  70 B
+          named in src/css/site.css:8: /img/inline.png
+          named in src/posts/first.md:9: /img/inline.png
+          named in src/posts/second.md:11: /img/inline.png
+        src/img/texture.png  70 B
+          named in src/css/site.css:2: /img/texture.png
       src/posts/first.md — 1 asset
         src/img/templated.png  70 B
           named in src/posts/first.md:7: {{ site.url }}/img/templated.png

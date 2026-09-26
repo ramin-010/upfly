@@ -1828,6 +1828,34 @@ describe('the references withheld when the serving root cannot be found', () => 
       diagnosis.suppressed.map((entry) => `      ${entry.where}  ${entry.rawPath}`).join('\n'),
     );
   });
+
+  it('hedges each asset a withheld reference names, rather than calling it dead', async () => {
+    // With no serving root, `/img/diagram.png` may well be `src/img/diagram.png`: its
+    // target is unknown, not missing. `dead` says a file is safe to remove, so each such
+    // asset is hedged, citing every withheld reference that names it.
+    const { report, diagnosis } = await diagnosed();
+    const verdictOf = (asset: string) =>
+      report.findings.find(
+        (finding) =>
+          (finding.kind === 'dead' || finding.kind === 'possibly-dead') && finding.asset === asset,
+      )?.kind;
+    const cited = report.findings.flatMap((finding) =>
+      finding.kind === 'possibly-dead'
+        ? finding.evidence
+            .filter((mention) => mention.source === 'unresolved-reference')
+            .map((mention) => `${mention.where}  ${mention.quote}`)
+        : [],
+    );
+
+    expect(
+      ['src/img/diagram.png', 'src/img/inline.png', 'src/img/texture.png'].map(verdictOf),
+    ).toEqual(['possibly-dead', 'possibly-dead', 'possibly-dead']);
+    expect(
+      diagnosis.suppressed.filter((entry) => !cited.includes(`${entry.where}  ${entry.rawPath}`)),
+    ).toEqual([]);
+    // Nothing names `unused.png`, so it stays confidently dead.
+    expect(verdictOf('src/img/unused.png')).toBe('dead');
+  });
 });
 
 describe('the assets a plan examined and offered nothing for', () => {

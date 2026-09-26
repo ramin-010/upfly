@@ -20,7 +20,11 @@ import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
-import { type ResolutionHealth, resolutionHealth } from './resolution-health.js';
+import {
+  type ResolutionHealth,
+  dependsOnServingRoot,
+  resolutionHealth,
+} from './resolution-health.js';
 import type { ReadFilePort } from './scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
@@ -321,8 +325,10 @@ function diagnoseServingRoot(
   broken: readonly BrokenFinding[],
   health: ResolutionHealth,
 ): (BrokenFinding | ServingRootUnknownFinding)[] {
-  const explained = broken.filter((finding) => finding.rawPath.startsWith('/'));
-  const unexplained = broken.filter((finding) => !finding.rawPath.startsWith('/'));
+  // The same test `withheldReferences` applies, so the sweep treats exactly these
+  // references as evidence that the asset they name may be in use.
+  const explained = broken.filter((finding) => dependsOnServingRoot(finding.rawPath));
+  const unexplained = broken.filter((finding) => !dependsOnServingRoot(finding.rawPath));
 
   return [
     {

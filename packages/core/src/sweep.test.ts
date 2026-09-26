@@ -346,6 +346,59 @@ describe('sweepForMentions', () => {
       expect(result.mentions.size).toBe(0);
     });
 
+    it('sweeps a root-relative broken reference that a run with no serving root withholds', async () => {
+      // No root-relative path resolves, so the audit withholds their broken findings:
+      // `/img/diagram.png` may be served from a directory this run did not find, and its
+      // target is unknown rather than missing. Each path starts its own 40-character line.
+      const paths = [
+        ...Array.from({ length: 19 }, (_, index) => `/missing${index}.png`),
+        '/img/diagram.png',
+        './wrong-dir/hero.png',
+      ];
+      const graph = graphOf({
+        assets: [asset('src/img/diagram.png'), asset('hero.png')],
+        references: paths.map((path, index) => unlinked('index.html', path, 'broken', index * 40)),
+      });
+      const text = paths.map((path) => path.padEnd(39)).join('\n');
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/index.html': text }),
+      });
+
+      expect(result.mentions.get('src/img/diagram.png')).toEqual([
+        {
+          asset: 'src/img/diagram.png',
+          source: 'unresolved-reference',
+          where: 'index.html:20',
+          quote: '/img/diagram.png',
+        },
+      ]);
+      // A relative path is broken whatever the serving root is, so it keeps its own finding
+      // and is no evidence, as in any other run.
+      expect(result.mentions.has('hero.png')).toBe(false);
+    });
+
+    it('does not sweep a root-relative broken reference once the serving root is found', async () => {
+      // Nineteen of twenty root-relative paths resolve, so the one that does not is a
+      // finding of its own, and an asset its name matches stays confidently dead beside it.
+      const linked = Array.from({ length: 19 }, (_, index) => `public/a${index}.png`);
+      const graph = graphOf({
+        assets: [...linked.map(asset), asset('src/img/diagram.png')],
+        references: [
+          ...linked.map((target, index) => resolved('index.html', `/a${index}.png`, target)),
+          unlinked('index.html', '/img/diagram.png', 'broken'),
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/index.html': '<img src="/img/diagram.png">' }),
+      });
+
+      expect(result.mentions.size).toBe(0);
+    });
+
     it('still cites the file when its source cannot be re-read for a line', async () => {
       const graph = graphOf({
         assets: [asset('img/hero.png')],

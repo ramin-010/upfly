@@ -392,7 +392,9 @@ So two things happen below a floor:
    serving root. A broken relative path is not affected. Each replaced reference is listed under the
    finding, in `suppressed`, with its file, line and path as written, in the order its `broken`
    finding would have had, so none is set aside where a reader cannot see it. The human report
-   prints each one as it prints a broken finding.
+   prints each one as it prints a broken finding. Their target is unknown rather than missing, so
+   an asset one of them names is `possibly-dead`, citing each, never `dead` (see "`possibly-dead`,
+   and why "zero references" is usually a lie").
 
 **The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
 Only those depend on a serving root. A repository whose *relative* imports are genuinely broken
@@ -566,10 +568,13 @@ file name with no slash, which has the shape of a UI label (see "What counts as 
 string").
 
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
-`unresolved-alias` and `discarded`. A reference whose target is known is no evidence of use.
-`broken` points at nothing and is already its own finding, and `hero.png: dead` beside
-`./wrong-dir/hero.png: broken` tells a reader more than a hedge would. `out-of-scope` is known not
-to be an indexed asset.
+`unresolved-alias`, `discarded`, and the root-relative `broken` references that a run with no
+serving root withholds (see "When the serving root cannot be found at all"). A reference whose
+target is known is no evidence of use. Any other `broken` reference points at nothing and is
+already its own finding, and `hero.png: dead` beside `./wrong-dir/hero.png: broken` tells a reader
+more than a hedge would. A withheld one has no finding of its own, and `/img/hero.png` may be served
+from the directory the run did not find, so a `dead` beside it would call a file safe to remove
+that the site may serve. `out-of-scope` is known not to be an indexed asset.
 
 **No basename sweep can rescue a filename assembled at runtime.** `` `background-${dir}.png` ``
 never contains the string `background-ltr.png`, so there is a test pinning that limit, of *the
