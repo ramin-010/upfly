@@ -27,13 +27,14 @@ import type { Reference } from './types.js';
 import type { Adapter } from './types.js';
 
 /**
- * The report is public API (rule 6), so this is a snapshot test over real fixture
- * trees rather than hand-built data — a schema change should be visible as a diff
- * somebody has to approve.
+ * The report's JSON is public API, so it is snapshot-tested over real fixture trees: a
+ * schema change shows as a diff somebody has to approve. The same repository reported
+ * from another working directory must give byte-identical output, so no absolute path
+ * may reach the report.
  *
- * It also carries the §5.1(f) guard: the same repository rendered from a different
- * working directory must produce byte-identical output, which means no absolute path
- * may reach it.
+ * When every fixture shares the value a branch depends on, the fixtures cannot test that
+ * branch, and a green suite says only that nothing changed. Those blocks build their
+ * input by hand.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
@@ -114,26 +115,16 @@ describe('buildReport', () => {
   });
 
   it.each(NAMES)('%s: matches the approved JSON shape', async (name) => {
-    // Rule 6: the schema is public API. A change here should be a diff someone
-    // deliberately approves, not something that ships because tests still pass.
     expect(await reportFor(name)).toMatchSnapshot();
   });
 
   /**
-   * 🔴 **R131's condition: an approved artefact must carry a lossless entry.**
-   *
-   * The five snapshots above carry `savingQuality: {}` — none of those fixtures produces
-   * a `format-opportunity` at all — so bumping them to schema 5 proves the version moved
-   * and nothing about the field that moved with it. This one is probed for real against
-   * `partial-pattern`, where `theme-dark.png` is 70 bytes that webp 80 grows to 94 and
-   * lossless takes to 36.
-   *
-   * ⚠️ **And it is the guard for R139's list.** The old field was assignment inside a
-   * loop, so it kept whichever finding came last — invisible while every image in a run
-   * shared one setting. This fixture is the first where two settings coexist, which is
-   * exactly the case a scalar could not represent.
+   * The snapshots above run unprobed, so none holds a `format-opportunity` and their
+   * `savingQuality` is `{}`. This one is probed against `partial-pattern`, where
+   * `screenshot.png` is measured lossless and the other images at quality 80, so one run
+   * holds two settings for one format. A single value per format would keep only one.
    */
-  it('🔴 carries both settings when a run mixes them (R131, R139)', async () => {
+  it('carries both settings when a run mixes them', async () => {
     const report = await reportFor('partial-pattern', true);
 
     expect(report.summary.savingQuality.webp).toEqual([80, 'lossless']);
@@ -147,11 +138,10 @@ describe('buildReport', () => {
     expect(renderReport(await reportFor(name))).toMatchSnapshot();
   });
 
-  describe('no absolute path leaks — §5.1(f)', () => {
+  describe('no absolute path leaks', () => {
     it.each(NAMES)('%s: the serialised report never contains the root', async (name) => {
-      // The guard for the property the whole module exists to hold. Half the data
-      // upstream carries an absolute `path` beside its `relative`, so this is one
-      // forgotten projection away from being false.
+      // Half the data upstream carries an absolute `path` beside its `relative`, so
+      // this is one forgotten projection away from being false.
       const report = await reportFor(name);
       const serialised = JSON.stringify(report);
 
@@ -167,7 +157,7 @@ describe('buildReport', () => {
     });
   });
 
-  describe('determinism — rule 11', () => {
+  describe('determinism', () => {
     it('produces byte-identical JSON across two runs', async () => {
       const [first, second] = await Promise.all([reportFor('astro'), reportFor('astro')]);
 
@@ -218,8 +208,7 @@ describe('buildReport', () => {
   });
 
   describe('the encode cap caveat', () => {
-    // Hand-built: no fixture run is capped, so a fixture-driven assertion here
-    // would never fire. Same trap as the discarded candidates one below.
+    // No fixture run is capped, so this is built by hand.
     function cappedReport() {
       const ROOT = '/repo';
       return buildReport({
@@ -285,20 +274,11 @@ describe('buildReport', () => {
     });
   });
 
-  describe('the possibly-dead headings — R16', () => {
-    // Hand-built, and it has to be: **every hedge in every fixture tree comes from
-    // an `.astro` or `.njk` file**, so all five are `unscanned-file`. A
-    // fixture-driven assertion about the other two sources could never fire — which
-    // is precisely how a heading that is false for 119 of astro-docs' 140 findings
-    // shipped past a green suite.
-    //
-    // ⚠️ **Rasters, deliberately, and they used to be the `.svg` logos this defect was
-    // found on.** R22 demotes an unreferenced vector out of `findings` entirely, so
-    // vector assets here would leave this block asserting over the one raster that
-    // survived — three headings tested by nothing. The block is about *which evidence
-    // source heads a hedge*, and that question does not depend on the file's format,
-    // so the fix is to hedge assets R22 keeps. R22's own demotion is asserted
-    // separately below, on data built for it.
+  describe('the possibly-dead headings', () => {
+    // The fixtures' hedges all come from `eleventy`, from `.njk` files and one
+    // unresolved reference, so the third evidence source and an asset cited by two
+    // sources are reachable only from here. The assets are rasters because the report
+    // moves an unreferenced vector out of `findings`, so a vector never reaches a heading.
     const ROOT = '/repo';
 
     function mention(source: Mention['source'], where: string, quote: string): Mention {
@@ -354,10 +334,9 @@ describe('buildReport', () => {
     }
 
     it('never claims a file could not be read when the engine read it fine', () => {
-      // The defect R16 was ruled on. `src/data/logos.ts` is ordinary TypeScript that
-      // parses perfectly; `'gitbook.png'` is simply not a resolvable path. A user who
-      // follows that citation under a "cannot read" heading opens a readable file and
-      // concludes the tool is broken — one wrong sentence costing a correct finding.
+      // `src/data/logos.ts` is ordinary TypeScript that parses, and `'gitbook.png'` in it
+      // is simply not a resolvable path. Under a "cannot read" heading, a user who follows
+      // the citation opens a readable file and concludes the tool is broken.
       const text = renderReport(hedgedReport());
       const section = text.slice(text.indexOf('possibly unreferenced'));
       const unresolvedLine = section
@@ -392,7 +371,7 @@ describe('buildReport', () => {
       // A real case: `Sponsors.astro` imports `./logos/mux.svg` and `logos.ts` names
       // `mux.svg` too, so the asset carries both. It belongs under the heading with
       // something to do about it, and neither citation may be dropped. Spelled `.png`
-      // here for the reason given above: R22 would demote the vector it really is.
+      // so the report does not demote it as a vector.
       const both = buildReport({
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
@@ -436,14 +415,13 @@ describe('buildReport', () => {
     });
   });
 
-  // Built with `String.fromCharCode` rather than an escape: this harness eats a
-  // backslash in transit, which turned `split('\n')` into a split on a literal
-  // newline in the source. Known trap, documented in STATE.md's Gotchas.
+  // A newline, spelled without a backslash escape so that no tool rewriting this file
+  // can turn it into a literal line break inside the string.
   const NEWLINE = String.fromCharCode(10);
 
-  describe('one sentence, said once (R25 #3)', () => {
-    // `--probe-all` appeared 81 times in shadcn-ui's report: once on each of 80
-    // capped assets plus the caveat. Same wall as the 126 SVG lines.
+  describe('one sentence, said once', () => {
+    // A reason many capped assets share is printed once, with a count. Printed per
+    // asset, 80 capped assets would repeat `--probe-all` 81 times.
     const ROOT = '/repo';
 
     function reportWithCapped(n: number) {
@@ -489,15 +467,14 @@ describe('buildReport', () => {
 
       expect(text).toContain('80 files — webp: not among the 100 largest');
       // Three places, each saying something different: the collapsed skip line, the
-      // caveat, and the headline's floor clause. Was 81 — once per capped asset.
+      // caveat, and the headline's floor clause.
       expect(text.match(/--probe-all/g)).toHaveLength(3);
     });
 
     it('keeps every name under the collapsed reason, not just a count', () => {
-      // ⚠️ The first version of this dropped the names, which was wrong for the
-      // case beside it: eleventy-docs has ten `.js` files that are really Nunjucks
-      // templates, and *which ten* is the actionable part. The sentence moves up;
-      // the names stay.
+      // The names are the actionable part: `eleventy-docs` has ten `.js` files that are
+      // really Nunjucks templates, and a reader needs to know which ten. The sentence
+      // moves up; the names stay.
       const text = renderReport(reportWithCapped(80));
 
       expect(text).toContain('img0.png');
@@ -514,18 +491,12 @@ describe('buildReport', () => {
     });
   });
 
-  describe('the headline says what to act on, and says when it is a floor (R21 #4, R25 #2)', () => {
+  describe('the headline says what to act on, and says when it is a floor', () => {
     /**
-     * §5.1(d)'s criterion is whether the numbers are obvious in ten seconds, and
-     * this is the only text that gets ten seconds. It failed twice: two overlapping
-     * counts with no stated relationship, and the savings figure — the one line
-     * anybody wants — placed fourth while being a **floor** that said so only in a
-     * caveat forty lines below.
-     *
-     * Three of the four branches below are unreachable from every fixture, because
-     * `reportFor` runs them all with `probed: false`. Same trigger as the skipped
-     * section and the size section: when every fixture shares a value for the thing
-     * under test, the fixtures cannot test it.
+     * The headline is the only text a reader gives ten seconds, so it leads with the
+     * saving and says in the same sentence when the saving is a floor. Most branches
+     * below need a probed run, and the fixture snapshots are unprobed, so they are
+     * built by hand.
      */
     const ROOT = '/repo';
 
@@ -636,14 +607,13 @@ describe('buildReport', () => {
 
     it('states the quality the saving was measured at', () => {
       // A saving without its quality is not a figure: the same images give 95% at
-      // quality 50 and 44% at quality 90. The report used to open with a headline
-      // like "166.3 MB of savings found so far" and name no quality anywhere in the
-      // file, so a reader could not tell which product they were being offered.
+      // quality 50 and 44% at quality 90, so without it a reader cannot tell which
+      // product is being offered.
       expect(headlineOf({ saving: 4_200_000 })).toContain('of savings as webp at quality 80,');
     });
 
     it('says in words that some images were measured lossless', () => {
-      // Printed as `webp quality 80,lossless` once lossless encodes joined the report.
+      // A list of settings joined with a comma would print `webp quality 80,lossless`.
       expect(headlineOf({ saving: 4_200_000, alsoLossless: true })).toContain(
         'of savings as webp at quality 80, or lossless where that came out smaller, measured',
       );
@@ -656,8 +626,8 @@ describe('buildReport', () => {
     });
 
     it('says the number is incomplete when the cap left images unmeasured', () => {
-      // R25 #2. shadcn-ui had 80 of 195 unmeasured, and the report presented its
-      // total as if it were the total. The count goes in the same sentence.
+      // When the cap leaves images unmeasured the total is a floor, and the count goes
+      // in the same sentence so the total is not read as the whole.
       const line = headlineOf({ saving: 4_200_000, capped: 3, assets: 10 });
 
       expect(line).toContain('so far');
@@ -672,24 +642,18 @@ describe('buildReport', () => {
     });
 
     it('distinguishes "no savings" from "not measured"', () => {
-      // Two very different statements that both used to render as an absent line.
+      // Two very different statements, and neither may render as an absent line.
       expect(headlineOf({ assets: 10 })).toContain('no savings found');
       expect(headlineOf({ probed: false })).toContain('savings not measured');
     });
   });
 
-  describe('one image, one size story (R21)', () => {
+  describe('one image, one size story', () => {
     /**
-     * `oversized` and `format-opportunity` are two measurements of the same file,
-     * and they were printed in sections a page apart with nothing linking them. On
-     * `astro-docs` **all five** oversized assets were also opportunities, so every
-     * one appeared twice and the sentence a reader wants — "551 KB, and 340 KB as
-     * webp" — was in neither place.
-     *
-     * Hand-built, and unavoidably so: `reportFor` runs the fixtures with
-     * `probed = false`, so **no fixture produces either finding**. The merged
-     * section is invisible to every snapshot. That is the fourth report branch this
-     * phase that no fixture could reach.
+     * `oversized` and `format-opportunity` are two measurements of one file, so they
+     * print together: a reader wants "551 KB, and 340 KB as webp" in one place. Neither
+     * finding is produced without a probe, and the fixture snapshots are unprobed, so
+     * this is built by hand.
      */
     const ROOT = '/repo';
 
@@ -748,7 +712,7 @@ describe('buildReport', () => {
     });
 
     it('keeps both counts in the heading, so the merge hides nothing', () => {
-      // Rule 9 applied to a collapse: two numbers went in, two numbers come out.
+      // Two numbers went in, so two numbers come out.
       const text = renderReport(sizeReport([oversized, opportunity]));
 
       expect(text).toContain('1 over the limit');
@@ -759,24 +723,19 @@ describe('buildReport', () => {
       const text = renderReport(sizeReport([opportunity]));
 
       expect(text).toContain('landing-page-book.png');
-      // The specific line, not the substring: `over ` also matches the heading's
-      // "0 over the limit", so the loose version failed for the right reason.
+      // The specific line rather than `over `, which the heading's "0 over the limit"
+      // also contains.
       expect(text).not.toContain('larger than the size limit');
       expect(text).toContain('0 over the limit');
     });
   });
 
-  describe('a determination is not a failure (R21)', () => {
+  describe('a determination is not a failure', () => {
     /**
-     * `Skipped — 140 things Upfly could not handle` was false for 134 of them on
-     * `astro-docs`: 126 vectors and 8 files already in the target format, each one
-     * Upfly *working out* that there was nothing to gain. The reader's question was
-     * the right one — "if you can identify that, doesn't that count?"
-     *
-     * Hand-built because **no fixture renders the skipped section at all.** Every
-     * stage label, the heading, and the grouping are invisible to the fixture
-     * snapshots, so this whole path looks tested and is not — the same trap as the
-     * discarded line, the encode cap and the counted-unsafe branch.
+     * A vector, or a file already in the target format, is Upfly working out that there
+     * is nothing to gain, not something it could not handle, so it stays out of the
+     * skipped list. No human-rendering snapshot has a skipped entry, so the rendered
+     * stage labels, heading and grouping are reachable only from here.
      */
     const ROOT = '/repo';
 
@@ -832,8 +791,8 @@ describe('buildReport', () => {
     });
 
     it('counts them in one caveat instead, with the reasons broken out', () => {
-      // Rule 9: the count survives the collapse, and the per-asset detail is
-      // untouched in `probes[].skipped` for anyone reading the JSON.
+      // The count survives the collapse, and the per-asset detail stays in
+      // `probes[].skipped` for anyone reading the JSON.
       const caveat = reportWith([
         probe('a.svg', 'vector'),
         probe('b.svg', 'vector'),
@@ -848,13 +807,10 @@ describe('buildReport', () => {
       ]);
     });
 
-    describe('R64: the report names where the libraries own words went', () => {
+    describe('the report names where the libraries’ own words went', () => {
       /**
-       * Hand-built for the same reason the block around it is: **no fixture can reach
-       * this line.** Every fixture report passes no `diagnosticsFile`, so it renders
-       * as `null` in all five approved snapshots and the rendered sentence is executed
-       * by nothing — the same trap this file already names for the discarded line and
-       * the encode cap.
+       * No fixture report passes a `diagnosticsFile`, so it is `null` in every snapshot
+       * and only these tests render the sentence that names it.
        */
       function rendered(diagnosticsFile?: string) {
         const report = reportWith([probe('broken.png', 'encode-failed')]);
@@ -864,9 +820,8 @@ describe('buildReport', () => {
       }
 
       it('names the file when the run wrote one', () => {
-        // R60 moved this text out of the report, which was right. What it left behind
-        // was a reader with nowhere to look and nothing saying anywhere existed — the
-        // text had been relocated and only half of rule 9 was being kept.
+        // The libraries' own messages are kept out of the report, so the report says
+        // where they went, or a reader would have nowhere to look.
         const text = rendered('railsgirls-com.diagnostics.txt');
 
         expect(text).toContain('railsgirls-com.diagnostics.txt');
@@ -874,9 +829,8 @@ describe('buildReport', () => {
       });
 
       it('says nothing at all when no such file was written', () => {
-        // Absent is the honest answer, not a default name. Naming a file that does
-        // not exist sends a reader looking for nothing, which is worse than silence —
-        // and the CLI writes none of these yet.
+        // Absent is the honest answer, not a default name: naming a file that does not
+        // exist sends a reader looking for nothing, and the CLI writes no such file.
         const text = rendered();
 
         expect(text).not.toContain('diagnostics');
@@ -884,8 +838,6 @@ describe('buildReport', () => {
       });
 
       it('is a name and never a path, so two checkouts render the same bytes', () => {
-        // Rule 11. An absolute path in the report is a defect this codebase has had
-        // once already, found by §5.1(f) on `eleventy-docs`.
         const report = reportWith([probe('broken.png', 'encode-failed')]);
 
         expect(report.diagnosticsFile).toBeNull();
@@ -942,12 +894,9 @@ describe('buildReport', () => {
     });
   });
 
-  describe('the unsafe bucket lists what can be checked (R21)', () => {
-    // Hand-built, and it has to be: the only fixture with an unsafe reference has
-    // exactly one, and it *shows a filename*, so the counted branch below is
-    // unreachable from every fixture tree. That is the same trap as the discarded
-    // line and the encode cap — a new branch that no fixture can reach looks tested
-    // and is not.
+  describe('the unsafe bucket lists what can be checked', () => {
+    // The only fixture with an unsafe reference has exactly one, and it shows a
+    // filename, so the counted branch below is reachable only from here.
     const ROOT = '/repo';
 
     function dynamicReference(file: string, rawPath: string, start: number) {
@@ -1007,8 +956,8 @@ describe('buildReport', () => {
 
     it('counts the ones with no filename instead of listing them', () => {
       // `/view/${style}/${name}` shows nothing to check, and with no extension it
-      // can never glob to an asset either. Fifty of these buried the eight a person
-      // could act on — shadcn-ui listed 187 entries of which 8 named an image.
+      // can never glob to an asset either. Listed, entries like it bury the few a person
+      // could act on.
       const text = renderReport(
         reportWith(['${base}/hero.png', '/view/${style}/${name}', '/api/${id}']),
       );
@@ -1018,14 +967,13 @@ describe('buildReport', () => {
       expect(text).toContain('plus 2 with no filename to check');
     });
 
-    it('still reports the full count in the heading — rule 9 survives the collapse', () => {
-      // The whole risk of this change: a list that quietly shrinks. The heading has
-      // to keep covering everything, listed or not.
+    it('still reports the full count in the heading, so the collapse hides nothing', () => {
+      // The risk is a list that quietly shrinks. The heading has to count everything,
+      // listed or not.
       const text = renderReport(reportWith(['/view/${style}/${name}', '/api/${id}']));
 
-      // R111/R123 moved the WORDING of this heading, not its job: the full count still
-      // appears even though only one entry is listed, which is what rule 9 requires.
-      // These two are built at run time, so the heading is the no-answer one.
+      // The full count appears although no entry is listed. Both paths are assembled at
+      // run time, so the heading is the one for references with no answer to find.
       expect(text).toContain('2 references had no answer to find');
       expect(text).toContain('none with a filename to check');
     });
@@ -1203,9 +1151,7 @@ describe('buildReport', () => {
   });
 
   describe('discarded candidates', () => {
-    // Every fixture tree has zero discarded candidates, so these are hand-built.
-    // A fixture-only test here would pass while asserting nothing — the guard
-    // would simply never fire, which is the vacuous-test trap in miniature.
+    // Every fixture tree has zero discarded candidates, so these are built by hand.
     const ROOT = '/repo';
 
     function discardedGraph() {
@@ -1256,15 +1202,13 @@ describe('buildReport', () => {
       const report = reportOf(false);
 
       expect(report.references.discardedCount).toBe(1);
-      // `null`, not `[]`: an empty array would read as "there were none", which is
-      // the same class of lie as silence reading as "no opportunity here".
+      // `null`, not `[]`: an empty array would read as "there were none".
       expect(report.references.discarded).toBeNull();
     });
 
-    it('lists them when asked, so the promise in §1.1 is real', () => {
-      // The JSON adapter is deliberately generous. If it ever starts eating
-      // genuine references, the count says something is wrong and only the list
-      // says what — and that is not debuggable from an integer.
+    it('lists them when asked, so each one can be inspected', () => {
+      // The JSON adapter is generous. If it starts eating genuine references, the
+      // count says something is wrong and only the list says what.
       const report = reportOf(true);
 
       expect(report.references.discarded).toEqual([
@@ -1273,9 +1217,8 @@ describe('buildReport', () => {
           rawPath: 'assets/logo.png',
           resolution: 'discarded',
           reason: 'a path-shaped string that resolved to nothing',
-          // R111: a guess nobody asserted is in no accuracy box at all. Scoring
-          // ourselves on a lockfile string measures the engine against work that was
-          // never its job, which is R109's objection one level down.
+          // A guess nobody asserted is in no accuracy class: scoring the engine on a
+          // lockfile string measures it against work that was never its job.
           classification: 'not-a-claim',
           refusalReason: null,
         },
@@ -1283,14 +1226,10 @@ describe('buildReport', () => {
     });
 
     it('says the strings did not resolve, never that they were not references', () => {
-      // The line read "N path-shaped strings were not asset references". Measured on
-      // `astro-docs`, **117 of its 118** name a file that genuinely is an asset in
-      // that repository — `src/data/logos.ts` holds `{ file: 'gitbook.svg' }` a
-      // hundred and seventeen times, joined to a base directory at runtime.
-      //
-      // It also contradicted the same report a page later: those identical strings
-      // are the R10 haystack's evidence, so the findings section cites them as proof
-      // an asset is alive while this line called them not references at all.
+      // Many of these strings do name an asset: `src/data/logos.ts` in `astro-docs` holds
+      // entries such as `{ file: 'gitbook.svg' }`, joined to a base directory at runtime.
+      // The sweep reads the same strings as evidence that an asset is alive, so this
+      // line must not call them "not references".
       const text = renderReport(reportOf(false));
 
       expect(text).toContain('did not resolve to an asset');
@@ -1299,8 +1238,8 @@ describe('buildReport', () => {
     });
 
     it('names the flag that actually produces the list', () => {
-      // Pointing a user at `--json` gave them a bare integer. A message that sends
-      // someone where the data is not costs more trust than no message would.
+      // `--json` alone gives a bare integer. A message that sends someone where the data
+      // is not costs more trust than no message would.
       const text = renderReport(reportOf(false));
 
       expect(text).toContain('1 path-shaped string did not resolve to an asset');
@@ -1319,8 +1258,7 @@ describe('buildReport', () => {
 
   describe('the human rendering', () => {
     it('prints what was skipped before what was found', async () => {
-      // The ordering that the previous generation of this project got wrong: a
-      // limitation printed after eighty findings is a limitation nobody reads.
+      // A limitation printed after eighty findings is a limitation nobody reads.
       const text = renderReport(await reportFor('eleventy'));
       const unresolved = text.search(/had no answer to find|could not be resolved|were not linked/);
       const findings = text.indexOf('Findings');
@@ -1342,8 +1280,8 @@ describe('buildReport', () => {
     });
 
     it('formats bytes without locale rules', async () => {
-      // `toLocaleString` would render `1,5 MB` in some locales, and rule 11's
-      // byte-identical output would quietly stop being true.
+      // `toLocaleString` would render `1,5 MB` in some locales, and the same input would
+      // no longer give byte-identical output.
       const text = renderReport(await reportFor('plain-html'));
 
       expect(text).not.toMatch(/\d,\d/);
@@ -1351,23 +1289,11 @@ describe('buildReport', () => {
   });
 
   /**
-   * R22 and R23, hand-built — and they have to be.
-   *
-   * ⚠️ **Every one of the five fixture trees produced `unusedVectors.count: 0`.** That
-   * is the stated trigger for building a case by hand: when every fixture has the same
-   * value for the thing under test, the fixtures cannot test it, and a green suite says
-   * only that nothing changed. `vite-react` gained `src/assets/unused-icon.svg` so the
-   * demotion runs end to end, but the plural wording, the flag, the rescue, the
-   * no-pair cases and the empty-findings branch are all reachable only from here.
-   *
-   * R23 is worse than untested by fixtures: **it produces zero pairs on all three
-   * validation repos too.** `shadcn-ui` has 20 broken references and 10 unreferenced
-   * vectors and pairs none of them, because all 20 broken references are themselves
-   * `.svg` — `/next.svg`, `/vercel.svg`, `/vite.svg` from framework scaffolds. So the
-   * only evidence R23 works at all is below, and the only evidence it does not
-   * over-fire is the scaffold case it is asserted against.
+   * `vite-react` holds one unreferenced vector, so the demotion runs end to end in the
+   * snapshots. The plural wording, the flag, the pairing with a broken reference and
+   * the empty-findings branch are reachable only from here.
    */
-  describe('unreferenced vectors — R22 and R23', () => {
+  describe('unreferenced vectors and stale conversions', () => {
     const ROOT = '/repo';
 
     function deadVector(asset: string, bytes: number): Finding {
@@ -1425,9 +1351,8 @@ describe('buildReport', () => {
     });
 
     it('counts the itemised array in the summary, so the two can never disagree', () => {
-      // The arithmetic R17's caveat exists to protect, one step further on. A reader
-      // who adds up the findings must get the headline number, and the difference has
-      // to be explained by something on the page rather than by a bug.
+      // A reader who adds up the findings must get the headline number, and any
+      // difference has to be explained by something on the page rather than by a bug.
       const report = reportOf([
         deadVector('public/logo.svg', 1200),
         { kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false },
@@ -1438,8 +1363,8 @@ describe('buildReport', () => {
     });
 
     it('hedged vectors are demoted too, not only confident ones', () => {
-      // `possibly-dead` is where the volume actually is: 122 of astro-docs' 140
-      // hedges are vectors. Demoting only `dead` would have moved 4 findings.
+      // `possibly-dead` is where most unreferenced vectors are: 122 of the 140 hedges
+      // on `astro-docs` are vectors.
       const report = reportOf([
         {
           kind: 'possibly-dead',
@@ -1471,9 +1396,9 @@ describe('buildReport', () => {
     });
 
     it('keeps a vector itemised when a broken reference asks for its raster twin', () => {
-      // R23's rescue, and the reason R22 cannot simply filter: for *this* vector there
-      // is an action — fix the reference — so demoting it would hide the one unused
-      // vector in the repository worth looking at.
+      // Why the demotion is not a plain filter: for this vector there is an action,
+      // fixing the reference, so demoting it would hide the one unused vector in the
+      // repository worth looking at.
       const report = reportOf([
         deadVector('images/hero.svg', 1200),
         brokenAt('images/hero.png', 'about.html:10'),
@@ -1532,9 +1457,9 @@ describe('buildReport', () => {
     });
 
     it('does not claim there is nothing to see when everything was demoted', () => {
-      // ⚠️ `No findings.` was a lie the moment R22 started demoting, and no fixture and
-      // no validation repo reaches it — all eight have other findings. A repository
-      // whose only unreferenced assets are vectors gets this branch.
+      // With vectors demoted, `No findings.` would be false for a repository whose only
+      // unreferenced assets are vectors. Every fixture has other findings, so only this
+      // test reaches the branch.
       const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
 
       expect(text).toContain('No findings, apart from 1 unreferenced SVG counted above');
@@ -1542,10 +1467,8 @@ describe('buildReport', () => {
     });
 
     it('agrees with itself about one vector and about several', () => {
-      // The verb-agreement bug has shipped six times in this renderer, twice from the
-      // chat that wrote R22 — once in the caveat and once in the headline, the second
-      // caught only by reading the rendered text. Both counts are asserted so neither
-      // wording can drift back.
+      // Singular and plural are separate wordings in two places, the headline and the
+      // caveat, and each one is asserted.
       const one = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
       const two = renderReport(
         reportOf([deadVector('public/logo.svg', 1200), deadVector('public/icon.svg', 800)]),
@@ -1558,10 +1481,9 @@ describe('buildReport', () => {
     });
 
     it('explains the gap where the reader is, not forty lines below it', () => {
-      // R21 #4's lesson applied to R22's own consequence: the headline says how many
-      // images have no reference, and the findings list now shows fewer. If the only
-      // explanation sat in the caveats, R22 would have recreated the defect R21 #4
-      // was raised about.
+      // The headline says how many images have no reference, and the findings list
+      // shows fewer. An explanation only in the caveats, far below, is one the reader
+      // never meets.
       const text = renderReport(reportOf([deadVector('public/logo.svg', 1200)]));
       const headlineMention = text.indexOf('including 1 unreferenced SVG');
       const findingsHeading = text.indexOf('No findings');
@@ -1572,7 +1494,7 @@ describe('buildReport', () => {
 
     it('says nothing at all when there are no unreferenced vectors', () => {
       // The other half of every count: a report with no vectors must not grow a line
-      // reading "0 unreferenced vectors", which is the noise R21 was raised about.
+      // reading "0 unreferenced vectors".
       const text = renderReport(
         reportOf([{ kind: 'dead', asset: 'public/photo.png', bytes: 5000, inPublicDir: false }]),
       );
@@ -1583,7 +1505,7 @@ describe('buildReport', () => {
   });
 });
 
-describe('byResolvedVia — the field that says which links may be rewritten (R36)', () => {
+describe('byResolvedVia: the field that says which links may be rewritten', () => {
   const ROOT = resolve('/repo');
   const ASSET = {
     path: join(ROOT, 'at-root.png'),
@@ -1641,9 +1563,8 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
   }
 
   it('counts a root-relative fallback as project-root, not as the speculative one', () => {
-    // Measured at 1,325 occurrences across the five validation repos, 1,267 asserted.
-    // All five fixture trees produce ZERO of these, so without a hand-built case the
-    // split is unexercised at the report layer -- the fixtures cannot test it.
+    // Common in real repositories, but no fixture tree produces one, so without this
+    // case the split is untested at the report layer.
     const report = reportFor('/at-root.png', true);
 
     expect(report.references.byResolvedVia['project-root']).toBe(1);
@@ -1658,8 +1579,8 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
   });
 
   it('sums to exactly the linked resolutions and to nothing else', () => {
-    // The invariant the doc comment promises, derived from byResolution rather than
-    // from a pasted number, so it holds for any input rather than for these two.
+    // The sum `byResolvedVia`'s documentation promises, checked against `byResolution`
+    // rather than a pasted number.
     for (const [rawPath, asserted] of [
       ['/at-root.png', true],
       ['./at-root.png', false],
@@ -1675,10 +1596,10 @@ describe('byResolvedVia — the field that says which links may be rewritten (R3
   });
 });
 
-describe('the headline reads correctly at a count of one (R21 / the agreement bug)', () => {
+describe('the headline reads correctly at a count of one', () => {
   const ROOT = resolve('/repo');
 
-  /** One reference, one linked asset, one unreferenced asset — every count is 1. */
+  /** One reference, one linked asset and one unreferenced asset, so every count is 1. */
   function singularReport(): Report {
     const linked = {
       path: join(ROOT, 'used.png'),
@@ -1744,9 +1665,9 @@ describe('the headline reads correctly at a count of one (R21 / the agreement bu
   }
 
   it('says nothing that disagrees with itself', () => {
-    // Every fixture tree has plural counts here, so the fixtures cannot test this --
-    // and that is exactly how "1 image have no reference" shipped. The assertions are
-    // written against English rather than against the current output.
+    // Every fixture has several references, so the singular reference line is
+    // reachable only from here. The assertions are written against English rather than
+    // against the current output.
     const rendered = renderReport(singularReport());
 
     expect(rendered).not.toMatch(/\b1 image have\b/);
@@ -1802,9 +1723,8 @@ describe('the serving roots the report discloses', () => {
   });
 
   it('tells the reader when the roots were detected rather than declared', () => {
-    // The whole point of R50 part 3. Every broken finding under this line depends on
-    // the engine having guessed right, and a guess nobody is told about is the defect
-    // R49 was.
+    // Every broken finding under this line depends on the engine having guessed right,
+    // and a guess nobody is told about cannot be checked.
     const rendered = renderReport(reportWith(['public'], false));
 
     expect(rendered).toContain('what Upfly detected rather than what the project declared');
@@ -1836,9 +1756,9 @@ describe('the serving roots the report discloses', () => {
   });
 
   it('never pluralises a noun against a number, which this renderer keeps getting wrong', () => {
-    // `count()` pluralises by appending to whatever it is handed, so the first draft
-    // of this line rendered "12 directory Upfly detecteds". The sentence now contains
-    // no noun that agrees with a number at all.
+    // `count()` pluralises by appending to whatever it is handed, which can render
+    // "12 directory Upfly detecteds". The sentence contains no noun that agrees with a
+    // number at all.
     for (const dirs of [['public'], ['a/public', 'b/public']]) {
       const rendered = renderReport(reportWith(dirs, false));
 
@@ -1899,14 +1819,11 @@ describe('the assets a plan examined and offered nothing for', () => {
     expect(reportWith({ declined: TWO }).declined).toMatchObject({ count: 2, bytes: 4_000 });
   });
 
-  it('states R77’s bound once per run when replace held an image back', () => {
-    // 🔴 The interesting half of the guard is what it does NOT cover. Stated once,
-    // rather than inside every identical decline reason — on `scratch-www` there are 49.
-    //
-    // ⚠️ Built with the SHARED constant, not a copy of the sentence. If this test
-    // hardcoded the wording it would keep passing after somebody reworded `plan.ts`,
-    // while the caveat silently stopped appearing — a mechanism that fails invisibly,
-    // which is the exact defect this project keeps paying for.
+  it('states the limit of the mention check once per run when replace held an image back', () => {
+    // What the check does not cover matters most, and it is said once per run rather
+    // than in every decline reason. The decline is built from `MENTION_SURVIVES` rather
+    // than a copy of its wording: a copy would keep this test passing after `plan.ts`
+    // rewords the phrase, while the caveat silently stopped appearing.
     const report = reportWith({
       declined: [
         { path: 'public/logo.png', line: null, reason: `deploy.yml:1 ${MENTION_SURVIVES}` },
@@ -1927,8 +1844,9 @@ describe('the assets a plan examined and offered nothing for', () => {
   });
 
   it('withholds the list unless it was asked for, and says so', () => {
-    // R22's shape: withheld because there is no action to offer, not because it is
-    // long. `null` rather than `[]`, because an empty array reads as "there were none".
+    // Withheld because there is no action to offer, as with unreferenced vectors, not
+    // because it is long. `null` rather than `[]`, because an empty array reads as "there
+    // were none".
     const report = reportWith({ declined: TWO });
 
     expect(report.declined.assets).toBeNull();
@@ -1955,8 +1873,8 @@ describe('the assets a plan examined and offered nothing for', () => {
   });
 
   it('keeps a declined asset the graph does not know, at zero bytes', () => {
-    // A miss means the planner and the graph disagree about a path. Reporting it with
-    // no size is worse than reporting it; dropping it is the silence rule 9 forbids.
+    // A miss means the planner and the graph disagree about a path. Reported at zero
+    // bytes it is still in the report; dropped, it would be a silent skip.
     const report = reportWith({
       declined: [{ path: 'ghost.png', line: null, reason: 'no measured saving' }],
       include: true,
@@ -1968,12 +1886,10 @@ describe('the assets a plan examined and offered nothing for', () => {
 });
 
 describe('the public-dir caveat counts what the report lists', () => {
-  // Hand-built, because NO fixture can reach this. It needs an unreferenced vector
-  // that is also inside a public directory, and the five trees between them have
-  // unreferenced vectors only outside one. The defect was found on railsgirls-com the
-  // moment the caveat became reachable at all: 950 claimed against 903 dead findings
-  // listed, alongside a third number saying 61 SVGs were not listed, and no
-  // arithmetic a reader can do that reconciles them.
+  // It needs an unreferenced vector inside a public directory, and the fixture trees
+  // have unreferenced vectors only outside one. Counting demoted vectors would make the
+  // caveat, the findings and the unused-vector line three numbers no reader can
+  // reconcile.
   const ROOT = resolve('/repo');
   const png = { path: join(ROOT, 'a.png'), relative: 'a.png', extension: '.png', bytes: 10 };
   const svg = { path: join(ROOT, 'b.svg'), relative: 'b.svg', extension: '.svg', bytes: 10 };
@@ -2029,16 +1945,13 @@ describe('the public-dir caveat counts what the report lists', () => {
 });
 
 /**
- * R111 — R109's four boxes as a published FIELD.
- *
- * 🔴 **The report snapshots barely test this, and reading the diff is how that was
- * found.** Four of the five framework fixtures produce NO `unsafe` reference at all, so
- * their `byClassification` reads *everything resolved, nothing else* — a table that would
- * look identical if the classifier returned one constant. `eleventy` contributes exactly
- * one, a `{{ site.url }}` path. **One case out of five files is confirmation, not a test
- * (R117)**, so the rest live here with their inputs owned.
+ * The accuracy class every reference carries. The snapshots barely test it: four of the
+ * five fixtures have no `unsafe` reference, so their `byClassification` would look the
+ * same if the classifier returned one constant, and `eleventy` has one. The cases live
+ * here, with inputs built for them. See "Scoring references for accuracy" in
+ * ARCHITECTURE.md.
  */
-describe('classifyReference: the four boxes R109 defines', () => {
+describe('classifyReference: the four boxes of the accuracy table', () => {
   function reference(over: Partial<Reference>): Reference {
     return {
       file: '/p/page.html',
@@ -2057,16 +1970,15 @@ describe('classifyReference: the four boxes R109 defines', () => {
     } as Reference;
   }
 
-  describe('A — resolved with an answer', () => {
+  describe('resolved with an answer', () => {
     it('counts a plain resolution', () => {
       expect(classifyReference(reference({}))).toBe('resolved-with-an-answer');
     });
 
     /**
-     * ⚠️ **`broken` is box A and that is not generosity (R109).** We found where the
-     * reference points and reported the truth: the file is not there. That is the user's
-     * defect and our success, and counting it against ourselves was part of the mistake
-     * R109 was issued to correct.
+     * Not generosity: the engine found where the reference points and reported the
+     * truth, that the file is not there. The defect is the project's, and the answer is
+     * correct.
      */
     it('counts a broken reference, because we resolved it and told the truth', () => {
       expect(
@@ -2089,7 +2001,7 @@ describe('classifyReference: the four boxes R109 defines', () => {
     });
   });
 
-  describe('C — correctly refused, and ONLY for a named property of the reference', () => {
+  describe('correctly refused, and only for a named property of the reference', () => {
     it('counts a deliberate scope boundary', () => {
       const entry = reference({
         resolution: 'out-of-scope',
@@ -2114,9 +2026,9 @@ describe('classifyReference: the four boxes R109 defines', () => {
       }
     });
 
-    it('counts a + chain by the path it assembles, not by its quote-and-plus text (R175)', () => {
-      // The chain's source holds no `${`, so read off `rawPath` it would be filed as OUR
-      // miss while its template twin, one line away, is filed here.
+    it('counts a + chain by the path it assembles, not by its quote-and-plus text', () => {
+      // The chain's source holds no `${`, so read off `rawPath` it would count as a miss
+      // while its template twin, one line away, counts as refused.
       const entry = reference({
         resolution: 'dynamic',
         confidence: 'unsafe',
@@ -2128,7 +2040,7 @@ describe('classifyReference: the four boxes R109 defines', () => {
       expect(refusalReasonId(entry)).toBe('assembled-at-runtime');
     });
 
-    it('counts a style attribute the adapter proved holds no reference (R118)', () => {
+    it('counts a style attribute the adapter proved holds no reference', () => {
       const entry = reference({
         resolution: 'dynamic',
         confidence: 'unsafe',
@@ -2142,15 +2054,15 @@ describe('classifyReference: the four boxes R109 defines', () => {
   });
 
   /**
-   * 🔴 **THE DEFAULT IS AGAINST US, AND THIS BLOCK IS THE GUARD ON THAT TRAP.**
-   * *"There is no answer"* is our own judgement, so moving a reference from B to C is a
-   * one-line change that improves the headline. Every case here is one we might be tempted
-   * to call a correct refusal and cannot, because nothing about the REFERENCE proves an
-   * answer was impossible — only that we did not get it.
+   * The default counts against the engine. "There is no answer" is the engine's own
+   * judgement, so moving a reference from missed to refused is a one-line change that
+   * improves the figure. Every case here is tempting to call a correct refusal, and none
+   * is, because nothing about the reference proves an answer was impossible.
    */
-  describe('B — missed with an answer, which is where anything unproven belongs', () => {
+  describe('missed with an answer, which is where anything unproven belongs', () => {
     it('counts an alias we could not map', () => {
-      // A bundler config we did not read would have resolved this. Ours, until shown otherwise.
+      // A bundler config the engine did not read may resolve this, so it is a miss until
+      // shown otherwise.
       expect(
         classifyReference(
           reference({
@@ -2163,7 +2075,7 @@ describe('classifyReference: the four boxes R109 defines', () => {
       ).toBe('missed-with-an-answer');
     });
 
-    it('counts a character reference the decoder could not read (R118)', () => {
+    it('counts a character reference the decoder could not read', () => {
       expect(
         classifyReference(
           reference({
@@ -2177,7 +2089,7 @@ describe('classifyReference: the four boxes R109 defines', () => {
       ).toBe('missed-with-an-answer');
     });
 
-    it('counts a style attribute that failed to parse WITH a url() in it (R118)', () => {
+    it('counts a style attribute that failed to parse with a url() in it', () => {
       expect(
         classifyReference(
           reference({
@@ -2219,13 +2131,11 @@ describe('classifyReference: the four boxes R109 defines', () => {
   });
 
   /**
-   * 🔴 **The engine cannot report box D and the schema says so, rather than omitting it.**
-   * D is *we claimed something that was not there and do not know it*. A self-reported D is
-   * always zero, so `C / (C + D)` computed from this object would hand every consumer a free
-   * 100% refusal accuracy — the decoy-oracle failure moved into the schema, which is the one
-   * thing R111 exists to prevent.
+   * A wrong answer is one the engine believes, so a count it reported itself would always
+   * be zero, and refusal accuracy computed from it would come out at 100% for any engine.
+   * The schema says so rather than omitting the count.
    */
-  it('publishes no box D, and marks its absence as a decision', async () => {
+  it('publishes no count of wrong answers, and marks its absence as a decision', async () => {
     const report = await reportFor('plain-html');
 
     expect(Object.keys(report.references.byClassification).sort()).toEqual([
@@ -2238,11 +2148,9 @@ describe('classifyReference: the four boxes R109 defines', () => {
   });
 
   /**
-   * The run that made this necessary: the classification read 100.00% resolution accuracy
-   * across all five validation repositories, and R112 had already measured that about one
-   * in four `assembled-at-runtime` refusals has an answer we simply do not compute. A
-   * hundred per cent that a prior measurement contradicts is the number to distrust, so
-   * the contradiction travels in the schema beside the count rather than in prose.
+   * Some `assembled-at-runtime` refusals have an answer the engine does not compute, so
+   * `correctly-refused` is too high by a measured amount. That bound travels in the schema
+   * beside the count, rather than in prose a reader of the figure may never see.
    */
   it('publishes the known over-claim beside the count it inflates', async () => {
     const report = await reportFor('eleventy');
@@ -2253,7 +2161,7 @@ describe('classifyReference: the four boxes R109 defines', () => {
     expect(runtime?.count).toBeGreaterThan(0);
     expect(runtime?.bound).toMatch(/but 4 are not/);
     // The provenance is its own field, not a sentence buried in the bound: a caveat a
-    // reader cannot date is one they cannot check, which is R117 inside the schema.
+    // reader cannot date is one they cannot check.
     expect(runtime?.measuredAgainst).toMatch(/^2026-09-25, on five public repositories/);
     expect(runtime?.measuredAgainst).toMatch(/If they or the engine have changed since/);
   });
@@ -2267,9 +2175,8 @@ describe('classifyReference: the four boxes R109 defines', () => {
   });
 
   /**
-   * R103's lesson, applied to a new set of buckets on the day it is added: a bucket cannot
-   * gain an entry without the arithmetic noticing. Seven entries once vanished between the
-   * check and the page while the arithmetic line still said fine.
+   * The classes add up to the resolutions, so no class can gain or lose a reference
+   * without the arithmetic noticing.
    */
   it('classifies every reference exactly once', async () => {
     for (const name of NAMES) {
@@ -2288,23 +2195,14 @@ describe('classifyReference: the four boxes R109 defines', () => {
 });
 
 /**
- * R111's fields, RENDERED — because until this existed nothing printed them, every
- * `renderReport` snapshot passed unchanged when they were added, and **a field nothing
- * renders is a field nothing has read.**
- *
- * 🔴 Rendering it found the defect that mattered most: on `eleventy-docs` the page said
- * *"56 references could not be resolved safely"* directly above *"56 of them had no answer
- * to find, and 0 we could not resolve"*. **The heading contradicted the line beneath it, and
- * it is the exact sentence R109 was issued to correct** — still live in the renderer after
- * the JSON had been fixed.
+ * How the human report prints the accuracy classes. The heading over unlinked references
+ * has to agree with the classes beneath it: "could not be resolved" above references that
+ * had no answer to find contradicts itself.
  */
-describe('renderReport and R109 boxes', () => {
+describe('renderReport and the accuracy boxes', () => {
   /**
-   * A REAL report with only the reference slice replaced.
-   *
-   * ⚠️ The first version hand-built the whole `Report` and broke on a field the renderer
-   * reads three sections earlier. A stub that has to mirror a growing schema is a second
-   * copy of it, and it goes stale exactly as any other copy does (R76).
+   * A real report with only the reference slice replaced. A hand-built `Report` would be
+   * a second copy of a growing schema, and would go stale as any copy does.
    */
   async function withUnsafe(
     entries: ReferenceEntry[],
@@ -2366,9 +2264,9 @@ describe('renderReport and R109 boxes', () => {
   });
 
   /**
-   * ⚠️ **A refusal's own reason already explains it**, so repeating the box underneath
-   * every entry was a wall of restatement. What a reader cannot otherwise tell is which
-   * entries are ours, and that is the only line that prints.
+   * A refusal's own reason already explains it, so repeating the class under every entry
+   * would be a wall of restatement. What a reader cannot otherwise tell is which entries
+   * are ours, and that is the only line that prints.
    */
   it('does not restate the box under an entry that already explains itself', async () => {
     const text = await withUnsafe([
@@ -2384,9 +2282,9 @@ describe('renderReport and R109 boxes', () => {
   });
 
   /**
-   * 🔴 R122: the resolution accuracy this report can compute must never be quoted, so the
-   * known over-claim prints beside the counts it inflates — WITH its provenance, because a
-   * bound a reader cannot date is one they cannot check.
+   * The accuracy the counts imply is too high by a known amount, so the over-claim prints
+   * beside the counts it inflates, with what it was measured against: a bound a reader
+   * cannot date is one they cannot check.
    */
   it('prints a known over-claim and what it was measured against', async () => {
     const text = await withUnsafe(

@@ -18,14 +18,7 @@ import { detectServingRoots } from './serving-roots.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 
-/**
- * The framework fixtures, exercised end to end through `discover` and the adapters.
- *
- * This is not yet the Phase 1 exit gate — that is the full validation protocol in
- * build plan §5.1, and it needs the resolver, the graph and a human. What this does
- * prove is that the trees are internally consistent, that every file an adapter
- * claims actually parses, and that no reference points at the wrong bytes.
- */
+/** The framework fixtures, run through the real pipeline from `discover` to `audit`. */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
 
@@ -54,9 +47,8 @@ async function scan(name: string) {
     readFile: (path) => readFile_(path, 'utf8'),
   });
 
-  // Kept separately from `scanSources`, which deliberately does not hold a whole
-  // repository's source in memory. The range invariant below needs the text, and a
-  // fixture tree is small enough that a test can afford it.
+  // Read separately because `scanSources` does not keep a repository's source in memory.
+  // The range check below needs the text, and a fixture tree is small enough to hold.
   const sources = new Map<string, string>();
   for (const sourceFile of discovered.sourceFiles) {
     sources.set(sourceFile.path, await readFile_(sourceFile.path, 'utf8'));
@@ -81,9 +73,9 @@ async function resolveTree(name: (typeof NAMES)[number]): Promise<Reference[]> {
 /**
  * A filename that announces the asset is meant to have no references.
  *
- * The dead half of the §5.1(h) convention — its reference half lives in
- * `fixture-integrity.test.ts`. `removed.png` belongs here too: it is referenced
- * only from inside an HTML comment, which is precisely what that fixture tests.
+ * The matching convention for references meant to be broken is in
+ * `fixture-integrity.test.ts`. `removed.png` belongs here: its only mention is inside an
+ * HTML comment, which is what that fixture tests.
  */
 const DELIBERATELY_DEAD = /orphan|unused|unreferenced|never-|removed/;
 
@@ -98,8 +90,9 @@ describe('framework fixtures', () => {
   });
 
   it.each(NAMES)('%s: every claimed source file parses', async (name) => {
-    // An adapter throwing here would mean a fixture the engine cannot read at all,
-    // which would quietly shrink what the rest of the phase is validated against.
+    // Discovery and reading only: `scanSources` records an adapter that throws as a
+    // `parse-failed` file rather than rejecting. A parse failure shows up in the exact
+    // `unscannedExtensions` each tree asserts below.
     await expect(scan(name)).resolves.toBeDefined();
   });
 
@@ -109,8 +102,8 @@ describe('framework fixtures', () => {
   });
 
   it.each(NAMES)('%s: every reference range selects exactly its own path', async (name) => {
-    // The invariant that kills the whole class of offset bugs. §5.1(a) makes this a
-    // property test over real repos too; this is the fixture half of it.
+    // The invariant that rules out the whole class of offset bugs. `bench/` checks the
+    // same property over the validation repositories; this is the fixture half.
     const { references, sources } = await scan(name);
 
     for (const reference of references) {
@@ -122,8 +115,7 @@ describe('framework fixtures', () => {
 
   describe('resolved against the assets that exist', () => {
     it.each(NAMES)('%s: no reference is wrongly reported broken', async (name) => {
-      // The shape of the phase's exit criterion, at fixture scale. Every `broken`
-      // here must be one the fixture declares in its own filename.
+      // Every `broken` here must be one the fixture declares in its own filename.
       const broken = (await resolveTree(name))
         .filter((reference) => reference.resolution === 'broken')
         .map((reference) => reference.rawPath);
@@ -183,29 +175,24 @@ describe('framework fixtures', () => {
 
       expect(graph.assets).toHaveLength(discovered.assets.length);
       expect(graph.references).toHaveLength(resolved.length);
-      // Rule 9 at the layer most likely to lose one: every reference is in exactly
-      // one bucket, so it cannot vanish from the report without vanishing here.
+      // The graph is the layer most likely to drop a reference silently. Every reference is
+      // in exactly one bucket, so none can vanish from the report without vanishing here.
       expect(Object.values(graph.byResolution).flat()).toHaveLength(resolved.length);
     });
 
     it.each(NAMES)(
       '%s: every unreferenced asset is declared dead or named in a file we could not read',
       async (name) => {
-        // The R8 mechanism at fixture scale, before the audit that will implement
-        // it exists. An asset with zero references is either deliberate — the
-        // fixture says so in its filename, per §5.1(h) — or it is mentioned in a
-        // file no adapter read, which is what makes it `possibly-dead` rather than
-        // a false `dead` finding we manufactured ourselves.
+        // An asset with zero references is either meant to be dead, and says so in its
+        // filename, or is named somewhere the engine could not follow, which makes it
+        // `possibly-dead` rather than a false `dead`.
         const graph = await graphTree(name);
         const mentioned = new Set<string>();
         const haystack = [
           ...(await Promise.all(graph.unscannedFiles.map((file) => readFile_(file.path, 'utf8')))),
-          // The second half, found by this very test on the eleventy tree and
-          // raised as R10: a reference we *read* but could not resolve names no
-          // asset, so an asset it may point at looks dead. `templated.png` is
-          // referenced by `![](({{ site.url }}/img/templated.png)` in a file we
-          // parsed perfectly — it is `dynamic`, not missing, and reporting it dead
-          // is the same manufactured false positive from the other direction.
+          // A reference that was read but not resolved links no asset, so an asset it may
+          // point at looks dead. `first.md` names `templated.png` through the `dynamic`
+          // `{{ site.url }}/img/templated.png`: alive, not missing.
           ...graph.byResolution.dynamic.map((reference) => reference.rawPath),
           ...graph.byResolution['unresolved-alias'].map((reference) => reference.rawPath),
           ...graph.byResolution.discarded.map((reference) => reference.rawPath),
@@ -228,15 +215,9 @@ describe('framework fixtures', () => {
     );
 
     it('links all three astro assets now that an adapter reads .astro', async () => {
-      // ⚠️ This test used to assert the opposite, and the inversion is the point of
-      // B1. `logo.png` (a fence import), `favicon.png` (a `<link rel=icon>`) and
-      // `banner.png` (an `<img src>`) had zero references for a reason that had
-      // nothing to do with the assets: no adapter read the file naming them. All
-      // three are ordinary links now, and the tree has no unread file types left.
-      //
-      // Both halves of the file are represented here on purpose — the import comes
-      // from the frontmatter fence and the other two from the template body — so a
-      // fence-only or body-only adapter would fail this.
+      // `logo.png` is imported in the frontmatter fence, and `favicon.png` (a
+      // `<link rel=icon>`) and `banner.png` (an `<img src>`) are named in the template
+      // body, so an adapter that read only one half of the file would fail this.
       const graph = await graphTree('astro');
 
       expect(graph.unscannedExtensions).toEqual([]);
@@ -256,9 +237,9 @@ describe('framework fixtures', () => {
       // both an asset and a file we did not scan.
       //
       // Two of them: `public/favicon.svg` is referenced and `src/assets/unused-icon.svg`
-      // is not. The second was added for R22, whose demotion no fixture tree reached —
-      // every one of the five produced `unusedVectors.count: 0`, which is the stated
-      // condition under which fixtures cannot test a thing at all.
+      // is not. The second makes a tree reach the report's `unusedVectors`, where an
+      // unreferenced SVG goes instead of `findings`; with a zero in every tree, the
+      // fixtures could not test it.
       const graph = await graphTree('vite-react');
 
       expect(graph.unscannedExtensions).toEqual([{ ext: '.svg', fileCount: 2 }]);
@@ -268,9 +249,8 @@ describe('framework fixtures', () => {
     it.each(['next-app', 'plain-html'] as const)(
       '%s: was read completely, so a dead finding needs no hedge',
       async (name) => {
-        // The case the amended rule reserves `dead` for. Rare in the wild, which is
-        // why hedging had to become per-asset rather than global — but it exists,
-        // and both branches are reachable at fixture scale.
+        // Real projects are rarely read completely, which is why the hedge is decided per
+        // asset rather than for the whole run. These two trees are.
         expect((await graphTree(name)).unscannedExtensions).toEqual([]);
       },
     );
@@ -284,16 +264,9 @@ describe('framework fixtures', () => {
       }
 
       it('has nothing left to rescue in the astro tree', async () => {
-        // ⚠️ Inverted by B1. This was haystack (a)'s end-to-end case: three assets
-        // named only by an unread `.astro` file. They are linked now, so the sweep
-        // correctly finds nothing — a hedge here would be the engine hedging about
-        // a reference it can follow perfectly well.
-        //
-        // Haystack (a) has NOT lost its coverage: `sweep.test.ts` exercises it
-        // directly, and the eleventy tree still names assets only from unread `.njk`
-        // templates — see "rescues the eleventy assets that only .njk templates
-        // reference" below. That was checked rather than assumed before this test
-        // was changed.
+        // Every asset in this tree is linked or named nowhere, so a hedge here would be the
+        // engine hedging about a reference it can follow. The sweep of unread files is still
+        // tested, in `sweep.test.ts` and by the eleventy tree's `.njk` templates below.
         const { mentions } = await sweep('astro');
 
         expect([...mentions.keys()].sort()).toEqual([]);
@@ -307,9 +280,9 @@ describe('framework fixtures', () => {
         expect(mentions.has('public/never-used.png')).toBe(false);
       });
 
-      it('rescues the eleventy asset R10 was raised for, citing file and line', async () => {
-        // Haystack (b). `first.md` parsed perfectly; the reference is `dynamic`,
-        // so it links nothing and the asset looked confidently dead.
+      it('rescues the eleventy asset only a dynamic reference names, citing file and line', async () => {
+        // `first.md` parses, but its reference is `dynamic`, so it links nothing and the
+        // asset would look confidently dead without the sweep.
         const { mentions } = await sweep('eleventy');
 
         expect(mentions.get('src/img/templated.png')).toEqual([
@@ -333,8 +306,8 @@ describe('framework fixtures', () => {
       it.each(['next-app', 'plain-html'] as const)(
         '%s: every unreferenced asset stays confidently dead',
         async (name) => {
-          // Fully scanned trees, and nothing unresolved names these — so `dead`
-          // is reachable, which is the whole point of amending the global hedge.
+          // Fully read trees in which nothing unresolved names these assets, so they stay
+          // `dead`: the case a per-asset hedge exists to keep reachable.
           const { mentions, skipped } = await sweep(name);
 
           expect(mentions.size).toBe(0);
@@ -370,7 +343,7 @@ describe('framework fixtures', () => {
       it.each(NAMES)(
         '%s: reports no broken reference the fixture did not declare',
         async (name) => {
-          // The exit criterion, now at the layer a user actually reads.
+          // The resolver check above, at the layer a user reads.
           const result = await auditTree(name, false);
           const broken = result.findings.filter((finding) => finding.kind === 'broken');
 
@@ -386,8 +359,7 @@ describe('framework fixtures', () => {
         expect(result.findings.filter((finding) => finding.kind === 'broken')).toEqual([
           {
             kind: 'broken',
-            // Verified against the fixture: the deliberate dangling reference lives
-            // in about.html, not index.html, and the citation lands on its line.
+            // The deliberate dangling reference is in about.html, not index.html.
             file: 'about.html',
             line: 10,
             where: 'about.html:10',
@@ -397,10 +369,8 @@ describe('framework fixtures', () => {
       });
 
       it('reports astro-s one genuinely unused asset as dead, and hedges nothing', async () => {
-        // ⚠️ Inverted by B1: three hedges became zero. The one asset nothing names
-        // is still `dead`, which is what stops this reading as "the adapter made the
-        // findings go away" -- coverage removed three FALSE hedges and left the true
-        // finding untouched.
+        // Without an `.astro` adapter three assets here would be hedged; with it they link,
+        // and the one asset nothing names is still `dead`.
         const result = await auditTree('astro', false);
         const dead = result.findings.filter((finding) => finding.kind === 'dead');
         const hedged = result.findings.filter((finding) => finding.kind === 'possibly-dead');
@@ -410,9 +380,8 @@ describe('framework fixtures', () => {
       });
 
       it('counts a dead public asset for the caveat instead of hedging it', async () => {
-        // The rider: `never-used.png` is under `public/`, so it could in principle
-        // be referenced from outside the repo — but there is no evidence, so it
-        // stays `dead` and the report carries a count.
+        // `never-used.png` is under `public/`, so something outside the repository could
+        // request it. With no evidence of that it stays `dead`, and the report counts it.
         const result = await auditTree('astro', false);
 
         expect(result.publicDirDeadCount).toBe(1);
@@ -429,7 +398,7 @@ describe('framework fixtures', () => {
       );
 
       it('produces dead and broken findings without a probe at all', async () => {
-        // Three findings of four need no pixels — what makes `--no-probe` and a
+        // Findings about references need no pixels, which is what makes `--no-probe` and a
         // low encode cap safe rather than merely fast.
         const result = await auditTree('plain-html', false);
 
@@ -439,14 +408,8 @@ describe('framework fixtures', () => {
       });
 
       it('reports a saving on the real fixture images, and every figure is arithmetic', async () => {
-        // ⚠️ This assertion used to be its own opposite: the fixture images were 1x1,
-        // so it asserted that NO opportunity was found. That was a fair test of "do
-        // not estimate" and it also meant the fixtures could not exercise conversion
-        // at all, which is the hole R53 was about.
-        //
-        // The half worth keeping is that every number is measured rather than guessed,
-        // so it now checks the arithmetic of each finding against itself. An estimate
-        // would have no reason to be self-consistent to the byte.
+        // Every figure is measured rather than estimated, so each finding's arithmetic is
+        // checked against itself: an estimate would have no reason to agree to the byte.
         const result = await auditTree('plain-html');
         const opportunities = result.findings.filter(
           (finding) => finding.kind === 'format-opportunity',
@@ -462,7 +425,7 @@ describe('framework fixtures', () => {
           expect(finding.savedBytes).toBe(finding.bytes - finding.wouldBe);
         }
 
-        // Still nothing oversized: real photographs, but small ones.
+        // Nothing oversized: the fixture images are real photographs, but small ones.
         expect(result.findings.some((finding) => finding.kind === 'oversized')).toBe(false);
       });
 
@@ -492,13 +455,9 @@ describe('framework fixtures', () => {
   });
 
   it('claims .astro and still leaves .njk unclaimed, which is the remaining gap', async () => {
-    // ⚠️ Half of this test inverted. `.astro` is claimed as of B1; `.njk` is still
-    // an empty cell in the compatibility matrix and an intended community
-    // contribution (§1.5, §5 Phase 5).
-    //
-    // The `.njk` half is kept rather than dropped because it is the assertion that
-    // can still fail: a test that only says "everything is claimed" stops being able
-    // to notice the next gap.
+    // `.njk` is still an empty cell in the compatibility matrix, left for a community
+    // adapter. Its half is the assertion that can still fail: a test that only says
+    // everything is claimed cannot notice the next gap.
     const astro = await scan('astro');
     const eleventy = await scan('eleventy');
 
@@ -512,36 +471,23 @@ describe('framework fixtures', () => {
 });
 
 /**
- * R58 — the serving-root diagnosis, exercised by a fixture for the first time.
+ * The serving-root diagnosis, reached through a real tree.
  *
- * `resolutionHealth` suppresses findings, which makes it the most dangerous behaviour
- * the engine has, and until this block it was the least covered: unit tests reached it
- * with hand-built graphs and the real corpus reached it by accident, but **no fixture
- * could produce it**. `MINIMUM_ROOT_RELATIVE` is 10 and no tree came close, so the
- * layer that runs the whole pipeline over a real directory could not see the feature
- * at all.
- *
- * ⚠️ **The threshold was not lowered to fix that, and lowering it is the wrong repair**
- * — it is a product judgement about when a diagnosis is trustworthy, and fitting it to
- * the corpus is letting the corpus decide the product. `eleventy` gained seven more
- * root-relative references instead, which is what a real Eleventy site looks like: it
- * serves `src/img` at `/img` through `addPassthroughCopy`, so everything is addressed
- * from the site root and nothing name-based should ever detect `src` as a serving root.
- *
- * **The corpus splits the predicate in half, which is why the pair below matters more
- * than either half alone.** `next-app` has the count (10 root-relative references) and
- * a perfect rate; `eleventy` has the rate (0.00) and, before this, failed the count.
- * Only both conditions together fire the guard, so a fixture that satisfies one and not
- * the other proves the conjunction is real rather than decorative.
+ * The diagnosis replaces findings, so it needs a fixture that reaches it through the whole
+ * pipeline. It fires only with at least `MINIMUM_ROOT_RELATIVE` root-relative references
+ * and a linked share under `RESOLUTION_FLOOR`. `eleventy` has both: it serves `src/img` at
+ * `/img` through `addPassthroughCopy`, and nothing name-based detects `src` as a serving
+ * root. `next-app` has the count with every reference linked, so the pair shows the guard
+ * needs both conditions. The minimum is a product judgement, not lowered to suit the
+ * fixtures. See "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
-describe('R58: the serving-root diagnosis, reached through a real tree', () => {
+describe('the serving-root diagnosis, reached through a real tree', () => {
   /**
-   * The tree as a **first run** sees it: the serving root detected, never declared.
+   * The tree as a first run sees it: the serving root detected, never declared.
    *
-   * Every other fixture test hands the resolver the right answer out of `PUBLIC_DIRS`,
-   * which is the configuration a user arrives at *after* reading a report. This is the
-   * state they are in before that, and it is the only state in which this diagnosis
-   * can happen — so a helper that declared the root could not reach the feature.
+   * The other tests hand the resolver the right root from `PUBLIC_DIRS`, the configuration
+   * a user reaches after reading a report. With it every root-relative reference links, so
+   * this diagnosis cannot fire.
    */
   async function undetected(name: (typeof NAMES)[number]) {
     const { discovered, references, unscanned } = await scan(name);
@@ -574,21 +520,17 @@ describe('R58: the serving-root diagnosis, reached through a real tree', () => {
   }
 
   it('finds no serving root in the eleventy tree at all', async () => {
-    // The premise the rest of this block stands on. `src` is a source directory, not a
-    // serving root by convention, so a name-based detector must not claim it — and if
-    // one ever did, every assertion below would go green for the wrong reason.
+    // The premise of this block. `src` is a source directory, not a serving root by
+    // convention, so a name-based detector must not claim it. If one did, the tests below
+    // would fail for a reason that has nothing to do with the guard.
     expect((await undetected('eleventy')).servingRoots).toEqual({ dirs: [], declared: false });
   });
 
   it('fires the guard on a real tree, through the whole pipeline', async () => {
     const { health } = await undetected('eleventy');
 
-    // ⚠️ Asserted as a RELATIONSHIP to the constant, never as the literal 10. The
-    // fixture sits at exactly the minimum on purpose — no padding, so the threshold is
-    // crossed naturally rather than by references added to pass a test — but pinning
-    // the literal here would make this fail the first time somebody legitimately adds a
-    // reference to this tree, and a test that cries wolf teaches people to edit the
-    // assertion. The boundary itself is pinned where it belongs, in
+    // Compared with the constant rather than its value, so a reference legitimately added
+    // to this tree does not fail the test. The boundary itself is tested in
     // `resolution-health.test.ts`, at the minimum and one below it.
     expect(health.checkable).toBeGreaterThanOrEqual(MINIMUM_ROOT_RELATIVE);
     expect(health.linked).toBe(0);
@@ -603,19 +545,14 @@ describe('R58: the serving-root diagnosis, reached through a real tree', () => {
     const [diagnosis] = diagnoses;
     if (diagnosis?.kind !== 'serving-root-unknown') throw new Error('unreachable');
     // Every root-relative reference in the tree, and nothing else: the count the user
-    // reads has to agree with the findings that were taken away, which is the defect
-    // the public-dir caveat had when it claimed 950 against 903 listed.
+    // reads has to agree with the findings that were taken away.
     expect(diagnosis.suppressedBroken).toBe(diagnosis.checkable);
     expect(diagnosis.linked).toBe(0);
   });
 
   it('suppresses only what it explains, and the relative break survives', async () => {
-    // 🔴 **The whole reason R58 named a relative reference as part of the fixture.** The
-    // first version of `diagnoseServingRoot` swallowed all 116 broken findings on
-    // unconfigured shadcn-ui when only 115 were root-relative, and the odd one out was a
-    // genuinely broken relative path — a real defect hidden behind an unrelated
-    // explanation. That shape was only ever reachable on a real repository, and only
-    // ever found by a person reading a report. It is reachable here now.
+    // The tree holds one broken relative path so this case is reachable. The diagnosis
+    // explains root-relative breaks only; a relative one is a real defect it must not hide.
     const { result } = await undetected('eleventy');
     const broken = result.findings.filter((finding) => finding.kind === 'broken');
 
@@ -627,11 +564,9 @@ describe('R58: the serving-root diagnosis, reached through a real tree', () => {
   it.each(NAMES.filter((name) => name !== 'eleventy'))(
     'does not fire on %s, which resolves its root-relative references',
     async (name) => {
-      // The other direction, and it is not padding: a diagnosis that fired everywhere
-      // would pass all four assertions above while suppressing every real finding in
-      // the corpus. `next-app` is the one that matters most here — it reaches the count
-      // with a perfect rate, so it is the fixture that proves the guard reads both
-      // conditions rather than the count alone.
+      // The other direction: a diagnosis that fired everywhere would pass every test above
+      // while suppressing every real finding. `next-app` matters most, because it reaches
+      // the count with every reference linked, so it shows the guard reads the rate too.
       const { health } = await undetected(name);
 
       expect(health.servingRootUnknown).toBe(false);
@@ -639,9 +574,9 @@ describe('R58: the serving-root diagnosis, reached through a real tree', () => {
   );
 
   it('is healthy again once the same tree declares its serving root', async () => {
-    // The diagnosis is about our knowledge, not about the user's code. Nothing on disk
-    // changes between this and the run above — only whether `src` was declared — so a
-    // guard that stayed lit here would be calling a correctly configured project broken.
+    // The diagnosis is about our knowledge, not the user's code. Nothing on disk changes
+    // between this run and the ones above, only whether `src` is declared, so a guard that
+    // stayed lit here would call a correctly configured project broken.
     const { discovered, references, unscanned } = await scan('eleventy');
     const resolved = await resolveReferences(references, {
       root: discovered.root,

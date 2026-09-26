@@ -4,12 +4,12 @@ import { buildGraph, unreferencedAssets } from './graph.js';
 import type { Asset, RawReference, Reference, UnscannedFile } from './types.js';
 
 /**
- * The graph is pure, so these tests build references by hand rather than running
- * the pipeline. The fixture trees in `fixtures.test.ts` cover the other direction —
- * that the real adapters and the real resolver produce something this can link.
+ * The graph is pure, so these tests build references by hand rather than running the
+ * pipeline. The fixture trees in `fixtures.test.ts` cover the other direction: that the
+ * real adapters and resolver produce something this can link.
  *
- * Paths are POSIX here so the expectations read the same on both platforms; the
- * module never interprets them, it only compares and keys on them.
+ * Paths are POSIX so the expectations read the same on both platforms. The one test
+ * about native separators builds its own paths.
  */
 
 const ROOT = '/repo';
@@ -83,7 +83,7 @@ function platformRoot(): string {
   return process.platform === 'win32' ? 'C:\\repo' : '/repo';
 }
 
-/** An unlinked reference in a named file — used where only the file matters. */
+/** An unlinked reference in a named file, for tests where only the file matters. */
 function brokenAt(file: string): Reference {
   return {
     ...raw('placeholder.html', 'a.png'),
@@ -118,10 +118,8 @@ describe('buildGraph', () => {
   });
 
   it('links a pattern reference to every asset it matched', () => {
-    // The whole point of `resolved-pattern`. Linking only the first match would
-    // leave the other two looking unreferenced and produce two false `dead`
-    // findings — the same failure the `broken` rules exist to prevent, in a
-    // different costume.
+    // Linking only the first match would leave the other two looking unreferenced
+    // and produce two false `dead` findings.
     const graph = build({
       assets: [asset('img/a.png'), asset('img/b.png'), asset('img/c.png'), asset('other.png')],
       references: [
@@ -165,7 +163,8 @@ describe('buildGraph', () => {
   });
 
   it('keeps every reference, linked or not', () => {
-    // Rule 9 at the layer most likely to lose one.
+    // Every reference reaches the report, linked or not, and this is the layer most
+    // likely to lose one.
     const references = [
       resolved('index.html', './hero.png', 'hero.png'),
       unlinked('index.html', './missing.png', 'broken'),
@@ -196,9 +195,9 @@ describe('buildGraph', () => {
   });
 
   it('throws when a reference links to an asset that is not in the set', () => {
-    // Unreachable in one run, reachable the moment references are resolved against
-    // a cached asset set — which is what the editor integration will do. The quiet
-    // version of this bug is a phantom dead asset.
+    // Unreachable in one run, but reachable once references are resolved against a
+    // cached asset set, as the editor integration will do. The quiet version of this
+    // bug is a phantom dead asset.
     expect(() =>
       build({
         assets: [asset('hero.png')],
@@ -236,16 +235,11 @@ describe('buildGraph', () => {
     });
 
     it('orders by the POSIX-relative path, not by the raw `file` field', () => {
-      // The ordering bug that would be invisible otherwise. `/` is 0x2F and `\` is
-      // 0x5C, so they fall on opposite sides of the alphanumerics. Sorting the raw
-      // native `file` field puts `dir/a.html` before `dirZ.html` on Linux and
-      // *after* it on Windows — two machines, two orderings, and rule 11's
-      // byte-identical report quietly stops being true.
-      //
-      // The correct order below is the same on both platforms, but the test only
-      // has teeth on Windows: on POSIX the relative path is a suffix of the
-      // absolute one, so the two implementations cannot disagree. It runs
-      // everywhere because the Windows CI cells are where it earns its keep.
+      // `/` is 0x2F and `\` is 0x5C, on opposite sides of the alphanumerics, so sorting
+      // the native `file` field puts `dir/a.html` before `dirZ.html` on Linux and after
+      // it on Windows, and the same input would no longer give a byte-identical report.
+      // The test only has teeth on Windows: on POSIX the relative path is a suffix of
+      // the absolute one, so the two orderings cannot disagree.
       const root = platformRoot();
       const nested = join(root, 'dir', 'a.html');
       const sibling = join(root, 'dirZ.html');
@@ -276,7 +270,7 @@ describe('buildGraph', () => {
     });
 
     it('produces the same graph however the inputs are ordered', () => {
-      // Rule 11: the report is a function of the repository, not of iteration order.
+      // The report is a function of the repository, not of iteration order.
       const assets = [asset('a.png'), asset('b.png')];
       const references = [
         resolved('x.html', './a.png', 'a.png'),
@@ -328,7 +322,7 @@ describe('buildGraph', () => {
 
     it('is empty when every file was read', () => {
       // The only case in which a `dead` finding can be made confidently without a
-      // sweep — and, on real repositories, a rare one.
+      // sweep, and a rare one on real repositories.
       expect(build({ assets: [asset('a.png')] }).unscannedExtensions).toEqual([]);
     });
   });

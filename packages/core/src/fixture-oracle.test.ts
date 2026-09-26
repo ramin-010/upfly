@@ -1,47 +1,15 @@
 /**
- * §5.1(i) — fixture assertions derived independently, not pasted from output.
+ * Every image-looking path in the fixtures, checked against what the pipeline detects.
  *
- * Every other fixture assertion in this repo lists expected references as a **literal
- * array**, and those arrays were produced by running the adapter and pasting the
- * result. That makes them a snapshot of current behaviour wearing the costume of a
- * specification: the fixture *files* were written first, with intent, and the
- * *assertions* second, from output. Where the two disagree, the assertion wins
- * silently. Five tests this phase blessed a defect instead of catching it, the clearest
- * being `Gallery.jsx:35` — `` const dynamic = `/generated/${slug}.png` ``, put there
- * deliberately to exercise templated paths, asserted as 14 references for a file with
- * 15. The adapter never saw it, so the pasted array never contained it, so the test
- * passed for two weeks.
+ * The adapter fixture tests list their expected references as literal arrays, and an array
+ * copied from an adapter's output agrees with that adapter by construction: a reference the
+ * adapter misses is missing from the array too. So this file reads no expected array. It
+ * harvests paths from the raw text of every fixture with a scanner that is not an adapter,
+ * runs the real pipeline over the same files, and requires every difference to be listed
+ * in `KNOWN_NOT_DETECTED` with a reason.
  *
- * **This is §5.1(h)'s argument one step over.** A test suite that cannot see the
- * filesystem cannot vouch for the filesystem; build the gate at the layer that can.
- * Here: an assertion whose expected value came from the code cannot vouch for the code.
- *
- * So this file never reads an expected array. It harvests image-looking paths from the
- * raw bytes of each fixture with a scanner that is **not an adapter**, runs the real
- * pipeline over the same files, and requires every difference to be **written down with
- * a reason**.
- *
- * ⚠️ **`KNOWN_NOT_DETECTED` is the valuable half, not an escape hatch**, and it is
- * pinned from three sides so it cannot rot into one:
- *
- * 1. A harvested path that is neither detected nor listed **fails** — that is the
- *    Gallery.jsx class, and the reason this file exists.
- * 2. A listed path that is **no longer harvested** fails. A fixture edit that removes
- *    the text must remove the entry, or the list starts describing a file that has
- *    moved on.
- * 3. A listed path that the pipeline **now detects** fails. When an adapter improves,
- *    the entry claiming it is missed becomes a lie, and somebody has to delete it
- *    deliberately rather than leave a stale excuse behind.
- *
- * Without (2) and (3) the list would only ever grow, and "we know about that one"
- * would become indistinguishable from "we stopped looking".
- *
- * ⚠️ **This does NOT cover "a report branch no fixture reaches"** — the discarded line,
- * the encode-cap message, the counted-unsafe branch, the skipped-section renderer, the
- * size findings, and R22's own demotion. Those are about output paths, not references,
- * and this file is structurally blind to them. Their trigger is different and is stated
- * in §4/§6: when every fixture has the same value for the thing under test, the
- * fixtures cannot test it. They need hand-built cases, and have them elsewhere.
+ * It covers references, not report output: a report branch no fixture reaches has
+ * hand-built cases in other tests.
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
@@ -64,8 +32,7 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
  * Every fixture root, and both kinds matter.
  *
  * The five framework trees back `fixtures.test.ts`; `packages/core/fixtures` backs the
- * four `*.fixtures.test.ts` files. Between them they hold all 27 of the literal
- * assertion arrays this file exists to stop trusting.
+ * `*.fixtures.test.ts` files, whose literal expected arrays this file exists to check.
  */
 const ROOTS: readonly { readonly label: string; readonly dir: string }[] = [
   { label: 'vite-react', dir: join(TREES, 'vite-react') },
@@ -79,17 +46,12 @@ const ROOTS: readonly { readonly label: string; readonly dir: string }[] = [
 /**
  * The extensions the oracle looks for, written out rather than imported.
  *
- * ⚠️ **Deliberately a separate copy of the policy, and this is the R17 lesson applied
- * to an oracle.** Importing `IMAGE_EXTENSIONS` would make the harvest and the engine go
- * blind in the same instant: drop `.avif` from the engine's list and the adapters stop
- * detecting `.avif` *and* the oracle stops looking for it, so the suite stays green
- * while coverage disappears. A frozen copy keeps harvesting what the engine forgot, and
- * the mismatch then fails as an unaccounted path.
- *
- * The cost of a copy is drift in the other direction — a format added to the engine and
- * not here — and that is what `covers every extension the engine tracks` below is for.
- * So the duplication is load-bearing and the divergence is checked; neither half is
- * left to memory.
+ * Importing `IMAGE_EXTENSIONS` would blind the harvest and the engine together: drop
+ * `.avif` from the engine's list and the oracle stops looking for it too, so the suite
+ * stays green while coverage disappears. A separate copy keeps harvesting what the engine
+ * forgot, and the mismatch fails as an unaccounted path. The copy can drift the other way,
+ * a format added to the engine and not here, which `covers every extension the engine
+ * tracks` below checks.
  */
 const ORACLE_EXTENSIONS: readonly string[] = [
   'avif',
@@ -106,55 +68,31 @@ const ORACLE_EXTENSIONS: readonly string[] = [
 /**
  * Path-shaped tokens ending in an image extension, found in raw text.
  *
- * **Not an adapter, by construction**: no parser, no knowledge of `<img>` or `url()` or
- * an import specifier, and no idea what a comment is. That last part is the point — it
- * finds what a regex would find, which is a superset of what a correct adapter should,
- * and the difference is exactly the set this file makes somebody write down.
+ * Not an adapter: no parser and no idea what a comment is, so it finds a superset of what a
+ * correct adapter should. Its token boundaries agree with the adapters' wherever they can
+ * (`/`, template holes such as `${slug}` and `#{$dir}`, and URL schemes stay inside a
+ * token; whitespace, quotes and brackets end one), so the exception list
+ * records decisions about the engine rather than quirks of this pattern. A template with
+ * spaces, such as `{{ site.url }}/img/x.png`, cannot be one token: its entries are
+ * `oracle-boundary`.
  *
- * The character class carries `/` so a whole path is captured rather than its last
- * segment, and `$`/`{`/`}`/`#`/`@`/`:` so a template hole or a URL scheme survives
- * intact — `/generated/${slug}.png` and `#{$image-dir}/hero.png` are each one token,
- * matching the `rawPath` an adapter emits for them. It stops at whitespace, quotes and
- * brackets, so `srcset="/a.jpg 1x, /b.jpg 2x"` yields two tokens the way the adapter
- * splits them.
- *
- * ⚠️ **`#` and `:` were added after reading the first run's exception list, and the
- * reason is worth keeping.** Without them the harvest produced `{$image-dir}/hero.png`
- * and `//cdn.example.com/banner.png`, and both would have needed an exception saying
- * *"the oracle clipped a character"* — an entry documenting this regex rather than the
- * engine. Six of the first 33 were that. **An exception list diluted by the oracle's own
- * artefacts is how the valuable half turns back into an escape hatch**, so the fix is to
- * make the harvest's token boundaries agree with the adapters' wherever a boundary is
- * not itself the thing in question. What remains is decisions.
- *
- * One boundary cannot be fixed this way and is excused honestly instead:
- * `{{ site.url }}/img/templated.png` contains spaces, so no whitespace-terminated token
- * can span it. Those entries say the reference *is* detected, under a longer spelling.
- *
- * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses.
+ * A new `RegExp` per call, so no caller can inherit another's `lastIndex`.
  */
 function harvestPattern(): RegExp {
   return new RegExp(`[\\w@.\\-/\${}#:]*\\.(?:${ORACLE_EXTENSIONS.join('|')})\\b`, 'gi');
 }
 
 /**
- * Every **fixture** file under a directory, recursively.
- *
- * This deliberately applies none of the engine's ignore rules — the whole point is
- * to harvest what a person wrote, including files no adapter claims, rather than
- * what `discover` decided to look at.
- *
- * ⚠️ **Two directory names are nevertheless skipped, and the distinction is the
- * point.** `node_modules` and build output hold code nobody here wrote. Once the
- * fixtures gained dependencies so their builds could run, this walk followed the
- * dependency symlinks into the store and started harvesting image paths out of
- * third-party packages — paths that cannot be "accounted for" by a fixture
- * reference because they have nothing to do with the fixture. Skipping them is not
- * a relaxation of the check; it is the difference between auditing our fixtures and
- * auditing React's.
+ * Dependencies and build output, which nobody here wrote. The fixtures install packages so
+ * they can build, and an image path inside a third-party package is not the fixture's to
+ * account for.
  */
 const NOT_OURS: ReadonlySet<string> = new Set(['node_modules', 'dist', '_site', '.next', 'out']);
 
+/**
+ * Every fixture file under a directory, recursively. None of the engine's ignore rules
+ * apply: the point is to harvest what a person wrote, including files no adapter claims.
+ */
 async function filesUnder(dir: string): Promise<string[]> {
   const found: string[] = [];
   for (const entry of await readdir(dir)) {
@@ -169,11 +107,10 @@ async function filesUnder(dir: string): Promise<string[]> {
 /**
  * Extensions whose bytes are not text, so there is nothing in them to harvest.
  *
- * A frozen list rather than a check for valid UTF-8: a `.png` that happens to decode
- * without throwing would otherwise be scanned, and its compressed bytes can contain
- * anything at all — including a byte sequence that reads as `hero.png`. One spurious
- * hit from a raster's pixel data would have to be excused in the exception list, which
- * is precisely the noise that turns a written decision into an ignored one.
+ * A fixed list rather than a check for valid UTF-8: a `.png` that happens to decode would
+ * otherwise be scanned, and compressed pixel data can hold a byte sequence that reads as
+ * `hero.png`. Each such hit would need an entry in the exception list, and noise there is
+ * what turns a written decision into an ignored one.
  */
 const NOT_TEXT: ReadonlySet<string> = new Set([
   '.png',
@@ -188,7 +125,7 @@ const NOT_TEXT: ReadonlySet<string> = new Set([
 ]);
 
 interface Harvested {
-  /** `<root label>/<posix path within the root>` — the key `KNOWN_NOT_DETECTED` uses. */
+  /** `<root label>/<posix path within the root>`, the key `KNOWN_NOT_DETECTED` uses. */
   readonly key: string;
   readonly paths: ReadonlySet<string>;
 }
@@ -239,29 +176,16 @@ async function detected(root: { label: string; dir: string }): Promise<Detected>
 }
 
 /**
- * Why a harvested path is not detected — and each kind is **checked, not just asserted**.
+ * Why a harvested path is not detected, and what the tests below check for each kind.
  *
- * ⚠️ **The categories exist so the exception list cannot be mis-filed to dodge
- * scrutiny.** A free-text reason is only as good as the care of whoever wrote it, and the
- * one thing this file must not become is a place where "we know about that one" and "we
- * stopped looking" are indistinguishable. So two of the three kinds carry a mechanical
- * cross-check, and the third is pinned by the absence of the other two:
- *
- * - `no-adapter` — the file's type has no adapter, so nothing in it was ever read.
- *   **Checked:** the file must be absent from `discover`'s `sourceFiles`. Marking a
- *   comment in a `.css` file as `no-adapter` fails, because CSS is claimed.
- *   ⚠️ These are **not** "correct to miss" — they are references a finished engine will
- *   find, and today R8's sweep hedges whatever they mention rather than reporting it
- *   dead. They are the coverage gap, counted.
- * - `oracle-boundary` — the reference **is** detected, under a longer spelling the
- *   harvest's whitespace-terminated token cannot reach (`{{ site.url }}/img/x.png`).
- *   **Checked:** some detected path for that file must contain the harvested token. This
- *   is the one kind that says nothing about the engine, so it is the one most worth
- *   making impossible to claim falsely.
- * - `ignored` — a correct engine ignores this: a comment, a code fence, prose, a remote
- *   URL, a JSON key, escaped markup. **Checked** from both sides: the file *is* claimed
- *   by an adapter, and no detected path contains the token. So this category cannot
- *   absorb either of the other two, and what is left in it is genuine judgement.
+ * - `no-adapter`: no adapter claims the file, so nothing in it was read. The file must be
+ *   absent from `discover`'s `sourceFiles`. Not correct behaviour: a finished engine finds
+ *   these, and until then an asset only they name is reported `possibly-dead`.
+ * - `oracle-boundary`: detected under a longer spelling the harvest cuts short. Some
+ *   detected path in the file must contain the harvested token.
+ * - `ignored`: a correct engine ignores it (a comment, a code fence, prose, a remote URL, a
+ *   JSON key, escaped markup). The file must be claimed and this exact path undetected;
+ *   whether the path really is not a reference is judgement, which the reason records.
  */
 type NotDetected =
   | { readonly why: 'ignored'; readonly because: string }
@@ -269,23 +193,14 @@ type NotDetected =
   | { readonly why: 'oracle-boundary'; readonly because: string };
 
 /**
- * Every image-looking path the pipeline does **not** detect, and why.
+ * Every image-looking path the pipeline does not detect, and why.
  *
- * ⚠️ **Read this as the specification it is.** Each entry was checked against the line it
- * sits on — not inferred from the shape of the path — and the reason states why a
- * *correct* engine behaves this way. If a reason is hard to write, that is the signal the
- * behaviour is a defect rather than a decision, which is how this list is meant to be
- * used. 32 entries: 25 `ignored`, 3 `no-adapter`, 4 `oracle-boundary` — the `.astro`
- * gap having closed in B1 and the adapter fixture having added four of its own.
+ * Check each entry against the line it sits on, not the shape of the path, and say why a
+ * correct engine behaves this way. A reason that is hard to write marks a defect rather
+ * than a decision.
  */
 const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDetected>>>> = {
-  // ── The coverage gap, in full. Three references, one file, one file type. ──────────
-  //
-  // ⚠️ **This block used to be seven references across two file types, and the four
-  // `.astro` ones are gone because B1's adapter reads them.** They were deleted because
-  // the `no longer detected` check above insisted: it fails on an exception for a path
-  // the pipeline now finds, which is exactly the mechanism that stops a stale excuse
-  // outliving the gap it described. `.njk` is what remains.
+  // The coverage gap: three references in two Nunjucks files, a format no adapter reads.
   'eleventy/src/index.njk': {
     '/img/logo.png': {
       why: 'no-adapter',
@@ -304,16 +219,14 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
     },
   },
 
-  // ── Commented out. The single largest category, and the whole reason "never regex
-  // JavaScript" is a rule: every one of these is what a regex would have taken. ───────
+  // Paths inside comments are the largest group: each is what a regex takes and a parser
+  // skips, which is why adapters parse.
   'plain-html/index.html': {
     'images/removed.png': { why: 'ignored', because: 'inside an HTML comment' },
   },
-  // ── The Astro adapter's own fixture, added in B1. ─────────────────────────────────
-  //
-  // Two deliberate non-references and two artefacts of the harvest's tokenizer, which
-  // is the split the categories exist to keep visible: the first pair says something
-  // about the engine, the second pair says something about this oracle.
+  // The Astro adapter's own fixture: two deliberate non-references, which say something
+  // about the engine, and two paths the harvest cuts short, which say something about
+  // this oracle.
   'adapter-fixtures/astro/Page.astro': {
     './commented.png': {
       why: 'ignored',
@@ -412,7 +325,7 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
       because: 'a remote URL: not a file in this repository',
     },
 
-    // ── Detected, under a spelling the harvest cannot span. ───────────────────────────
+    // Detected, under a spelling the harvest cannot span.
     '}}/images/logo.png': {
       why: 'oracle-boundary',
       because:
@@ -428,11 +341,8 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
   },
 };
 
-describe('§5.1(i) fixture references, derived rather than pasted', () => {
+describe('fixture references, derived rather than pasted', () => {
   it('covers every extension the engine tracks', () => {
-    // The other direction of the deliberate copy above. A format added to
-    // `IMAGE_EXTENSIONS` and not here would leave the oracle silently narrower than the
-    // engine, which is the failure a frozen copy trades for.
     const oracle = new Set(ORACLE_EXTENSIONS.map((extension) => `.${extension}`));
     for (const extension of IMAGE_EXTENSIONS) {
       expect(oracle).toContain(extension);
@@ -488,9 +398,8 @@ describe('§5.1(i) fixture references, derived rather than pasted', () => {
     });
 
     it('has no exception for a path the pipeline now detects', async () => {
-      // The check that stops the list only ever growing. When an adapter improves, the
-      // entry claiming its path is missed becomes a lie, and deleting it has to be a
-      // deliberate act rather than something nobody notices.
+      // Stops the list only ever growing: when an adapter improves, the entry saying its
+      // path is missed becomes false, and this makes somebody delete it.
       const found = await detected(root);
       const fixed: string[] = [];
 
@@ -556,18 +465,14 @@ describe('§5.1(i) fixture references, derived rather than pasted', () => {
   });
 
   it('holds the coverage gap as a number somebody has to change on purpose', () => {
-    // ⚠️ Not decoration. `no-adapter` entries are the only ones that are **not** correct
-    // behaviour — they are references a finished engine will find, and today R8's sweep
-    // hedges whatever they mention instead of reporting it dead. Counting them means an
-    // `.astro` or `.njk` adapter cannot land without this number moving, and an
-    // accidental *widening* of the gap fails here rather than passing quietly.
+    // `no-adapter` entries are the coverage gap, the only entries that are not correct
+    // behaviour. Counting them means a `.njk` adapter cannot land without this number
+    // moving, and a wider gap fails here instead of passing quietly.
     const byKind = { ignored: 0, 'no-adapter': 0, 'oracle-boundary': 0 };
     for (const excused of Object.values(KNOWN_NOT_DETECTED)) {
       for (const entry of Object.values(excused)) byKind[entry.why] += 1;
     }
 
-    // ⚠️ `no-adapter` fell 7 -> 3 when the Astro adapter landed. That is the number
-    // moving on purpose, which is what this assertion exists to force.
     expect(byKind).toEqual({ ignored: 25, 'no-adapter': 3, 'oracle-boundary': 4 });
   });
 });

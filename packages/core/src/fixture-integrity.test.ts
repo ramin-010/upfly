@@ -9,19 +9,13 @@ import { extensionOf, isImageExtension } from './paths.js';
 import type { Adapter } from './types.js';
 
 /**
- * Build plan §5.1(h): every reference in a fixture either resolves to a real file,
- * or is named to declare itself deliberate.
+ * Every reference in a fixture either resolves to a real file or is named to declare
+ * itself deliberate.
  *
- * This exists because the fixtures were committed with 17 references pointing at
- * nothing, and nothing caught it. It was invisible from where the other tests stand:
- * `fixtures.test.ts` hands source text to adapters, and an adapter never touches a
- * disk by design, so at that layer a reference to nothing looks exactly like a good
- * one. A test can only vouch for what its layer can see, so this is the layer that
- * sees the filesystem.
- *
- * Resolution here is deliberately **not** the engine's resolver. An independent
- * oracle means a resolver bug cannot hide a fixture defect, and vice versa — if the
- * two ever disagree, one of them is wrong and we want to be told.
+ * Adapters never touch a disk, so at their layer a reference to nothing looks like a good
+ * one. This test checks the fixtures against the filesystem with its own resolution
+ * rather than the engine's resolver, so a resolver bug cannot hide a fixture defect, or
+ * the other way round: if the two disagree, one of them is wrong.
  */
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
@@ -44,21 +38,18 @@ const TREES: readonly Tree[] = [
   // Eleventy copies `src/img` through to `/img`, so `src` is what serves a
   // root-relative path.
   { name: 'eleventy', publicDir: 'src' },
-  // R67's hand-built partial-failure tree. It is not a framework fixture and joins
-  // neither the audit corpus in `fixtures.test.ts` nor the exit criterion in
-  // `bench/src/fixture-build.ts` — it is not a buildable project and has no business
-  // in either. It belongs HERE because the hygiene this file checks is exactly what a
-  // hand-built tree is most likely to lose: a reference that stops resolving would
-  // dissolve the partial state while every planner assertion kept passing.
+  // A hand-built tree for the planner's partial states, such as a pattern where only
+  // some matching files convert. It has no build, so it is in neither `fixtures.test.ts`
+  // nor `bench/src/fixture-build.ts`. It is checked here because a reference in it that
+  // stopped resolving would remove the partial state while the planner's tests passed.
   { name: 'partial-pattern', publicDir: 'public' },
 ];
 
 /**
  * A filename that announces it is meant to point at nothing.
  *
- * Keeping the convention explicit is the other half of §5.1(h): a deliberate
- * dangling reference has to say so in its own name, or it is indistinguishable from
- * the accident this test exists to catch.
+ * A deliberate dangling reference has to say so in its own name, or it cannot be told
+ * apart from the accident this test exists to catch.
  */
 const DELIBERATE = /missing-on-purpose|does-not-exist/;
 
@@ -81,29 +72,23 @@ async function unresolvedIn(tree: Tree): Promise<Unresolved[]> {
       // A path that was never static cannot be checked against a filesystem.
       if (reference.ceiling === 'unsafe' || reference.ceiling === 'medium') continue;
 
-      // A module specifier — `react`, `next/image` — has no extension, and
-      // resolving those is node resolution rather than Phase 1's job.
+      // A module specifier such as `react` or `next/image` has no extension, and resolving
+      // one is Node's module resolution, which this check does not do.
       //
-      // The whitespace and comma test is what stops this exemption from becoming a
-      // hole. An unsplit JSX `srcSet` ("/a.jpg 1x, /b.jpg 2x") also ends without an
-      // extension, and skipping it hid a real adapter bug behind a green test: it is
-      // never a module specifier, so it must be checked and must fail.
+      // The whitespace and comma test keeps that exemption narrow. An unsplit JSX `srcSet`
+      // (`/a.jpg 1x, /b.jpg 2x`) also ends without an extension, and skipping it would hide
+      // an adapter that failed to split it: it is never a module specifier, so it is
+      // checked, and fails.
       const looksLikeModuleSpecifier =
         !/\.[a-z0-9]+$/i.test(reference.rawPath) && !/[\s,]/.test(reference.rawPath);
       if (looksLikeModuleSpecifier) continue;
 
-      // A speculative string that does not name an image is not a reference to
-      // anything in this tree, and holding the fixtures to it is stricter than the
-      // engine itself — rung 3 of the ladder drops an untracked extension before
-      // the resolver ever asks the filesystem.
-      //
-      // ⚠️ This was invisible until the fixtures gained dependencies. `"^19.0.0"`
-      // ends in `.0`, so it passes the extension test above, is emitted by the JSON
-      // adapter as a speculative path-shaped string, and resolves to nothing —
-      // eleven version ranges across four `package.json` files, every one of them a
-      // false positive. The exemption is narrow on purpose: `asserted` references
-      // are still checked whatever their extension, and a speculative `.png` is
-      // still checked, so nothing this test was built to catch is let through.
+      // A speculative string that does not name an image is not a reference to anything
+      // in this tree, and the engine does not check one either: the resolver drops an
+      // untracked extension before it asks the filesystem. A version range such as
+      // `"^19.0.0"` in a fixture's `package.json` ends in `.0`, passes the extension test
+      // above, and reaches here as a speculative path. `asserted` references are still
+      // checked whatever their extension, and so is a speculative `.png`.
       if (!reference.asserted && !isImageExtension(extensionOf(reference.rawPath))) continue;
 
       if (!resolvesOnDisk(reference.rawPath, sourceFile.path, root, tree.publicDir)) {
@@ -125,15 +110,15 @@ function resolvesOnDisk(
     return existsSync(resolve(dirname(fromFile), rawPath));
   }
 
-  // A root-relative path may be served from the public directory or from the
-  // project root — Vite does both, which is how `/src/main.jsx` works in an
-  // index.html that also references `/screenshot.png`.
+  // A root-relative path may be served from the public directory or from the project
+  // root. Vite does both, which is how `/src/main.jsx` works in an index.html that also
+  // references `/screenshot.png`.
   const candidates = [join(root, rawPath)];
   if (publicDir !== null) candidates.push(join(root, publicDir, rawPath));
   return candidates.some((candidate) => existsSync(candidate));
 }
 
-describe('fixture integrity (build plan §5.1h)', () => {
+describe('fixture integrity', () => {
   it.each(TREES.map((tree) => tree.name))(
     '%s: every reference resolves, or declares itself deliberate',
     async (name) => {
@@ -144,7 +129,7 @@ describe('fixture integrity (build plan §5.1h)', () => {
       const unresolved = await unresolvedIn(tree);
       const accidental = unresolved.filter((entry) => !DELIBERATE.test(entry.rawPath));
 
-      // Named so a failure prints exactly which reference in which file is wrong.
+      // Each entry names its file, so a failure prints which reference in which file is wrong.
       expect(accidental).toEqual([]);
     },
   );
@@ -159,9 +144,8 @@ describe('fixture integrity (build plan §5.1h)', () => {
   });
 
   it('every fixture image is the format its extension claims', async () => {
-    // The v2 extension converted 26 of these to WebP in place and deleted the
-    // originals, which is what produced the 17 dangling references in the first
-    // place. `fixtures/upfly.config.json` disables it; this asserts it stayed off.
+    // `fixtures/upfly.config.json` turns off the v2 VS Code extension, which converts
+    // images in place; this checks that it stayed off.
     const signatures: ReadonlyArray<[extension: string, magic: readonly number[]]> = [
       ['.png', [0x89, 0x50, 0x4e, 0x47]],
       ['.jpg', [0xff, 0xd8]],
@@ -174,19 +158,11 @@ describe('fixture integrity (build plan §5.1h)', () => {
       for (const asset of assets) {
         const signature = signatures.find(([extension]) => asset.extension === extension);
         if (signature === undefined) continue;
-        // ⚠️ **One declared exception, and it declares itself in its NAME (R138).**
-        //
-        // `theme-not-an-image.png` is an HTML error page carrying a `.png` name, on
-        // purpose: it is `fixtures/partial-pattern`'s pattern blocker, and it probes as
-        // `not-an-image`. It follows §5.1(h)'s existing convention — the one that lets
-        // `missing-on-purpose.png` and `does-not-exist` sit in these trees without
-        // weakening the check that finds the accidental ones.
-        //
-        // 🔴 **Keyed on the basename, never on a flag or a count.** This test's job is to
-        // catch the v2 extension converting fixtures in place, which is how 26 of these
-        // were destroyed and 17 dangling references appeared. An allowance that matched
-        // "any file that fails" or "at most one failure" would let that back in; one that
-        // matches a single self-describing name cannot.
+        // One exception, and its name declares it, like `missing-on-purpose.png`:
+        // `theme-not-an-image.png` is an HTML error page with a `.png` name, the file that
+        // blocks the pattern in `fixtures/partial-pattern`, and it probes as `not-an-image`.
+        // It is matched by name rather than by a count of failures, so a converted fixture
+        // still fails here.
         if (asset.relative.endsWith('/theme-not-an-image.png')) continue;
 
         const bytes = await readFile(asset.path);

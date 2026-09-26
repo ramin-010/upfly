@@ -3,20 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The one test that runs the PUBLISHED artefact rather than the source.
+ * The one test that loads the built package rather than the source.
  *
  * Every other test resolves `upfly-core` to `packages/core/src` through the alias in
- * `vitest.config.ts`, which is what stops a stale build being silently validated. The
- * cost of that alias is that nothing else would ever load `dist`, so nothing would
- * exercise the `exports` map, the emitted JavaScript, or the fact that the package
- * resolves at all for somebody who installed it.
- *
- * That gap has been paid for before. The previous generation of this project shipped a
- * VS Code extension that worked only on Windows for months, because every test ran
- * against source and nothing ever imported what was actually packaged.
- *
- * So this file imports the built entry point by path, deliberately escaping the alias,
- * and asserts the compiled code runs rather than merely resolving.
+ * `vitest.config.ts`, so a stale build is never what gets tested, and nothing else loads
+ * `dist`. This file imports the built entry point by file path, outside the alias, and
+ * checks that the compiled code runs, not only that it resolves. A path import does not
+ * read the `exports` map, so the map itself is not tested here.
  */
 
 const BUILT_ENTRY = fileURLToPath(new URL('../dist/index.js', import.meta.url));
@@ -24,10 +17,8 @@ const BUILT_ENTRY = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 /**
  * Fail with an instruction rather than a module-resolution stack trace.
  *
- * A missing `dist` is a forgotten `pnpm build`, and a developer meeting that deserves
- * to be told so. It deliberately fails rather than skipping: a smoke test that quietly
- * does nothing when the artefact is absent is exactly the shape that let the packaged
- * output go untested in the first place.
+ * A missing `dist` is a forgotten `pnpm build`. It fails rather than skips: a smoke test
+ * that passes when the artefact is absent tests nothing.
  */
 async function loadBuiltPackage(): Promise<Record<string, unknown>> {
   if (!existsSync(BUILT_ENTRY)) {
@@ -41,18 +32,10 @@ async function loadBuiltPackage(): Promise<Record<string, unknown>> {
 /**
  * Long enough that the clock is never what fails, because the clock asserts nothing.
  *
- * ⚠️ **Measured before it was raised, rather than raised because the test went red.**
- * This is the only test that resolves and loads the real `dist` through Node's module
- * resolution, which is genuine filesystem work, and it runs alongside the rest of the
- * suite. Standalone the import takes ~440 ms; inside the full suite it was measured at
- * **5 263 ms** against vitest's 5 000 ms default, so the failure moved with how many
- * other tests happened to be running and not with anything about the package.
- *
- * The claim here is *the packaged entry point resolves and loads*. A duration is not
- * part of that claim, and a threshold the suite's own size can cross is a test that
- * will eventually be silenced by whoever meets it at the wrong moment — which would
- * cost exactly what R62 bought. If the import ever genuinely takes thirty seconds,
- * this still fails.
+ * Loading `dist` is real filesystem work and runs alongside the rest of the suite: about
+ * 440 ms alone, but past vitest's 5 second default inside the full suite, where a failure
+ * would track how many other tests happen to be running rather than anything about the
+ * package. An import that takes thirty seconds still fails.
  */
 const LOAD_TIMEOUT_MS = 30_000;
 
@@ -67,10 +50,8 @@ describe('the built package', () => {
     LOAD_TIMEOUT_MS,
   );
 
-  // The same timeout, for the same reason: it loads the same artefact, so it is
-  // exposed to exactly the same contention. It passed only because module resolution
-  // is cached by the time it runs, which is an accident of ordering rather than a
-  // property worth relying on.
+  // The same timeout, for the same reason. Without it this test passes only because the
+  // test above has already cached the module, which is an accident of ordering.
   it(
     'exports the functions the CLI and the extension import by name',
     async () => {

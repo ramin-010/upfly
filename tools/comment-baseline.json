@@ -290,11 +290,6 @@
       "em-dash": 2,
       "emphasis": 1
     },
-    "packages/core/src/audit.test.ts": {
-      "internal-reference": 4,
-      "em-dash": 2,
-      "emphasis": 2
-    },
     "packages/core/src/concurrency.test.ts": {
       "internal-reference": 2,
       "em-dash": 7,
@@ -325,41 +320,10 @@
       "em-dash": 2,
       "emphasis": 2
     },
-    "packages/core/src/duplicates.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 8,
-      "emphasis": 3,
-      "emoji": 7
-    },
     "packages/core/src/file-store-node.test.ts": {
       "em-dash": 1,
       "emphasis": 1,
       "emoji": 2
-    },
-    "packages/core/src/fixture-integrity.test.ts": {
-      "internal-reference": 6,
-      "em-dash": 8,
-      "emphasis": 3,
-      "emoji": 3,
-      "long-comment": 3
-    },
-    "packages/core/src/fixture-oracle.test.ts": {
-      "internal-reference": 11,
-      "em-dash": 22,
-      "emphasis": 26,
-      "emoji": 11,
-      "long-comment": 53
-    },
-    "packages/core/src/fixtures.test.ts": {
-      "internal-reference": 18,
-      "em-dash": 24,
-      "emphasis": 5,
-      "emoji": 8,
-      "long-comment": 8
-    },
-    "packages/core/src/graph.test.ts": {
-      "em-dash": 6,
-      "emphasis": 1
     },
     "packages/core/src/hostile.test.ts": {
       "internal-reference": 3,
@@ -427,13 +391,6 @@
       "emphasis": 5,
       "emoji": 8
     },
-    "packages/core/src/report.test.ts": {
-      "internal-reference": 47,
-      "em-dash": 39,
-      "emphasis": 20,
-      "emoji": 16,
-      "long-comment": 5
-    },
     "packages/core/src/resolve.test.ts": {
       "internal-reference": 16,
       "em-dash": 16,
@@ -471,13 +428,6 @@
     },
     "packages/core/src/transaction.test.ts": {
       "em-dash": 1
-    },
-    "packages/core/test/smoke.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 1,
-      "emphasis": 3,
-      "emoji": 1,
-      "long-comment": 3
     }
   }
 }

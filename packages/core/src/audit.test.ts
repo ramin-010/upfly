@@ -144,7 +144,8 @@ describe('audit', () => {
     });
 
     it('cites file, line and raw path for a hedge from an unresolved reference', async () => {
-      // The R10 rider: this is the source that can name a line, and it must.
+      // The citation gives the file and the line, so the hedge tells a reader where to
+      // look, and it quotes the whole path as written.
       const source = 'title: x\n\n![Hero]({{ site.url }}/img/hero.png)\n';
       const graph = graphOf({
         assets: [asset('img/hero.png')],
@@ -190,11 +191,11 @@ describe('audit', () => {
     });
   });
 
-  describe('the public-directory rider', () => {
+  describe('assets in a public directory', () => {
     it('still reports a public asset as dead, and counts it', async () => {
-      // A public asset may be referenced from outside the repo entirely, but that
-      // is a bare possibility with no evidence — hedging on it is how the first
-      // version of this rule degenerated. One caveat line instead.
+      // A public asset may be linked from outside the repository, but that is a
+      // possibility with no evidence, and hedging on it would hedge every public asset.
+      // The report adds one caveat line instead.
       const result = await audit({
         graph: graphOf({ assets: [asset('public/promo.png'), asset('src/orphan.png')] }),
         sweep: NO_SWEEP,
@@ -210,15 +211,10 @@ describe('audit', () => {
     });
 
     it('counts everything as public when the project serves from its own root', async () => {
-      // A hand-written static site with no build step uploads the repository, so
-      // every file in it is reachable from outside and none of it can be called
-      // safe to delete on the strength of the reference graph alone.
-      //
-      // This used to assert zero, on the reasoning that marking everything public
-      // would make the caveat meaningless. The reasoning inverted the fact: the
-      // caveat is least meaningful where it is silently absent. Measured on
-      // railsgirls-com, which is in the corpus for precisely this property, it
-      // suppressed the warning across 903 unreferenced assets.
+      // A hand-written static site with no build step uploads the repository, so every
+      // file in it is reachable from outside, and none of it can be called safe to
+      // delete on the strength of the reference graph alone. Counting none as public
+      // would drop the caveat on exactly these sites.
       const result = await audit({
         graph: graphOf({ assets: [asset('images/orphan.png'), asset('deep/nested/logo.png')] }),
         sweep: NO_SWEEP,
@@ -231,9 +227,8 @@ describe('audit', () => {
     });
 
     it('still counts nothing as public when the project serves nothing publicly', async () => {
-      // The empty LIST and the empty STRING are opposites, and the distinction is
-      // the whole of this rule: no public directories at all, against one public
-      // directory that happens to be the project root.
+      // An empty list and an empty string are opposites here: no public directory at
+      // all, against one public directory that is the project root.
       const result = await audit({
         graph: graphOf({ assets: [asset('images/orphan.png')] }),
         sweep: NO_SWEEP,
@@ -273,8 +268,8 @@ describe('audit', () => {
 
   describe('broken', () => {
     it('cites the line so a reviewer can open it', async () => {
-      // §5.1(d) says every broken finding gets opened by a human. A path without a
-      // line makes that a grep instead of a click.
+      // A broken finding is checked by opening it, and a path without a line makes that
+      // a search instead of a click.
       const source = '<html>\n  <body>\n    <img src="./missing.png">\n  </body>\n</html>\n';
       const graph = graphOf({
         assets: [],
@@ -299,8 +294,8 @@ describe('audit', () => {
     });
 
     it('still reports the finding when the source cannot be re-read', async () => {
-      // Losing the line must not lose the finding — that would be a silent skip of
-      // the one finding the exit criterion is about.
+      // Losing the line must not lose the finding. It still names the file, and
+      // `unreadableSources` says why the line is missing.
       const graph = graphOf({ references: [broken('gone.html', './missing.png')] });
 
       const result = await audit({ graph, sweep: NO_SWEEP, readFile: files() });
@@ -446,8 +441,8 @@ describe('audit', () => {
     });
 
     it('reports a big file that shrinks only a little', async () => {
-      // The correction: 9% of 8 MB is 720 KB, very likely the largest single win
-      // in the repository. A percentage-only rule hides exactly this finding.
+      // 9% of 8 MB is 720 KB, very likely the largest single win in the repository,
+      // and a percentage-only rule hides it.
       const result = await audit({
         graph: graphOf({
           assets: [asset('hero.jpg', 8_000_000)],
@@ -523,8 +518,8 @@ describe('audit', () => {
     });
 
     it('never reports a saving that was not measured', async () => {
-      // The probe declined to encode this one; there is no number, so there is no
-      // finding. An estimate here would be exactly what the build plan forbids.
+      // The probe declined to encode this one, so there is no number and no finding.
+      // A saving is reported only when it was measured, never estimated.
       const result = await audit({
         graph: graphOf({
           assets: [asset('icon.svg', 90_000)],
@@ -569,8 +564,8 @@ describe('audit', () => {
 
   describe('what happens without a probe', () => {
     it('produces the three cheap findings and says it did not probe', async () => {
-      // The property that makes the cap and `--no-probe` safe: three findings of
-      // four need no pixels at all.
+      // Only the two size findings need pixels, which is what makes the cap and
+      // `--no-probe` safe.
       const source = '<img src="./missing.png">';
       const result = await audit({
         graph: graphOf({
@@ -633,7 +628,7 @@ describe('audit', () => {
     });
   });
 
-  describe('assets a framework reads by filename (R17)', () => {
+  describe('assets a framework reads by filename', () => {
     const CONVENTION = 'apps/v4/app/(app)/sera/opengraph-image.jpg';
     const ROOTS = [{ framework: 'next', dir: 'apps/v4' }] as const;
 
@@ -647,11 +642,10 @@ describe('audit', () => {
     }
 
     it('reports it dead when nothing says otherwise — the check that can fail', async () => {
-      // Deliberately first. Everything below asserts that a mechanism *suppresses* a
-      // finding, and an assertion like that passes just as well when the finding was
-      // never produced. This is the control: with no roots detected, the same asset
-      // is reported dead, so the tests underneath are measuring the mechanism rather
-      // than an empty list.
+      // The control. Every test below asserts that a finding is suppressed, which
+      // passes just as well when the finding was never produced. With no roots
+      // detected the same asset is reported dead, so the tests below measure the
+      // mechanism rather than an empty list.
       const result = await auditWith([]);
 
       expect(result.findings.filter((finding) => finding.kind === 'dead')).toHaveLength(2);
@@ -668,18 +662,16 @@ describe('audit', () => {
     });
 
     it('does not hedge it either — a hedge would be evasive, not weaker', async () => {
-      // `possibly-dead` means *we do not know*. Here we do: Next will emit it. R17
-      // rejected hedging for exactly that reason.
+      // `possibly-dead` means we do not know, and here we do: Next.js will emit it.
       const result = await auditWith(ROOTS);
 
       expect(result.findings.some((finding) => finding.kind === 'possibly-dead')).toBe(false);
     });
 
-    it('accounts for it rather than dropping it, because a silent skip is a P0', async () => {
-      // Rule 9, and it is also arithmetic: the asset has zero references, so the
-      // headline counts it as unreferenced. Without this list the report would show
-      // one more unreferenced image than it has findings and explain the gap
-      // nowhere.
+    it('accounts for it rather than dropping it, because a silent skip is a bug', async () => {
+      // The asset has zero references, so the headline counts it as unreferenced.
+      // Without this list the report would show one more unreferenced image than it
+      // has findings and explain the gap nowhere.
       const result = await auditWith(ROOTS);
 
       expect(result.conventionLinked).toEqual([
@@ -719,10 +711,10 @@ describe('a run that could not find the serving root', () => {
   }
 
   it('reports one diagnosis instead of every symptom', async () => {
-    // The R51 ruling. When almost nothing root-relative resolves, the finding is not
-    // that these references are broken; it is that we do not know where the project
-    // serves files from, and 14 broken findings whose targets are all on disk is a
-    // symptom reported as a diagnosis.
+    // When almost nothing root-relative resolves, the finding is not that these
+    // references are broken but that the engine does not know where the project serves
+    // files from. Broken findings whose targets are all on disk would state a symptom as
+    // a diagnosis.
     const { assets, references } = rootRelative(20, 1);
 
     const result = await audit({
@@ -741,8 +733,8 @@ describe('a run that could not find the serving root', () => {
   });
 
   it('carries the count of what it replaced, so nothing vanishes silently', async () => {
-    // Rule 9. The references themselves are still itemised in the report's own
-    // references section, so this re-explains them rather than hiding them.
+    // A silent skip is a bug, so the diagnosis counts the findings it replaced. The
+    // references themselves are counted in the report's `references.byResolution`.
     const { assets, references } = rootRelative(30, 2);
 
     const result = await audit({
@@ -756,11 +748,9 @@ describe('a run that could not find the serving root', () => {
   });
 
   it('keeps a broken relative reference that the diagnosis does not explain', async () => {
-    // Measured on unconfigured shadcn-ui: 116 broken findings, 115 of them
-    // root-relative. The first version of this suppressed all 116, and the odd one out
-    // was a genuinely broken relative path that would still be broken with the serving
-    // root corrected. Hiding it behind an unrelated explanation leaves the user with
-    // no way to see it at all.
+    // A broken relative path stays broken whatever the serving root turns out to be,
+    // so the diagnosis must not absorb it: behind an unrelated explanation, the user
+    // would have no way to see it.
     const { assets, references } = rootRelative(20, 1);
     const alsoBroken = broken('index.html', './genuinely-gone.png', 9_000);
 
