@@ -1,26 +1,11 @@
 /**
  * Link assets and references into the structure the audit reads.
  *
- * A pure function over data: it takes what `discover`, `scan` and `resolve`
- * produced and returns the two-way mapping between them, plus the buckets for
- * everything that did not link. Nothing is dropped on the way through — every
- * reference the resolver returned appears somewhere in the result, because rule 9
- * makes a silent skip a P0 bug and a graph is the easiest place in the pipeline to
- * lose one.
- *
- * Two things here are load-bearing beyond the obvious linking:
- *
- * **Linking goes through `isLinked`/`linkedPaths`, never `resolution === 'resolved'`.**
- * There are two linked outcomes. A pattern reference such as `` `./img/${name}.png` ``
- * links *every* asset it matched, and linking only the first would leave the rest
- * looking unreferenced — a false `dead asset` finding wearing a different costume.
- *
- * **Ordering is by POSIX-relative path, not by `Reference.file`.** `file` is an
- * absolute native path, and `/` (0x2F) and `\` (0x5C) fall on either side of the
- * alphanumerics, so sorting the raw field puts `dir/a` and `dirZ` in one order on
- * Linux and the opposite order on Windows. Rule 11 — same inputs, byte-identical
- * report — would then be quietly false in a way nothing would notice until two
- * people compared reports.
+ * A pure function over what `discover`, `scan` and `resolve` produced. Every reference the
+ * resolver returned appears somewhere in the result, because a silent skip is a bug and a
+ * graph is the easiest place to lose one. Linking goes through `linkedPaths`, never a
+ * comparison of `resolution`, so a pattern reference such as `` `./img/${name}.png` ``
+ * links every asset it matched. See "The graph" in ARCHITECTURE.md.
  */
 
 import { UpflyError } from './errors.js';
@@ -35,8 +20,8 @@ export interface AssetNode {
   /**
    * References linked to this asset, in report order.
    *
-   * Empty means the audit has a `dead` or `possibly-dead` candidate — which of the
-   * two depends on whether an unscanned file mentions the asset's filename.
+   * Empty means the audit has a `dead` or `possibly-dead` candidate. Which of the two
+   * depends on whether the audit's filename sweep finds the asset mentioned somewhere.
    */
   readonly references: readonly Reference[];
 }
@@ -52,26 +37,22 @@ export interface Graph {
   /**
    * Every reference, bucketed by outcome.
    *
-   * The audit's `broken` findings and the report's `discarded: N` /
-   * `unresolved-alias: N` counts both come straight out of here, which makes rule 9
-   * mechanical rather than remembered: a reference cannot fail to appear in the
-   * report without also failing to appear in a bucket.
+   * The audit's `broken` findings and the report's per-outcome counts come straight from
+   * here, so a reference cannot go missing from the report without also going missing
+   * from a bucket.
    */
   readonly byResolution: Readonly<Record<Resolution, readonly Reference[]>>;
   /**
    * Every file the engine saw but did not read, sorted by `relative`.
    *
-   * The audit sweeps these for the filenames of zero-reference assets. That is what
-   * turns "some extension went unread, so everything might be alive" — a hedge that
-   * fires on every real repository and therefore says nothing — into "`hero.png` is
-   * named in `config.yaml`, which Upfly cannot parse", which a person can act on.
+   * The audit sweeps these for the filenames of zero-reference assets, so it can say
+   * "`hero.png` is named in `config.yaml`, which Upfly cannot parse" instead of hedging
+   * every asset because some extension went unread.
    */
   readonly unscannedFiles: readonly UnscannedFile[];
   /**
-   * The same files counted by extension, sorted by `ext`.
-   *
-   * No longer a trigger for anything. It is the report's coverage statement, and how
-   * a user finds out they want an adapter.
+   * The same files counted by extension, sorted by `ext`: the report's coverage statement,
+   * and how a user finds out they want an adapter.
    */
   readonly unscannedExtensions: readonly UnscannedExtension[];
 }
@@ -84,24 +65,22 @@ export interface BuildGraphInput {
   /** Every resolved reference, from `resolveReferences`. */
   readonly references: readonly Reference[];
   /**
-   * Every file that went unread — **both** sources.
-   *
-   * `DiscoveryResult.unscannedFiles` (extensions no adapter claims) concatenated
-   * with `ScanResult.unscanned` (parse failures and files that vanished). They are
-   * one list here because the audit cannot tell them apart and should not have to:
-   * in both cases we did not learn what the file references.
+   * Every file that went unread, from both sources: `DiscoveryResult.unscannedFiles`
+   * (extensions no adapter claims) and `ScanResult.unscanned` (parse failures and files
+   * that vanished). They are one list because the audit need not tell them apart: in both
+   * cases the engine did not learn what the file references.
    */
   readonly unscannedFiles: readonly UnscannedFile[];
 }
 
 /**
- * Build the graph.
+ * Build the graph: link each reference to the assets it resolved to, and bucket every
+ * reference by outcome.
  *
- * @throws {UpflyError} `GRAPH_UNKNOWN_ASSET` if a reference links to a path that is
- * not in the asset set. Unreachable in a single run — the resolver only ever returns
- * paths it took from these very assets — but reachable the moment something resolves
- * against a cached asset set, which is exactly what the editor integration will do.
- * Loud, because the quiet version of this bug is a phantom dead asset.
+ * @throws {UpflyError} `GRAPH_UNKNOWN_ASSET` if a reference links to a path that is not in
+ * the asset set. That cannot happen when the references were resolved against these same
+ * assets, only against a different asset set, such as a cached one. It throws because
+ * dropping the link would show up as a phantom dead asset.
  */
 export function buildGraph(input: BuildGraphInput): Graph {
   const references = sortForReport(input.references, input.root);
@@ -136,7 +115,7 @@ export function buildGraph(input: BuildGraphInput): Graph {
   };
 }
 
-/** Assets nothing links to — the audit's `dead` / `possibly-dead` candidates. */
+/** Assets nothing links to: the audit's `dead` and `possibly-dead` candidates. */
 export function unreferencedAssets(graph: Graph): readonly AssetNode[] {
   return graph.assets.filter((node) => node.references.length === 0);
 }
@@ -145,7 +124,7 @@ export function unreferencedAssets(graph: Graph): readonly AssetNode[] {
  * Bucket every reference by outcome.
  *
  * The record literal is what makes this exhaustive: `Record<Resolution, …>` requires
- * every key, so an eighth resolution outcome fails to compile *here* rather than
+ * every key, so an eighth resolution outcome fails to compile here rather than
  * quietly vanishing from the report. That is the same guarantee the `never`-typed
  * default gives `linkedPaths`, without the switch.
  */
@@ -167,9 +146,10 @@ function bucketByResolution(references: readonly Reference[]): Record<Resolution
 /**
  * Sort references the way the report reads them: by file, then by position.
  *
- * The relative path is computed once per reference rather than inside the
- * comparator, which would recompute it O(n log n) times on the hot path of a
- * ten-thousand-file repository.
+ * By POSIX-relative path, not `Reference.file`: that absolute native path uses `\` on
+ * Windows, which sorts on the other side of the alphanumerics from `/`, so the order would
+ * differ between platforms. The relative path is computed once per reference rather than
+ * inside the comparator, which would recompute it O(n log n) times.
  */
 function sortForReport(references: readonly Reference[], root: string): Reference[] {
   return references

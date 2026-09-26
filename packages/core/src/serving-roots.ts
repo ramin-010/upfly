@@ -1,16 +1,14 @@
 /**
  * Where a root-relative reference is served from, worked out from the walk.
  *
- * Detection is by directory name over the directories `discover` already visited, and —
- * since R179 — only where the directory holding that name is a PROJECT: a project file
- * sits beside it. Never from a framework config's contents, and never conditional on the
- * directory holding an image. All three are measured decisions rather than preferences,
- * and the measurements that produced them are in ARCHITECTURE.md under "Serving roots".
+ * Detection is by directory name over the directories `discover` visited, and only where
+ * the directory holding that name is a project: a project file sits beside it. It never
+ * reads a framework config, and never requires the directory to hold an image.
+ * See "Serving roots" in ARCHITECTURE.md.
  *
- * The expensive direction is a false positive. A missed root degrades to the
- * project-root rung and costs a false `broken`, which costs somebody five minutes. A
- * wrongly detected root resolves a reference to the wrong file, and in this phase a
- * false link rewrites that file.
+ * A false positive is the expensive direction. A missed root degrades to the project-root
+ * rung and costs a false `broken`; a wrongly detected root links a reference to the wrong
+ * file, and a rewrite would then act on that link.
  */
 
 import { compareStrings } from './paths.js';
@@ -33,38 +31,16 @@ export const CONVENTIONAL_SERVING_ROOT_NAMES: readonly string[] = Object.freeze(
 ]);
 
 /**
- * What makes a directory a PROJECT: a file — or a directory — whose presence, not whose
- * contents, says a framework or a package manager lives there (R179).
+ * Files or directories whose presence shows that a folder belongs to a project, so a
+ * `public` or `static` folder beside one may be claimed. Only presence is checked, never
+ * contents.
  *
- * 🔴 **Why the rule exists.** A folder called `public` inside a tutorial is not a
- * website folder, and no rule on the TEXT of its references could tell it from Create
- * React App's `public/index.html` (R171): both name a root-relative file nothing outside
- * the folder mentions. What differs is whether the folder belongs to a project. Measured
- * on the five validation repositories: all 14 folders detection claims have a project
- * file beside them; the coverage tree's impostor, `docs-examples/public`, has none.
- *
- * ✅ **Not a framework config read** (ARCHITECTURE.md): a config's CONTENTS are often
- * computed JavaScript; whether a file EXISTS is as observable and static as a name.
- *
- * ⚠️ **The members, named before this was built (R166), and what they have been tested
- * on.** Only JavaScript projects are in the validation corpus, so every other line here is
- * UNTESTED on a real repository:
- * - `package.json` — Next, Vite, CRA, Astro, Nuxt, Remix, SvelteKit, Gatsby, Docusaurus,
- *   and every npm/pnpm workspace member, which those tools require to have one. Tested.
- * - `.vitepress` — a config DIRECTORY: VitePress keeps `docs/public/` beside
- *   `docs/.vitepress/`, with `package.json` at the repository root. Untested.
- * - `hugo.toml`, `hugo.yaml`, `hugo.json`, and the older `config.toml`, `config.yaml`,
- *   `config.json` — Hugo's `static/`. Untested.
- * - `Gemfile` — Rails' `public/`. Untested on a real repository.
- * - `composer.json`, `artisan` — Laravel's and Symfony's `public/`. Untested.
- * - `angular.json` — Angular's `public/` (v17 and later). Untested.
- *
- * ⚠️ **Known to be rejected, and the cheap direction (R140):** a plain HTML site with no
- * project file; Phoenix's `priv/static` and Spring Boot's `src/main/resources/static`,
- * whose project file sits further up; VuePress's `.vuepress/public`. Each costs a false
- * `broken`, never a wrong link — and declaring the folder in settings fixes it. Django's
- * `static/` is served under `/static/`, not the root, so detection by name was already
- * wrong for it; out of scope.
+ * `package.json` covers the JavaScript frameworks and is the only marker tested on a real
+ * repository. `.vitepress` is VitePress, which keeps `package.json` at the repository root
+ * rather than beside `docs/public`. `hugo.toml`, `config.toml` and their YAML and JSON
+ * forms are Hugo; `Gemfile` is Rails; `composer.json` and `artisan` are Laravel and
+ * Symfony; `angular.json` is Angular 17 and later. Django has no marker: its `static/` is
+ * served under `/static/`, not at the root. See "Serving roots" in ARCHITECTURE.md.
  */
 export const PROJECT_MARKERS: readonly string[] = Object.freeze([
   'package.json',
@@ -85,9 +61,9 @@ export const PROJECT_MARKERS: readonly string[] = Object.freeze([
  * What detection reads from the walk: every directory it entered and every file it saw.
  *
  * The whole walk rather than a list of paths a caller assembles, because a project file
- * is as likely to be one no adapter claims — a `Gemfile`, `artisan`, `hugo.toml` land in
- * `unscannedFiles` — as one an adapter does, and a caller that passed only the source
- * files would reject every Rails app without a sound.
+ * is as likely to be one no adapter claims (a `Gemfile`, `artisan` or `hugo.toml` lands in
+ * `unscannedFiles`) as one an adapter does. A caller passing only the source files would
+ * reject every Rails app without a word.
  */
 export type WalkedTree = Pick<
   DiscoveryResult,
@@ -128,7 +104,7 @@ export function detectServingRoots(
   };
 }
 
-/** Every walked path, directory or file, POSIX-relative — where a marker is looked up. */
+/** Every walked path, directory or file, POSIX-relative: where a marker is looked up. */
 function entriesOf(walk: WalkedTree): ReadonlySet<string> {
   const entries = new Set<string>(walk.directories);
   for (const list of [walk.assets, walk.sourceFiles, walk.unscannedFiles]) {

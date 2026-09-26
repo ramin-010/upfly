@@ -1,14 +1,12 @@
 /**
  * The public data contracts of the engine.
  *
- * These types are the API. Everything else in core is a pure function over them,
- * which is what keeps the engine testable without touching a filesystem.
+ * These types are the API. Apart from the modules that read or write the disk, core is
+ * pure functions over them, which keeps the engine testable without a filesystem.
  *
- * A note on offsets: `start`/`end` are UTF-16 code-unit indices into the source
- * string — the same units every JavaScript parser and `String.prototype.slice`
- * use. They are deliberately NOT byte offsets: a file containing an emoji or a
- * non-ASCII path would desynchronise the two, and every rewrite after that point
- * would land in the wrong place.
+ * Offsets (`start`, `end`) are UTF-16 code-unit indices, the units JavaScript parsers and
+ * `String.prototype.slice` use, not byte offsets: with an emoji or a non-ASCII path in a
+ * file, byte offsets would put every later rewrite in the wrong place.
  */
 
 import type { PathSpelling } from './adapters/reference-path.js';
@@ -20,9 +18,12 @@ export type Confidence =
   | 'certain'
   /** String literal in a known attribute or function, resolved on disk. */
   | 'high'
-  /** Template literal with a static prefix resolving to exactly one asset. */
+  /**
+   * A path with a static prefix and unknown parts (a template literal, a `+` chain),
+   * glob-matched against the assets. Never rewritten: the text is assembled at run time.
+   */
   | 'medium'
-  /** Dynamic or unresolvable. Never rewritten — always reported. */
+  /** Dynamic or unresolvable. Never rewritten, always reported. */
   | 'unsafe';
 
 /** The syntactic construct a reference was found in. */
@@ -35,56 +36,49 @@ export type ReferenceKind =
   | 'template'
   /**
    * A path-shaped string literal in JavaScript or TypeScript, guessed rather than
-   * asserted — the same standing as a string in a JSON file.
+   * asserted, like a string in a JSON file.
    */
   | 'string';
 
 /**
  * What an adapter emits: everything that can be known from syntax alone.
  *
- * Confidence is assigned in two steps, and this is the first one. An adapter can
- * see that a path came from a static `import` — it cannot see whether that path
- * points at a file, because adapters never touch the filesystem. So it reports a
- * *ceiling* and the resolver decides the rest.
+ * Confidence is assigned in two steps, and this is the first. An adapter can see that a
+ * path came from a static `import` but not whether it points at a file, because adapters
+ * never touch the filesystem. So it reports a `ceiling` and the resolver decides the rest.
  */
 export interface RawReference {
   /** Absolute path of the source file containing the reference. */
   readonly file: string;
-  /** Start offset of the *path text only*, excluding surrounding quotes. */
+  /** Start offset of the path text only, excluding surrounding quotes. */
   readonly start: number;
   /** End offset (exclusive) of the path text. */
   readonly end: number;
   /** The path exactly as written in the source. */
   readonly rawPath: string;
   /**
-   * What the source text PROVES the path is, when that is not `rawPath` itself (R175).
+   * The path the source text proves, when that is not `rawPath` itself; absent otherwise.
    *
-   * Two cases today. A `+` chain — `'/srcset/' + 'card-' + String(width) + '.jpg'` — has no
+   * Two cases. A `+` chain such as `'/srcset/' + 'card-' + String(width) + '.jpg'` has no
    * single run of source that is its path, so `rawPath` is the chain's text and this is
-   * `/srcset/card-${}.jpg`. And a template with a same-file constant written in —
-   * `` `${ASSET_BASE}/${name}.png` `` becomes `/gallery/${}.png`. Every unknown segment is
-   * `${}`, one of the resolver's `INTERPOLATIONS`.
+   * `/srcset/card-${}.jpg`. A template with a same-file constant written in: given
+   * `const ASSET_BASE = '/gallery'`, `` `${ASSET_BASE}/${name}.png` `` is `/gallery/${}.png`.
+   * Each unknown part is written `${}`.
    *
-   * ⚠️ **Read this, not `rawPath`, wherever the question is WHAT PATH this is** — the glob,
-   * the static-extension test, the report's classification. **Keep `rawPath` wherever the
-   * question is WHERE the text is** — the range, a citation, a sweep for a filename.
-   * Absent on every reference whose text is its path, which is all but those two.
+   * Read this, not `rawPath`, for what the path is (the glob, the extension test, the
+   * report's classification). Keep `rawPath` for where the text is (the range, a
+   * citation, a sweep for a filename).
    */
   readonly assembledPath?: string;
   readonly kind: ReferenceKind;
   /**
-   * WHICH construct this was written in — `html.img.srcset.w`, `css.image-set`.
+   * The exact construct the reference was written in, such as `html.img.srcset.w` or
+   * `css.image-set`.
    *
-   * `kind` is the coarse bucket the resolver reasons with (seven values); this is the
-   * fine one the coverage matrix rows on (ninety-odd). They are not redundant: `kind`
-   * answers *how do I resolve this*, `shape` answers *what kind of thing is it*, and
-   * only the second can be crossed with a real repository to say what fraction of its
-   * references we have ever tested (R76).
-   *
-   * 🔴 **Required, and deliberately not defaulted.** The adapter knows the shape at the
-   * moment it finds the reference and used to throw it away; a default would let a new
-   * emission site silently join the wrong row, which is the one failure this field
-   * cannot survive. The vocabulary is `ShapeId`, so an invented name will not compile.
+   * `kind` is the coarse bucket the resolver reasons with. `shape` is the fine one the
+   * coverage matrix (`SHAPES`) is keyed on, and only it can be crossed with a real
+   * repository to say what share of its references the tests cover. Required rather than
+   * defaulted, so a new emission site cannot join the wrong row unnoticed.
    */
   readonly shape: ShapeId;
   /**
@@ -93,13 +87,13 @@ export interface RawReference {
    */
   readonly ceiling: Confidence;
   /**
-   * Whether the syntax *asserts* this is an asset reference.
+   * Whether the syntax asserts this is an asset reference.
    *
-   * `true` for an `import`, an `<img src>`, a `url()` — the author said so, and an
-   * unresolved one is a broken reference worth reporting. `false` for a
-   * path-shaped string in JSON or Markdown, which is a guess: an unresolved one is
-   * dropped from the graph rather than reported as broken, because otherwise every
-   * `package.json` in the world produces false findings.
+   * `true` for an `import`, an `<img src>` or a `url()`: the author said so, and an
+   * unresolved one is a broken reference worth reporting. `false` for a path-shaped
+   * string that is only a guess, such as one in a JSON file: an unresolved one is dropped
+   * from the graph rather than reported as broken, or every `package.json` would produce
+   * false findings.
    */
   readonly asserted: boolean;
   /** Why this ceiling was assigned. Surfaced verbatim in the report. */
@@ -107,110 +101,72 @@ export interface RawReference {
 }
 
 /**
- * Which of the four things the resolver concluded about a reference.
+ * The outcome the resolver reached for a reference.
  *
- * The resolver knows this at the moment it decides, so it says so rather than
- * leaving `resolvedPath: null` to stand for three different outcomes that the
- * audit, the report and the planner would each have to tell apart again.
+ * Recorded where it is decided, rather than leaving `resolvedPath: null` to stand for
+ * several outcomes that the audit, the report and the planner would each have to tell
+ * apart again. See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 export type Resolution =
   /** Points at exactly one asset. */
   | 'resolved'
   /**
-   * A `medium` template that glob-matched one or more assets.
-   *
-   * Separate from `resolved` because it carries several paths, and because Phase 2
-   * must treat it differently: a pattern is only safe to rewrite if *every* asset it
-   * matches converts to the same target extension.
+   * A `medium` pattern that glob-matched one or more assets, and links all of them.
+   * Separate from `resolved` because it carries several paths, and a pattern is never
+   * rewritten.
    */
   | 'resolved-pattern'
   /**
-   * The ceiling was already `unsafe`, so there was never a static path to resolve.
-   *
-   * Distinct from `broken` because the two are unlike: a literal path pointing at
-   * nothing is a real, actionable finding, whereas `url($hero)` is simply not
-   * knowable until the preprocessor runs — nobody typed a wrong path. This is also
-   * the set shown to users as "N references I couldn't safely rewrite".
+   * No static path to resolve: the ceiling was `unsafe`, or a pattern matched no asset.
+   * Not `broken`, because nobody typed a wrong path: `url($hero)` is not knowable until
+   * the preprocessor runs.
    */
   | 'dynamic'
   /**
-   * Points at a real file the engine deliberately does not index.
-   *
-   * Its own outcome because none of the others can carry it honestly: `discarded` is
-   * speculative-and-silent while this is asserted, `dynamic` means no static path
-   * exists while this one is perfectly static, and folding it into `resolved` would
-   * let Phase 2 rewrite it — breaking a reference that currently works, since the
-   * target was never converted.
+   * Points at a file the engine does not index, such as one under an ignored directory
+   * or inside an npm package. Not `resolved`, because the target is never converted, so
+   * rewriting the reference would break one that works today.
    */
   | 'out-of-scope'
-  /** A real literal path that points at nothing — a finding. */
+  /** An asserted, literal path that points at nothing: a finding. */
   | 'broken'
   /** A path-shaped guess that did not resolve. Counted, never a finding. */
   | 'discarded'
-  /** Alias-shaped (`@/…`, `~/…`, `#…`, bare). Its own bucket; Phase 2 resolves these. */
+  /** Alias-shaped (`@/…`, `~/…`, `#…`), and no alias the project declares maps it. */
   | 'unresolved-alias';
 
 /**
- * How a reference reached the asset it points at.
- *
- * Recorded rather than left to be re-derived: Phase 2 needs it, and re-deriving
- * what the producer already knew is the mistake the ceiling/confidence split exists
- * to remove.
- *
- * The distinction that matters: a **`project-root`** resolution proves the asset is
- * alive but is **not strong enough to rewrite the reference**, because the code may
- * join that string to a different base entirely. The other two are safe to rewrite.
+ * How a reference reached the asset it points at, which decides whether its text may be
+ * rewritten: `file` and `serving-root` may be, `speculative-root` never is, and
+ * `project-root` depends on the planner's `RootLinkPolicy`.
+ * See "A link says the asset is alive; `resolvedVia` says whether the text may be edited"
+ * in ARCHITECTURE.md.
  */
 export type ResolvedVia =
   /** Relative to the directory of the referencing file. The ordinary case. */
   | 'file'
-  /** A root-relative path against a configured serving root. */
+  /** A root-relative path against a serving root, or a path through a declared alias. */
   | 'serving-root'
   /**
-   * A root-relative path resolved against the project root, because no configured
-   * serving root held it.
-   *
-   * ⚠️ **Split out from `speculative-root` by measurement (R36).** These were one
-   * value, and treating them alike was costing real rewrites: across the five
-   * validation repositories this case occurs **1,325** times and **1,267 of those are
-   * `asserted`** — `<img src="/favicon.png">` in hand-written HTML, resolving to a
-   * file that exists and that the site really does serve from the project root. A
-   * plain static site with no build step has no public directory to configure, so
-   * this is not a fallback *past* a statement; it is the ordinary answer.
-   *
-   * ⚠️ **It is not unconditionally strong, and the weak sub-case is unmeasured.** If a
-   * serving root *is* configured and correct, a root-relative path that misses it and
-   * happens to exist at the project root is a false link. **Zero occurrences across
-   * all five repos** — in every repo whose serving root matched, the `serving-root`
-   * candidate won first — so the risk is real but unevidenced. Whether this may be
-   * rewritten is a policy question for the planner and is **open**; today it is
-   * treated exactly as before.
+   * A root-relative path resolved against the project root, because no serving root held
+   * it. On a static site with no build step the project root is the serving root, so this
+   * is the ordinary case there. When a serving root is declared, a path that missed it
+   * and exists at the project root may be coincidence rather than a link.
    */
   | 'project-root'
   /**
-   * A `./`-spelled **speculative** path that failed file-relative and was retried
-   * against the project root — a guess at the base of a string that was already a
-   * guess.
-   *
-   * Genuinely weak, and measured as rare: **10 occurrences across five repositories,
-   * none of them `asserted`.** This is the case R15 was written about.
+   * A speculative `./` path that failed file-relative and was retried against the project
+   * root: a guess at the base of a string that was already a guess. It shows the asset is
+   * alive and nothing more.
    */
   | 'speculative-root';
 
 /**
  * What the resolver produces: a raw reference plus what it points at.
  *
- * A union rather than a flat `resolution` field beside a nullable path, because it
- * makes `{ resolution: 'resolved', resolvedPath: null }` unrepresentable and lets
- * TypeScript narrow the payload as soon as a consumer checks the discriminator — no
- * non-null assertions anywhere downstream.
- *
- * Ask `isLinked()` rather than comparing `resolution` by hand: there are two linked
- * outcomes, and testing for only one of them is a false negative the compiler cannot
- * see.
- *
- * Keeping this separate from `RawReference` also means an adapter cannot produce a
- * resolved reference even by accident: only the resolver can widen one.
+ * A union on `resolution`, so checking it narrows the other fields. Ask `isLinked()`
+ * rather than comparing `resolution` by hand: two outcomes are linked, and a test for
+ * only one of them compiles and misses the other.
  */
 export type Reference =
   | (RawReference & {
@@ -222,12 +178,10 @@ export type Reference =
       /**
        * Which spelling of `rawPath` the lookup answered on. Absent means `literal`.
        *
-       * 🔴 **Recorded rather than re-derived, because the two cases are INDISTINGUISHABLE
-       * in the source.** `enc%20name.png` is a real file whose name contains a percent
-       * sign; `hero%20image.png` is a different real file called `hero image.png`. Both
-       * are percent-shaped text and only the lookup knows which one answered. A rewriter
-       * that re-derived this from `rawPath` would put a raw space inside a URL half the
-       * time — see `spell()` in `adapters/reference-path.ts`.
+       * Recorded because the text cannot tell: `enc%20name.png` may be a file with a
+       * percent sign in its name, and `hero%20image.png` one called `hero image.png`.
+       * Only the lookup knows which answered, and a rewrite that guessed from `rawPath`
+       * could put a raw space into a URL. See `spell()` in `adapters/reference-path.ts`.
        */
       readonly spelling?: PathSpelling;
     })
@@ -243,7 +197,7 @@ export type Reference =
       readonly resolution: 'out-of-scope';
       /** The target is known, but it is never rewritten. */
       readonly confidence: 'unsafe';
-      /** Where it points. We know exactly; we simply do not index it. */
+      /** Where it points, or the specifier itself for a file inside an npm package. */
       readonly resolvedPath: string;
       /** Which rule excluded the target, rendered verbatim in the report. */
       readonly exclusionReason: string;
@@ -274,7 +228,7 @@ export interface Edit {
  * - `findReferences` and `rewrite` are pure functions of their input.
  */
 export interface Adapter {
-  /** Stable id, e.g. 'jsx', 'html', 'css'. Used in config and reports. */
+  /** Stable id, e.g. 'javascript', 'html', 'css'. Used in config and reports. */
   readonly id: string;
   /** File extensions this adapter claims, lowercase and dot-prefixed: ['.html']. */
   readonly extensions: readonly string[];
@@ -318,10 +272,8 @@ export type SkipReason =
   | 'not-a-regular-file';
 
 /**
- * One thing discovery could not process, with the reason.
- *
- * Rule 9: a silent skip is a P0 bug. Everything the walker declines ends up here
- * and is rendered in the report.
+ * One thing discovery could not process, with the reason. Everything the walk declines
+ * ends up here and in the report, because a silent skip is a bug.
  */
 export interface SkippedEntry {
   /** Absolute path with native separators. */
@@ -329,34 +281,32 @@ export interface SkippedEntry {
   /** Path relative to the project root, POSIX-separated. */
   readonly relative: string;
   readonly reason: SkipReason;
-  /** Human-readable specifics — typically an errno code such as `EACCES`. */
+  /** Human-readable specifics, typically an errno code such as `EACCES`. */
   readonly detail: string;
 }
 
 /**
  * Why a file the walk enumerated was never read for references.
  *
- * All three mean the same thing to the audit — *we did not learn what this file
- * references* — which is why they share one list rather than three. An asset whose
- * only mention lives in one of these files would otherwise be reported as
- * confidently dead, a false positive we manufactured ourselves.
+ * All three tell the audit the same thing, that the engine did not learn what the file
+ * references, so they share one list. The audit needs it: an asset mentioned only in
+ * such a file would otherwise be reported as confidently dead.
  */
 export type UnscannedReason =
   /** No adapter claims this extension: a `.vue`, a `.yaml`, an `.svg`. */
   | 'unclaimed-extension'
   /** An adapter claimed it and could not parse it. */
   | 'parse-failed'
-  /** It could not be read at all — typically it vanished mid-run. */
+  /** It could not be read at all, typically because it vanished mid-run. */
   | 'unreadable';
 
 /**
  * A file the engine saw but did not scan.
  *
- * Carries the path, not just the extension, because the audit sweeps these files
- * for the filenames of zero-reference assets. Hedging is per-asset — an asset named
- * in an unscanned file is `possibly-dead` *and the report says which file*, while
- * everything else is confidently `dead`. A global hedge keyed on "some extension
- * went unread" fires on every real repository and therefore says nothing.
+ * Carries the path, not just the extension, because the audit sweeps these files for
+ * the filenames of zero-reference assets: an asset named in one is `possibly-dead`, and
+ * the report says which file.
+ * See "`possibly-dead`, and why "zero references" is usually a lie" in ARCHITECTURE.md.
  */
 export interface UnscannedFile {
   /** Absolute path with native separators. */
@@ -403,38 +353,29 @@ export interface DiscoveryResult {
   /** Adapter-claimed files, sorted by `relative`. */
   readonly sourceFiles: readonly SourceFile[];
   /**
-   * How many entries an ignore rule excluded.
-   *
-   * An ignored directory counts once, not once per file inside it — we never look
-   * inside, which is exactly why discovery is fast.
+   * How many entries an ignore rule excluded. An ignored directory counts once, not once
+   * per file inside it: the walk never looks inside.
    */
   readonly ignoredCount: number;
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
   /**
-   * Every directory the walk descended into, POSIX-relative to `root` and sorted.
-   * The root itself is not included.
+   * Every directory the walk descended into, POSIX-relative to `root` and sorted, without
+   * the root itself. Serving-root detection reads it.
    *
-   * Recorded rather than derived from the paths in `assets` and `sourceFiles`, and
-   * the difference is not theoretical: a directory holding only files nothing tracks
-   * leaves no trace in either list. Measured on `shadcn-ui`, deriving finds 11 of its
-   * 12 serving roots, because `templates/next-app/public` holds a single `.gitkeep`.
-   * A recorded list cannot disagree with the walk, because it is the walk.
-   *
-   * Excluded directories are absent: the walk never entered them, and serving-root
-   * detection reading them would contradict the ignore rules.
+   * Recorded rather than derived from `assets` and `sourceFiles`, because a directory
+   * holding only files nothing tracks leaves no trace in either list. Excluded
+   * directories are absent, so detection cannot contradict an ignore rule.
+   * See "Serving roots" in ARCHITECTURE.md.
    */
   readonly directories: readonly string[];
   /**
    * Files no adapter claimed, sorted by `relative`.
    *
-   * Excluded and ignored entries are deliberately absent: an ignore rule is an
-   * instruction, not a gap in our coverage, and walking a pruned `node_modules` to
-   * hedge a report would be absurd. Those are reported once, as `excludedRoots`.
-   *
-   * `.svg` appears here *and* in `assets`. It is both an asset and a container —
-   * `<image href>`, `<use href>` and a `<style>` block inside one are all real
-   * references, and no adapter reads them.
+   * Excluded and ignored entries are absent: an ignore rule is an instruction, not a gap
+   * in coverage, and those are reported once, as `excludedRoots`. `.svg` appears here and
+   * in `assets`: it is both an asset and a container, since `<image href>`, `<use href>`
+   * and a `<style>` block inside one are real references that no adapter reads.
    */
   readonly unscannedFiles: readonly UnscannedFile[];
   /**

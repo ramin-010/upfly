@@ -1,16 +1,10 @@
 /**
- * Decide what every raw reference points at.
+ * Decide what every raw reference points at, and assign its final confidence.
  *
- * This is where confidence is finally assigned, and it is a pure function: it
- * resolves against the **asset set** `discover` returned, never against the
- * filesystem. That keeps the two-step confidence rule honest — the adapter knows
- * syntax, the resolver knows what exists — without adding a third module that
- * touches a disk.
- *
- * The whole design exists to avoid one failure: reporting something as broken when
- * it is not. Phase 1's exit criterion is zero false `broken` findings on real
- * repositories, and every branch below is there because some real syntax would
- * otherwise land in that bucket.
+ * Resolution is against the asset set `discover` returned, not the filesystem: the adapter
+ * knows syntax, the resolver knows what exists. Every rung of the ladder in `resolveOne`
+ * exists because some real syntax would otherwise be reported as `broken` when it is not.
+ * See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 
 import { dirname, resolve as resolvePath } from 'node:path';
@@ -27,32 +21,14 @@ import { provenPath } from './reference.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
 /**
- * Serving roots, and whether the project declared them or we guessed.
+ * The directories root-relative paths are served from, and whether the project declared
+ * them or the engine guessed them.
  *
- * The two travel together because separating them cost real rewrites. A root-relative
- * path that misses a serving root and happens to exist at the project root means two
- * different things depending on where that root came from: if the project declared it,
- * the miss is suspicious; if we guessed it from a framework convention, the miss says
- * nothing at all, because the project never claimed to serve from there.
- *
- * The resolver used to default a missing list to `['public']` silently, which erased
- * exactly that difference. Downstream, "the user chose public/" and "we guessed
- * public/" became the same value, so a policy keyed on whether a serving root was
- * configured would have declined links on the strength of a choice nobody made. A
- * hand-written static site has no `public/` directory at all, and a first run always
- * has no configuration, so that is the ordinary first experience rather than an edge.
- *
- * One value with both halves means a caller cannot supply the dirs without also
- * saying where they came from.
- *
- * **`dirs` is a list, because a monorepo has more than one.** shadcn-ui has twelve,
- * and a file under `apps/v4/` that references `/images/hero.png` means
- * `apps/v4/public/` — there is no `public/` at its workspace root at all. Resolving
- * against a single serving root produced 93 false `broken` findings when that was
- * first measured; the same measurement today gives 96, and **all 96 resolve under a
- * nested app's public directory**, so the two numbers are one finding taken twice
- * rather than two. Order does not decide precedence: the nearest ancestor of the
- * referencing file wins, which is what a bundler does.
+ * One value holds both, so a caller cannot pass the directories without saying where they
+ * came from. A root-relative path that misses a declared root but exists at the project root
+ * is suspicious; missing a guessed root says nothing, because the project never claimed to
+ * serve from there. A monorepo has one root per app, and the nearest ancestor of the
+ * referencing file wins, as it does for a bundler, whatever the order of `dirs`.
  */
 export interface ServingRoots {
   /** Relative to the project root. A plain static site serves from the root: `['']`. */
@@ -66,7 +42,7 @@ export interface ServingRoots {
  *
  * Right for a single-app Vite, Next or Astro project and wrong for a hand-written
  * static site, which is why it is marked as undeclared rather than passed off as a
- * statement. Every caller that reaches for this is visibly guessing.
+ * statement.
  */
 export const CONVENTIONAL_SERVING_ROOTS: ServingRoots = Object.freeze({
   dirs: Object.freeze(['public']) as readonly string[],
@@ -79,52 +55,39 @@ export interface ResolveOptions {
   /** Every image found on disk. Resolution is against this set, not the filesystem. */
   readonly assets: readonly Asset[];
   /**
-   * Where a root-relative `/hero.png` may be served from, and whether the project
-   * actually said so.
-   *
-   * Required, and carrying its own provenance, because both halves have been wrong
-   * here. See {@link ServingRoots}.
+   * Where a root-relative `/hero.png` may be served from, and whether the project said so.
+   * See {@link ServingRoots}.
    */
   readonly servingRoots: ServingRoots;
   /**
-   * Directories the walk excluded, from `DiscoveryResult.excludedRoots`.
-   *
-   * A reference into one of these points at a file that really is there, so calling
-   * it `broken` is a false positive — and the likeliest case is not `node_modules`
-   * but a user who ignores `legacy/` while it is still referenced.
+   * Directories the walk excluded, from `DiscoveryResult.excludedRoots`. A reference into
+   * one points at a file that is really there, so it is `out-of-scope` rather than `broken`.
+   * The usual case is a user who ignores `legacy/` while it is still referenced.
    */
   readonly excludedRoots?: readonly ExcludedRoot[];
   /**
-   * Path aliases the project declares, from `loadAliases`.
-   *
-   * Passed in rather than read here, because reading a config is filesystem work and
-   * this module is pure. Absent means "no aliases were loaded", which leaves every
-   * alias-shaped path in `unresolved-alias` exactly as before.
+   * Path aliases the project declares, from `loadAliases`. Passed in because reading a
+   * config is filesystem work and this module is pure. Absent means none were loaded.
    */
   readonly aliases?: AliasMap;
   /**
-   * Whether a path exists on disk. Required, not optional.
-   *
-   * This is the resolver's only contact with a filesystem, injected rather than
-   * imported so the module stays pure and testable against a fake — the same shape
-   * as the `ImageProbe` port. It is consulted **only** for a reference that is about
-   * to be called broken, a set that should number in the tens, and it is what stops
-   * an asset excluded by a file-level ignore rule (`*.png`) from being reported as
-   * missing when it is sitting right there.
-   *
-   * Required because a default would let a call site keep the false `broken`
-   * silently, which is the failure this exists to remove.
+   * Whether a path exists on disk: the resolver's only contact with a filesystem, injected
+   * so it can be tested against a fake. It is consulted only for references that did not
+   * resolve, so that an asset excluded by a file-level ignore rule such as `*.png` is
+   * `out-of-scope` rather than `broken`. Required, because a default would let a call site
+   * keep that false `broken` silently.
    */
   readonly exists: (absolutePath: string) => boolean;
 }
 
 /**
- * Resolve raw references against the assets that exist.
+ * Resolve raw references against the assets that exist, giving each its outcome and final
+ * confidence.
  *
- * References to files the engine does not track — a `.woff2` font, a `.css` import —
- * are **removed** rather than reported. They were never candidate asset references,
- * so declining them is not a skip under rule 9, and counting every font in a
- * stylesheet would be pure noise.
+ * References to files the engine does not track, such as a `.woff2` font or a `.css`
+ * import, are left out of the result rather than reported. They were never candidate
+ * assets, so this is not a silent skip, and counting every font in a stylesheet would be
+ * noise.
  */
 export function resolveReferences(
   rawReferences: readonly RawReference[],
@@ -158,14 +121,12 @@ interface ResolveContext {
 }
 
 /**
- * The decision ladder from build plan §3.2, in the order it is written there.
- *
- * The ceiling tests come first because if there is no static path, every later
- * question is meaningless. The extension filter sits immediately after them rather
- * than at the very top, which matters in both directions: ahead of them it would
- * silently swallow `url($hero)` and `` `/img/${file}` `` — real dynamic references
- * with no extension to test — and behind the resolution test it would turn every
- * `url(inter.woff2)` into a `broken` finding.
+ * The resolution ladder, whose order is load-bearing. The ceiling tests come first because
+ * without a static path no later question means anything, and the extension filter comes
+ * straight after them. Above them it would drop `url($hero)` and `` `/img/${file}` ``, which
+ * have no extension to test; below the rungs that turn a miss into a finding it would let
+ * every `url(inter.woff2)` be reported. See "The resolver's seven outcomes" in
+ * ARCHITECTURE.md.
  */
 function resolveOne(raw: RawReference, context: ResolveContext): Reference | null {
   const { index, root, publicDirs } = context;
@@ -174,10 +135,9 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
     return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
   }
 
-  // 2. A pattern. Glob it; never let it fall through to `broken`.
-  //
-  // ⚠️ The ASSEMBLED path when there is one (R175): a `+` chain's text is not its path,
-  // and a template with a same-file constant written in globs as what the text proves.
+  // 2. A pattern. Glob it, and never let it fall through to `broken`. Glob the path the
+  //    text proves (`provenPath`): the text of a `+` chain, or of a template with a
+  //    same-file constant written in, is not the path it builds.
   if (raw.ceiling === 'medium') {
     const { matches, via } = index.matchPattern(provenPath(raw), raw, root, publicDirs);
     const [first, ...rest] = matches;
@@ -195,23 +155,16 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   const { path } = splitPathSuffix(raw.rawPath);
 
-  // 3. Not a file we track. Dropped entirely, with no report line.
-  //
-  // ⚠️ Asked of every SPELLING, not only the written one. `/gallery/hero%20image.png`
-  // ends in `.png` either way, but `/gallery/a&amp;b.png` does not carry its extension
-  // in the decoded form of some other member of this family — and asking with a single
-  // spelling is how a whole row reads 0 of N for a reason nobody can see.
+  // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
+  //    not only the written one: `hero%2Epng` shows its extension only once decoded.
   if (!spellingsOf(path).some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))) {
     return null;
   }
 
-  // 4. Points at an asset we found.
-  //
-  // 🔴 **Every spelling, literal first (R118).** `enc%20name.png` is a real file with a
-  // percent sign in its name and `hero%20image.png` is a different real file called
-  // `hero image.png`. An engine that never decodes gets the second wrong; one that always
-  // decodes gets the first wrong; **only literal-then-decoded gets both**, and the
-  // coverage tree holds the pair on purpose so the order is a test rather than a habit.
+  // 4. Points at an asset we found. Every spelling, literal first: `enc%20name.png` can be a
+  //    file with a percent sign in its name, while `hero%20image.png` can name
+  //    `hero image.png`. Only literal-then-decoded gets both right, and the coverage tree
+  //    holds the pair so the order is tested.
   for (const { spelling, path: candidate } of spellingsOf(path)) {
     const found = index.lookup(candidate, raw, root, publicDirs);
     if (found === null) continue;
@@ -234,22 +187,11 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   const excluded = outOfScope(path, raw, context);
   if (excluded !== null) return excluded;
 
-  // 6. Alias-shaped and no declared alias matched.
+  // 6. Alias-shaped and no declared alias matched. `unresolved-alias` is a final outcome,
+  //    not pending work: it means no rule maps this path.
   if (isAliasShaped(path, raw.kind)) {
-    // ⚠️ R32 — an npm package specifier is NOT an alias, and must not sit in a bucket
-    // meant for something else. `resolveModule('@11ty/logo/img/logo-96x96.png')` points
-    // into `node_modules`, which is pruned — known, and known not to be an indexed asset,
-    // which is precisely what `out-of-scope` is defined as.
-    //
-    // 🔴 **R97 CORRECTS THE SENTENCE THIS COMMENT USED TO CARRY.** It said
-    // `unresolved-alias` *"means we expect to resolve this once aliases land — a promise,
-    // not a description"*. **Aliases have landed.** `~/assets/img/logo.png` and
-    // `@img/aliased.png` resolve today, and the four `knownGap`s that said otherwise were
-    // retired by measurement. So the promise is discharged, and what is left in this
-    // bucket is PERMANENT rather than pending: **an alias-shaped path with no rule that
-    // maps it**, which describes the situation exactly and asserts nothing further.
-    // ⚠️ A reader who still believes the old sentence will read every entry here as a
-    // to-do and go looking for the work that clears it. There is none.
+    // 6b. A package specifier is not an alias. It names a file inside `node_modules`,
+    //     which the walk prunes, so it is known and known not to be an indexed asset.
     if (isPackageSpecifier(path, raw.kind)) {
       return {
         ...raw,
@@ -270,14 +212,11 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 }
 
 /**
- * Whether this path lands on a file the engine chose not to index.
- *
- * Two ways to be out of scope. The first is being under a directory the walk pruned,
- * which `discover` recorded along with the rule responsible. The second is the
- * fallback: the path is under no recorded root but the file is there anyway, which
- * happens when a *file-level* ignore rule such as `*.png` excluded it. That costs one
- * `stat` per would-be-broken reference, and zero false `broken` findings is the whole
- * exit criterion — the trade is not close.
+ * Whether this path lands on a file the engine chose not to index: under a directory the
+ * walk pruned, reported with the rule responsible, or failing that on a file that exists
+ * anyway because a file-level ignore rule such as `*.png` excluded it. The fallback costs a
+ * `stat` per candidate path of a reference that did not resolve, which is cheap against a
+ * false `broken`.
  */
 function outOfScope(path: string, raw: RawReference, context: ResolveContext): Reference | null {
   for (const { path: candidate } of candidatePaths(path, raw, context.root, context.publicDirs)) {
@@ -308,26 +247,16 @@ function outOfScope(path: string, raw: RawReference, context: ResolveContext): R
 }
 
 /**
- * A reference whose **statically visible** suffix rules out an image.
+ * Whether a reference's statically visible extension rules out an image.
  *
- * `components/ui/${name}.tsx` needs no resolution: the extension is right there and
- * it is not one we track. Dropped exactly as rung 3 drops `url(inter.woff2)`, and for
- * the same reason — it was never a candidate asset, so declining it is not a skip
- * under rule 9.
- *
- * Found by §5.1(d)'s cold read. `34 references could not be resolved safely` listed
- * 106 entries with **no image among them**, and that bucket is what §1.1 shows a user
- * as *"references I couldn't safely rewrite"*. On `shadcn-ui`, **127 of 187** carried
- * a static non-image extension: `.json` ×74, `.tsx` ×18, `.ts` ×11, `.bak` ×4.
- *
- * ⚠️ **Not the same as moving rung 3 earlier**, which is pinned by a test in both
- * directions and would swallow `url($hero)`. `$hero` shows no static extension at
- * all, so it stays — unknown is not the same as ruled out, and the difference is the
- * whole point.
+ * `components/ui/${name}.tsx` needs no resolution: its extension is visible and not one we
+ * track, so it is dropped as rung 3 drops `url(inter.woff2)`. This is not rung 3 moved
+ * earlier, which would also drop `url($hero)`: `$hero` shows no extension, and an unknown
+ * extension is not a ruled-out one.
  */
 function provablyNotAnAsset(raw: RawReference): boolean {
-  // The assembled path when there is one (R175): `'/locales/' + lang + '.json'` shows its
-  // `.json` in what it assembles, not in the quote-and-plus text of the chain.
+  // The assembled path when there is one: `'/locales/' + lang + '.json'` shows its `.json`
+  // in the path it assembles, not in the quote-and-plus text of the chain.
   const extension = staticExtensionOf(provenPath(raw));
   return extension !== '' && !isImageExtension(extension);
 }
@@ -340,18 +269,9 @@ function unlinked(
 }
 
 /**
- * Whether a path is written against an alias rather than the filesystem.
- *
- * `@/…`, `~/…` and `#…` are the conventional alias prefixes. A bare specifier is
- * alias-shaped too, but only in an `import`: in CSS or HTML, `images/logo.png` is an
- * ordinary relative path, while in JavaScript it is a package name.
- */
-/**
- * Rung 4b: expand a declared alias and look the result up.
- *
- * Separate from `resolveOne` so the ladder stays readable as a ladder — and because
- * the expansion can produce several candidates, which is a loop the surrounding
- * sequence of single tests should not have to carry.
+ * Rung 4b: expand a declared alias and look the result up. Separate from `resolveOne`
+ * because an alias can expand to several candidates, a loop the ladder's sequence of single
+ * tests should not carry.
  */
 function resolveThroughAlias(
   path: string,
@@ -368,10 +288,9 @@ function resolveThroughAlias(
       resolution: 'resolved',
       confidence: raw.ceiling,
       resolvedPath: target,
-      // `serving-root`, not a new value: an alias is a **configured** base the user
-      // stated, exactly like a serving root, and it is as strong. An eighth
-      // `resolvedVia` would make every consumer handle a case that behaves
-      // identically to one it already handles.
+      // An alias is a base the project configured, as strong as a serving root, so it
+      // reuses `serving-root` rather than adding a `resolvedVia` value every consumer
+      // would handle the same way.
       resolvedVia: 'serving-root',
     };
   }
@@ -379,34 +298,23 @@ function resolveThroughAlias(
 }
 
 /**
- * Whether an alias-shaped path is really a **package** specifier (R32).
+ * Whether an alias-shaped path is really a package specifier.
  *
- * The two look alike and mean opposite things. `@/assets/logo.png` is the Next and
- * Vite alias convention — an empty scope, which no package registry permits — while
- * `@11ty/logo/img/logo.png` is a scoped package, and a bare `lodash/x.png` in an
- * `import` is an unscoped one. A package's files live in `node_modules`, which the
- * walk prunes, so no amount of alias configuration will ever resolve them.
- *
- * Measured scope when this was ruled: 4 references, 1 file, 1 repository, zero
- * elsewhere — all four `resolveModule('@11ty/logo/…')` in `eleventy.config.js`.
+ * The two look alike and mean different things. `@/assets/logo.png` is the Next and Vite
+ * alias convention, an empty scope no package registry permits, while
+ * `@11ty/logo/img/logo.png` is a scoped package and a bare `lodash/x.png` in an `import` an
+ * unscoped one. A package's files live in `node_modules`, which the walk prunes, so the
+ * asset set never holds them.
  */
 function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
-  // 🔴 `@scope/name/SUBPATH` — and the subpath is the point (R97). `out-of-scope` says
-  // *"names a file inside an npm package, which is not an indexed asset"*, which is a
-  // POSITIVE CLAIM ABOUT A REAL FILE. `@missing/astro.png` names no file inside anything:
-  // it is a scope and a name and nothing else, so there is no subpath for that sentence to
-  // be about, and the resolver never looked in `node_modules` to check. The engine was
-  // asserting a package because the ALIAS LOOKUP HAD FAILED one rung above — a conclusion
-  // drawn from the absence of evidence for something else entirely.
-  //
-  // ⚠️ `@11ty/logo/img/logo-96x96.png` still matches and must: scope, name, and a path
-  // *inside* the package. That is the case R32 was written about and it is unchanged.
-  // `@/…` has an empty scope and is the alias convention, excluded by `[^/]+`.
+  // `@scope/name/subpath`, and the subpath is required: the `out-of-scope` reason claims a
+  // file inside a package, and `@missing/astro.png` is only a scope and a name. `@/…` has
+  // an empty scope and fails `[^/]+`.
   if (/^@[^/]+\/[^/]+\//.test(path)) return true;
   // A bare specifier in an import position: `lodash/x.png`, never `./x.png`.
   if (kind !== 'import') return false;
-  // `@` is excluded here because the scoped-package case is already decided above: an
-  // `@`-leading path that is not `@scope/name` is `@/…`, the alias convention.
+  // An `@` path was decided above: one the pattern rejected is an alias, either `@/…` or a
+  // scope and name with no subpath.
   return (
     !path.startsWith('.') &&
     !path.startsWith('/') &&
@@ -416,17 +324,24 @@ function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
   );
 }
 
+/**
+ * Whether a path is written against an alias rather than the filesystem.
+ *
+ * `@/…`, `~/…` and `#…` are the conventional alias prefixes. A bare specifier is
+ * alias-shaped too, but only in an `import`: in CSS or HTML, `images/logo.png` is an
+ * ordinary relative path, while in JavaScript it is a package name.
+ */
 function isAliasShaped(path: string, kind: RawReference['kind']): boolean {
   if (path.startsWith('@') || path.startsWith('~') || path.startsWith('#')) return true;
   if (kind !== 'import') return false;
   return !path.startsWith('.') && !path.startsWith('/');
 }
 
-/** Placeholder standing in for a `${…}` while a template is resolved as a path. */
+/** Stands in for an interpolation (`${…}`, `#{…}` or `@{…}`) while a template is globbed. */
 const HOLE = String.fromCharCode(0xe000);
 
 /**
- * Assets, indexed for the two questions the resolver asks.
+ * Assets, indexed for the resolver's lookups.
  *
  * Paths are compared POSIX-normalised so that a reference resolved on Windows and
  * the same one resolved on Linux agree.
@@ -457,23 +372,16 @@ class AssetIndex {
   }
 
   /**
-   * The asset at an already-absolute POSIX path, or `null`.
-   *
-   * Separate from `lookup` because an expanded alias is already a complete path: the
-   * base came from the config, so re-running the file-relative and serving-root
-   * candidate generation over it would be asking the same question twice with the
-   * wrong inputs.
+   * The asset at an already-absolute POSIX path, or `null`. An expanded alias is already
+   * complete, its base taken from the config, so it skips the candidates `lookup` builds.
    */
   lookupExact(path: string): string | null {
     return this.byPath.get(path) ?? null;
   }
 
   /**
-   * Every asset a template pattern names.
-   *
-   * All of them, deliberately. Linking only the first would leave the rest looking
-   * unreferenced and produce false `dead asset` findings — the same failure the
-   * `broken` rules exist to prevent, wearing a different costume.
+   * Every asset a template pattern names. All of them: linking only the first would leave
+   * the rest looking unreferenced, a false `dead` finding.
    */
   matchPattern(
     rawPath: string,
@@ -481,10 +389,8 @@ class AssetIndex {
     root: string,
     publicDirs: readonly string[],
   ): { matches: readonly string[]; via: ResolvedVia } {
-    // 🔴 ALL THREE INTERPOLATION SYNTAXES, NOT JUST JAVASCRIPT'S. This replaced `${…}`
-    // and nothing else, so a SCSS `#{$mode}` path would have been globbed for a literal
-    // `#{$mode}` and matched nothing — the second half of why R80(b) never reached SCSS,
-    // and one that would have looked like the ceiling fix simply not working.
+    // Every interpolation syntax becomes a hole, not only JavaScript's `${…}`: a SCSS
+    // `#{$mode}` left in place would be globbed literally and match nothing.
     let marked = rawPath;
     for (const interpolation of INTERPOLATIONS) marked = marked.replace(interpolation, HOLE);
     const { path } = splitPathSuffix(marked);
@@ -506,33 +412,20 @@ class AssetIndex {
   }
 }
 
-/**
- * Where a path might live, in the order the build plan gives.
- *
- * A relative path resolves against the file. A **root-relative** one is tried
- * against every serving root, and the order matters:
- *
- * 1. The serving root whose app directory is the **nearest ancestor** of the
- *    referencing file. A monorepo has one `public/` per app, and `/images/hero.png`
- *    inside `apps/v4/` means `apps/v4/public/` — that is what the bundler serving
- *    that app does. Two distinct failures have been measured here and they must not
- *    be confused: resolving against a **single** serving root produces false `broken`
- *    findings (96 on shadcn-ui), while trying **every** root regardless of ancestry
- *    produces false *links* to another app's asset (23), which is the worse of the
- *    two. This rung is why the first does not happen; `servingRootsFor` is why the
- *    second does not.
- * 2. The project root, because a plain static site serves `/hero.png` from there.
- *
- * A serving root that is **not** an ancestor of the referencing file is not tried at
- * all — see `servingRootsFor`. That restraint is load-bearing rather than tidy:
- * without it a monorepo links one app's reference to another app's asset.
- */
 /** One place a path might live, and how the engine got there. */
 interface Candidate {
   readonly path: string;
   readonly via: ResolvedVia;
 }
 
+/**
+ * Where a path might live, in the order the candidates are tried.
+ *
+ * A relative path resolves against the referencing file. A root-relative one is tried
+ * against each serving root whose app directory is an ancestor of the file, nearest first
+ * (see `servingRootsFor`), then against the project root, where a plain static site serves
+ * `/hero.png` from. See "The resolver's seven outcomes" in ARCHITECTURE.md.
+ */
 function candidatePaths(
   path: string,
   raw: RawReference,
@@ -544,16 +437,12 @@ function candidatePaths(
       { path: toPosix(resolvePath(dirname(raw.file), path)), via: 'file' },
     ];
 
-    // R15, and **speculative only**. In every module system `./` unambiguously
-    // means file-relative, so falling back to the project root on an asserted
-    // `import './missing.png'` could link a genuinely broken import to an unrelated
-    // file — a false link, which is the expensive failure. A path-shaped string in
-    // a data object carries no such contract: it is already a guess, and the code
-    // may well join it to the project root, which is what astro-docs does. Letting
-    // a guess guess harder costs it nothing it had.
-    //
-    // Measured before it was proposed: 14 unresolved dot-paths across the three
-    // validation repos, of which exactly 2 resolve this way, and both are real.
+    // Speculative references only. In every module system `./` means file-relative, so a
+    // project-root fallback on an asserted `import './missing.png'` could link a broken
+    // import to an unrelated file. A path-shaped string in a data object is already a
+    // guess, and the code may well join it to the project root, as astro-docs does. The
+    // match is recorded as `speculative-root`: it keeps the asset alive, and its text is
+    // never rewritten.
     if (!raw.asserted) {
       relative.push({
         path: toPosix(resolvePath(root, stripDotSlash(path))),
@@ -576,10 +465,9 @@ function candidatePaths(
     add({ path: toPosix(resolvePath(root, publicDir, withoutLeadingSlash)), via: 'serving-root' });
   }
 
-  // The project root, when no configured serving root claimed it. A plain static
-  // site really does serve `/hero.png` from here — but if the caller named its
-  // serving roots and none matched, this is a fallback rather than a statement,
-  // which is why it is recorded as one.
+  // The project root, tried last. A plain static site really does serve `/hero.png`
+  // from here, but when serving roots were named and none held the path this is a
+  // fallback rather than a statement, which is why it is recorded as `project-root`.
   add({ path: toPosix(resolvePath(root, withoutLeadingSlash)), via: 'project-root' });
   return candidates;
 }
@@ -590,22 +478,13 @@ function stripDotSlash(path: string): string {
 }
 
 /**
- * The serving roots that could plausibly serve *this* file, nearest first.
+ * The serving roots that could serve this file, nearest first.
  *
- * **Only ancestors.** A serving root's app directory is its parent —
- * `apps/v4/public` belongs to the app at `apps/v4` — and a file outside that app is
- * not served by it. Trying every root regardless looked harmless ("more roots can
- * only turn a false `broken` into a correct link") and is not: measured on
- * shadcn-ui, it linked 23 references to **another app's asset**, including a
- * fixture app's `/next.svg` to `apps/v4/public/next.svg`. Phase 2 would then rewrite
- * that reference to point at a file the fixture app does not serve — silent
- * corruption, which is the failure this project exists to prevent.
- *
- * The guarantee is only true when every root serves the same URL space. In a
- * monorepo they do not, so proximity has to *filter*, not merely order.
- *
- * A single configured root is always an ancestor (its app directory is the project
- * root), so the ordinary single-app case is unchanged.
+ * Only ancestors: a serving root's app directory is its parent (`apps/v4/public` belongs to
+ * `apps/v4`), and a file outside that app is not served by it. A monorepo's roots serve
+ * different URL spaces, so trying them all would link one app's reference to another app's
+ * asset, and a rewrite would then point it at a file its app does not serve. A top-level
+ * root such as `public` belongs to the project root, so it applies to every file.
  */
 function servingRootsFor(
   publicDirs: readonly string[],

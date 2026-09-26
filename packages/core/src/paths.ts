@@ -3,10 +3,10 @@
  *
  * Two rules hold everywhere in the engine:
  *
- * 1. Paths we *use* are absolute and native (they go to `fs`). Paths we *report*
- *    are relative to the project root and POSIX-separated, so a report generated
- *    on Windows is byte-identical to one generated on Linux. Rule 11 of the
- *    engineering constraints is only true if this is enforced in one place.
+ * 1. Paths the engine uses are absolute and native (they go to `fs`). Paths it reports
+ *    are relative to the project root and POSIX-separated, so a report generated on
+ *    Windows is byte-identical to one generated on Linux. That holds only if the
+ *    conversion happens in one place, here.
  * 2. Ordering is by code unit, never by locale. See `compareStrings`.
  */
 
@@ -16,8 +16,8 @@ import { extname, relative, sep } from 'node:path';
  * Image extensions the engine treats as assets, lowercase and dot-prefixed.
  *
  * `.tif` is included alongside `.tiff` because it is the same format under its
- * other conventional extension; everything else is exactly the set in the build
- * plan. SVG is discovered but is audit-only until an SVGO adapter exists.
+ * other conventional extension. SVG is tracked for the audit but never encoded; see
+ * `VECTOR_EXTENSIONS`.
  */
 export const IMAGE_EXTENSIONS: readonly string[] = Object.freeze([
   '.avif',
@@ -36,23 +36,11 @@ const IMAGE_EXTENSION_SET = new Set(IMAGE_EXTENSIONS);
 /**
  * Image extensions that are vectors, lowercase and dot-prefixed.
  *
- * Encoding one rasterises it at some arbitrary density, so the resulting byte count
- * answers a question nobody asked: not "how much would this asset shrink" but "how
- * big would a picture of this asset be". SVG is audit-only until an SVGO adapter
- * exists, so the encode is declined *with a reason* rather than quietly producing a
- * misleading number.
- *
- * ⚠️ **This set is the reason two separate decisions agree, and it lives here so
- * they cannot drift apart** (R22). The probe declines to *encode* a vector — "a
- * rasterisation, not a saving" — and the report declines to *itemise an unused* one,
- * and R22's ruling rests on those being the same set: an unused vector is demoted to
- * a counted line precisely because there is no action we would offer for it. If one
- * site learned about a second vector format and the other did not, the report would
- * either itemise something the encoder still refuses to touch or stay silent about
- * something it would happily convert. Both are wrong and neither would throw.
- *
- * A subset of `IMAGE_EXTENSIONS` by construction, asserted in `paths.test.ts` —
- * demoting an unused asset we do not even track as an image would be incoherent.
+ * Encoding a vector rasterises it at an arbitrary density, so the byte count would measure
+ * a picture of the asset rather than a saving; the probe declines it with a reason. The
+ * report reads the same set to count an unused vector instead of itemising it, since
+ * there is no action to offer for one. Both decisions use this one set so they cannot
+ * drift apart. It is a subset of `IMAGE_EXTENSIONS`, asserted in `paths.test.ts`.
  */
 export const VECTOR_EXTENSIONS: readonly string[] = Object.freeze(['.svg']);
 
@@ -61,9 +49,8 @@ const VECTOR_EXTENSION_SET = new Set(VECTOR_EXTENSIONS);
 /**
  * Convert native separators to POSIX ones.
  *
- * The `sep` check is not cosmetic: a backslash is a legal character in a POSIX
- * filename, so rewriting it there would corrupt a real path. We only translate on
- * platforms where the backslash actually is the separator.
+ * Only where the backslash is the separator: it is a legal character in a POSIX
+ * filename, so rewriting it there would corrupt a real path.
  */
 export function toPosix(filePath: string): string {
   return sep === '\\' ? filePath.replaceAll('\\', '/') : filePath;
@@ -101,11 +88,10 @@ export function isVectorExtension(extension: string): boolean {
 /**
  * Total order over strings by UTF-16 code unit.
  *
- * Deliberately not `localeCompare`: that is locale-dependent, so the same repo
- * would produce differently ordered reports on two machines and rule 11
- * ("same inputs produce a byte-identical report") would quietly be false. We need
- * *a* stable total order, not a human-friendly one. This differs from code-point
- * order only for astral-plane characters, which does not matter for that purpose.
+ * Not `localeCompare`, which depends on the locale: the same repository would produce
+ * differently ordered reports on two machines, and the report must be byte-identical for
+ * the same input. This differs from code-point order only for astral-plane characters,
+ * which does not matter for a stable order.
  */
 export function compareStrings(a: string, b: string): number {
   if (a < b) return -1;
@@ -116,23 +102,11 @@ export function compareStrings(a: string, b: string): number {
 /**
  * Matches a filename-shaped token ending in a tracked image extension.
  *
- * Built from `IMAGE_EXTENSIONS` so the tracked-format policy stays in one place —
- * adding a format later must not require remembering the two callers. The character
- * class deliberately excludes `/`, so `{{ site.url }}/img/hero.png` yields
- * `hero.png` and nothing longer.
- *
- * ⚠️ **Deliberately still space-free, and deliberately cheap.** R26 needs spaced
- * filenames found, and the obvious fix — `[\w@.\-]+(?: [\w@.\-]+){0,6}\.(ext)` — was
- * **measured at 1.7× to 5× the running time** over the three validation repos' text
- * (astro-docs: 647 ms to 3,228 ms across 15.9 MB) for **77, 0 and 90** extra tokens. The
- * repetition makes the engine try to cross a space at every word boundary and then
- * backtrack to find the extension, so the cost lands on every byte while the benefit
- * lands on a handful of matches.
- *
- * So the space handling lives in `imageFilenameCandidates`, which extends leftwards
- * **only from a match** — same candidate set, at the cost of the scan this pattern
- * always was. (g) is already failing and this runs over every byte of every unread file,
- * which is exactly the wrong place to pay five times over.
+ * Built from `IMAGE_EXTENSIONS` so adding a format needs no change in the callers. The
+ * character class excludes `/`, so `{{ site.url }}/img/hero.png` yields `hero.png` and
+ * nothing longer. It excludes spaces too: a pattern that crosses them backtracks at every
+ * word boundary and ran 1.7 to 5 times slower, on a scan over every byte of every unread
+ * file. `imageFilenameCandidates` extends leftwards from each match instead.
  *
  * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses,
  * which would make results depend on what was scanned before them.
@@ -144,7 +118,10 @@ export function imageFilenamePattern(): RegExp {
   return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
 }
 
-/** How many space-separated words a filename may carry. Real ones use one to four. */
+/**
+ * How many space-separated words may be added to the left of a match. Real filenames have
+ * one to four words in all.
+ */
 const MAX_SPACED_WORDS = 6;
 
 /** The characters `imageFilenamePattern` allows inside a filename token. */
@@ -153,30 +130,15 @@ const FILENAME_CHARACTER = /[\w@.\-]/;
 /**
  * Every basename an image-looking token in `text` could be naming, with its offset.
  *
- * **R26's sweep half.** `imageFilenamePattern` cannot cross a space, so an asset named
- * `Firing Practice.webp` was only ever matched as `Practice.webp` — never equal to its
- * basename, so **no mention was recorded and no hedge produced.** That is why R26's
- * misses came back as confident `dead` rather than `possibly-dead`: the adapter missed
- * the reference, and R8's sweep, whose entire job is catching what the adapter missed,
- * had the identical hole. `dead` claims *"this filename appears nowhere in your
- * codebase"*, and that held only for filenames without spaces.
+ * `imageFilenamePattern` cannot cross a space, so on its own it sees `Firing Practice.webp`
+ * only as `Practice.webp`, and an asset with a space in its name would be reported `dead`
+ * while its name appears in the text. So from each match this walks left over ` word` runs
+ * and yields every step: `Practice.webp`, then `Firing Practice.webp`. Yielding each step,
+ * not only the longest, keeps shorter matches working: the prose `Remove workspace.png`
+ * must still match an asset named `workspace.png`.
  *
- * ⚠️ **Extending leftwards from a match, rather than widening the pattern.** Widening it
- * was measured at 1.7× to 5× the scan time for 0 to 90 extra tokens — see
- * `imageFilenamePattern`. Here the work happens only at the ~1,400 places a match already
- * occurred, and the candidate set is identical: walking left over ` word` runs from
- * `Practice.webp` yields `Firing Practice.webp`, and each step is yielded, so the tail
- * forms survive too.
- *
- * ⚠️ **Yielding every step is not tidiness, it is the regression guard.** Both callers
- * lowercase a token and look it up against asset basenames. If only the longest form were
- * offered, the prose `Remove workspace.png` would stop matching an asset named
- * `workspace.png` — a mention that works today would be **lost**, and `shadcn-ui` has 87
- * strings of that shape. Yielding both makes the change strictly additive.
- *
- * It lives here rather than in either caller because `scan.ts` and `sweep.ts` do the
- * identical lookup, and a hole in one of two identical lookups is exactly how this
- * defect survived §5.1.
+ * It lives here because `scan.ts` and `sweep.ts` do the same lookup, and a hole in only one
+ * of two identical lookups is easy to miss.
  */
 export function* imageFilenameCandidates(text: string): Generator<[token: string, offset: number]> {
   const pattern = imageFilenamePattern();

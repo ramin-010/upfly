@@ -67,13 +67,13 @@ export { isUnderPublicDir, patternTargets, planOptimization } from './plan.js';
 export { moveOperationsFor, planRelocation } from './relocate.js';
 export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } from './relocate.js';
 
-// R72 part 1. A move's regression count and the limit of that count, as one value:
-// `relocate` may not reach a user without the second half.
+// A move's regression count and the limit of that count, as one value, so the count
+// never reaches a user without its limit.
 export { checkMoveRegression } from './move-check.js';
 export type { MoveCheckInput, MoveCoverageLimit, MoveRegressionReport } from './move-check.js';
 
-// R72 part 2. The independent check: it searches text for the old path and never reads a
-// graph, which is the only property that makes it worth having.
+// The independent check on a move: it searches text for the old path and never reads a
+// graph, so it cannot share the graph's blind spots.
 export { findSurvivingPaths, spellingsFor } from './old-path-search.js';
 export type {
   OldPathSearchInput,
@@ -104,9 +104,9 @@ export type {
   PlannedOperation,
   RunContext,
 } from './transaction.js';
-// R68. `LOCK_PATH` so a host can say which file to delete if it ever has to, and
-// `processIsAlive` because a caller supplying its own liveness check should be able to
-// fall back to the real one rather than reimplementing it slightly differently.
+// `LOCK_PATH` so a host can say which file to delete if it ever has to, and
+// `processIsAlive` so a caller supplying its own liveness check can fall back to the real
+// one rather than reimplementing it slightly differently.
 export { LOCK_PATH, processIsAlive, readLockHolder } from './lock.js';
 export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
 export { createNodeFileStore } from './file-store-node.js';
@@ -190,9 +190,8 @@ export type {
   Confidence,
   DiscoveryResult,
   Edit,
-  // Reachable through `DiscoveryResult` and `ResolveOptions`, so it is API whether
-  // or not it is named here. It was not, which meant a consumer could hold one and
-  // not be able to write down its type.
+  // Reachable through `DiscoveryResult` and `ResolveOptions`, so it is API whether or
+  // not it is named here. Naming it lets a consumer write down its type.
   ExcludedRoot,
   RawReference,
   Reference,

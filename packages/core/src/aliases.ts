@@ -1,38 +1,15 @@
 /**
  * Read the path aliases a project declares, so `@/assets/logo.png` can resolve.
  *
- * **What this is worth, measured before it was built (A2).** The `unresolved-alias`
- * bucket reads 0 / 4 / 0 across the first three validation repositories, which looks
- * like "almost nothing" — but that bucket only counts references *an adapter already
- * emitted*, so it measures alias usage filtered through adapter coverage. Counted
- * directly, eleven alias-shaped image references exist, seven of them invisible until
- * the Astro adapter landed. **Alias resolution shipped alone moves no number on any
- * validation repo; shipped with the adapter it carries 97% of the value**, because
- * five of the nine `.astro` imports are spelled `~/…`. The two are one feature.
+ * Aliases come from tsconfig and jsconfig `paths`, following `extends`, and from a Vite
+ * config's `resolve.alias`. A config is read statically or not at all: an alias the static
+ * read cannot see is reported as unreadable, never evaluated, because evaluating it would run
+ * code from a repository the user did not write. See "Aliases are read, never executed" in
+ * ARCHITECTURE.md.
  *
- * ## Three rules this module does not bend
- *
- * ⚠️ **1. A config is read statically or not at all.** Every Vite alias in the corpus
- * is `'@': path.resolve(__dirname, './src')` — a JavaScript expression. Evaluating it
- * would mean executing a config file from a repository the user did not write, in a
- * tool they ran to save bytes. **No byte saving buys arbitrary code execution.** Where
- * the static read cannot see a value, the alias is reported as unreadable with its
- * file and line (rule 9) rather than guessed at or silently dropped.
- *
- * **2. `tsconfig.json` is JSONC, and it is parsed, not regexed.** Comments and
- * trailing commas are legal and common — `shadcn-ui/apps/v4/tsconfig.json` carries a
- * four-line comment *inside* `paths`. `JSON.parse` throws on both. Rather than add a
- * parser dependency or strip comments with a regex (which is "never regex JavaScript"
- * wearing a different extension), this reuses `@babel/parser`: a JSONC document is a
- * JavaScript object literal, and the values are read off the AST rather than
- * reconstructed, so an inherited `__proto__` key is a property like any other.
- *
- * **3. `extends` may reach into `node_modules`, by name only.** `astro-docs` extends
- * `astro/tsconfigs/strict` and shadcn's templates extend
- * `@workspace/typescript-config/nextjs.json`. `discover` prunes `node_modules`, and
- * that prune is **a property of the asset and reference graph, not a filesystem ban**
- * — so following an explicit, named path into it is allowed and *walking* it is not.
- * Nothing found this way can become an asset; it only contributes alias rules.
+ * `tsconfig.json` is JSONC, so it is parsed with `@babel/parser` as an object literal rather
+ * than by stripping comments with a regex. Values are read off the AST, never rebuilt into an
+ * object, so a `__proto__` key is an ordinary property.
  */
 
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
@@ -52,7 +29,10 @@ export interface AliasRule {
   readonly prefix: string;
   /** Absolute directories (or files, for an exact rule) the prefix expands to, in order. */
   readonly targets: readonly string[];
-  /** Whether the rule ended in `*` and so matches a prefix rather than the whole path. */
+  /**
+   * Whether the rule matches a prefix rather than the whole path: a tsconfig key ending in
+   * `*`, or any Vite key.
+   */
   readonly wildcard: boolean;
   /** Directory the config governs: only references from inside it may use this rule. */
   readonly scope: string;
@@ -60,7 +40,7 @@ export interface AliasRule {
   readonly source: string;
 }
 
-/** An alias we could see but could not read. Rule 9 reaches config files too. */
+/** A config or alias that was found but could not be read, kept so the report can say why. */
 export interface AliasSkip {
   /** POSIX-relative config file. */
   readonly what: string;
@@ -76,7 +56,7 @@ export interface AliasMap {
 export interface LoadAliasesOptions {
   /** Absolute project root. */
   readonly root: string;
-  /** Every file `discover` found, claimed or not — no second walk. */
+  /** Every file `discover` found, claimed or not, so there is no second walk. */
   readonly files: readonly { readonly path: string; readonly relative: string }[];
   readonly readFile: ReadFilePort;
   /** Whether a path exists, for `extends` targets. Same port shape as the resolver's. */
@@ -87,10 +67,11 @@ const TS_CONFIG = /^(tsconfig(\.[^/]+)?\.json|jsconfig\.json)$/;
 const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
 
 /**
- * Read every alias the project declares.
+ * Read every alias the project declares. An alias that cannot be read statically is
+ * returned in `skipped` with a reason, never evaluated.
  *
- * Pure over the injected ports, like `scan` and `resolve` — the filesystem shows up
- * only as `readFile` and `exists`, so this is unit-testable against a map.
+ * The filesystem is reached only through `readFile` and `exists`, so this can be tested
+ * against an in-memory map.
  */
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
   const rules: AliasRule[] = [];
@@ -107,7 +88,8 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
   }
 
   // Longest prefix first so a more specific mapping wins, then by scope depth so a
-  // nested package's config beats the workspace root's, then by source for rule 11.
+  // nested package's config beats the workspace root's, then by source so the order is
+  // the same on every run.
   const sorted = [...rules].sort(
     (a, b) =>
       b.prefix.length - a.prefix.length ||
@@ -119,11 +101,9 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 }
 
 /**
- * Expand an alias-shaped path into candidate absolute paths, nearest scope first.
- *
- * Returns `[]` when no rule applies, which is what keeps the resolver's ladder honest:
- * an alias-shaped path with no matching rule stays `unresolved-alias` rather than
- * quietly becoming `broken`.
+ * Expand an alias-shaped path into candidate absolute POSIX paths, in rule order: longest
+ * prefix first, then nearest scope. Returns `[]` when no rule applies, and the resolver then
+ * reports the path as `unresolved-alias` rather than `broken`.
  */
 export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): readonly string[] {
   const from = toPosix(fromFile);
@@ -134,10 +114,9 @@ export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): r
 
     if (rule.wildcard) {
       if (!rawPath.startsWith(rule.prefix)) continue;
-      // ⚠️ Leading separators stripped before joining. A Vite prefix has no trailing
-      // slash (`'@': './src'`), so the remainder of `@/x.png` is `/x.png` — and
-      // `path.resolve(base, '/x.png')` treats that as ABSOLUTE and throws the base
-      // away, silently resolving to the filesystem root.
+      // Leading separators are stripped before joining. A Vite prefix has no trailing
+      // slash (`'@': './src'`), so the rest of `@/x.png` is `/x.png`, which
+      // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
       const rest = rawPath.slice(rule.prefix.length).replace(/^[/\\]+/, '');
       for (const target of rule.targets) out.push(toPosix(resolvePath(target, rest)));
     } else {
@@ -173,8 +152,10 @@ async function readTsConfig(
   const paths = compilerOptions === null ? null : objectValued(compilerOptions, 'paths');
   const baseUrl = compilerOptions === null ? null : stringProperty(compilerOptions, 'baseUrl');
 
-  // ⚠️ `extends` is followed FIRST, so a local `paths` sorts ahead of an inherited one
-  // at equal prefix length rather than behind it.
+  // `extends` is read first, but the sort in `loadAliases` decides the order rules are
+  // tried in. At equal prefix and scope it falls back to the config's path, so an
+  // inherited rule can come before a local one, though in TypeScript a local `paths`
+  // replaces the inherited one.
   const extendsValue = objectProperty(object, 'extends');
   if (extendsValue !== null) {
     for (const target of extendsTargets(extendsValue)) {
@@ -214,7 +195,7 @@ async function readTsConfig(
   }
 }
 
-/** `"extends": "a"` or `"extends": ["a", "b"]` — TypeScript 5 allows both. */
+/** `"extends": "a"` or `"extends": ["a", "b"]`: TypeScript 5 allows both. */
 function extendsTargets(node: t.Expression): readonly string[] {
   if (node.type === 'StringLiteral') return [node.value];
   if (node.type === 'ArrayExpression') {
@@ -228,10 +209,10 @@ function extendsTargets(node: t.Expression): readonly string[] {
 /**
  * Where an `extends` points.
  *
- * A relative or absolute target is taken literally. A bare specifier is a package, and
- * resolving it means looking inside `node_modules` — permitted here because the path is
- * explicit and named. `discover`'s prune keeps that tree out of the asset graph; it is
- * not a rule against ever opening a file there.
+ * A relative or absolute target is taken literally. A bare specifier is a package, found by
+ * looking inside `node_modules`. That is allowed because the path is explicit and named:
+ * `discover`'s prune keeps that tree out of the asset graph, it does not forbid opening a
+ * file there.
  */
 function resolveExtends(target: string, from: string, options: LoadAliasesOptions): string | null {
   const direct = target.startsWith('.') || isAbsolute(target) ? resolvePath(from, target) : null;
@@ -264,10 +245,9 @@ function resolveExtends(target: string, from: string, options: LoadAliasesOption
 /**
  * Read `resolve.alias` from a Vite config, string values only.
  *
- * ⚠️ **Every alias in the validation corpus is computed** —
- * `'@': path.resolve(__dirname, './src')` — so in practice this reads almost nothing
- * and reports almost everything. That is the correct outcome, not a shortfall: the
- * alternative is running the file.
+ * Most aliases are computed, such as `'@': path.resolve(__dirname, './src')`, and a config
+ * written as a module is not searched at all, so this reads little and reports the rest as
+ * unreadable. The alternative is running the file.
  */
 async function readViteConfig(
   path: string,
@@ -281,16 +261,16 @@ async function readViteConfig(
 
   let ast: t.Expression;
   try {
-    // Wrapped so a module body parses in expression position; `sourceType: module`
-    // on `parseExpression` is not a thing, and a config is always an object in the end.
+    // `parseExpression` has no module mode, so only a config whose text is a bare object
+    // literal parses; a module throws and is reported below.
     ast = parseExpression(`(${text.replace(/^﻿/, '')})`, {
       plugins: ['typescript'],
       errorRecovery: true,
     });
   } catch {
-    // A full module rather than a bare object — the ordinary case. Finding the alias
-    // object inside it means evaluating imports and `defineConfig`, which is the line
-    // this module does not cross.
+    // A full module rather than a bare object, which is the ordinary case. Finding the
+    // alias object inside it means following imports and `defineConfig`, which this
+    // module does not do.
     skipped.push({
       what: source,
       reason:
@@ -335,11 +315,11 @@ async function readViteConfig(
 /**
  * Build one rule.
  *
- * `style` matters because the two config formats mean different things by a key.
- * A tsconfig `paths` key is a **pattern**: `@/*` matches a prefix, `react` matches the
- * whole specifier and nothing else. A Vite `resolve.alias` **string** key is always a
- * prefix replacement — `{'@': '/src'}` turns `@/x.png` into `/src/x.png` — so it has
- * no `*` to read the intent from and must be told.
+ * `style` exists because the two config formats mean different things by a key. A
+ * tsconfig `paths` key is a pattern: `@/*` matches a prefix, `react` only the whole
+ * specifier. A Vite `resolve.alias` string key is always a prefix replacement
+ * (`{'@': '/src'}` turns `@/x.png` into `/src/x.png`), so it has no `*` to read the
+ * intent from and must be told.
  */
 function makeRule(
   from: string,
@@ -403,7 +383,7 @@ async function readOrSkip(
   }
 }
 
-/** A property's key as written, whether quoted, bare, or numeric. */
+/** A property's key when it is a string or a plain name; `null` for any other key. */
 function propertyKey(property: t.ObjectExpression['properties'][number]): string | null {
   if (property.type !== 'ObjectProperty') return null;
   if (property.key.type === 'StringLiteral') return property.key.value;
