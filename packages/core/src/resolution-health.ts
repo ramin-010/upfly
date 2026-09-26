@@ -8,7 +8,7 @@
  */
 
 import type { Graph } from './graph.js';
-import { isLinked } from './reference.js';
+import { isLinked, provenPath } from './reference.js';
 import type { Reference } from './types.js';
 
 /**
@@ -89,6 +89,19 @@ export function resolutionHealth(graph: Graph): ResolutionHealth {
 export function withheldReferences(graph: Graph): readonly Reference[] {
   if (!resolutionHealth(graph).servingRootUnknown) return [];
   return graph.byResolution.broken.filter((reference) => dependsOnServingRoot(reference.rawPath));
+}
+
+/**
+ * The patterns a run that could not find its serving root had no base to glob: the
+ * root-relative `dynamic` references with a `medium` ceiling, the only ones the resolver
+ * globs. Like a withheld reference, each one's target is unknown rather than absent. Empty
+ * when the serving root was found.
+ */
+export function patternsWithoutServingRoot(graph: Graph): readonly Reference[] {
+  if (!resolutionHealth(graph).servingRootUnknown) return [];
+  return graph.byResolution.dynamic.filter(
+    (reference) => reference.ceiling === 'medium' && dependsOnServingRoot(provenPath(reference)),
+  );
 }
 
 /** Whether a serving root decides where this path points: whether it is root-relative. */

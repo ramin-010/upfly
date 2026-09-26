@@ -15,7 +15,9 @@ import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
 import { compareStrings, imageFilenameCandidates } from './paths.js';
-import { withheldReferences } from './resolution-health.js';
+import { provenPath } from './reference.js';
+import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
+import { servedFromAnyRoot } from './resolve.js';
 import type { ReadFilePort, ScannedMention } from './scan.js';
 import type { Reference } from './types.js';
 
@@ -216,6 +218,10 @@ async function sweepFiles(
  * Searching them costs no IO, since the strings are in the graph, but each mention cites
  * its line and a line costs a re-read. `citeReferences` re-reads once per file, and only
  * for references that named a candidate.
+ *
+ * A pattern's holes leave no file name to find, so a root-relative pattern the run had no
+ * serving root to glob is tested against every candidate, as the resolver would glob it
+ * from whichever directory the site serves.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -224,11 +230,22 @@ async function sweepUnresolvedReferences(
   skipped: SweepSkip[],
 ): Promise<void> {
   const hits: { reference: Reference; asset: string }[] = [];
+  const unglobbed = new Map(
+    patternsWithoutServingRoot(options.graph).map((reference) => [
+      reference,
+      servedFromAnyRoot(provenPath(reference)),
+    ]),
+  );
+  const assets = [...candidates.values()].flat();
 
   for (const reference of unknownTargetReferences(options.graph)) {
     const named = new Set<string>();
     for (const name of namesIn(reference)) {
       for (const asset of candidates.get(name) ?? []) named.add(asset);
+    }
+    const couldName = unglobbed.get(reference);
+    if (couldName !== undefined) {
+      for (const asset of assets.filter(couldName)) named.add(asset);
     }
     for (const asset of named) hits.push({ reference, asset });
   }

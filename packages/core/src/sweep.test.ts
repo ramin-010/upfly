@@ -454,6 +454,77 @@ describe('sweepForMentions', () => {
       expect((await sweepAs('attr')).mentions.has('src/img/my_photo.png')).toBe(false);
     });
 
+    it('globs a root-relative pattern as the resolver would, from a serving root the run did not find', async () => {
+      // No root-relative path resolves, so the resolver had no base to glob the pattern
+      // against and it ended dynamic. Its holes leave no filename token to find, so the sweep
+      // globs it from any directory: a hole stays within one segment, and every directory
+      // the pattern fixes has to be there. Each missing path starts its own 40-character line.
+      const paths = Array.from({ length: 19 }, (_, index) => `/missing${index}.png`);
+      const source = 'export const icon = (set, size) => `/img/${set}/icon-${size}.png`;';
+      const graph = graphOf({
+        assets: [
+          asset('src/img/dark/icon-192.png'),
+          asset('src/img/icon-192.png'),
+          asset('src/icons/dark/icon-192.png'),
+        ],
+        references: [
+          ...paths.map((path, index) => unlinked('index.html', path, 'broken', index * 40)),
+          {
+            ...unlinked(
+              'app.js',
+              '/img/${set}/icon-${size}.png',
+              'dynamic',
+              source.indexOf('/img/'),
+            ),
+            kind: 'string',
+            ceiling: 'medium',
+          },
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({
+          '/repo/index.html': paths.map((path) => path.padEnd(39)).join('\n'),
+          '/repo/app.js': source,
+        }),
+      });
+
+      expect(result.mentions.get('src/img/dark/icon-192.png')).toEqual([
+        {
+          asset: 'src/img/dark/icon-192.png',
+          source: 'unresolved-reference',
+          where: 'app.js:1',
+          quote: '/img/${set}/icon-${size}.png',
+        },
+      ]);
+      expect([...result.mentions.keys()]).toEqual(['src/img/dark/icon-192.png']);
+    });
+
+    it('does not glob a pattern from other directories once the serving root is found', async () => {
+      // Nineteen of twenty root-relative paths resolve, so the resolver globbed the pattern
+      // against a serving root it knows, and what it matched there is all it names.
+      const linked = Array.from({ length: 19 }, (_, index) => `public/a${index}.png`);
+      const graph = graphOf({
+        assets: [...linked.map(asset), asset('src/img/pattern-1.png')],
+        references: [
+          ...linked.map((target, index) => resolved('index.html', `/a${index}.png`, target)),
+          {
+            ...unlinked('app.js', '/img/pattern-${n}.png', 'dynamic'),
+            kind: 'string',
+            ceiling: 'medium',
+          },
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/app.js': '`/img/pattern-${n}.png`' }),
+      });
+
+      expect(result.mentions.size).toBe(0);
+    });
+
     it('still cites the file when its source cannot be re-read for a line', async () => {
       const graph = graphOf({
         assets: [asset('img/hero.png')],

@@ -394,7 +394,9 @@ So two things happen below a floor:
    finding would have had, so none is set aside where a reader cannot see it. The human report
    prints each one as it prints a broken finding. Their target is unknown rather than missing, so
    an asset one of them names is `possibly-dead`, citing each, never `dead` (see "`possibly-dead`,
-   and why "zero references" is usually a lie").
+   and why "zero references" is usually a lie"). So is an asset a root-relative pattern could
+   name from whichever directory the site serves, since the resolver had no serving root to glob
+   the pattern against.
 
 **The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
 Only those depend on a serving root. A repository whose *relative* imports are genuinely broken
@@ -592,6 +594,18 @@ sweep*, so nobody "fixes" it for a case no sweep can reach. It is a limit of the
 the engine: the same template literal carries a `medium` ceiling, the resolver globs it, and
 `resolved-pattern` links every file it matches. When one mechanism cannot reach a case, check
 whether another already does before calling the limit fundamental.
+
+The glob needs a base, though. In a run that could not find its serving root, a root-relative
+pattern is globbed against directories that do not serve the site, and ends `dynamic` while the
+files it names sit on disk. So the sweep globs each such pattern itself, with the resolver's glob
+and the serving root left open (`servedFromAnyRoot`): the pattern has to match the end of an
+asset's path, in whole segments, so `/img/pattern-${n}.png` hedges `src/img/pattern-1.png` and not
+`src/pattern-1.png`. The set is defined once, by `patternsWithoutServingRoot`, under the same
+condition as the withheld references and for the same reason: its target is unknown rather than
+absent. Once the serving root is found, the resolver has globbed the pattern against it, and what
+it matched there is what the pattern names. The fix belongs here and not in the resolver, which
+resolves each reference before any run-wide measure exists, and whose link would claim a use
+rather than hedge one and count toward that measure.
 
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real

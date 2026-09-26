@@ -2007,6 +2007,57 @@ describe('what a path that did not resolve names, in a project held in memory', 
       'unresolved-reference src/posts/first.md:3 {{ site.url }}/img/my%20photo.png',
     ]);
   });
+
+  it('hedges each asset a root-relative pattern could name from the serving root the run did not find', async () => {
+    // Served from `src`, the resolver globs `/img/pattern-${n}.png` to both files. With no
+    // serving root it globs against directories that hold neither, so the pattern ends
+    // dynamic while its files sit on disk. The pattern fixes its directory, so a file of the
+    // same shape outside an `img` directory is not one it could name.
+    const sources = {
+      'src/index.html': page(),
+      'src/app.js': 'export const tile = (n) => `/img/pattern-${n}.png`;',
+    };
+    const assets = [
+      ...SERVED,
+      'src/img/pattern-1.png',
+      'src/img/pattern-2.png',
+      'src/pattern-3.png',
+    ];
+
+    const report = await reportForFiles(sources, assets);
+    const served = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(
+      ['src/img/pattern-1.png', 'src/img/pattern-2.png', 'src/pattern-3.png'].map((asset) =>
+        verdictOf(report, asset),
+      ),
+    ).toEqual(['possibly-dead', 'possibly-dead', 'dead']);
+    expect(evidenceOf(report, 'src/img/pattern-2.png')).toEqual([
+      'unresolved-reference src/app.js:1 /img/pattern-${n}.png',
+    ]);
+    // The control: served from `src`, the resolver links both.
+    expect(verdictOf(served, 'src/img/pattern-1.png')).toBeUndefined();
+    expect(verdictOf(served, 'src/img/pattern-2.png')).toBeUndefined();
+  });
+
+  it('hedges an asset a root-relative + chain could name, reading the path the chain proves', async () => {
+    // A chain's text is not its path: the reference quotes the source from the first operand
+    // to the last, and the path it proves is `/img/badge-`, a hole, then `.png`.
+    const sources = {
+      'src/index.html': page(),
+      'src/app.js': "export const badge = (n) => '/img/badge-' + n + '.png';",
+    };
+    const assets = [...SERVED, 'src/img/badge-1.png'];
+
+    const report = await reportForFiles(sources, assets);
+    const served = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(verdictOf(report, 'src/img/badge-1.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/badge-1.png')).toEqual([
+      "unresolved-reference src/app.js:1 /img/badge-' + n + '.png",
+    ]);
+    expect(verdictOf(served, 'src/img/badge-1.png')).toBeUndefined();
+  });
 });
 
 describe('the assets a plan examined and offered nothing for', () => {

@@ -7,7 +7,7 @@
  * See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 
-import { dirname, resolve as resolvePath, win32 } from 'node:path';
+import { dirname, posix, resolve as resolvePath, win32 } from 'node:path';
 import {
   INTERPOLATIONS,
   isDrivePath,
@@ -415,13 +415,7 @@ class AssetIndex {
     root: string,
     publicDirs: readonly string[],
   ): { matches: readonly string[]; via: ResolvedVia } {
-    // Every interpolation syntax becomes a hole, not only JavaScript's `${…}`: a SCSS
-    // `#{$mode}` left in place would be globbed literally and match nothing.
-    let marked = rawPath;
-    for (const interpolation of INTERPOLATIONS) marked = marked.replace(interpolation, HOLE);
-    const { path } = splitPathSuffix(marked);
-
-    for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
+    for (const candidate of candidatePaths(withHoles(rawPath), raw, root, publicDirs)) {
       const matches: string[] = [];
       const pattern = globRegex(candidate.path);
       for (const assetPath of this.ordered) {
@@ -563,16 +557,53 @@ function servingRootsFor(
 }
 
 /**
+ * A pattern's path as the resolver globs it: every interpolation a hole, and any query or
+ * fragment removed.
+ */
+function withHoles(rawPath: string): string {
+  // Every interpolation syntax becomes a hole, not only JavaScript's `${…}`: a SCSS
+  // `#{$mode}` left in place would be globbed literally and match nothing.
+  let marked = rawPath;
+  for (const interpolation of INTERPOLATIONS) marked = marked.replace(interpolation, HOLE);
+  return splitPathSuffix(marked).path;
+}
+
+/**
+ * Whether a root-relative pattern could name an asset from a serving root the run did not
+ * find.
+ *
+ * `matchPattern` anchors its glob at each serving root it was given and then at the project
+ * root. A run that could not find its serving root globs against the wrong directories, so
+ * the pattern ends `dynamic` while the files it names sit on disk. This is the same glob
+ * with the serving root left open: the pattern has to match the end of an asset's path, in
+ * whole segments, so every directory it fixes must be there. Case is ignored, as the
+ * audit's sweep ignores it everywhere, because Windows does.
+ *
+ * @param pattern A root-relative path with holes, as the reference's text proves it.
+ * @returns A test of an asset's POSIX path relative to the project root.
+ * @example
+ * const couldName = servedFromAnyRoot('/img/pattern-${n}.png');
+ * couldName('src/img/pattern-1.png'); // true
+ * couldName('src/pattern-1.png'); // false: the pattern fixes `img/`
+ */
+export function servedFromAnyRoot(pattern: string): (relative: string) => boolean {
+  const path = posix.normalize(withHoles(pattern));
+  const glob = globRegex(path.startsWith('/') ? path.slice(1) : path, true);
+  return (relative) => glob.test(relative);
+}
+
+/**
  * Turn a resolved path containing holes into an anchored regular expression.
  *
  * A hole becomes `[^/]*`: it matches within one path segment, so
  * `` `/img/${name}.png` `` cannot reach into a subdirectory and pull in assets the
- * author never meant. Everything else is escaped literally.
+ * author never meant. Everything else is escaped literally. With `openBase`, any
+ * directories may come before the path and case is ignored, for `servedFromAnyRoot`.
  */
-function globRegex(pathWithHoles: string): RegExp {
+function globRegex(pathWithHoles: string, openBase = false): RegExp {
   const escaped = pathWithHoles
     .split(HOLE)
     .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('[^/]*');
-  return new RegExp(`^${escaped}$`);
+  return openBase ? new RegExp(`^(?:.*/)?${escaped}$`, 'i') : new RegExp(`^${escaped}$`);
 }

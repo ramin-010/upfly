@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from './paths.js';
 import { isLinked, linkedPaths } from './reference.js';
-import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences, servedFromAnyRoot } from './resolve.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 /**
@@ -1081,5 +1081,31 @@ describe('the glob understands all three interpolation syntaxes', () => {
     const reference = resolveOne({ rawPath: './nothing/#{$x}.png', ceiling: 'medium' });
 
     expect(reference?.resolution).toBe('dynamic');
+  });
+});
+
+describe('servedFromAnyRoot: the glob, from a serving root the run did not find', () => {
+  it('matches from any directory, the project root included, without the query', () => {
+    const couldName = servedFromAnyRoot('/img/pattern-${n}.png?v=2');
+
+    expect(
+      ['img/pattern-1.png', 'src/img/pattern-2.png', 'a/b/img/pattern-3.png'].map(couldName),
+    ).toEqual([true, true, true]);
+  });
+
+  it('keeps every directory the pattern fixes, in whole segments', () => {
+    const couldName = servedFromAnyRoot('/img/pattern-${n}.png');
+
+    // Outside `img/`, a level too deep for the hole, and a directory that only ends in `img`.
+    expect(
+      ['src/pattern-1.png', 'src/img/deep/pattern-1.png', 'src/svgimg/pattern-1.png'].map(
+        couldName,
+      ),
+    ).toEqual([false, false, false]);
+  });
+
+  it('reads every interpolation syntax the resolver globs, and ignores case', () => {
+    expect(servedFromAnyRoot('/img/tile-#{$n}.png')('src/img/tile-1.png')).toBe(true);
+    expect(servedFromAnyRoot('/IMG/Tile-@{n}.PNG')('src/img/tile-1.png')).toBe(true);
   });
 });
