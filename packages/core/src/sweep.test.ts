@@ -123,8 +123,7 @@ describe('sweepForMentions', () => {
     });
 
     it('leaves an asset nothing mentions out of the map entirely', async () => {
-      // This is the case that gets a confident `dead` — the whole point of the
-      // amendment. It has to stay reachable.
+      // This is the case that earns a confident `dead`, and it has to stay reachable.
       const graph = graphOf({
         assets: [asset('img/orphan.png')],
         unscannedFiles: [unscanned('config.yaml')],
@@ -220,9 +219,8 @@ describe('sweepForMentions', () => {
     });
 
     it('ignores it for an asset outside every serving root', async () => {
-      // A URL cannot be serving `src/internal/arc.webp`, so the mention is noise —
-      // and §5.1(b)'s triage already treats a URL as never a candidate reference.
-      // Without this rule the sweep and the validation harness disagreed.
+      // A URL cannot be serving `src/internal/arc.webp`, so the mention is noise. The
+      // validation harness likewise treats a filename inside an absolute URL as no reference.
       const graph = graphOf({
         assets: [asset('src/internal/arc.webp')],
         unscannedFiles: [unscanned('guide.njk')],
@@ -254,7 +252,7 @@ describe('sweepForMentions', () => {
   });
 
   describe('haystack (b) — paths we read but could not resolve', () => {
-    it('rescues the eleventy case that R10 was raised for', async () => {
+    it('rescues an asset named only inside a dynamic reference', async () => {
       // `templated.png` is named by a path in a file we parsed perfectly. The
       // reference is `dynamic`, so it links nothing and the asset looks dead while
       // being demonstrably alive.
@@ -281,14 +279,14 @@ describe('sweepForMentions', () => {
         {
           asset: 'img/templated.png',
           source: 'unresolved-reference',
-          // R10 makes file, line and raw path mandatory, not optional.
+          // File, line and the raw path, so a reader can go straight to it.
           where: 'posts/first.md:7',
           quote: '{{ site.url }}/img/templated.png',
         },
       ]);
     });
 
-    it('sweeps an unresolved alias, which is every Next and Vite repo until Phase 2', async () => {
+    it('sweeps an unresolved alias', async () => {
       const graph = graphOf({
         assets: [asset('src/assets/logo.png')],
         references: [unlinked('App.tsx', '@/assets/logo.png', 'unresolved-alias')],
@@ -319,7 +317,7 @@ describe('sweepForMentions', () => {
     it('does NOT sweep a broken reference', async () => {
       // Its target is known: nothing. It is already its own finding, and
       // `hero.png: dead` beside `./wrong-dir/hero.png: broken` tells a reader more
-      // than hedging `hero.png` would — hedging would hide the pair.
+      // than hedging `hero.png` would, which would hide the pair.
       const graph = graphOf({
         assets: [asset('hero.png')],
         references: [unlinked('index.html', './wrong-dir/hero.png', 'broken')],
@@ -363,10 +361,9 @@ describe('sweepForMentions', () => {
 
   describe('haystack (c) — files we read but did not understand', () => {
     it('rescues an asset named only by a construct no adapter reads', async () => {
-      // A template literal with no interpolation. It parses fine, no adapter reads
-      // it, and it is not a `StringLiteral` so the speculative rule does not see it
-      // either — so neither of the other haystacks covers it and the asset would be
-      // reported *confidently* dead.
+      // A name in a file an adapter did read, with no reference that links the asset.
+      // Neither other source covers it, so without this one the asset would be
+      // reported dead with confidence.
       const graph = graphOf({ assets: [asset('img/hero.png')] });
       const source = ['export const config = {', '  banner: `/img/hero.png`,', '};'].join('\n');
 
@@ -387,20 +384,9 @@ describe('sweepForMentions', () => {
     });
 
     /**
-     * Drive `scan` for real rather than hand-feeding the sweep.
-     *
-     * ⚠️ The previous version of the pair below passed `scannedFiles: [...]` to
-     * `sweepForMentions`. **There is no such option.** `SweepOptions` takes
-     * `scannedMentions`, so the object was dropped in silence, the sweep ran with an
-     * empty third haystack, and `mentions.size === 0` was true for the wiring rather
-     * than for the reason the test is named after. It was green and it proved
-     * nothing — in the very test whose comment warns about a limit of one mechanism
-     * being mistaken for a limit of all of them. Nothing in the toolchain could see
-     * it, because test files were not typechecked (rule 17 exists because of this).
-     *
-     * Hand-feeding is what made that possible, so these drive the real pipeline:
-     * `scan` reads the source, its mention pass runs, and whatever it genuinely
-     * produces is what the sweep gets.
+     * Drive `scan` for real rather than hand-feeding the sweep. A test that asserts an
+     * absence passes just as well when its input never reached the sweep, so these give
+     * the sweep whatever `scan`'s mention pass really produces from the source.
      */
     async function sweepAfterScanning(source: string, assetRelative: string) {
       const scanned = await scanSources({
@@ -422,9 +408,9 @@ describe('sweepForMentions', () => {
     }
 
     it('rescues a literal filename through the real scan — the control', async () => {
-      // First, because everything below asserts that a mention is *absent*, and an
-      // absence passes just as well when the pipeline was never connected. This is
-      // the same source shape with the name written out, and it must hedge.
+      // First, because the test below asserts that a mention is absent, and an absence
+      // passes just as well when the pipeline was never connected. This is the same
+      // source shape with the name written out, and it must hedge.
       const { scanned, result } = await sweepAfterScanning(
         ['export const x = {', "  path: './img/background-ltr.png',", '};'].join('\n'),
         'img/background-ltr.png',
@@ -442,12 +428,11 @@ describe('sweepForMentions', () => {
     });
 
     it('cannot rescue a filename that is assembled at runtime — the resolver must', async () => {
-      // The honest limit of every basename sweep: `background-${dir}.png` never
-      // contains the string `background-ltr.png`, so there is nothing to find.
-      //
-      // This asserts what the *sweep* cannot do, not that the finding is correct.
-      // The right tool is the resolver: a template carries a `medium` ceiling, the
-      // glob matches `background-*.png`, and `resolved-pattern` links every match.
+      // The limit of every basename sweep: `background-${dir}.png` never contains the
+      // string `background-ltr.png`, so there is nothing to find. This asserts what the
+      // sweep cannot do, not that the finding is correct. The resolver covers the case:
+      // the template's `medium` ceiling makes it a glob, and `resolved-pattern` links
+      // every match.
       const { scanned, result } = await sweepAfterScanning(
         ['export const x = {', '  path: `./img/background-${dir}.png`,', '};'].join('\n'),
         'img/background-ltr.png',
@@ -476,7 +461,7 @@ describe('sweepForMentions', () => {
     });
 
     it('costs no filesystem read of its own', async () => {
-      // The whole point of moving it into `scan`: re-reading 7,521 files cost 12 s.
+      // `scan` collects these while the text is in memory, so the sweep reads no file twice.
       const graph = graphOf({ assets: [asset('hero.png')] });
       const readFile = vi.fn(files({}));
 
@@ -494,7 +479,7 @@ describe('sweepForMentions', () => {
   describe('what it declines to read', () => {
     it('records a file it could not read rather than silently not hedging', async () => {
       // A silent skip here turns a hedge back into a confident `dead`, which is the
-      // exact false positive the rule exists to prevent.
+      // exact false positive the hedge exists to prevent.
       const graph = graphOf({
         assets: [asset('hero.png')],
         unscannedFiles: [unscanned('locked.yaml')],

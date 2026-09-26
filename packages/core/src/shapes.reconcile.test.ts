@@ -1,34 +1,10 @@
 /**
- * The shape vocabulary and the coverage tree's must not drift apart.
+ * `SHAPES` and the coverage key's shape list are two copies of one vocabulary, and neither
+ * can import the other. This test fails when they differ in either direction. See
+ * "Reference shapes" in ARCHITECTURE.md.
  *
- * 🔴 **This test is the ONLY thing making two physical copies one logical list.**
- * `coverage-tree/tools/check-key.mjs` fails its own run if it imports anything outside
- * `node:` and `./` — that isolation is what stops the answer key being certified by the
- * engine it exists to measure (R72) — so it cannot import `shapes.ts`, and `shapes.ts`
- * must not import the key, because a shipping package cannot depend on a test fixture.
- *
- * Two copies with no check is 6a-decies: two implementations of one idea that nobody
- * reconciles. Two copies with a test that fails in BOTH DIRECTIONS is a different thing
- * — divergence stops being a convention and becomes a red build.
- *
- * ⚠️ **Both directions, and that is not symmetry for its own sake.** A shape added to
- * the engine and not the tree is an untested construct; a shape added to the tree and
- * not the engine is a row the matrix can never fill. They are different defects and a
- * one-way check would catch only one of them.
- *
- * ## Why the comparison is a pure function
- *
- * 🔴 **A reconciliation that has only ever been seen passing is not known to work** —
- * this project has shipped four guards that never fired. So `reconcile` takes its two
- * lists as ARGUMENTS, and the proofs below hand it deliberately damaged ones. Each proof
- * INTRODUCES the condition it tests rather than assuming some state exists: that is the
- * rule R78 cost us, when two mutation cases quietly stopped firing the moment the last
- * `UNDECIDED` entry was ruled away.
- *
- * Taking arguments is also what keeps the proofs honest without copying the tree. The
- * alternative — mutating `shapes.ts` and the key on disk — would need a temp copy of the
- * whole source tree, and a proof that writes to the real key is the hazard the tree's
- * own README names first.
+ * `reconcile` takes both lists as arguments, so the proofs below can hand it damaged ones
+ * without writing to `shapes.ts` or the key.
  */
 
 import { readFileSync } from 'node:fs';
@@ -82,10 +58,9 @@ interface Problem {
 /**
  * Compare the two lists. Pure, so the proofs can damage its inputs.
  *
- * `growthList` is the one sanctioned asymmetry: constructs an adapter emits that the
- * tree has no instance of. They are declared in `shapes.ts` on purpose, so the matrix
- * can print them as a debt instead of them vanishing — which is R76's whole objection
- * to leaving a shape nameless.
+ * `growthList` is the one allowed asymmetry: shapes an adapter emits that the tree has no
+ * instance of. `shapes.ts` declares them so the matrix can print them as a debt, since a
+ * shape with no name cannot be reported as uncovered.
  */
 function reconcile(input: {
   readonly engineIds: readonly string[];
@@ -113,12 +88,12 @@ function reconcile(input: {
 }
 
 /**
- * Check R87's layer field. Pure, so the proofs below can damage its input.
+ * Check each shape's `adapterEmitsAs` and `needsToSee`. Pure, so the proofs below can damage
+ * its input.
  *
- * 🔴 **The field replaces a hand-written exemption list in the measuring harness, and
- * THIS is the only reason that is an improvement.** An exemption list rots silently: an
- * entry that is no longer needed goes on suppressing, and nothing ever says so. A
- * declared id that stops existing is a red test instead.
+ * These declarations replace an exemption list in the measuring harness. Such a list rots
+ * silently, since an entry no longer needed still suppresses; a declared id that stops
+ * existing fails here instead.
  */
 function auditEmitsAs(
   declarations: readonly ShapeDeclaration[],
@@ -143,9 +118,8 @@ function auditEmitsAs(
       }
       if (id === shape.id) problems.push(`${shape.id}: adapterEmitsAs names itself`);
     }
-    // The field asserts the adapter CANNOT see the distinction. Unless it says what the
-    // adapter is missing, a reader has nothing to check against the code — and an
-    // unfalsifiable exemption is worse than no exemption.
+    // The field says the adapter cannot see the distinction. Unless `needsToSee` names what
+    // it is missing, a reader has nothing to check against the code.
     if ((shape.needsToSee ?? '').length === 0) {
       problems.push(`${shape.id}: adapterEmitsAs without needsToSee naming the resolver fact`);
     }
@@ -177,7 +151,7 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
     const counts = countByShape(key);
 
     // A shape the tree declares with an `absent` reason has no instances by design. One
-    // WITHOUT that reason and with no instances already fails check-key, so this asserts
+    // without that reason and with no instances already fails check-key, so this asserts
     // the two instruments agree about which is which.
     for (const shape of key.shapes.filter((s) => s.absent !== undefined)) {
       expect(
@@ -188,21 +162,16 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
   });
 
   it('gives every declared shape an emission class, and a reason where it is not obvious', () => {
-    // Widened deliberately: `SHAPES` is `as const` so `ShapeId` can be derived from it,
-    // which also narrows every entry to its own literal type — and then `why` "does not
-    // exist" on the entries that happen to lack one. The declaration type is what this
-    // test reasons about.
+    // Widened on purpose: `SHAPES` is `as const` so `ShapeId` can be derived from it, which
+    // narrows each entry to its own literal type, and then `why` does not exist on the
+    // entries that lack one.
     const declarations: readonly ShapeDeclaration[] = SHAPES;
     for (const shape of declarations) {
       expect(['engine', 'gap', 'declined', 'unclaimed'], `${shape.id}`).toContain(shape.emission);
 
-      // A `declined` row reads BACKWARDS — a zero is correct and a non-zero is the
-      // failure — so it may not be silent, UNLESS the family already says it. `decoy.*`
-      // declining, `unread.*` being a gap and `path.*` declining are what those families
-      // MEAN, and demanding prose there is ceremony that teaches people to write filler.
-      //
-      // ⚠️ The first version of this test exempted every `md.*` shape, which was not a
-      // principle but a shortcut around four reasons I had not written. It hid them.
+      // A row that reads backwards (a zero is correct, a non-zero is the failure) must say
+      // why, unless its family already does: a `decoy.*` or `path.*` shape declines by
+      // definition, and asking for prose there only teaches people to write filler.
       if (BACKWARD_READING.includes(shape.emission) && !familyExplains(shape)) {
         const rule = 'A row that reads backwards has to say why.';
         expect(
@@ -240,22 +209,14 @@ function familyExplains(shape: ShapeDeclaration): boolean {
 }
 
 /**
- * Rows that read BACKWARDS — a zero is correct and a non-zero is the failure.
- *
- * 🔴 Two values, not one, and the pair is the point (R92). `declined` means the text is
- * not a live path; `unclaimed` means there IS a real file and we choose not to index it.
- * Both read backwards, so both are excluded from the claimed population — but only the
- * second is a SCOPE DECISION, and eight tree entries read as eight misses for want of
- * saying so.
+ * Emission classes whose rows read backwards: a zero is correct and a non-zero is the
+ * failure. `declined` means the text is not a live path; `unclaimed` means a real file the
+ * engine chooses not to index, a scope decision rather than a defect.
  */
 const BACKWARD_READING: readonly string[] = ['declined', 'unclaimed'];
 
-/**
- * 🔴 The guard, proved able to fail — in both directions and on the asymmetry it allows.
- *
- * Each case builds its own damaged pair from scratch rather than editing shared state,
- * so no case can stop firing because something elsewhere was ruled or removed.
- */
+// Each case builds its own damaged pair rather than editing shared state, so no case can
+// stop firing because something elsewhere changed.
 describe('the reconciliation is proved able to fail', () => {
   const BASE = ['html.img.src', 'css.url.bare'];
   const counts = new Map<string, number>([
@@ -297,8 +258,8 @@ describe('the reconciliation is proved able to fail', () => {
   });
 
   it('goes red when a growth-list shape gains tree instances and nobody removed it', () => {
-    // The debt was paid — somebody added tree coverage — but the growth list still calls
-    // it untested. Left unchecked, the matrix would keep printing a debt that is settled.
+    // The tree gained coverage, but the growth list still calls the shape untested. Left
+    // unchecked, the matrix would keep printing a debt that is settled.
     const problems = reconcile({
       engineIds: [...BASE, 'js.new-url'],
       treeIds: [...BASE, 'js.new-url'],
@@ -309,7 +270,7 @@ describe('the reconciliation is proved able to fail', () => {
     expect(problems).toEqual([{ direction: 'growth-list-now-tested', id: 'js.new-url' }]);
   });
 
-  describe("R87's layer field, proved able to fail", () => {
+  describe('the adapterEmitsAs check is proved able to fail', () => {
     const KNOWN = new Set(['a.real.shape', 'another.real.shape']);
     const declare = (over: Partial<ShapeDeclaration>): ShapeDeclaration => ({
       id: 'a.real.shape',

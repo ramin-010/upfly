@@ -1,17 +1,11 @@
 /**
- * The two shapes R88 moved into the disposition tier, and the rule that decides them.
+ * The two disposition shapes, `path.bare-specifier` and `path.charref`. A disposition names
+ * how the path is written, which is what would take the reference out, so it is the same in
+ * every host and takes precedence over the construct the path sits in. See "How a shape is
+ * chosen" in ARCHITECTURE.md.
  *
- * A shape is a DISPOSITION when what would take the reference out is a property of how
- * the path is WRITTEN — so it is keyed identically in every host and beats every host
- * and construct shape. `path.absolute-url` has always worked that way; these two were
- * named `html.charref` and `js.import.package`, which put them in the wrong namespace
- * and made an already-written rule unreadable.
- *
- * 🔴 **These are the tests that would have failed.** Before R88(b) the bare-specifier
- * disposition was reachable only from an `import`: the identical string in a `require()`
- * was `js.require` and in a plain `const` was `js.string.literal`, so one matrix row
- * covering one predicate was scattered across three. Nothing measured it, because a
- * shape audit that joins on position sees three references where three are expected.
+ * A bare specifier has one shape in an `import`, an `import()` and a `require()`, so one
+ * predicate has one matrix row rather than three.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -33,7 +27,7 @@ function only(references: readonly RawReference[]): RawReference {
   return references[0] as RawReference;
 }
 
-describe('path.bare-specifier — the disposition beats the construct (R88(b))', () => {
+describe('path.bare-specifier: the disposition beats the construct', () => {
   it.each([
     ['a static import', "import logo from 'some-ui-kit/dist/logo.png';"],
     ['a dynamic import', "const m = await import('some-ui-kit/dist/logo.png');"],
@@ -43,14 +37,10 @@ describe('path.bare-specifier — the disposition beats the construct (R88(b))',
   });
 
   it('🔴 does NOT claim the identical text in a PLAIN STRING, and that is measured', () => {
-    // R88(b) reads the tree's three entries as one row because "all three fail together
-    // if bare-specifier detection breaks". Two do. In an ordinary string the prefix test
-    // decides nothing: `some-ui-kit/dist/x.png` and `src/assets/x.png` are the same
-    // syntax, and only node_modules separates them.
-    //
-    // ⚠️ Asserting it here labelled 351 corpus references as packages — `loading...`,
-    // `bs.button`, `v2.0.0`, `berryhouse.ca` across railsgirls-com and eleventy-docs.
-    // The key keeps the entry and `path.bare-specifier` declares `adapterEmitsAs` for it.
+    // In an ordinary string the prefix test decides nothing: `some-ui-kit/dist/x.png` and
+    // `src/assets/x.png` are the same syntax, and only `node_modules` separates them.
+    // Claiming it would label strings such as `loading...` and `v2.0.0` as packages, so the
+    // shape declares `adapterEmitsAs` for the key's plain-string entry instead.
     const source = "export const PACKAGED = 'some-ui-kit/dist/logo.png';";
 
     expect(only(js(source)).shape).toBe('js.string.literal');
@@ -74,9 +64,8 @@ describe('path.bare-specifier — the disposition beats the construct (R88(b))',
   });
 
   it('leaves an alias-shaped specifier to the construct, because the table is elsewhere', () => {
-    // `@scope/pkg/x.png` and an `@img/*` tsconfig alias are the same syntax. Deciding
-    // between them needs the paths table, which this layer cannot see (R87) — so the
-    // adapter must NOT claim it either way.
+    // `@scope/pkg/x.png` and an `@img/*` tsconfig alias are the same syntax. Telling them
+    // apart needs the paths table, which only the resolver has, so the adapter claims neither.
     for (const prefix of ['~', '@', '#']) {
       const source = `import art from '${prefix}img/aliased.png';`;
       expect(only(js(source)).shape, prefix).toBe('js.import.static');
@@ -84,16 +73,16 @@ describe('path.bare-specifier — the disposition beats the construct (R88(b))',
   });
 });
 
-describe('path.charref — the spelling beats the construct (R88(a))', () => {
+describe('path.charref: the spelling beats the construct', () => {
   it('claims a character-referenced img@src as path.charref', () => {
     expect(only(html('<img src="/gallery/a&amp;b.png">')).shape).toBe('path.charref');
   });
 
   it('🔴 claims it in an feImage too, rather than as the construct it sits in', () => {
-    // The case that could not be settled by "the narrowest thing that breaks alone":
-    // both `html.svg.feimage` and the charref decoding break other entries with them.
-    // The tier decides it — and the engine already had the order right, because the
-    // charref branch fires before any host shape is chosen. Only the name disagreed.
+    // "The narrowest thing that breaks alone" cannot settle this: both `html.svg.feimage`
+    // and the charref decoding take other entries with them. The disposition takes
+    // precedence, and the adapter checks for character references before it picks a host
+    // shape.
     const source = '<svg><filter><feImage xlink:href="/gallery/a&amp;b.png" /></filter></svg>';
 
     expect(only(html(source)).shape).toBe('path.charref');
@@ -107,15 +96,8 @@ describe('path.charref — the spelling beats the construct (R88(a))', () => {
     expect(only(html(source)).shape).toBe('html.svg.feimage');
   });
 
-  /**
-   * ⚠️ **This assertion read `unsafe` until R118, and its stated reason was the thing
-   * that was wrong.** *20 source characters, 16 decoded, so a rewrite over the source
-   * range would truncate the document* is an argument against writing the DECODED path
-   * back — which nothing does. `rawPath` is the encoded source text, the range covers
-   * exactly that text, and `relocate` re-encodes what it writes. **The invariant was never
-   * in danger; the sentence had simply outlived the design.** (R85: a comment is an
-   * assertion about code, and a stale one costs more than no comment.)
-   */
+  // An escaped path can be resolved and rewritten: `rawPath` is the encoded source text,
+  // the range covers exactly that text, and `relocate` re-encodes the path it writes.
   it('is located and resolvable, and the range still covers the ENCODED text', () => {
     const source = '<img src="/gallery/a&amp;b.png">';
     const reference = only(html(source));

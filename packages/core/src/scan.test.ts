@@ -4,13 +4,10 @@ import { type ReadFilePort, scanSources } from './scan.js';
 import type { Adapter, RawReference, SourceFile } from './types.js';
 
 /**
- * `scan` owns error handling for every adapter, so the interesting cases are all
- * failures: a file that will not parse, a file that vanished, an adapter that
- * throws something nobody expected.
- *
- * Because `readFile` is an injected port, every one of those is an entry in a plain
- * object rather than a temp tree full of deliberately broken files — which is the
- * argument for the port more than purity is.
+ * `scan` owns error handling for every adapter, so the interesting cases are failures: a
+ * file that will not parse, a file that vanished, an adapter that throws something nobody
+ * expected. `readFile` is an injected port, so each one is an entry in a plain object
+ * rather than a temporary tree of broken files.
  */
 
 function sourceFile(relative: string, adapterId: string): SourceFile {
@@ -102,7 +99,8 @@ describe('scanSources', () => {
   });
 
   it('preserves source-file order regardless of which read finishes first', async () => {
-    // Rule 11 is only true if ordering is a property of the input, not of IO timing.
+    // The report is byte-identical for the same input only if order comes from the
+    // input, not from IO timing.
     const delays: Record<string, number> = { '/repo/a.html': 20, '/repo/b.html': 0 };
     const readFile: ReadFilePort = async (path) => {
       await new Promise((done) => setTimeout(done, delays[path] ?? 0));
@@ -169,8 +167,8 @@ describe('scanSources', () => {
       ]);
     });
 
-    describe('R60: a parser-s own words leave by a different door', () => {
-      /** An adapter that fails the way the real ones now do: our sentence, their text. */
+    describe("a parser's own message goes to the diagnostic channel, not the report", () => {
+      /** Fails as the real adapters do: our own message, the parser's text as diagnostic. */
       const real: Adapter = {
         ...css,
         findReferences: () => {
@@ -195,15 +193,9 @@ describe('scanSources', () => {
       }
 
       it('never lets the library text reach the value the report is built from', async () => {
-        // 🔴 **The structural half, and the only assertion here that would survive
-        // somebody rewriting the renderer.** `railsgirls-com` carried 23 skips reading
-        // `<css input>:144:13: Unknown word /`, which is PostCSS describing PostCSS in
-        // a rule-11 artefact that changes on a dependency upgrade.
-        //
-        // Asserted over the whole serialised result rather than over `detail`, because
-        // the claim is that the string is not *anywhere* a renderer or a sort can
-        // reach — the same assertion R60 wrote against the serialised probe result,
-        // for the same reason.
+        // PostCSS's own text changes with a dependency upgrade, and the report must be
+        // byte-identical for the same input. Asserted over the whole serialised result,
+        // not only `detail`, so it holds whatever a renderer or a sort later reads.
         const result = await scanOneBroken();
 
         expect(JSON.stringify(result)).not.toContain('<css input>');
@@ -229,11 +221,9 @@ describe('scanSources', () => {
       });
 
       it('drops it when nobody is listening, rather than storing it somewhere', async () => {
-        // ⚠️ The property that makes this safe by construction. An absent sink *drops*
-        // the text; it does not park it on the result for a later caller to find. A
-        // caller with nowhere to put an unstable string therefore cannot quietly
-        // acquire one — which is R60's argument for why `ProbeSkip` has no
-        // `diagnostic` field either.
+        // An absent sink drops the text rather than parking it on the result, so a caller
+        // with nowhere to put an unstable string cannot acquire one by accident.
+        // `ProbeSkip` has no `diagnostic` field for the same reason.
         const result = await scanOneBroken();
 
         expect(result.unscanned).toHaveLength(1);
@@ -267,14 +257,10 @@ describe('scanSources', () => {
     });
 
     it('writes the relative path into the detail, never the absolute one', async () => {
-      // §5.1(f) found this on `eleventy-docs`: `css.ts` and `javascript.ts` both
-      // throw `Could not parse ${file}: …` with the absolute path they were handed,
-      // and that message is carried verbatim into the report. One unparseable file
-      // therefore puts `E:\…\combined.cjs` in the output and rule 11 becomes false —
-      // the same repository audited from two checkouts produces different bytes.
-      //
-      // Invisible until now because **no fixture tree contains a file that fails to
-      // parse**, so the report's own absolute-path guard had nothing to fire on.
+      // An adapter may put the absolute path it was handed into its message, and the
+      // message reaches the report. Two checkouts of one repository differ in their
+      // absolute paths, and the report must be byte-identical for the same input. No
+      // fixture tree holds a file that fails to parse, so these tests are what cover it.
       const throwing: Adapter = {
         ...css,
         findReferences: ({ file }) => {
@@ -295,9 +281,8 @@ describe('scanSources', () => {
     });
 
     it('scrubs a Windows-spelled absolute path out of the detail too', async () => {
-      // The native separator is what an adapter actually interpolates on Windows,
-      // and it is the platform rule 5 makes first-class. Built with `String.raw` so
-      // the backslashes survive the file rather than becoming escapes.
+      // On Windows an adapter interpolates the native separator. Built with `String.raw`
+      // so the backslashes stay backslashes rather than becoming escapes.
       const path = String.raw`E:\repo\deep\broken.css`;
       const file: SourceFile = {
         path,
@@ -325,13 +310,10 @@ describe('scanSources', () => {
     });
 
     it('keeps the references an adapter found before it failed, and still reports it', async () => {
-      // R20, at the layer that matters. Both halves have to hold at once: the file
-      // is recorded as `parse-failed` so rule 9 is satisfied, **and** the references
-      // collected before the failure survive — they are correct, and dropping them
-      // is what made a referenced asset look dead.
-      //
-      // Before this, one `<style>` block of unparseable CSS inside a Markdown file
-      // discarded every `![](hero.png)` above it.
+      // Both have to hold: the file is reported as `parse-failed`, and the references
+      // found before the failure survive. They are correct, and dropping them makes a
+      // referenced asset look dead: one unparseable `<style>` block in a Markdown file
+      // would discard every `![](hero.png)` above it.
       const partial: Adapter = {
         ...css,
         findReferences: ({ file }) => {
@@ -362,9 +344,8 @@ describe('scanSources', () => {
     });
 
     it('reports a failure carrying nothing exactly as it did before', async () => {
-      // The control. Every other adapter throws without a payload, and that path has
-      // to keep behaving identically — an empty `partial` must not become an excuse
-      // to report something that was never found.
+      // The control: a failure with no payload reports the file and no references. An
+      // empty `partial` must not report something that was never found.
       const throwing: Adapter = {
         ...css,
         findReferences: () => {
@@ -383,9 +364,9 @@ describe('scanSources', () => {
     });
 
     it('survives an adapter throwing something that is not an UpflyError', async () => {
-      // Adapters are the contribution surface. A bug in a community adapter must
-      // not take down an audit of a repo that adapter barely touches — and it must
-      // be visible in the report rather than merely survived.
+      // Adapters are the contribution surface. A bug in a community adapter must not take
+      // down an audit of a repository that adapter barely touches, and it must be
+      // visible in the report rather than merely survived.
       const buggy: Adapter = {
         ...css,
         findReferences: () => {
@@ -404,7 +385,7 @@ describe('scanSources', () => {
     });
 
     it('reports a file that vanished between the walk and the read', async () => {
-      // §5.1(e): a file that disappears mid-run degrades, it does not crash.
+      // A file that disappears mid-run is reported; it does not crash the run.
       const result = await scanSources({
         sourceFiles: [sourceFile('gone.html', 'test-html'), sourceFile('here.html', 'test-html')],
         adapters,
@@ -451,8 +432,8 @@ describe('scanSources', () => {
 
   describe('asset mentions, gathered while the text is in memory', () => {
     it('records an asset filename no adapter turned into a reference', async () => {
-      // The audit's third haystack. Collected here rather than by re-reading the
-      // tree later, which measured 12 s against a fraction of a second.
+      // Evidence for the sweep from files an adapter did read. Collected here while the
+      // text is in memory, so no file is read twice.
       const result = await scanSources({
         sourceFiles: [sourceFile('config.html', 'test-html')],
         adapters,

@@ -2,24 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { conventionLinkFor, detectConventionRoots } from './conventions.js';
 
 /**
- * R17. These pin **what the convention actually is**, not that any particular asset
- * came out alive.
+ * These pin what Next.js's convention is, where it applies and where it does not, rather
+ * than that any particular asset came out alive: a test that blesses today's findings can
+ * freeze a defect as intended behaviour.
  *
- * The distinction has bitten this phase before: a test worded as "these two assets
- * are correctly dead" froze a defect as intended behaviour, and R15 later overturned
- * the finding the test was blessing. So the assertions here are about the shape of
- * Next.js's rule — where it applies and, more importantly, where it does not.
- *
- * The over-reach direction is the dangerous one. This mechanism **suppresses `dead`
- * findings**, so every false positive in it is a real finding silently removed from
- * the report. That is why more of what follows is about what it declines to claim.
+ * Over-reach is the dangerous direction. This mechanism suppresses `dead` findings, so
+ * every false match silently removes a real finding from the report, which is why most of
+ * what follows is about what it declines to claim.
  */
-describe('framework conventions (R17)', () => {
+describe('framework conventions', () => {
   describe('detectConventionRoots', () => {
     it('finds an app root per config, not one per project', () => {
       // `shadcn-ui` holds seventeen `next.config.*` files and the one that matters
-      // for `apps/v4/app/…` is `apps/v4/next.config.mjs`. A project-root-only check
-      // would have found nothing there and left the whole ruling inert.
+      // for `apps/v4/app/…` is `apps/v4/next.config.mjs`. A check at the project root
+      // alone would find nothing there and leave the mechanism inert.
       const roots = detectConventionRoots([
         'next.config.js',
         'apps/v4/next.config.mjs',
@@ -71,12 +67,12 @@ describe('framework conventions (R17)', () => {
       expect(conventionLinkFor('apps/v4/app/opengraph-image3.jpg', roots)).not.toBeNull();
     });
 
-    // --- where it must NOT reach ------------------------------------------------
+    // --- where it must not reach ------------------------------------------------
     // Each of these is a real `dead` finding this mechanism would suppress if it
     // were one character looser.
 
     it('does not claim a public-directory asset of the same name', () => {
-      // Next applies these conventions **only inside `app/`**. `shadcn-ui` has both:
+      // Next applies these conventions only inside `app/`. `shadcn-ui` has both:
       // `apps/v4/app/…/twitter-image.jpg` is convention, and
       // `apps/v4/public/twitter-image.png` is an ordinary public asset that the
       // public-dir caveat already covers. Treating the second as alive would
@@ -96,18 +92,14 @@ describe('framework conventions (R17)', () => {
     });
 
     it('claims nothing at all when no framework was detected', () => {
-      // The two other validation repositories exercise this path: astro-docs and
-      // eleventy-docs have no `next.config.*` anywhere, so the mechanism must be
-      // completely inert there rather than matching on the name alone.
+      // astro-docs and eleventy-docs, two of the validation repositories, have no
+      // `next.config.*` anywhere, so the mechanism must be inert there rather than
+      // matching on the name alone.
       expect(conventionLinkFor('app/opengraph-image.jpg', [])).toBeNull();
     });
 
     it('accepts the src/app layout, which Next supports and shadcn-ui uses', () => {
-      // ⚠️ This assertion was written the other way round first — as "a directory
-      // named app deeper in the tree is not the router" — and it passed, blessing a
-      // limitation that is simply wrong. Next supports `src/app` and `shadcn-ui`
-      // holds six `src/app` directories. That is the exact failure this file's header
-      // warns about, committed while writing the test meant to prevent it.
+      // Next supports `src/app`, and `shadcn-ui` holds six `src/app` directories.
       expect(conventionLinkFor('apps/v4/src/app/icon.png', roots)).not.toBeNull();
     });
 

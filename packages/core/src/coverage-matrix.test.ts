@@ -1,28 +1,16 @@
 /**
- * The measuring harness, proved able to fail.
+ * Tests for the coverage matrix (`coverage-tree/tools/matrix.mjs`), written to show that its
+ * checks can fail: decisions are made from the matrix's table, and a check nobody has seen
+ * fail proves nothing. See "Reference shapes" in ARCHITECTURE.md.
  *
- * 🔴 **A MEASURING INSTRUMENT NOBODY HAS SEEN FAIL IS THE FIFTH GUARD THAT NEVER FIRES.**
- * This project has shipped four, and the coverage tree's own `prove-can-fail.mjs` exists
- * because its author reached the same conclusion about the key's integrity check. The
- * matrix is worse than those if it is wrong, because its output is a table people quote
- * decisions from.
- *
- * ⚠️ **Every case BUILDS the condition it tests** — its own key, its own observations —
- * rather than leaning on the real tree. That is R78's lesson, and it cost two mutation
- * cases: both depended on an `UNDECIDED` entry existing, a ruling removed the last one,
- * and one case crashed while the other went GREEN ON DAMAGE. A proof that depends on the
- * state of the thing it proves is the same defect as a guard that has never fired.
- *
- * The arithmetic lives in `coverage-tree/tools/matrix.mjs`, which imports nothing at all
- * — not the engine, not `node:fs`. That purity is what makes this file possible.
+ * Every case builds its own key and observations rather than reading the real tree, so a
+ * change to the tree cannot leave a case passing without testing anything. `matrix.mjs`
+ * imports nothing, not even `node:fs`, which is what lets a test feed it any input.
  */
 
 import { describe, expect, it } from 'vitest';
-// A plain .mjs instrument, deliberately outside the package's source tree — it measures
-// the engine and must not ship inside it. `matrix.d.mts` beside it is the seam, and it
-// exists because a `@ts-expect-error` here did not survive the formatter reflowing the
-// import: the directive stopped applying to the line that errors, then failed as unused
-// while the real error came back.
+// A plain `.mjs` tool kept outside the package, since it measures the engine and must not
+// ship with it. `matrix.d.mts` beside it supplies the types.
 import {
   ACCEPTS,
   BUCKETS,
@@ -45,7 +33,7 @@ interface Entry {
   offset: number;
   line: number;
   knownGap?: string;
-  /** R96: which mechanism this entry's gap names, when it names one. */
+  /** Which mechanism this entry's gap names, when it names one. */
   gapMechanism?: string;
 }
 
@@ -92,21 +80,14 @@ function observed(
   ]);
 }
 
-/**
- * The row for one shape, or a loud failure.
- *
- * ⚠️ It threw a hand-written structural type and a double cast until `matrix.d.mts`
- * existed, and the cast is what made that survivable — `as unknown as {…}` would have let
- * a missing row through as `undefined` and `toMatchObject` say nothing useful about it.
- * Rule 17's shape: typechecking the tests caught the fixture, not the code.
- */
+/** The row for one shape, or a loud failure naming the shape. */
 function rowOf(result: MatrixResult, shape: string): MatrixRow {
   const row = result.rows.find((candidate) => candidate.shape === shape);
   if (row === undefined) throw new Error(`the matrix has no row for ${shape}`);
   return row;
 }
 
-/** The first finding, or a loud failure — an empty list must not read as a pass. */
+/** The first finding, or a loud failure: an empty list must not read as a pass. */
 function firstFinding(result: MatrixResult): MatrixFinding {
   const [first] = result.findings;
   if (first === undefined) throw new Error('expected at least one finding, and there were none');
@@ -138,8 +119,8 @@ describe('the matrix counts an outcome the way the key defines it', () => {
   });
 
   it('🔴 counts silence as a miss where the expect does not allow silence', () => {
-    // The regression R75 names: a refactor dropping srcset from 9 to 5. Nothing in the
-    // engine's own output would say so — the references are simply not there.
+    // A refactor that stops finding some `srcset` candidates leaves nothing in the engine's
+    // own output to say so: the references are simply not there.
     const result = buildMatrix(keyWith({}), observed([]));
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ met: 0, missed: 1 });
@@ -156,10 +137,9 @@ describe('the matrix counts an outcome the way the key defines it', () => {
 });
 
 describe('the two expects that accept SILENCE as well as an outcome', () => {
-  // The key's own `expectSemantics` records that these were written as situations
-  // rather than as behaviours, and that 12 entries would otherwise read as misses for
-  // correct behaviour. Both directions are asserted, because a permissive rule that is
-  // never tested for what it REFUSES is a rule that accepts everything.
+  // The key's `expectSemantics` defines these two as situations rather than behaviours, so
+  // an entry is met by the outcome or by no reference at all. Both directions are tested:
+  // a permissive rule never tested for what it refuses accepts everything.
   it.each([
     ['discarded', 'discarded'],
     ['out-of-scope', 'out-of-scope'],
@@ -182,9 +162,8 @@ describe('the two expects that accept SILENCE as well as an outcome', () => {
     ['out-of-scope', 'resolved-pattern'],
     ['out-of-scope', 'broken'],
   ])('🔴 REFUSES %s when the engine said %s', (expectValue, resolution) => {
-    // The key's sentence, made executable: "it must NOT accept a resolved, broken or
-    // rewritten outcome". A refusal row that accepted `resolved` would be scoring a
-    // false positive as a pass, which is the failure class this product exists around.
+    // A refusal row that accepted `resolved` would count a false positive, the dangerous
+    // failure, as a pass.
     const result = buildMatrix(
       keyWith({ expect: expectValue }),
       observed([{ start: 10, resolution }]),
@@ -194,9 +173,8 @@ describe('the two expects that accept SILENCE as well as an outcome', () => {
   });
 
   it('has an ACCEPTS table covering every expect value the key uses', () => {
-    // Without this, a new outcome added to the union would silently fall to `[]` and
-    // every entry carrying it would read as a miss — a whole row wrong for a reason
-    // that is not the engine's.
+    // An expect value missing from `ACCEPTS` falls back to `[]`, so every entry carrying it
+    // would read as a miss for a reason that is not the engine's.
     expect(Object.keys(ACCEPTS).sort()).toEqual([
       'broken',
       'discarded',
@@ -209,12 +187,10 @@ describe('the two expects that accept SILENCE as well as an outcome', () => {
   });
 });
 
-describe('R86 — a throw is a THIRD outcome, never merged into a refusal', () => {
+describe('a throw is a third outcome, never merged into a refusal', () => {
   it('🔴 does NOT let a crashed file satisfy a `discarded` row', () => {
-    // THE CASE R86 WAS RULED FOR. `discarded` accepts silence, and a crashed adapter
-    // produces silence — so without the separation this row would read as a pass for a
-    // file the engine could not read at all. That is R20's shape inside the instrument
-    // built to measure it.
+    // `discarded` accepts silence, and a crashed adapter is silent too, so without the
+    // separation this row would pass for a file the engine could not read at all.
     const result = buildMatrix(
       keyWith({ expect: 'discarded' }),
       observed([], 'parse-failed: invalid css syntax'),
@@ -224,13 +200,10 @@ describe('R86 — a throw is a THIRD outcome, never merged into a refusal', () =
     expect(firstFinding(result).detail).toContain('invalid css syntax');
   });
 
-  it('names a throw where silence was right as NOTED, not as a defect (R90)', () => {
-    // 🔴 R86 AND R90 MEET HERE. R86: never merge a throw into a refusal, because the two
-    // silences mean opposite things. R90: where the key's expect ACCEPTS silence, the
-    // throw is the mechanism by which the right thing happened. `entity.html`'s four
-    // swallowed entries are exactly this — the file cannot be parsed and a browser
-    // renders nothing there either. So it stays visible in the `threw` column and is
-    // reported under its own kind, and the run does not fail on it.
+  it('names a throw where silence was right as noted, not as a defect', () => {
+    // Where the expect accepts silence, the throw brought about the right outcome, as when
+    // an unclosed `<style>` swallows text a browser does not render either. It still counts
+    // as `threw`, not met, but under its own kind, and the run does not fail on it.
     const result = buildMatrix(
       keyWith({ expect: 'discarded' }),
       observed([], 'parse-failed: unclosed <style>'),
@@ -255,9 +228,9 @@ describe('R86 — a throw is a THIRD outcome, never merged into a refusal', () =
   });
 
   it('🔴 still credits a PARTIAL reference the throw carried with it', () => {
-    // R20's fix is that a throw carries the references already collected, so a file can
-    // be both partly measured and recorded unscanned. Checking `threw` first credited
-    // such a file with nothing — which would also have hidden whether that fix works.
+    // A throw carries the references collected before it, so a file can be both partly
+    // measured and recorded as unscanned. Checking `threw` first would credit such a file
+    // with nothing and hide whether those references survive.
     const result = buildMatrix(
       keyWith({}),
       observed([{ start: 10, resolution: 'resolved' }], 'parse-failed: later in the file'),
@@ -288,9 +261,8 @@ describe('a knownGap is a sanctioned divergence, and a settled one is a defect',
   });
 
   it('🔴 reports a knownGap whose entry now AGREES — the debt was settled', () => {
-    // Same hazard as a growth-list shape that quietly gained coverage: a record of a
-    // debt nobody settles goes on being printed as a debt, and a reader learns to
-    // discount the column. Found five of these on the first real run.
+    // A gap the engine has closed goes on printing as a debt until someone removes it, and
+    // a reader learns to discount the column.
     const result = buildMatrix(
       keyWith({ knownGap: 'aliases are not resolved yet' }),
       observed([{ start: 10, resolution: 'resolved' }]),
@@ -301,21 +273,11 @@ describe('a knownGap is a sanctioned divergence, and a settled one is a defect',
   });
 });
 
-/**
- * 🔴 **R96 — and these cases exist because the harness DID retire a live defect.**
- *
- * Two `docs-examples/public/example.html` entries carry a gap saying *"detection climbs
- * ancestors looking for a directory named `public` and will wrongly resolve this"*.
- * `measure.mjs` feeds the key's DECLARED roots, so detection never ran; both entries came
- * out `broken`, matched their `expect`, and printed **"the gap is closed"**. Probed against
- * `detectServingRoots` the same day: it claims `docs-examples/public` and resolves both.
- * The defect is entirely live and the record of it was one commit from deletion.
- *
- * ⚠️ **The first case below is the one that matters, and it is the agreement case.** A
- * mismatch was always going to stay a gap; it is AGREEMENT that retires one, so agreement
- * reached with the mechanism switched off is the whole bug.
- */
-describe('R96 — a gap can only be retired by a run that exercises the mechanism it names', () => {
+// A gap that names a mechanism, such as serving-root detection, cannot be judged by a run
+// that never used it: with serving roots declared, detection does not run. Agreement is
+// what retires a gap, so the first case, agreement with the mechanism switched off, is the
+// one that matters.
+describe('a gap can only be retired by a run that exercises the mechanism it names', () => {
   const gapped = (mechanism: string) =>
     keyWith({
       expect: 'broken',
@@ -340,7 +302,7 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
 
   it('DOES call it stale once the run exercises that mechanism', () => {
     // The other direction, so the rule is a condition rather than a blanket refusal. A
-    // guard that can only ever say no is R75's row nobody reads.
+    // guard that can only ever say no is one nobody reads.
     const result = buildMatrix(
       gapped('serving-root-detection'),
       observed([{ start: 10, resolution: 'broken' }]),
@@ -352,8 +314,8 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
   });
 
   it('leaves a gap with no declared mechanism to the ordinary rule', () => {
-    // 58 of the key's entries carry a gap and only two name a mechanism. The default must
-    // not change for the other 56, or R96 would quietly freeze every debt in the key.
+    // Most of the key's gaps name no mechanism. They keep the ordinary rule, or none of them
+    // could ever be retired.
     const result = buildMatrix(
       keyWith({ knownGap: 'no reader yet' }),
       observed([{ start: 10, resolution: 'resolved' }]),
@@ -364,9 +326,9 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
   });
 
   it('🔴 is NOT counted as a defect, but IS printed under its own heading', () => {
-    // Gating on it would make the run permanently red for a configuration measure.mjs
-    // chose on purpose, and a permanently-red gate is one people route around. Visible
-    // instead of fatal — but visible in prose, not only as a column of zeroes.
+    // Failing on it would keep red every run that leaves the mechanism out on purpose, and
+    // a check that is always red gets ignored. So it is printed, in words rather than only
+    // as a column of zeroes.
     const result = buildMatrix(
       gapped('serving-root-detection'),
       observed([{ start: 10, resolution: 'broken' }]),
@@ -379,9 +341,9 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
   });
 
   it('🔴 THROWS on a gapMechanism outside the vocabulary, rather than freezing the entry', () => {
-    // A typo matches nothing in `exercises`, so the entry becomes a gap nobody can ever
-    // retire — and it reads as caution. Both mistakes here fail in the direction that
-    // looks fine, which is why this is a throw and not a row.
+    // A typo matches nothing in `exercises`, so the entry would become a gap nobody can
+    // retire, and it would read as caution. This mistake and the next both fail in the
+    // direction that looks fine, which is why they throw instead of adding a row.
     expect(() =>
       buildMatrix(
         gapped('serving-root-detektion'),
@@ -413,15 +375,12 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
     ).toThrow(/no knownGap/);
   });
 
-  /**
-   * R167 group E: `measure.mjs` now RUNS detection, as a second resolution beside the
-   * declared one, and hands it over as `observedUnder`. These pin that an entry naming the
-   * mechanism is judged on that run — and never on the declared run that happens to agree.
-   */
+  // `observedUnder` supplies a separate run made with the mechanism switched on. An entry
+  // naming that mechanism is judged on that run, never on the main run that happens to agree.
   it("🔴 judges a gap on the mechanism's OWN run, so the declared run's agreement retires nothing", () => {
-    // The exact trap: declared roots say `broken` (agrees), detection says `resolved`.
-    // Judged on the declared run this would read "stale" — R96's original bug, re-armed by
-    // merely listing the mechanism as exercised.
+    // Declared roots say `broken`, which agrees; detection says `resolved`. Judged on the
+    // declared run, the gap would read as stale merely because the mechanism is listed as
+    // exercised.
     const result = buildMatrix(
       gapped('serving-root-detection'),
       observed([{ start: 10, resolution: 'broken' }]),
@@ -470,14 +429,11 @@ describe('R96 — a gap can only be retired by a run that exercises the mechanis
   });
 });
 
-/**
- * R179 — two published numbers, each measuring ONE configuration. Under the key's stated
- * serving roots, detection is not part of the setup at all, so a gap in detection says
- * nothing about what that setup produced: the entry is judged on its outcome. The run that
- * uses detection judges the gap. These pin both halves, and the one thing R96 forbids —
- * agreement retiring a gap — staying forbidden.
- */
-describe('R179 — a gap in a mechanism the configuration does not use', () => {
+// Each run measures one configuration. Under the key's stated serving roots, detection is
+// not part of the setup, so an entry whose gap names detection is judged on its outcome:
+// agreement counts as met and never retires the gap. The run that uses detection judges
+// the gap.
+describe('a gap in a mechanism the configuration does not use', () => {
   const gapped = keyWith({
     expect: 'broken',
     knownGap: 'detection claims a directory named public that serves nothing',
@@ -502,7 +458,7 @@ describe('R179 — a gap in a mechanism the configuration does not use', () => {
 
   it('reads a disagreement there as a plain miss, because the gap does not explain it', () => {
     // Under the stated configuration the detection gap cannot fire, so a wrong outcome is
-    // a defect of that configuration — never parked as a known debt.
+    // a defect of that configuration, not a known debt.
     const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'resolved' }]), outside);
 
     expect(rowOf(result, 'html.img.src')).toMatchObject({ missed: 1, knownGap: 0 });
@@ -530,8 +486,8 @@ describe('R179 — a gap in a mechanism the configuration does not use', () => {
   });
 
   it('🔴 names every claimed entry a run did not meet — a knownGap one too, which has no finding', () => {
-    // The run that USES detection, confirming the gap. A result that pointed readers at
-    // the findings would drop exactly this miss: a `knownGap` entry is unmet and silent.
+    // The run that uses detection, confirming the gap. A result that pointed readers at
+    // the findings would drop this miss: a `knownGap` entry is unmet and has no finding.
     const result = buildMatrix(gapped, observed([{ start: 10, resolution: 'resolved' }]), {
       exercises: new Set(['serving-root-detection']),
     });
@@ -559,9 +515,9 @@ describe('R179 — a gap in a mechanism the configuration does not use', () => {
 
 describe('it joins in BOTH directions', () => {
   it('🔴 reports a reference the engine claimed where the key lists nothing', () => {
-    // The direction B7's probe could not see at all, and the more dangerous of the two:
-    // a miss is a gap in coverage, an unkeyed claim is the engine asserting something
-    // nobody sanctioned — and `--replace` rewrites what the engine asserts.
+    // The more dangerous direction: a miss is a gap in coverage, but an unkeyed claim is
+    // the engine asserting something nobody sanctioned, and `optimize` rewrites what the
+    // engine asserts.
     const result = buildMatrix(
       keyWith({}),
       observed([
@@ -576,8 +532,7 @@ describe('it joins in BOTH directions', () => {
 
   it('does not report an unkeyed reference the engine refused anyway', () => {
     // A `discarded` guess at an unkeyed offset is not a claim. Counting those would bury
-    // the real signal under a list a reader learns to ignore — R75's objection, one
-    // level up from the row it was written about.
+    // the real signal under a list a reader learns to ignore.
     const result = buildMatrix(
       keyWith({}),
       observed([
@@ -590,7 +545,7 @@ describe('it joins in BOTH directions', () => {
   });
 });
 
-describe('R87 — a shape disagreement is a defect only where no layer is declared', () => {
+describe('a shape disagreement is a defect only where no layer is declared', () => {
   const key = keyWith({ shape: 'decoy.typo', expect: 'discarded' });
   const seen = observed([{ start: 10, shape: 'js.string.literal', resolution: 'discarded' }]);
 
@@ -624,10 +579,9 @@ describe('R87 — a shape disagreement is a defect only where no layer is declar
 describe('the rendering', () => {
   const result = buildMatrix(keyWith({}), observed([{ start: 10, resolution: 'resolved' }]));
 
-  it('🔴 has NO TOTAL ROW (R75), and that is asserted rather than assumed', () => {
-    // The matrix's whole value is being structurally unquotable: with no single number
-    // there is nothing to escape into a README. A later hand adding a convenient total
-    // would dissolve that in one line, so the absence is a test.
+  it('has no total row, and that is asserted rather than assumed', () => {
+    // With no single number, there is nothing to quote out of context. A convenient total
+    // would undo that in one line, so its absence is tested.
     const rendered = renderMatrix(result).toLowerCase();
 
     expect(rendered).not.toMatch(/^\s*total/m);
@@ -636,8 +590,8 @@ describe('the rendering', () => {
   });
 
   it('states what the instrument cannot tell you, in the output itself', () => {
-    // Including the one that matters most: it cannot see a defect both instruments
-    // share. R80(a) sat inside that blind spot for a day.
+    // Including the one that matters most: where the key and the engine agree and are both
+    // wrong, it reports nothing.
     const rendered = renderMatrix(result);
 
     expect(rendered).toContain('CLASSIFICATION defect');
@@ -650,18 +604,8 @@ describe('the rendering', () => {
     expect(rendered).toContain('a MISS here means the engine claimed it');
   });
 
-  /**
-   * 🔴 **THE CHECK VERIFIED THE DATA STRUCTURE AND NOTHING VERIFIED THE RENDERING.**
-   *
-   * `reconcile` summed six buckets and `rowTable` printed five, dropping `staleGap` from a
-   * column headed `gap`. Seven entries vanished between the two — `html.img.src` printed
-   * `27/29 miss 0`, `js.import.alias.mapped` printed `0/5 miss 0` — while the arithmetic
-   * line said ✅ every run, because the arithmetic really did close where it was checked.
-   * The comment twenty lines above the bug already said *"a table that does not add up
-   * still prints, and it prints confidently"*.
-   *
-   * ⚠️ These assert the PAGE, which is the surface the earlier proofs could not reach.
-   */
+  // `reconcile` checks the rows' arithmetic, which can close while the printed table does
+  // not: a bucket with no column hides its entries from the page. These cases test the page.
   describe('the printed table, which is not the same thing as the arithmetic', () => {
     it('prints a column for every bucket an entry can land in', () => {
       const header = renderMatrix(result)
@@ -673,9 +617,8 @@ describe('the rendering', () => {
     });
 
     it("🔴 says so loudly when a row's printed columns do not sum to its `exp`", () => {
-      // Built by hand rather than through buildMatrix: this is the state that cannot occur
-      // while BUCKETS is the single source, and the point is that the PAGE would catch it
-      // if it ever did. A proof that can only run through the happy path proves nothing.
+      // Built by hand rather than through `buildMatrix`, because this state cannot occur
+      // while `BUCKETS` is the single source. The page must still catch it if it ever does.
       const damaged = {
         ...result,
         rows: [{ ...rowOf(result, 'html.img.src'), expected: 9 }],
@@ -695,14 +638,9 @@ describe('the rendering', () => {
 });
 
 describe("the matrix's own arithmetic, proved able to fail", () => {
-  // 🔴 A TABLE THAT DOES NOT ADD UP STILL PRINTS, AND IT PRINTS CONFIDENTLY. Nothing else
-  // in the module would notice a verdict double-counting or naming a bucket that does not
-  // exist — `row[verdict.bucket] += 1` would cheerfully create one.
-  //
-  // ⚠️ And this check exists because I first tried to verify it from OUTSIDE by parsing
-  // the rendered table. The regex silently matched only the rows without a direction
-  // label and reported a one-entry discrepancy that was entirely my parser's. An
-  // instrument verifiable only by scraping its own output is one nobody verifies twice.
+  // A table that does not add up still prints. Nothing else in the module would notice a
+  // verdict counted twice or sent to a bucket that does not exist, since
+  // `row[verdict.bucket] += 1` would create one.
   const row = (over: Partial<MatrixRow>): MatrixRow => ({
     shape: 'html.img.src',
     expected: 3,
@@ -743,8 +681,8 @@ describe("the matrix's own arithmetic, proved able to fail", () => {
   });
 
   it('🔴 goes red when a non-met entry produced no finding', () => {
-    // A miss with nothing to read about it is the silent-skip shape (rule 9) inside the
-    // instrument built to find silent skips.
+    // A miss with no finding to explain it is a silent skip, the bug this tool exists to
+    // find.
     const result = reconcile([row({ met: 2, missed: 1 })], keyOf(3), []);
 
     expect(result.closes).toBe(false);

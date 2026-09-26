@@ -6,9 +6,10 @@ import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 /**
- * The resolver carries six accumulated requirements, and every one of them exists
- * because some real syntax would otherwise be reported as `broken`. The suite is
- * arranged by ladder rung so a failure says which rung is wrong.
+ * Every rung of the resolver's ladder exists because some real syntax would otherwise be
+ * reported as `broken`. Most suites are named for the rung they test, numbered as in
+ * `resolveOne`, so a failure says which rung is wrong. See "The resolver's seven outcomes"
+ * in ARCHITECTURE.md.
  */
 
 // Resolved rather than written literally: on Windows `path.resolve` qualifies a
@@ -36,12 +37,7 @@ const ASSETS: readonly Asset[] = [
   asset('at-root.png'),
 ];
 
-/**
- * The default `exists` port: nothing exists beyond the asset set.
- *
- * Injected rather than imported so the resolver stays pure — the same shape as the
- * `ImageProbe` port — and so a test can decide exactly what is on the disk.
- */
+/** The default `exists` port: nothing exists beyond the asset set. */
 const NOTHING_EXISTS = (): boolean => false;
 
 function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReference {
@@ -60,14 +56,10 @@ function raw(overrides: Partial<RawReference> & { rawPath: string }): RawReferen
 /**
  * Assert the outcome and narrow to it in one step.
  *
- * `Reference` is a union, so `reference?.exclusionReason` does not typecheck — and
- * that error was invisible for as long as test files went unchecked (rule 17). The
- * runtime hazard is the quieter one: an optional chain into the wrong branch yields
- * `undefined`, and `undefined` compares equal to nothing at all, so an assertion can
- * pass by luck rather than by the resolver being right.
- *
- * Throwing here names the resolution we actually got, which is the thing worth
- * knowing when this fails.
+ * `Reference` is a union, so `reference?.exclusionReason` does not typecheck until it is
+ * narrowed. Reading a field the returned branch lacks gives `undefined`, which some
+ * assertions accept, so a test could pass whatever the resolver did. Throwing here names
+ * the resolution that came back.
  */
 function expectResolution<K extends Reference['resolution']>(
   reference: Reference | undefined,
@@ -100,7 +92,7 @@ describe('resolveReferences', () => {
     ])('%s', (_name, rawPath) => {
       const reference = resolveOne({ rawPath, ceiling: 'unsafe' });
 
-      // The whole point: nobody typed a path that points at nothing.
+      // Nobody typed a path that points at nothing, so this is never `broken`.
       expect(reference?.resolution).toBe('dynamic');
       expect(reference?.confidence).toBe('unsafe');
     });
@@ -114,8 +106,8 @@ describe('resolveReferences', () => {
 
   describe('rung 2 — a medium ceiling is a pattern', () => {
     it('links every asset the pattern matches, not just the first', () => {
-      // Linking one would leave the other two looking unreferenced, which is a
-      // false `dead asset` finding — the same failure in a different costume.
+      // Linking only one would leave the other two looking unreferenced, which is a
+      // false `dead asset` finding.
       const reference = resolveOne({ rawPath: './images/${name}.png', ceiling: 'medium' });
 
       expect(reference?.resolution).toBe('resolved-pattern');
@@ -131,9 +123,9 @@ describe('resolveReferences', () => {
       expect(reference?.confidence).toBe('medium');
     });
 
-    it('globs what a + chain ASSEMBLES, never its quote-and-plus source text (R175)', () => {
-      // Globbing the source would match nothing and fall back to `dynamic` — the ceiling
-      // right and the answer silently wrong, which is R106's second half all over again.
+    it('globs the path a + chain assembles, never its quote-and-plus source text', () => {
+      // Globbing the source text would match nothing and fall back to `dynamic`: the
+      // ceiling right and the answer silently wrong.
       const reference = resolveOne({
         rawPath: "./images/' + name + '.png",
         assembledPath: './images/${}.png',
@@ -143,7 +135,7 @@ describe('resolveReferences', () => {
       expect(linkedPaths(reference as Reference)).toHaveLength(3);
     });
 
-    it('reads a static extension off the assembled path when there is one (R175)', () => {
+    it('reads a static extension off the assembled path when there is one', () => {
       // `${EXT}` hides the extension in the source; a same-file constant shows `.json`.
       expect(
         resolveOne({
@@ -199,8 +191,8 @@ describe('resolveReferences', () => {
       ['a subpath import', 'next/image'],
       ['a video', './clip.mp4'],
     ])('%s produces no reference at all', (_name, rawPath) => {
-      // Not a skip under rule 9: it was never a candidate asset reference, and
-      // counting every font in a stylesheet would be pure noise.
+      // Not a silent skip: it was never a candidate asset reference, and counting every
+      // font in a stylesheet would be noise.
       expect(
         resolveReferences([raw({ rawPath })], {
           root: ROOT,
@@ -212,7 +204,8 @@ describe('resolveReferences', () => {
     });
 
     it('drops them before the broken test, which is the point', () => {
-      // Behind the resolution test, every `url(inter.woff2)` becomes a finding.
+      // Below the rungs that turn a miss into a finding, the filter would let every
+      // `url(inter.woff2)` be reported `broken`.
       const references = resolveReferences(
         [raw({ rawPath: './inter.woff2', kind: 'css-url' }), raw({ rawPath: './assets/logo.png' })],
         {
@@ -247,17 +240,16 @@ describe('resolveReferences', () => {
     });
 
     it('falls back to the project root for a root-relative path', () => {
-      // A plain static site serves `/at-root.png` from the root itself. Trying both
-      // can only turn a false `broken` into a correct link — the file has to be
-      // there for a match to happen at all.
+      // A plain static site serves `/at-root.png` from the root itself. Trying both can
+      // only turn a false `broken` into a correct link, since the file has to be there
+      // to match.
       const reference = resolveOne({ rawPath: '/at-root.png' });
       expect(linkedPaths(reference as Reference)).toEqual([join(ROOT, 'at-root.png')]);
     });
 
     it('tries every serving root a monorepo has', () => {
-      // R13. shadcn-ui has twelve `public/` directories and none at its workspace
-      // root, so resolving a file under `apps/v4/` against a single one produced 93
-      // false `broken` findings when measured, and 96 when measured again.
+      // shadcn-ui has twelve `public/` directories and none at its workspace root, so a
+      // file under `apps/v4/` has to resolve against its own app's.
       const monorepo = [asset('apps/v4/public/images/hero.png')];
 
       const [resolved] = resolveReferences(
@@ -274,9 +266,9 @@ describe('resolveReferences', () => {
     });
 
     it('prefers the serving root nearest the referencing file', () => {
-      // Both exist and both match by name. A bundler serves the app the file
-      // belongs to; picking the other silently rewrites the wrong asset in Phase 2,
-      // which nothing downstream of here could catch.
+      // Both exist and both match by name. A bundler serves the app the file belongs
+      // to, and picking the other would rewrite the wrong asset, which nothing
+      // downstream could catch.
       const monorepo = [asset('apps/v4/public/logo.png'), asset('apps/www/public/logo.png')];
 
       const [resolved] = resolveReferences(
@@ -284,8 +276,8 @@ describe('resolveReferences', () => {
         {
           root: ROOT,
           assets: monorepo,
-          // Deliberately listed with the wrong one first: order in the list must not
-          // decide precedence, proximity must.
+          // Listed with the wrong one first: proximity decides precedence, not order in
+          // the list.
           servingRoots: { declared: true, dirs: ['apps/www/public', 'apps/v4/public'] },
           exists: NOTHING_EXISTS,
         },
@@ -297,12 +289,10 @@ describe('resolveReferences', () => {
     });
 
     it('never links to a serving root that is not an ancestor', () => {
-      // The correction to R13's first version, and it was found by measuring rather
-      // than reasoning. "Trying more roots can only turn a false `broken` into a
-      // correct link" holds when every root serves the same URL space; a monorepo's
-      // do not. Trying them all linked 23 shadcn-ui references to *another app's*
-      // asset — a fixture app's `/next.svg` to `apps/v4/public/next.svg` — and
-      // Phase 2 would rewrite that to a file the fixture app does not serve.
+      // Trying more roots only turns a false `broken` into a correct link when every root
+      // serves the same URL space, and a monorepo's do not. Linking a fixture app's
+      // `/next.svg` to `apps/v4/public/next.svg` would point it at a file that app does
+      // not serve, and a rewrite would follow the link.
       const monorepo = [asset('apps/v4/public/next.svg')];
 
       const [resolved] = resolveReferences(
@@ -355,7 +345,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('R15 — a `./` path meant relative to the project root', () => {
+  describe('a `./` path meant relative to the project root', () => {
     it('lets a speculative dot-path fall back to the project root', () => {
       // astro-docs: `path: './src/pages/.../docs-logo.png'` in an object, handed to
       // a filesystem read where the cwd is the project root. Resolved against the
@@ -378,22 +368,17 @@ describe('resolveReferences', () => {
       );
 
       expect(resolved?.resolution).toBe('resolved');
-      // Recorded, not re-derived: Phase 2 must know this link is evidence the asset
-      // is alive and NOT licence to rewrite the string, because the code may join
-      // it to a different base entirely.
-      //
-      // R36 split this from the root-relative fallback. This is the weak one -- a
-      // guess at the base of a string that was already a guess -- and it is the case
-      // R15 was written about. Measured at 10 occurrences across five repositories,
-      // none of them asserted.
+      // Recorded rather than re-derived: the planner must know this link is evidence the
+      // asset is alive and not licence to rewrite the string, because the code may join
+      // it to a different base. It is the weaker of the two root fallbacks, a guess at
+      // the base of a string that was already a guess.
       expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('speculative-root');
     });
 
     it('refuses the same fallback for an asserted import', () => {
-      // `./` in a module system unambiguously means file-relative. Falling back
-      // here would link a genuinely broken import to an unrelated file — a false
-      // link, and a false link costs a broken build where a false broken costs
-      // five minutes.
+      // In a module system `./` means file-relative. Falling back here would link a
+      // broken import to an unrelated file, and a false link costs a broken build where
+      // a false `broken` costs five minutes.
       const [resolved] = resolveReferences(
         [
           raw({
@@ -442,14 +427,11 @@ describe('resolveReferences', () => {
       expect(resolved?.resolution === 'resolved' && resolved.resolvedVia).toBe('project-root');
     });
 
-    it('tells the two root fallbacks apart (R36)', () => {
-      // These were ONE value, and merging them was not free. Measured across the five
-      // validation repositories: the root-relative fallback fires 1,325 times with
-      // 1,267 of them asserted -- `<img src="/favicon.png">` in hand-written HTML,
-      // resolving to a file the site really serves from the project root -- while the
-      // speculative retry fires 10 times, never asserted. Treating a static site's
-      // ordinary reference as the same evidence as a guess-on-a-guess would forgo
-      // rewrites we can safely make, on exactly the repositories in the target market.
+    it('tells the two root fallbacks apart', () => {
+      // The root-relative fallback is usually `<img src="/favicon.png">` in hand-written
+      // HTML, a file the site really serves from its root, while the speculative retry
+      // is a guess on a guess. One value for both would forgo rewrites a static site can
+      // safely take.
       const [rootRelative] = resolveReferences([raw({ rawPath: '/at-root.png' })], {
         root: ROOT,
         assets: ASSETS,
@@ -471,13 +453,13 @@ describe('resolveReferences', () => {
 
       expect(viaOf(rootRelative)).toBe('project-root');
       expect(viaOf(speculative)).toBe('speculative-root');
-      // The assertion that matters is that they DIFFER; pinning each value
-      // separately would still pass if both collapsed back to one name.
+      // The requirement is that the two differ. Pinning each name alone would still pass
+      // after a change that merged them and updated both expectations.
       expect(viaOf(rootRelative)).not.toBe(viaOf(speculative));
     });
   });
 
-  describe('rung 5 — alias-shaped paths are their own bucket', () => {
+  describe('rung 6 — alias-shaped paths are their own bucket', () => {
     it.each([
       ['a webpack-style alias', '@/assets/logo.png'],
       ['a tilde alias', '~/assets/logo.png'],
@@ -485,8 +467,8 @@ describe('resolveReferences', () => {
     ])('%s', (_name, rawPath) => {
       const reference = resolveOne({ rawPath });
 
-      // `import logo from '@/assets/logo.png'` is everywhere in Next and Vite.
-      // Calling it broken would fail the phase's exit criterion on its own.
+      // `import logo from '@/assets/logo.png'` is everywhere in Next and Vite, so calling
+      // it `broken` would put a false finding in nearly every such project.
       expect(reference?.resolution).toBe('unresolved-alias');
       expect(reference?.confidence).toBe('unsafe');
     });
@@ -494,15 +476,12 @@ describe('resolveReferences', () => {
     it.each([
       ['a scoped package asset', '@scope/pkg/logo.png', 'attr'],
       ['a bare specifier in an import', 'some-pkg/logo.png', 'import'],
-    ])('%s is out-of-scope, not unresolved-alias (R32)', (_name, rawPath, kind) => {
-      // ⚠️ These moved buckets. A package's files live in `node_modules`, which the
-      // walk prunes, so no alias config will ever resolve them. `out-of-scope` means
-      // "known, and known not to be an indexed asset", which is exactly this.
-      //
-      // 🔴 **R97 narrowed what counts, and BOTH of these still qualify because both
-      // carry a SUBPATH** — `@scope/pkg` + `/logo.png`, `some-pkg` + `/logo.png`. That
-      // is what makes "names a file inside an npm package" a sentence about a real
-      // file. `@missing/astro.png` has no subpath and is tested below.
+    ])('%s is out-of-scope, not unresolved-alias', (_name, rawPath, kind) => {
+      // A package's files live in `node_modules`, which the walk prunes, so no alias
+      // config will ever resolve them: `out-of-scope` means known, and known not to be an
+      // indexed asset. Both carry a subpath after the package name, which is what makes
+      // "names a file inside an npm package" true. `@missing/astro.png` has none and is
+      // tested below.
       const reference = resolveOne({ rawPath, kind: kind as 'attr' | 'import' });
 
       expect(reference?.resolution).toBe('out-of-scope');
@@ -513,42 +492,29 @@ describe('resolveReferences', () => {
     });
 
     /**
-     * 🔴 **R97 — `out-of-scope` WAS A FALSE CLAIM ON THESE, AND THE ENGINE HAD NO EVIDENCE
-     * FOR IT.** The bucket's own reason reads *"names a file inside an npm package"*: a
-     * positive assertion about a real file, made without ever looking in `node_modules`.
-     * `@missing/astro.png` is a scope and a name and nothing else — **there is no subpath
-     * for that sentence to be about.** The engine was calling it a package only because
-     * the ALIAS LOOKUP one rung above had failed, which is a conclusion drawn from the
-     * absence of evidence for something else.
-     *
-     * ⚠️ **And `unresolved-alias` is now PERMANENT, not pending.** R32's comment said it
-     * promised resolution once aliases landed. They landed — `~/assets/img/logo.png` and
-     * `@img/aliased.png` resolve today, and four `knownGap`s saying otherwise were retired
-     * by measurement. What is left here is *"alias-shaped, with no rule that maps it"*,
-     * which describes the situation and asserts nothing more.
+     * `out-of-scope` would be a false claim here. Its reason says the path names a file
+     * inside an npm package, and `@missing/astro.png` is a scope and a name with no
+     * subpath for that to be about. `unresolved-alias` claims only what is known: the path
+     * is alias-shaped and no declared alias maps it.
      */
     it.each([
       ['a scope and a name, no subpath', '@missing/astro.png', 'import'],
       ['the same as a plain string', '@missing/paths.png', 'string'],
-    ])('%s is unresolved-alias, NOT a package (R97)', (_name, rawPath, kind) => {
+    ])('%s is unresolved-alias, not a package', (_name, rawPath, kind) => {
       const reference = resolveOne({ rawPath, kind: kind as 'import' | 'string' });
 
       expect(reference?.resolution).toBe('unresolved-alias');
     });
 
-    it('🔴 an ORDINARY package import never reaches this question at all', () => {
-      // ⚠️ Written after the obvious version of it FAILED and the failure was the useful
-      // part. `import x from '@scope/pkg'` produces NO reference: the extension filter
-      // upstream drops an extensionless path with a `high` ceiling long before the
-      // package-or-alias decision. So R97's narrowing cannot reclassify the millions of
-      // ordinary scoped imports in the world — they were never in this bucket to lose.
-      // That is the safety argument for the change, and it is a measurement rather than a
-      // claim because this line is what measures it.
+    it('an ordinary package import never reaches this question at all', () => {
+      // `import x from '@scope/pkg'` produces no reference: rung 3 drops an extensionless
+      // path long before the package-or-alias question. So requiring a subpath cannot
+      // reclassify ordinary scoped imports; they never reach this bucket.
       expect(resolveOne({ rawPath: '@scope/pkg', kind: 'import' })).toBeUndefined();
     });
 
-    it('🔴 still calls a scoped package WITH a subpath out-of-scope — the control', () => {
-      // The other direction, and R32's own example. A rule that stopped claiming every
+    it('still calls a scoped package with a subpath out-of-scope', () => {
+      // The control, in the other direction. A rule that stopped claiming every
       // `@scope/…` would pass the cases above and silently give up the bucket entirely.
       const reference = resolveOne({
         rawPath: '@11ty/logo/img/logo-96x96.png',
@@ -597,8 +563,8 @@ describe('resolveReferences', () => {
     }
 
     it('names the rule that excluded the target', () => {
-      // The user ignored `legacy/` and is still referencing it. A broken finding
-      // here would be a false positive, and the exit criterion allows none.
+      // The user ignored `legacy/` and still references it. The file is there, so a
+      // `broken` finding would be false.
       const reference = resolveWithExclusions('../legacy/old.png');
 
       expect(expectResolution(reference, 'out-of-scope').exclusionReason).toBe(
@@ -671,7 +637,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 6 — an asserted literal path that points at nothing is broken', () => {
+  describe('rung 7 — an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });
       expect(reference?.resolution).toBe('broken');
@@ -688,7 +654,7 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('rung 7 — an unresolved speculative candidate is discarded', () => {
+  describe('rung 8 — an unresolved speculative candidate is discarded', () => {
     it('discards a path-shaped string from JSON', () => {
       const reference = resolveOne({
         rawPath: './icons/nope.png',
@@ -851,16 +817,12 @@ describe('resolveReferences', () => {
     });
   });
 
-  describe('a dynamic path whose static suffix rules out an image (R21)', () => {
+  describe('a dynamic path whose static suffix rules out an image', () => {
     /**
-     * `34 references could not be resolved safely` listed 106 entries with no image
-     * among them — and that bucket is what §1.1 shows a user as "references I
-     * couldn't safely rewrite". On `shadcn-ui`, 127 of 187 carried a statically
-     * visible non-image extension.
-     *
-     * The suffix is right there, so no resolution is needed to rule these out. They
-     * are dropped exactly as rung 3 drops `url(inter.woff2)`: never a candidate
-     * asset, so declining one is not a skip under rule 9.
+     * A dynamic path whose visible extension is not an image needs no resolution to rule
+     * out. It is dropped as rung 3 drops `url(inter.woff2)`: it was never a candidate
+     * asset, so dropping it is not a silent skip, and listing it would fill the report's
+     * "could not safely rewrite" list with source files.
      */
 
     it.each([
@@ -876,9 +838,9 @@ describe('resolveReferences', () => {
     it.each(['images/${name}.png', '{{ site.url }}/img/hero.jpg', './assets/${slug}.svg'])(
       'keeps %s, which could still be an asset',
       (rawPath) => {
-        // Not asserted as `dynamic` specifically: one of these glob-matches a real
-        // fixture asset and comes back `resolved-pattern`, which is a better outcome
-        // than the one being tested for. What matters is that it survives.
+        // Not asserted as `dynamic`: `images/${name}.png` matches three of `ASSETS` and
+        // comes back `resolved-pattern`, a better outcome. What matters is that each
+        // survives.
         expect(resolveOne({ rawPath, ceiling: 'medium' })).toBeDefined();
       },
     );
@@ -898,9 +860,9 @@ describe('resolveReferences', () => {
     });
 
     it('does not swallow url($hero), which is what pins rung 3 in place', () => {
-      // ⚠️ The reason this is a separate mechanism rather than moving the extension
-      // filter up the ladder. `$hero` has no static extension, so it is unknown
-      // rather than ruled out, and it must still be reported as dynamic.
+      // Why this is a separate check rather than rung 3 moved up the ladder: `$hero` has
+      // no static extension, so it is unknown rather than ruled out, and must still be
+      // reported as `dynamic`.
       expect(resolveOne({ rawPath: '$hero', ceiling: 'unsafe' })?.resolution).toBe('dynamic');
     });
   });
@@ -934,14 +896,11 @@ describe('serving roots carry where they came from', () => {
 });
 
 /**
- * 🔴 **THE OTHER HALF OF R80(b), AND IT WOULD HAVE LOOKED LIKE THE FIRST HALF FAILING.**
- * `matchPattern` replaced `${…}` and nothing else, so even a correctly-ceilinged
- * `#{$mode}` path would have been globbed for a LITERAL `#{$mode}` and matched nothing —
- * the reference would fall back to `dynamic` and the ceiling change would appear to have
- * done nothing at all. Two halves in two files, which is exactly the split R89 found
- * last time this rule went unwired.
+ * A `medium` ceiling on a SCSS or Less path helps only if the glob treats `#{…}` and
+ * `@{…}` as holes, as it does `${…}`. Otherwise the path is matched literally, finds
+ * nothing and falls back to `dynamic`, and the ceiling has no effect.
  */
-describe('R80(b) — the glob understands all three interpolation syntaxes', () => {
+describe('the glob understands all three interpolation syntaxes', () => {
   it.each([
     ['JavaScript', './images/${name}.png'],
     ['SCSS', './images/#{$name}.png'],
@@ -949,8 +908,8 @@ describe('R80(b) — the glob understands all three interpolation syntaxes', () 
   ])('%s', (_name, rawPath) => {
     const reference = resolveOne({ rawPath, ceiling: 'medium' });
 
-    // one.png, two.png and three.png -- all three, deliberately. Linking only the first
-    // would leave the rest looking unreferenced, which is a false `dead asset`.
+    // one.png, two.png and three.png, all three. Linking only the first would leave the
+    // rest looking unreferenced, which is a false `dead asset` finding.
     expect(reference?.resolution).toBe('resolved-pattern');
     expect(reference?.resolution === 'resolved-pattern' ? reference.resolvedPaths.length : 0).toBe(
       3,
@@ -958,9 +917,8 @@ describe('R80(b) — the glob understands all three interpolation syntaxes', () 
   });
 
   it('falls back to dynamic when the pattern names nothing — never broken', () => {
-    // The safety property that makes the ceiling change costless: a `medium` reference
-    // can only gain links or stay dynamic. It can never become a `broken` finding about
-    // a path the author did not write.
+    // A `medium` reference can only gain links or stay `dynamic`. It never becomes a
+    // `broken` finding about a path the author did not write.
     const reference = resolveOne({ rawPath: './nothing/#{$x}.png', ceiling: 'medium' });
 
     expect(reference?.resolution).toBe('dynamic');

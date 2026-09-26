@@ -90,12 +90,9 @@ describe('isVectorExtension', () => {
   );
 
   /**
-   * The subset relation R22 rests on, as a check rather than a comment.
-   *
-   * A vector we do not track as an image would never be discovered as an asset, so
-   * it could never produce the unused finding the report demotes -- the demotion
-   * would silently apply to nothing. Adding a format to `VECTOR_EXTENSIONS` and
-   * forgetting `IMAGE_EXTENSIONS` fails here instead of in a report nobody rereads.
+   * A vector not tracked as an image is never discovered as an asset, so the report's
+   * handling of unused vectors would silently apply to nothing. Adding a format to
+   * `VECTOR_EXTENSIONS` and forgetting `IMAGE_EXTENSIONS` fails here.
    */
   it('only names formats the engine tracks as images', () => {
     for (const extension of VECTOR_EXTENSIONS) {
@@ -116,8 +113,8 @@ describe('compareStrings', () => {
   });
 
   it('sorts uppercase before lowercase, unlike a locale comparator', () => {
-    // The point of the rule: `['a', 'B'].sort(localeCompare)` is locale-dependent,
-    // so the same repo would produce differently ordered reports on two machines.
+    // `['a', 'B'].sort(localeCompare)` depends on the locale, so the same repository
+    // would produce differently ordered reports on two machines.
     expect(['b.png', 'A.png'].sort(compareStrings)).toEqual(['A.png', 'b.png']);
   });
 
@@ -131,17 +128,9 @@ describe('compareStrings', () => {
 
 describe('imageFilenameCandidates', () => {
   /**
-   * R26's other half, and the one that restores the claim `dead` makes.
-   *
-   * The pattern used to be `[\w@.\-]+\.(ext)` with no space, so for an asset named
-   * `Firing Practice.webp` the sweep extracted only `Practice.webp` — which never equals
-   * that asset's basename, so **no mention was ever recorded and no hedge produced.**
-   *
-   * That is why R26's misses came back as confident `dead` rather than `possibly-dead`:
-   * the adapter missed the reference, and R8's sweep — the mechanism whose entire job is
-   * catching what the adapter missed — had the identical hole. Fixing only the adapter
-   * would have left `dead` meaning *"appears nowhere in your codebase"* solely for
-   * filenames without spaces.
+   * A token that stopped at a space would find only `Practice.webp` in
+   * `Firing Practice.webp`, which never equals that asset's name. The sweep would record
+   * no mention, and an asset whose name appears in the text would be reported `dead`.
    */
   function tokens(text: string): string[] {
     return [...imageFilenameCandidates(text)].map(([token]) => token);
@@ -156,14 +145,9 @@ describe('imageFilenameCandidates', () => {
   });
 
   /**
-   * ⚠️ The regression this generator exists to prevent.
-   *
-   * Widening the pattern alone would have traded one hole for another: with spaces
-   * allowed, the prose `Remove workspace.png` becomes a single token, which no longer
-   * matches an asset named `workspace.png` — so a mention that worked before would be
-   * **lost**. Measured: 87 strings of that shape in `shadcn-ui` alone. Every suffix
-   * beginning after a space is therefore yielded too, which makes the change strictly
-   * additive.
+   * With spaces allowed, the prose `Remove workspace.png` would be one token and no longer
+   * match an asset named `workspace.png`. So every suffix that starts after a space is
+   * yielded too, and a name found without spaces is still found.
    */
   it('also yields the suffixes, so nothing that matched before stops matching', () => {
     expect(tokens('aria-label="Remove workspace.png"')).toEqual(
@@ -172,9 +156,9 @@ describe('imageFilenameCandidates', () => {
   });
 
   it('yields every length of a multi-word token, shortest first', () => {
-    // Shortest first because the cheap pattern finds the tail and the extension walks
-    // leftwards from it. Both callers key on the token, so the order is not load-bearing —
-    // it is asserted so a change to it is deliberate rather than incidental.
+    // Shortest first because the pattern finds the tail and the generator walks leftwards
+    // from it. Both callers key on the token, so the order does not matter; it is
+    // asserted so that changing it is a decision rather than an accident.
     expect(tokens('"Annual Sports Day.jpg"')).toEqual([
       'Day.jpg',
       'Sports Day.jpg',
@@ -196,8 +180,8 @@ describe('imageFilenameCandidates', () => {
   });
 
   it('does not run away across a whole sentence', () => {
-    // Bounded at six words: a real filename has one to four, and this runs over every byte
-    // of every unread file while (g) is already failing.
+    // At most six words are added to the left of a match: a real file name has one to
+    // four in all, and this runs over every byte of every unread file.
     const all = tokens('one two three four five six seven eight nine.png');
     expect(all[0]).toBe('nine.png');
     expect(all.at(-1)).toBe('three four five six seven eight nine.png');

@@ -1,19 +1,8 @@
 /**
- * The shape ladder, at the rungs R89 examined — and at the two it did NOT change.
- *
- * The ladder is `shapes.ts`'s rule applied to one function: a shape names the narrowest
- * thing whose breakage would take out that reference and not others. In `shapeOf` that
- * becomes an order — interpolation, then the constructs CSS owns, then the host, then
- * the dialect and the quoting.
- *
- * 🔴 **Three entries in the coverage key disagreed with this code and the CODE WAS RIGHT
- * in all three, which is why these are assertions about the ladder rather than fixes.**
- * The key had `linear-gradient(...), url(...)` and `image-set(url(...) 1x)` both keyed
- * `css.url.nested`. The first is not nested at all — nothing recurses to reach a url at
- * the top level of a comma list — and the second is an image-set, which the key itself
- * says thirty lines earlier. The stated cause on record was *“the ladder order is
- * wrong”*, and reordering it would have changed NEITHER: `position.nested` is already
- * `false` in both. A fix that cannot work, with a message claiming it did.
+ * The shape ladder. A shape names the narrowest thing whose breakage would take out that
+ * reference and no others, which in the CSS adapter's `shapeOf` becomes an order:
+ * interpolation, then the constructs CSS owns, then the host, then the dialect and the
+ * quoting. See "How a shape is chosen" in ARCHITECTURE.md.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -31,9 +20,9 @@ function shapesOf(references: readonly RawReference[]): string[] {
 
 describe('css.url.nested means the value walker RECURSED to reach it', () => {
   it('🔴 a url() at the top level of a comma-separated list is NOT nested', () => {
-    // The stray. `linear-gradient(...)` is a sibling, not a parent: the url is a direct
-    // child of the value, so it fails with every other plain double-quoted url() and
-    // not with the cross-fade pair below.
+    // `linear-gradient(...)` is a sibling, not a parent: the url is a direct child of the
+    // value, so it breaks with every other plain double-quoted url(), not with the
+    // cross-fade pair below.
     const source = '.a { background-image: linear-gradient(red, red), url("/img/banner.png"); }';
 
     expect(shapesOf(css(source))).toEqual(['css.url.double']);
@@ -54,8 +43,6 @@ describe('css.url.nested means the value walker RECURSED to reach it', () => {
   });
 
   it('🔴 image-set wins over nesting, and the walker never marks it nested anyway', () => {
-    // The second stray. Both readings were arguable from the key's prose; neither is
-    // arguable from the code, which recurses into image-set WITHOUT setting `nested`.
     const source = '.a { mask-image: image-set(url(/icons/mask.svg) 1x); }';
 
     expect(shapesOf(css(source))).toEqual(['css.image-set']);
@@ -69,7 +56,7 @@ describe('css.url.nested means the value walker RECURSED to reach it', () => {
   });
 });
 
-describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 group B)', () => {
+describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so', () => {
   const styled = (value: string) =>
     javascriptAdapter.findReferences({
       file: '/project/src/styled.ts',
@@ -77,10 +64,8 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 g
     });
 
   it('🔴 globs one unknown segment in the name, exactly as a template literal elsewhere does', () => {
-    // This block used to assert the opposite — `js.cssinjs`, `unsafe`, and the
-    // PLACEHOLDER `/theme-/*---*/.png` as the path — and called the key's
-    // `resolved-pattern` the key's error. R167 ruled the key right: three real files
-    // match, and `assembledPathIsGlobbable` had simply never been asked on this path.
+    // The CSS pass sees a comment where the `${}` was and calls the url dynamic, so the
+    // JavaScript adapter asks `assembledPathIsGlobbable` itself.
     const [reference] = styled('/theme-${mode}.png');
 
     expect(reference?.shape).toBe('js.template.pattern');
@@ -88,9 +73,9 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 g
   });
 
   it('🔴 carries the SOURCE text as its path, so the range invariant holds again', () => {
-    // The placeholder is the CSS pass's device, not the file's text. As a path it broke
-    // `source.slice(start, end) === rawPath` — and the resolver's pattern matcher reads
-    // `${…}`, never `/*---*/`.
+    // The placeholder is the CSS pass's device, not the file's text. As a path it would
+    // break `source.slice(start, end) === rawPath`, and the resolver's pattern matcher
+    // reads `${…}`, never `/*---*/`.
     const text = "const A = styled.div`\n  background-image: url('/theme-${mode}.png');\n`;\n";
     const [reference] = javascriptAdapter.findReferences({ file: '/project/src/styled.ts', text });
 
@@ -98,7 +83,7 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 g
     expect(text.slice(reference?.start, reference?.end)).toBe(reference?.rawPath);
   });
 
-  it('🔴 does NOT glob a leading interpolation — the directory varies (R78 Q3)', () => {
+  it('does not glob a leading interpolation, because the directory varies', () => {
     // The refuting control: a pass that globbed every interpolated url would sweep
     // `*/theme-light.png` across every app in a monorepo.
     const [reference] = styled('${base}/theme-light.png');
@@ -117,7 +102,7 @@ describe('a ${} inside CSS-in-JS is a pattern when the glob rule says so (R167 g
   });
 });
 
-describe('R80(b) reaches the CEILING, not just the label (R89)', () => {
+describe('the one-unknown-segment rule sets the ceiling, not just the shape', () => {
   const template = (value: string) =>
     javascriptAdapter.findReferences({
       file: '/project/src/paths.ts',
@@ -131,18 +116,16 @@ describe('R80(b) reaches the CEILING, not just the label (R89)', () => {
     expect(reference?.ceiling).toBe('medium');
   });
 
-  it('🔴 REFUSES to glob a name with two, which is the behaviour R80(b) ruled', () => {
-    // The test that would have failed. Correcting `templateShape` alone made the shape
-    // agree with the key while the reference went on claiming `icon-192.png` and
-    // `icon-512.png` — a relabelling that reads as a fix. `resolveOne` globs on the
-    // CEILING and never looks at the shape.
+  it('refuses to glob a name with two unknown segments', () => {
+    // `resolveOne` globs on the ceiling and never looks at the shape, so a fix to the shape
+    // alone would leave the reference claiming `icon-192.png` and `icon-512.png`.
     const [reference] = template('/icons/${theme}-${size}.png');
 
     expect(reference?.shape).toBe('js.template.dynamic');
     expect(reference?.ceiling).toBe('unsafe');
   });
 
-  it('says why in the note, because rule 9 makes a silent refusal a P0', () => {
+  it('says why in the note, because every refusal reaches the report with a reason', () => {
     expect(template('/icons/${theme}-${size}.png')[0]?.note).toContain(
       'at most one unknown part in the file name',
     );

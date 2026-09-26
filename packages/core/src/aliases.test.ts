@@ -93,15 +93,15 @@ describe('loadAliases — tsconfig', () => {
       'packages/ui/tsconfig.json': '{ "extends": "../../tsconfig.base.json" }',
     });
 
-    // The inherited rule is anchored at the BASE config's directory, which is what
-    // TypeScript does, so `~/x.png` from the package reaches the root's `shared/`.
+    // The inherited rule is anchored at the base config's directory, as TypeScript does,
+    // so `~/x.png` from the package reaches the root's `shared/`.
     expect(expandAlias(map, '~/x.png', from('packages/ui/a.ts'))).toContain(from('shared/x.png'));
   });
 
   it('follows an extends into node_modules by name, without walking it', async () => {
-    // R33: the prune is a property of the asset graph, not a filesystem ban. Note the
-    // config inside node_modules is NOT in the `files` list — only the explicit
-    // `extends` target makes it reachable, which is the distinction being tested.
+    // Pruning `node_modules` keeps it out of the asset graph; it does not forbid reading
+    // it. The config there is not in the `files` list, so only the explicit `extends`
+    // makes it reachable, which is what this tests.
     const { readFile, exists } = fs({
       'tsconfig.json': '{ "extends": "astro/tsconfigs/strict" }',
       'node_modules/astro/tsconfigs/strict.json':
@@ -147,9 +147,9 @@ describe('loadAliases — tsconfig', () => {
 describe('loadAliases — Vite', () => {
   it('reads a string-literal alias as a PREFIX replacement, not an exact match', async () => {
     // Vite and tsconfig mean different things by a key. A tsconfig `paths` key is a
-    // pattern where `*` says "prefix"; a Vite string key is *always* a prefix
-    // replacement, so `{'@': './src'}` turns `@/x.png` into `./src/x.png`. Treating
-    // it as an exact match would silently resolve nothing at all.
+    // pattern where `*` says "prefix"; a Vite string key is always a prefix replacement,
+    // so `{'@': './src'}` turns `@/x.png` into `./src/x.png`. Treating it as an exact
+    // match would silently resolve nothing at all.
     const map = await load({
       'vite.config.ts': '{ resolve: { alias: { "@": "./src" } } }',
     });
@@ -157,7 +157,7 @@ describe('loadAliases — Vite', () => {
     expect(expandAlias(map, '@/x.png', from('a.tsx'))).toEqual([from('src/x.png')]);
   });
 
-  it('🔴 refuses to evaluate a computed alias, and says so with a line (R33)', async () => {
+  it('refuses to evaluate a computed alias, and says so with a line', async () => {
     // Every `resolve.alias` in the validation corpus is exactly this shape. Executing
     // it would mean running a config file from a repository the user did not write.
     const map = await load({
@@ -177,9 +177,9 @@ describe('loadAliases — Vite', () => {
   });
 
   it('reports a real module-shaped config rather than pretending it had no aliases', async () => {
-    // The ordinary case: a config that is a module, not a bare object. Finding the
-    // alias object inside it means evaluating `defineConfig`, which is the line this
-    // module does not cross — so it is reported, not silently skipped (rule 9).
+    // The ordinary case: a config that is a module, not a bare object. Finding the alias
+    // object inside it means following imports and `defineConfig`, which this module
+    // does not do, so the config is reported rather than silently skipped.
     const map = await load({
       'vite.config.ts': [
         'import { defineConfig } from "vite";',

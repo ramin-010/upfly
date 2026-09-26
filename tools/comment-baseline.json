@@ -249,13 +249,6 @@
       "emphasis": 7,
       "emoji": 6
     },
-    "packages/core/src/adapters/dispositions.test.ts": {
-      "internal-reference": 6,
-      "em-dash": 5,
-      "emphasis": 1,
-      "emoji": 3,
-      "long-comment": 1
-    },
     "packages/core/src/adapters/html.test.ts": {
       "internal-reference": 19,
       "em-dash": 22,
@@ -279,82 +272,8 @@
       "emphasis": 11,
       "emoji": 4
     },
-    "packages/core/src/adapters/shape-ladder.test.ts": {
-      "internal-reference": 2,
-      "em-dash": 8,
-      "emoji": 1,
-      "long-comment": 3
-    },
-    "packages/core/src/aliases.test.ts": {
-      "internal-reference": 1,
-      "em-dash": 2,
-      "emphasis": 1
-    },
-    "packages/core/src/conventions.test.ts": {
-      "internal-reference": 2,
-      "em-dash": 3,
-      "emphasis": 2,
-      "emoji": 1
-    },
-    "packages/core/src/could-hold-reference.test.ts": {
-      "internal-reference": 4,
-      "em-dash": 2,
-      "emphasis": 2,
-      "emoji": 2
-    },
-    "packages/core/src/coverage-matrix.test.ts": {
-      "internal-reference": 20,
-      "em-dash": 25,
-      "emphasis": 6,
-      "emoji": 11,
-      "long-comment": 3
-    },
-    "packages/core/src/infer-serving-roots.test.ts": {
-      "internal-reference": 6,
-      "em-dash": 7,
-      "emphasis": 2,
-      "emoji": 3
-    },
-    "packages/core/src/paths.test.ts": {
-      "internal-reference": 4,
-      "em-dash": 5,
-      "emphasis": 3,
-      "emoji": 1
-    },
-    "packages/core/src/resolve.test.ts": {
-      "internal-reference": 16,
-      "em-dash": 16,
-      "emphasis": 5,
-      "emoji": 7,
-      "long-comment": 2
-    },
-    "packages/core/src/scan.test.ts": {
-      "internal-reference": 5,
-      "em-dash": 7,
-      "emphasis": 3,
-      "emoji": 2
-    },
-    "packages/core/src/serving-roots.test.ts": {
-      "internal-reference": 8,
-      "em-dash": 4,
-      "emoji": 1
-    },
-    "packages/core/src/shapes.reconcile.test.ts": {
-      "internal-reference": 6,
-      "em-dash": 16,
-      "emphasis": 3,
-      "emoji": 7,
-      "long-comment": 14
-    },
     "packages/core/src/shapes.ts": {
       "output-reference": 4
-    },
-    "packages/core/src/sweep.test.ts": {
-      "internal-reference": 2,
-      "em-dash": 5,
-      "emphasis": 4,
-      "emoji": 1,
-      "long-comment": 2
     }
   }
 }

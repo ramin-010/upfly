@@ -28,10 +28,9 @@ describe('couldHoldReference', () => {
     expect(couldHoldReference('const path = "./HERO.PNG";')).toBe(true);
   });
 
-  // R162's found risk: `url()` asserts a reference position even with a dynamic
-  // argument and no extension anywhere in the file (css.ts:585, ceiling: 'unsafe',
-  // reported today as a `dynamic` finding under rule 9). A file with none of the
-  // extension tokens but a bare `url($var)` must not be skipped.
+  // `url()` marks a reference position even when its argument is a variable and the file
+  // holds no extension. Such a reference is reported as `dynamic`, so a file whose only
+  // token is `url($var)` must still be parsed.
   it('is true for a dynamic CSS url() with no extension anywhere', () => {
     expect(couldHoldReference('.icon { background: url($icon-path); }')).toBe(true);
   });
@@ -54,19 +53,11 @@ describe('couldHoldReference', () => {
     );
   });
 
-  /**
-   * 🔴 **R164/R165: the extension does not have to be spelled literally.**
-   *
-   * `resolve.ts` tests the extension against every spelling `spellingsOf` produces, so
-   * each of these resolves to a real asset while holding no `.png` anywhere. Every one of
-   * them was SKIPPED by the first version of this module — a reference the markdown
-   * adapter finds, dropped with no error and no report line.
-   *
-   * ⚠️ **The last two are the ones R164's ruled token list would still have missed**, and
-   * they are here because the lesson of that ruling is that fixing the spellings somebody
-   * probed is not the same as fixing the class they belong to.
-   */
-  describe('an encoded extension still has to be parsed (R164, R165)', () => {
+  // `resolve.ts` tests the extension against every spelling `spellingsOf` produces, so each
+  // of these resolves to a real asset with no `.png` in the text. Skipping the file would
+  // drop a reference the markdown adapter finds, with no error and no report line.
+  // Percent-decoding applies to any character, so some cases escape letters of the extension.
+  describe('an encoded extension still has to be parsed', () => {
     it.each([
       ['a decimal entity dot', '![alt](hero&#46;png)'],
       ['a hex entity dot', '![alt](hero&#x2E;png)'],
@@ -79,13 +70,10 @@ describe('couldHoldReference', () => {
     });
   });
 
-  /**
-   * A templated destination is a reference position with no static extension. It reaches
-   * the report as `dynamic` (`ceiling: 'unsafe'`, and `provablyNotAnAsset` cannot rule it
-   * out without an extension), so skipping the file deletes a required report line —
-   * the `url($icon-path)` case in another dialect.
-   */
-  describe('a templated destination still has to be parsed (R165)', () => {
+  // A templated destination is a reference position with no static extension. It is
+  // reported as `dynamic`, since `provablyNotAnAsset` cannot rule it out without an
+  // extension, so skipping the file would drop that report line.
+  describe('a templated destination still has to be parsed', () => {
     it.each([
       ['Handlebars/Vue/Jinja', '![logo]({{ site.logo }})'],
       ['a Liquid tag', '![logo]({% asset_path logo %})'],
