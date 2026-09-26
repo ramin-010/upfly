@@ -460,12 +460,7 @@
       "long-comment": 14
     },
     "packages/core/src/shapes.ts": {
-      "internal-reference": 25,
-      "em-dash": 33,
-      "emphasis": 31,
-      "emoji": 27,
-      "long-comment": 58,
-      "output-reference": 29
+      "output-reference": 4
     },
     "packages/core/src/sweep.test.ts": {
       "internal-reference": 2,

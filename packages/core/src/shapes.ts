@@ -1,124 +1,54 @@
 /**
- * The reference-shape vocabulary: what KIND of syntax a reference was written in.
+ * The reference-shape vocabulary: which construct a reference was written in.
  *
- * A reference already carries an *outcome* — did it resolve, is it broken, was it
- * discarded. This says what it IS, so the two can be crossed: *“`srcset` candidates
- * are 5 of 5”* means nothing until you also know *“and `srcset`-class references are
- * 94% of this repository's total”* (R76).
+ * A reference's resolution says what happened to it; its shape says what it is, so the
+ * coverage matrix can count outcomes per construct. The coverage tree's answer key
+ * (`coverage-tree/key/coverage-key.json`) defines the list, and this file holds a second copy.
+ * Neither can import the other: the key's checker, `check-key.mjs`, imports only `node:`
+ * modules and files beside it, so the key is never certified by the engine it measures, and
+ * a shipped package must not depend on a test fixture. `shapes.reconcile.test.ts` fails when
+ * the two copies differ in either direction.
  *
- * 🔴 **THERE IS ONE LIST AND THIS IS NOT IT.** The list is DEFINED by the coverage
- * tree's `shape` field, in `coverage-tree/key/coverage-key.json`, and this file adopts
- * it. It is a second physical copy for one reason only: `check-key.mjs` fails its own
- * run if it imports anything outside `node:` and `./`, which is what stops the key
- * being certified by the engine it exists to measure (R72). It therefore *cannot*
- * import this file, and this file must not import the key — a shipping package would
- * be depending on a test fixture.
- *
- * ✅ **What makes two copies one list is `shapes.reconcile.test.ts`, which fails in
- * BOTH directions** — a shape here that the tree does not declare, and a shape the
- * tree declares that is missing here. Divergence is a red test rather than a
- * convention, which is the only answer to 6a-decies that has ever held.
- *
- * ## How a shape is chosen, and why it is not one axis
- *
- * The vocabulary mixes three things, and that is deliberate rather than sloppy:
- *
- * - **host** — the file or construct the reference sits in (`html.*`, `scss.*`, `md.*`)
- * - **construct** — the syntactic position (`img.src`, `url()`, `import`)
- * - **disposition** — what the path itself is (`path.absolute-url`, `decoy.comment`)
- *
- * 🔴 **The rule that picks between them: a shape names the NARROWEST THING WHOSE
- * BREAKAGE WOULD TAKE OUT THAT REFERENCE AND NOT OTHERS.** That is what makes a row
- * worth printing — it isolates one thing that can independently fail.
- *
- * So a `url()` inside a comment is `css.url.in-comment` **in every host**, because
- * comment handling is the CSS reader's job and breaks identically in `.css`, `.scss`,
- * `.less` and a `<style>` element. But a plain `url()` inside `<style>` is
- * `html.style.element`, because what would take it out is HTML's *extraction* of the
- * CSS, not the CSS parse. Both axes matter; which one wins is a judgement made per
- * shape and recorded in `why`.
- *
- * ⚠️ **This is why the vocabulary cannot be derived by a function**, and why the
- * adapters declare their shape at the point of emission instead of having one computed
- * for them. 430 of the tree's 432 entries already obeyed this rule when it was written
- * down; the two that did not were corrected to it (R82).
+ * A shape names the narrowest thing whose breakage would take out that reference and no
+ * others. See "Reference shapes" in ARCHITECTURE.md.
  */
 
 /**
- * What the ENGINE AS A WHOLE reports for this shape — and if nothing, whether that is
- * a gap or the correct answer.
+ * What the engine as a whole reports for a shape and, when it reports nothing, whether that
+ * is a gap or the correct answer.
  *
- * 🔴 **The matrix must not print a zero the same way in all three cases**, which is the
- * whole reason this field exists. *“0 of 6, no reader”* is a gap worth acting on;
- * *“0 of 3”* for a decoy is the engine working exactly as intended, and printing it as
- * a failure would train a reader to ignore the column.
- *
- * 🔴 **THIS FIELD IS THE PIPELINE'S READING, NOT THE ADAPTER'S, and conflating the two
- * cost a day of measurement (R87).** `decoy.typo` is `declined` because nothing survives
- * to the report — but an adapter *does* emit all five of them, as `js.string.literal`,
- * and the resolver discards them once it can see that the file is absent. Read as an
- * adapter prediction the field is simply false there. **Which layer declines is recorded
- * separately, in `adapterEmitsAs`** — see its own note, because the distinction decides
- * whether a shape disagreement is a defect or arithmetic.
+ * The coverage matrix counts each class apart and never adds them together, so a zero reads
+ * differently for a missing reader and for a decoy correctly ignored. Only `engine` rows form
+ * the claimed population, where a miss is a bug. The class describes what reaches the report,
+ * not what an adapter emits: an adapter emits a `decoy.typo` as a `js.string.literal`, and the
+ * resolver discards it once it finds no such file. `ShapeDeclaration.adapterEmitsAs` records
+ * where the two layers differ.
  */
 export type ShapeEmission =
   /** The engine reports a reference here. A row counts found against expected. */
   | 'engine'
   /**
-   * Nothing reads this today, so the row is zero and the key's `knownGap` names the
-   * ruling that explains it. R75's `.vue 0 of 6 — no reader` is this.
+   * No adapter reads this yet, so a zero is expected and each key entry's `knownGap`
+   * records the missing reader. References inside `.vue` files are an example.
    */
   | 'gap'
   /**
-   * The text is NOT A LIVE PATH TO A FILE, so reporting nothing is correct. A decoy, a
-   * data URI, a path inside a code fence, an `url(#grain)` naming an element.
-   * 🔴 **Here a NON-zero count is the failure**, so the matrix reads this row backwards.
-   *
-   * ⚠️ It says nothing about *where* the refusal happens. An adapter may decline to
-   * emit at all, or emit and have the resolver discard it; `adapterEmitsAs` is what
-   * separates those.
+   * The text is not a live path to a file, so reporting nothing is correct: a decoy, a data
+   * URI, a path inside a code fence, a `url(#grain)` naming an element. A count above zero is
+   * the failure. An adapter may decline to emit it at all, or emit it under a broader shape
+   * for the resolver to discard, which `adapterEmitsAs` records.
    */
   | 'declined'
   /**
-   * 🔴 **A REAL FILE AT THE OTHER END THAT WE DELIBERATELY DO NOT CLAIM.** A SCOPE
-   * DECISION, and the value exists because without it a scope decision is
-   * indistinguishable from a defect (R92).
+   * A real, reachable file the engine chooses not to index: an absolute URL, an
+   * `<iframe src>` naming a document, a stylesheet `<link>`. Reporting nothing is a scope
+   * decision, not a defect. Text that is not a live path at all is `declined` instead.
    *
-   * **The test, written down so it is not re-argued per shape:** is there a real file
-   * there, reachable, that the engine chooses not to index? Then `unclaimed`. Is the text
-   * not a live path at all? Then `declined`. R32's own words for the first case are
-   * *“real, reachable, not ours”* — an absolute URL, an `<iframe src>` naming a document,
-   * a `rel=stylesheet` link.
-   *
-   * ⚠️ **THE COST OF NOT HAVING IT, measured:** eight tree entries — a `.vtt`, a `.mp3`,
-   * an `.ogg`, two `.pdf`s, a `.mp4`, a `.woff2` — read as eight matrix misses, and the
-   * engine was doing exactly what R78 Q1 ruled. A row that reads as a failure and is a
-   * choice trains a reader to discount the column, which is R75's objection.
-   *
-   * ✅ **AND IT GIVES THE MATRIX AN HONEST DENOMINATOR.** `engine` + `gap` is the
-   * population we CLAIM, and that is the only population where a miss is a bug. Rows that
-   * are `declined` or `unclaimed` read in the opposite direction and must never be summed
-   * with the others.
-   *
-   * ⚠️ **A CLAIMED SHAPE CAN STILL HOLD UNCLAIMED TARGETS, and that is an ENTRY-level
-   * fact rather than a shape-level one.** `html.video.src` is claimed — the tree has one
-   * pointing at a `.png` that resolves — while every `.mp4` in it is out of scope. The
-   * shape stays `engine`; the individual entry says `expect: out-of-scope`. Conflating
-   * the two levels is what produced the eight.
+   * The class belongs to the shape, while each tree entry keeps its own expected outcome, so
+   * a claimed shape can hold an unclaimed target: `html.video.src` is `engine`, and its
+   * entries naming an `.mp4` are keyed `expect: out-of-scope`.
    */
   | 'unclaimed';
-
-// 🔴 THERE WAS A FOURTH VALUE, `mixed`, AND IT IS DELIBERATELY GONE (R83).
-//
-// It existed for one shape — `html.link.href.other`, whose four entries split 1 emitted
-// / 3 declined — and it meant *“nobody has ruled on this”* rather than naming a
-// behaviour. The ruling split that shape three ways instead, so every row became
-// homogeneous and the value had nothing left to describe.
-//
-// ⚠️ It is removed from the union rather than left unused, because a placeholder that
-// outlives its question becomes furniture and the next ambiguous shape would reach for
-// it instead of being ruled on. That is the same hazard `UNTESTED_SHAPE_IDS` is guarded
-// against by the reconciliation going red when a debt is quietly paid.
 
 export interface ShapeDeclaration {
   readonly id: string;
@@ -128,59 +58,38 @@ export interface ShapeDeclaration {
   readonly spec: string;
   readonly emission: ShapeEmission;
   /**
-   * Why this emission class, and — where the choice was not obvious — which axis won
-   * and what would have to break for this row to go red on its own.
+   * What the construct is and why the engine emits, declines or leaves it, with any gap that
+   * remains. `shapes.reconcile.test.ts` requires one on every `declined` or `unclaimed` row,
+   * except a `declined` row in the `decoy.*` or `path.*` family.
    */
   readonly why?: string;
   /**
-   * 🔴 **THE BROADER SHAPES AN ADAPTER EMITS WHERE IT CANNOT NARROW TO THIS ONE, because
-   * the distinction needs a fact only the RESOLVER has.** Absent means an adapter always
-   * names the shape itself.
+   * The broader shapes an adapter emits in place of this one, because telling them apart
+   * needs a fact only the resolver has. Absent means an adapter always names this shape
+   * itself. It can cover part of a shape: inside `import` or `require()` a bare specifier is
+   * module syntax and the adapter names `path.bare-specifier`, while the same text in a plain
+   * string is emitted as `js.string.literal`.
    *
-   * ⚠️ **“Where it cannot”, not “never can”** — and the wording is load-bearing. Most
-   * shapes here are wholly out of an adapter's reach; `path.bare-specifier` is not. Inside
-   * `import`/`require` a bare string is module-resolution syntax and the adapter decides
-   * it; in an ordinary string literal the identical text decides nothing. One shape, one
-   * construct-dependent boundary, so the field lists what is emitted on the far side of it
-   * rather than claiming the whole shape is unreachable.
-   *
-   * **Why this field exists (R87).** `ShapeEmission` describes the engine's answer; this
-   * describes which layer produces it. Without the split, a shape audit joining the key
-   * against the adapters reports 22 of its 31 disagreements as defects when every one of
-   * them is correct behaviour: a `decoy.typo` cannot be told from a real path until
-   * something checks the disk, `js.import.alias.mapped` needs the `tsconfig` paths table,
-   * `json.webmanifest.other` needs array context the flat scanner does not parse, and
-   * `pattern.partial` needs to know which of the files a pattern names actually exist.
-   *
-   * ⚠️ **It is declared rather than listed at the call site on purpose.** The alternative
-   * — the measuring harness carrying a hand-written roster of 22 exempt entries — rots the
-   * first time a shape moves layer, and rots SILENTLY, because an exemption that is no
-   * longer needed still suppresses. Declared here it is one fact per shape, reconciled
-   * with the tree, and `shapes.reconcile.test.ts` fails when an id in here is not a real
-   * shape. **The matrix reads this field; it does not keep its own list.**
-   *
-   * 🔴 **This is R83's flaw one layer along.** `mixed` meant *“two behaviours nobody
-   * separated”* within a shape; this separates two LAYERS within a shape, and both
-   * present the same way — a row that reads as a miss and is not one.
+   * When the engine's shape and the key's disagree, the coverage matrix reads this field to
+   * tell a correct difference of layer from a defect, so the harness keeps no exemption list
+   * of its own. `shapes.reconcile.test.ts` checks that each id names another real shape.
    */
   readonly adapterEmitsAs?: readonly string[];
   /**
-   * The resolver fact the distinction needs, in a few words — *“whether the file
-   * exists”*, *“the tsconfig paths table”*. Required alongside `adapterEmitsAs`: the
-   * field is only believable if it names what the adapter cannot see, and *that* claim
-   * is the one a reader has to be able to check against the code.
+   * The fact the adapter cannot see, in a few words, such as "whether the file exists".
+   * Required alongside `adapterEmitsAs`, so each exemption names something a reader can
+   * check against the code.
    */
   readonly needsToSee?: string;
 }
 
 /**
- * The vocabulary. Order follows the coverage tree's own, so a diff between the two
- * reads cleanly.
+ * Every reference shape the engine knows, and what it reports for each.
  *
- * ⚠️ `as const satisfies` rather than a type annotation: it keeps the literal id types,
- * which is what lets `ShapeId` below be derived instead of written out a second time.
- * An adapter can then only name a shape that exists here, checked at compile time —
- * and there is no third copy of the list to drift.
+ * Rows follow the coverage key's order, except that `path.charref`, `path.bare-specifier`,
+ * `pattern.partial` and `decoy.regex` sit with their families. `as const satisfies` keeps
+ * the literal ids, so `ShapeId` is derived from this array and an adapter can only name a
+ * shape that exists here.
  */
 export const SHAPES = [
   // ---- HTML -------------------------------------------------------------------
@@ -191,18 +100,11 @@ export const SHAPES = [
     spec: '4a',
     emission: 'declined',
     why:
-      '🔴 RENAMED AND REVERSED BY R90, and the old name was the whole defect: ' +
-      '`html.img.src.after-rawtext-prose` ASSERTED these must be found, and the fixture below it ' +
-      'reads "everything from here down must still be found". In an HTML file there is no prose — ' +
-      'every character is markup, an unclosed <style> opens a raw-text element, and everything to ' +
-      'the end of the document is its content. A BROWSER RENDERS NOTHING AFTER IT EITHER, so the ' +
-      'engine agreeing is correct and a non-zero count here is the failure. ' +
-      '⚠️ `maskInactiveRegions` lives in `markdown.ts` CORRECTLY: CommonMark says a raw-text block ' +
-      'must BEGIN A LINE, so mid-sentence it is inline HTML and masking is right there and wrong ' +
-      'here. The fixture ported a markdown lesson into HTML. ' +
-      '✅ What was genuinely owed was the DIAGNOSIS — `invalid css syntax at line 1, column 2` is a ' +
-      'symptom dressed as one — and `styleElementFailure` now names the tag, its line, and the ' +
-      "reader's own browser. R51 one layer down.",
+      "Everything after an unclosed raw-text tag such as `<style>` is the element's content, " +
+      'not markup, so a browser renders none of it and the engine reports no reference there. ' +
+      'When that content fails to parse as CSS, `styleElementFailure` reports the unclosed tag ' +
+      'and its line. Markdown blanks an unclosed tag instead (`maskInactiveRegions`), because ' +
+      'there a raw-text block has to begin a line.',
   },
   {
     id: 'html.img.srcset.single',
@@ -220,19 +122,10 @@ export const SHAPES = [
   { id: 'html.embed.src', label: 'embed@src', spec: '4a', emission: 'engine' },
   { id: 'html.input.src', label: 'input@src', spec: '4a', emission: 'engine' },
   { id: 'html.track.src', label: 'track@src', spec: '4a', emission: 'engine' },
-  //
-  // 🔴 THREE ROWS, NOT ONE, AND THE MEASUREMENT IS WHAT DECIDED IT (R83).
-  // `linkPointsAtAnImage` is two independent branches with two separate returns:
-  // delete the icon branch and preload still works, delete the preload branch and icon
-  // still works. Under the ladder above they are two shapes — and what the predicate
-  // REFUSES is a third. Folding preload into icon would have put two
-  // independently-failing things in one row, one day after the rule against that was
-  // written down.
-  //
-  // ⚠️ Named for what they ASSERT, not for their contents. The old label was
-  // "stylesheet and manifest", which described three of its four entries — and a row
-  // named for its contents rather than its assertion is how the two directions got
-  // mixed in the first place.
+  // Three `<link href>` rows. `linkImageClaim` in `html.ts` claims icons and preloaded
+  // images in two independent branches, so each can break without the other, and what it
+  // refuses is a third row. Each is named for what the link asserts, not for what its
+  // entries hold.
   {
     id: 'html.link.href.icon',
     label: 'link@href asserted as an icon',
@@ -245,11 +138,10 @@ export const SHAPES = [
     spec: '4a',
     emission: 'engine',
     why:
-      '⚠️ ONE tree instance, and deliberately NOT padded to three — manufacturing two more ' +
-      'rel=preload links so the table looks right is R67 aimed at the tree instead of at a test. ' +
-      "Carries a `singleReason` in the key and sits on §8.5's growth list beside " +
-      '`new URL(..., import.meta.url)`: rel=preload as=image is how a modern page preloads its ' +
-      'LCP hero, so reality will supply the instances. Not exotic, just untested.',
+      'A `<link rel="preload" as="image">`, the usual way a page preloads its hero image, ' +
+      'claimed by the preload branch of `linkImageClaim` in `html.ts`. The coverage tree holds ' +
+      'one instance rather than the usual three, because links written only to fill the row ' +
+      'would add no new case.',
   },
   {
     id: 'html.link.href.other',
@@ -257,9 +149,9 @@ export const SHAPES = [
     spec: '4a',
     emission: 'unclaimed',
     why:
-      'Every rel value linkPointsAtAnImage declines — a stylesheet, a webmanifest. Both are REAL ' +
-      'files we choose not to index, which makes this a scope decision rather than a refusal of ' +
-      'nonsense (R92). Homogeneous once preload left, so a zero is correct and NON-zero is the failure.',
+      'A `<link href>` whose `rel` names neither an icon nor a preloaded image, such as a ' +
+      'stylesheet or a web app manifest. `linkImageClaim` refuses it and nothing is emitted: ' +
+      'the file is real, but it is read as a source file, not indexed as an image.',
   },
   { id: 'html.object.data', label: 'object@data', spec: '4a', emission: 'engine' },
   {
@@ -268,8 +160,9 @@ export const SHAPES = [
     spec: '4a',
     emission: 'unclaimed',
     why:
-      'A real document at the other end that we choose not to index — the key calls it "precision, ' +
-      'not recall" (R92). Non-zero is the failure.',
+      'An `<iframe src>` names an HTML document: a real file, but never an image asset. The ' +
+      'HTML adapter does not read the attribute, because reporting the document would be a ' +
+      'false finding.',
   },
   { id: 'html.svg.image.href', label: 'SVG image@href', spec: '4a', emission: 'engine' },
   { id: 'html.svg.image.xlink', label: 'SVG image@xlink:href', spec: '4a', emission: 'engine' },
@@ -280,9 +173,10 @@ export const SHAPES = [
     spec: '4a',
     emission: 'engine',
     why:
-      'Host wins over construct here: what would take these out is HTML failing to EXTRACT the ' +
-      'CSS, not the CSS parse. A comment or an image-set inside the same element keeps its own ' +
-      'css.* shape, because those break in every host alike.',
+      'A `url()` in CSS inside a `<style>` element. It is named for the host, because what ' +
+      'would take it out is the HTML adapter failing to extract the CSS; an `image-set()` or a ' +
+      'comment in the same element keeps its `css.*` shape, since those break the same way in ' +
+      'every host.',
   },
   {
     id: 'html.style.attribute',
@@ -308,7 +202,10 @@ export const SHAPES = [
     label: '-webkit-image-set()',
     spec: '4b',
     emission: 'engine',
-    why: 'Construct wins over host: it appears in .less too, and what breaks it is image-set parsing.',
+    why:
+      'The vendor-prefixed `-webkit-image-set()`. It is named for the construct rather than ' +
+      'the host, because what would break it is image-set parsing, which `.css`, `.less` and ' +
+      'every other host share.',
   },
   {
     id: 'css.url.in-comment',
@@ -316,8 +213,9 @@ export const SHAPES = [
     spec: '4b',
     emission: 'declined',
     why:
-      'Construct wins over host — it is keyed the same in .css, .scss, .less and <style>, because ' +
-      "comment handling is the CSS reader's job everywhere. Non-zero is the failure.",
+      'A `url()` inside a CSS, SCSS or Less comment is not a reference, and the CSS adapter ' +
+      'never reads comments. The shape is the same in every host, because comment handling is ' +
+      "the CSS reader's job wherever the CSS sits.",
   },
   {
     id: 'css.url.in-selector',
@@ -325,8 +223,9 @@ export const SHAPES = [
     spec: '4b',
     emission: 'declined',
     why:
-      'An attribute-selector value that happens to spell url() — `li[data-bg="url(/img/x.png)"]`. ' +
-      'The CSS adapter walks DECLARATIONS, so a selector is never visited and nothing is emitted.',
+      'An attribute-selector value that happens to spell `url()`, as in ' +
+      '`li[data-bg="url(/img/x.png)"]`. The CSS adapter reads declarations, never selectors, ' +
+      'so nothing is emitted.',
   },
   { id: 'css.var', label: 'url() behind a custom property', spec: '4b', emission: 'engine' },
   { id: 'css.font-face', label: '@font-face src', spec: '4b', emission: 'engine' },
@@ -335,7 +234,9 @@ export const SHAPES = [
     label: 'url(#fragment)',
     spec: '4b,4g',
     emission: 'declined',
-    why: 'A same-document element reference, not a file. Dropped by isExternalUrl.',
+    why:
+      'A `url(#id)` naming an element in the same document, such as an SVG filter or clip ' +
+      'path, not a file. `isExternalUrl` drops it before anything is emitted.',
   },
   { id: 'scss.url', label: 'url() in .scss', spec: '4b', emission: 'engine' },
   { id: 'scss.variable', label: 'url($variable)', spec: '4b,4c', emission: 'engine' },
@@ -380,10 +281,10 @@ export const SHAPES = [
     ],
     needsToSee: 'the tsconfig/vite paths table, which arrives long after the adapter has run',
     why:
-      '⚠️ MAPPED and UNMAPPED are the same six characters of source. `~/img/hero.png` resolves or ' +
-      'does not depending on a table the adapter cannot see, so an adapter that named either row ' +
-      'would be asserting something it cannot know — the shape of every bug this project has paid ' +
-      "for. Both rows are therefore the KEY's, and the adapter emits the construct instead.",
+      'An import through an alias the project maps in its `tsconfig` or Vite config, such as ' +
+      '`~/img/hero.png`. A mapped and an unmapped alias look the same in source, and only the ' +
+      'paths table, which the adapter cannot see, tells them apart, so the adapter emits the ' +
+      "construct's own shape and never names this row.",
   },
   {
     id: 'js.import.alias.unmapped',
@@ -423,10 +324,11 @@ export const SHAPES = [
     spec: '4c',
     emission: 'engine',
     why:
-      'R175: a `+` chain in which no literal is itself a complete path is read exactly as its ' +
-      'template twin is, so a fixed directory and one unknown in the name is a pattern here too. ' +
-      'Its own row rather than `js.template.pattern`, because the reader that assembles a chain is ' +
-      'not the one that reads a template, and each can break without the other.',
+      "A `+` chain such as `'/icons/icon-' + size + '.png'`: a fixed directory and one unknown " +
+      'part of the file name, with no literal that is a complete path on its own. It is read ' +
+      'as its template-literal twin is and resolved as a pattern. It has its own row because ' +
+      '`collectFromChain` assembles chains apart from the template reader, so either can ' +
+      'break without the other.',
   },
   {
     id: 'js.string.literal',
@@ -450,8 +352,9 @@ export const SHAPES = [
     spec: '4d',
     emission: 'declined',
     why:
-      'The use site carries no path — it names a label. The path lives in the definition and is ' +
-      'keyed as md.reference-definition. Emitting here would double-count one reference.',
+      'A reference-style image, `![alt][label]`, names a label, not a path. The path sits in ' +
+      "the label's definition, reported as `md.reference-definition`, so emitting the use " +
+      'site too would count one reference twice.',
   },
   { id: 'md.reference-definition', label: '[label]: path', spec: '4d', emission: 'engine' },
   {
@@ -459,7 +362,10 @@ export const SHAPES = [
     label: 'raw HTML inside markdown',
     spec: '4d',
     emission: 'engine',
-    why: "Host wins: markdown hands its masked text to the HTML adapter, so this is markdown's row.",
+    why:
+      'An HTML element written inside a markdown file. The markdown adapter hands its masked ' +
+      'text to the HTML adapter and relabels what comes back, because what would take these ' +
+      "out is markdown's masking and hand-off, not HTML parsing.",
   },
   {
     id: 'md.style-attribute',
@@ -473,15 +379,18 @@ export const SHAPES = [
     spec: '4d',
     emission: 'declined',
     why:
-      'A filename in a sentence is not a reference (R24). Markdown only claims link and image ' +
-      'destinations, so bare prose is never collected.',
+      'A path named in a sentence is not a reference, and rewriting it would edit prose. The ' +
+      'markdown adapter reads only link and image destinations, link definitions and raw ' +
+      'HTML, so a sentence is never collected.',
   },
   {
     id: 'md.code-fence',
     label: 'a path inside a fenced code block',
     spec: '4d',
     emission: 'declined',
-    why: 'maskInactiveRegions blanks fenced blocks before anything reads them — code shown, not run.',
+    why:
+      'A path inside a fenced code block is an example, not a reference. ' +
+      '`maskInactiveRegions` blanks fenced blocks before any reader sees the text.',
   },
   {
     id: 'md.indented-code',
@@ -489,28 +398,32 @@ export const SHAPES = [
     spec: '4d',
     emission: 'declined',
     why:
-      '`maskInactiveRegions` blanks an indented block in `.md` and `.markdown` (R167) — but only ' +
-      'where it is provably code: never inside an open list item, never on a paragraph line carrying ' +
-      'on, never inside `<pre>`/`<script>`/`<style>`/`<textarea>`, and never in `.mdx`, which has no ' +
-      'indented code at all. Each of those has a tree entry that stays live. ⚠️ Until R167 this row ' +
-      'over-claimed — 2 of 3 emitted as raw HTML — because the masking had been judged too risky to ' +
-      'write; the risk was real, and the first build did blank live table rows on eleventy-docs by ' +
-      'reading blank lines from the mask instead of the source. ⚠️ Still NO `adapterEmitsAs`: the ' +
-      'adapter can see this distinction, so a claim here is a defect, never arithmetic.',
+      'A path inside an indented code block is an example, not a reference. ' +
+      '`maskInactiveRegions` blanks such a block in `.md` and `.markdown` only where it is ' +
+      'certainly code: never inside a list item, a paragraph that carries on, or a `<pre>`, ' +
+      '`<script>`, `<style>` or `<textarea>` block, and never in `.mdx`, which has no indented ' +
+      'code. The adapter sees this distinction itself, so any reference reported here is a ' +
+      'defect.',
   },
   {
     id: 'md.inline-code',
     label: 'a path inside inline code',
     spec: '4d',
     emission: 'declined',
-    why: 'Masked too. `![alt](x.png)` inside backticks is an example of markdown, not markdown.',
+    why:
+      'A path inside an inline code span, such as a markdown image written between ' +
+      'backticks, is an example, not a reference. `maskInactiveRegions` blanks code spans ' +
+      'before any reader sees the text.',
   },
   {
     id: 'md.frontmatter.scalar',
     label: 'an image path in YAML frontmatter',
     spec: '4d',
     emission: 'gap',
-    why: "No frontmatter reader. The key's knownGap names the ruling.",
+    why:
+      'An image path in a YAML frontmatter key such as `image:` or `cover:`. No adapter reads ' +
+      'frontmatter yet, so the engine does not report these references, and the key records ' +
+      'each one as a known gap.',
   },
   {
     id: 'md.frontmatter.nested',
@@ -537,9 +450,10 @@ export const SHAPES = [
     needsToSee:
       'which top-level array the entry sits in — `screenshots` and `shortcuts` rather than `icons`',
     why:
-      'The JSON adapter walks values and does not model the document, so a `{ src }` object is a ' +
-      'webmanifest icon wherever it sits. Telling a screenshot from an icon needs the array it ' +
-      'came from, which the flat scanner deliberately does not parse.',
+      "A web app manifest's `screenshots` entry or shortcut icon. The JSON adapter scans " +
+      "string values without parsing the document's structure, so every path in a manifest " +
+      'is emitted as `json.webmanifest.icon`; telling a screenshot from an icon needs the ' +
+      'array it sits in.',
   },
   {
     id: 'json.config.value',
@@ -553,8 +467,9 @@ export const SHAPES = [
     spec: '4e',
     emission: 'declined',
     why:
-      'A glob names a SET, not a file. Resolving one would claim every asset it happens to match ' +
-      "and report the rest of the repository referenced — R78 Q3's objection in a config file.",
+      'A glob such as `**/*.png` in a JSON config names a set of files, not one file. The ' +
+      'resolver does not expand it, since that would mark every matching asset as referenced; ' +
+      'looked up as a literal name, it matches nothing and is discarded.',
   },
 
   // ---- Astro -------------------------------------------------------------------
@@ -576,8 +491,9 @@ export const SHAPES = [
     spec: '4f',
     emission: 'declined',
     why:
-      '`<img src={heroPath} />` carries no path; the path is the const in the fence, keyed as ' +
-      'js.string.literal. Counting the use site too would double-count one reference.',
+      'An expression such as `<img src={heroPath} />` in an `.astro` template carries no ' +
+      'path; the path is the constant declared in the frontmatter fence, reported as ' +
+      '`js.string.literal`. Reporting the use site too would count one reference twice.',
   },
   {
     id: 'astro.style.element',
@@ -586,7 +502,7 @@ export const SHAPES = [
     emission: 'engine',
   },
 
-  // ---- File types nothing reads (R72 / §4j) -------------------------------------
+  // ---- File types nothing reads -----------------------------------------------
   { id: 'unread.vue', label: 'a reference inside .vue', spec: '4j', emission: 'gap' },
   { id: 'unread.svelte', label: 'a reference inside .svelte', spec: '4j', emission: 'gap' },
   { id: 'unread.njk', label: 'a reference inside .njk', spec: '4j', emission: 'gap' },
@@ -594,22 +510,14 @@ export const SHAPES = [
   { id: 'unread.erb', label: 'a reference inside .erb', spec: '4j', emission: 'gap' },
   { id: 'unread.php', label: 'a reference inside .php', spec: '4j', emission: 'gap' },
 
-  // ---- Decoys: text that looks like a reference and is not (§4k.4) --------------
+  // ---- Decoys: text that looks like a reference and is not --------------------
   //
-  // 🔴 A DECOY ROW IS `declined` BECAUSE NOTHING REACHES THE REPORT, NOT BECAUSE THE
-  // ADAPTERS REFUSE IT — and the two were assumed identical until R87 measured them.
-  // Of the tree's 24 decoy entries an adapter emits ELEVEN, all as `js.string.literal`,
-  // and the resolver discards them once it can see the file is absent. The other
-  // thirteen never get that far, because the text fails the adapter's own path-shape
-  // test. Both are correct; the row reads the same; `adapterEmitsAs` is the only place
-  // the difference is written down.
-  //
-  // ⚠️ Two of these shapes are SPLIT down that seam, which is worth knowing before
-  // reading their rows: `decoy.glob` emits `/gallery/*.png` and `src/**/*.jpg` and
-  // declines `/img/hero.{jpg,png}` — brace expansion moves the extension off the end,
-  // so the path test fails where a `*` sails through. `decoy.not-a-path` splits the same
-  // way. The ROW is still homogeneous in what it asserts (all of them end up discarded),
-  // which is why R83's split does not apply; only the layer differs.
+  // Except for `decoy.query-or-hash`, whose files are real, a decoy row is `declined` because
+  // nothing reaches the report, not because the adapters refuse it. Some decoys are never
+  // emitted: they sit in a comment, or fail the adapter's path-shape test. Others are emitted
+  // as `js.string.literal` and discarded by the resolver once it finds no such file.
+  // `decoy.glob` and `decoy.not-a-path` hold both kinds, and each stays one row because all
+  // its entries assert the same outcome.
   {
     id: 'decoy.comment',
     label: 'a filename inside a code comment',
@@ -630,10 +538,9 @@ export const SHAPES = [
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists — adapters never touch the disk, by design',
     why:
-      '🔴 ALL FIVE ARE EMITTED BY AN ADAPTER, and they must be: `/img/her.jpg` is indistinguishable ' +
-      'from `/img/hero.jpg` as text. The resolver is the first layer that can tell them apart, and ' +
-      'discarding there is the correct answer. An adapter that guessed would be guessing about ' +
-      'the filesystem from a string.',
+      'A string one character away from a real file, such as `/img/her.jpg` beside ' +
+      '`/img/hero.jpg`. As text it cannot be told from a real path, so the adapter emits it as ' +
+      '`js.string.literal` and the resolver discards it once it finds no such file.',
   },
   {
     id: 'decoy.not-a-path',
@@ -643,9 +550,10 @@ export const SHAPES = [
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
     why:
-      "Split across the layers: `'.png'` and `'.jpg'` are refused by the adapter's path-shape " +
-      'test, while `/img/hero.jpg.bak` passes it and is discarded at resolution. See the note ' +
-      'above the family.',
+      'Text carrying an image extension that names no image: a `.png` string that is only the ' +
+      "tail of a `+` chain, or `/img/hero.jpg.bak`. The adapter's path-shape test refuses the " +
+      'bare `.png`, while `/img/hero.jpg.bak` passes it, is emitted as `js.string.literal` and ' +
+      'is dropped by the resolver, because `.bak` is not an image extension.',
   },
   {
     id: 'decoy.glob',
@@ -654,7 +562,11 @@ export const SHAPES = [
     emission: 'declined',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
-    why: 'Split across the layers — see the note above the family. `*` passes the path test; `{a,b}` does not.',
+    why:
+      'A glob such as `/gallery/*.png` matches files without naming one. A `*` glob passes ' +
+      "the adapter's path-shape test, is emitted as `js.string.literal` and is discarded by " +
+      'the resolver, which finds no file of that name; `/img/hero.{jpg,png}` holds a comma, ' +
+      'which the test refuses.',
   },
   {
     id: 'decoy.windows-path',
@@ -670,11 +582,11 @@ export const SHAPES = [
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
     why:
-      'The only decoy row that SHOULD be found: the file is real and the suffix is preserved. ' +
-      '🔴 And it is separated from `decoy.typo` by NOTHING BUT THE FILE EXISTING — the tree pairs ' +
-      'it with `/img/missing-query.png?v=3`, identical in spelling and keyed as a typo. So this ' +
-      'row is the sharpest illustration of R87: two shapes, one syntax, and the only instrument ' +
-      'that can tell them apart is the one that reads the disk.',
+      'A real file with a query string or fragment, such as `/img/hero.jpg?v=3`, reported ' +
+      'because the file exists and the suffix is kept out of the path. Only that existence ' +
+      'separates it from `decoy.typo`: the tree also holds `/img/missing-query.png?v=3`, ' +
+      'spelled the same way and naming nothing, so only the resolver, which checks the disk, ' +
+      'can tell the two apart.',
   },
   {
     id: 'decoy.regex',
@@ -682,36 +594,36 @@ export const SHAPES = [
     spec: '4k.4',
     emission: 'declined',
     why:
-      '⚠️ This row measures nothing. A regex escapes the dot, so the bytes read `\\.(png` and the ' +
-      "tree's text scan cannot key it. An engine that DID extract a path from a regex would not " +
-      'be caught here.',
+      'An image extension inside a regular expression, such as `/\\.(png|jpe?g|svg)$/i`, is ' +
+      'code about images, not a reference. The row measures nothing: the regex escapes the ' +
+      "dot, so the tree's text scan cannot find the extension to key it, and an engine that " +
+      'did take a path from a regex would not be caught here.',
   },
 
-  // ---- What the path itself is (§4g) -------------------------------------------
+  // ---- What the path itself is ------------------------------------------------
   //
-  // 🔴 THE DISPOSITION TIER, AND ITS BOUNDARY IS *SPELLING* (R88). A shape belongs here
-  // when what would take the reference out is a property of how the path is WRITTEN —
-  // which is why it is keyed identically in every host and beats every host shape. An
-  // absolute URL inside an `<img src>` is `path.absolute-url`, not `html.img.src`.
-  //
-  // ⚠️ Two shapes arrived here by rename rather than by design, and the lesson is in the
-  // rename: `html.charref` and `js.import.package` were NAMED like host shapes and
-  // BEHAVED like dispositions, so every argument about which of them beat a host shape
-  // was unwinnable — the tier rule was already written down and the names hid which tier
-  // the shape was in. **A name in the wrong namespace is not cosmetic.**
+  // A shape belongs here when what would take the reference out is how the path is spelled.
+  // It is keyed the same in every host and takes precedence over the host's shape: an
+  // absolute URL in an `<img src>` is `path.absolute-url`, not `html.img.src`.
   {
     id: 'path.data-uri',
     label: 'a data: URI',
     spec: '4g',
     emission: 'declined',
-    why: 'Disposition wins over host: it is keyed the same in .html and .css. Dropped by isExternalUrl.',
+    why:
+      'A `data:` URI carries the image itself, so there is no file to point at, and rewriting ' +
+      'one would corrupt it. It is keyed the same in every host, and `isExternalUrl` drops it ' +
+      'before anything is emitted.',
   },
   {
     id: 'path.absolute-url',
     label: 'an absolute URL',
     spec: '4g',
     emission: 'unclaimed',
-    why: "R32's own words: real, reachable, not ours. A scope decision, not a refusal of nonsense (R92).",
+    why:
+      'An absolute URL such as `https://cdn.example.com/hero.png` names a real, reachable file ' +
+      "on another host, which is not the project's to rewrite. `isExternalUrl` drops it, so " +
+      'leaving it unreported is a scope decision, not a defect.',
   },
   {
     id: 'path.protocol-relative',
@@ -719,9 +631,10 @@ export const SHAPES = [
     spec: '4g',
     emission: 'unclaimed',
     why:
-      'A remote file, reachable over whichever scheme the page loaded with — real, and not ours ' +
-      '(R92). ⚠️ The key\'s motivation calls it "not a path", which is true of its SYNTAX and not ' +
-      'of its target; the target is what decides claimed from unclaimed.',
+      'A protocol-relative URL such as `//cdn.example.com/hero.png` names a remote file over ' +
+      "the page's own scheme: real, but not the project's. `isExternalUrl` drops it. It is " +
+      '`unclaimed` rather than `declined` because its target is a real file, even though its ' +
+      'text is not a local path.',
   },
   {
     id: 'path.charref',
@@ -729,14 +642,11 @@ export const SHAPES = [
     spec: '4a,4g',
     emission: 'engine',
     why:
-      '⚠️ WAS `html.charref` until R88(a), and the rename is the ruling. A character reference is ' +
-      'how the path is SPELLED, so it beats the construct the path sits in — identically to an ' +
-      'absolute URL inside an <img src>. The tell that the old name was wrong: `/gallery/a&amp;b.png` ' +
-      'in an feImage read as a contest between `html.svg.feimage` and `html.charref`, which the ' +
-      '"narrowest thing that breaks alone" test CANNOT settle (both break other entries with them) ' +
-      'because that test chooses WITHIN a tier and this is a choice BETWEEN tiers. ' +
-      '🔴 The engine has always had the order right — html.ts compares the source text against ' +
-      "parse5's decoded value and emits BEFORE any host shape is chosen; only the name disagreed.",
+      'A path spelled with HTML character references, such as `/gallery/a&amp;b.png`. ' +
+      'Spelling takes precedence over the attribute the path sits in, so at each reference ' +
+      "position `html.ts` compares the source text with parse5's decoded value and emits this " +
+      'shape when they differ. The resolver tries the decoded spelling and a rewrite ' +
+      're-encodes it; a path that does not fully decode stays `unsafe`.',
   },
   {
     id: 'path.bare-specifier',
@@ -746,21 +656,14 @@ export const SHAPES = [
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the first path segment is an installed package — node_modules',
     why:
-      '⚠️ WAS `js.import.package` until R88(b). R32 keeps it out of scope — the file exists inside ' +
-      'a dependency and is not ours to rewrite — and that is true of the SPELLING, not of the ' +
-      'construct: the tree holds one as an `import`, one inside `require()` and one as a plain ' +
-      'string constant, and a row covering all three could not go on being called `import` ' +
-      '(R83: name it for what it ASSERTS). ' +
-      '🔴 BUT R88(b) ALSO ARGUED ALL THREE FAIL TOGETHER, AND MEASUREMENT SAYS TWO DO. Inside ' +
-      '`import`/`require` a bare string IS module-resolution syntax, so the prefix test decides it. ' +
-      'In an ordinary string it decides nothing: `some-ui-kit/dist/x.png` and `src/assets/x.png` are ' +
-      'the same syntax, and asserting the disposition there labelled 351 corpus references as ' +
-      "packages — `loading...`, `bs.button`, `v2.0.0`. So the plain-string third is the RESOLVER's " +
-      "to draw and is declared above. ⚠️ Whether that makes it a separate row under R82's ladder " +
-      'is a live question raised to the parent chat, not one settled here.',
+      'A bare package specifier such as `some-ui-kit/dist/logo.png` names a file inside a ' +
+      "dependency: real, but not the project's to rewrite, so it resolves `out-of-scope`. " +
+      'Inside `import`, `import()` and `require()` the adapter recognises it by its spelling; ' +
+      'in a plain string the same text could be a relative path written without `./`, so the ' +
+      'adapter emits `js.string.literal` and the resolver treats it as an ordinary path.',
   },
 
-  // ---- What the RESOLVER found, which no adapter can see (R87) ------------------
+  // ---- What only the resolver can see -----------------------------------------
   {
     id: 'pattern.partial',
     label: 'a pattern matching only some of the files it names',
@@ -769,29 +672,27 @@ export const SHAPES = [
     adapterEmitsAs: ['js.template.pattern', 'scss.interpolation.trailing'],
     needsToSee: 'which of the files the pattern names actually exist on disk',
     why:
-      'R80(a), applied by R89. `tileImage(density: 1 | 2 | 3)` returns `/srcset/tile@${density}x.png` ' +
-      'and `tile@1x.png` does not exist, so ONE reference stands for two files while its own type ' +
-      'promises three. 🔴 Its own row because a partial match is R65 territory — one sibling ' +
-      'failing withdraws the whole pattern and every conversion with it — so folding it into the ' +
-      'complete-match row would hide the case that cost a P0. ' +
-      '⚠️ It has no host prefix on purpose: the mechanism is the resolver glob and is identical in ' +
-      'SCSS and JS. And it is NOT a `path.*` shape, because nothing about the spelling says the ' +
-      'set is incomplete — the same template is complete in a tree where one more file exists. ' +
-      'That is exactly what makes it `adapterEmitsAs`.',
+      'A pattern that matches only some of the files its code can produce: ' +
+      '`tileImage(density: 1 | 2 | 3)` returns `/srcset/tile@${density}x.png` and ' +
+      '`tile@1x.png` does not exist, so the reference links two files while its type promises ' +
+      'three. A row of complete matches alone would not notice a change in how partial ones ' +
+      'are handled. Nothing in the spelling shows the set is incomplete, in SCSS or JavaScript, ' +
+      'so adapters emit `js.template.pattern` or `scss.interpolation.trailing` and only the ' +
+      'files on disk tell the two apart.',
   },
 
-  // ---- Found in the engine, absent from the tree (§8.5 growth list) -------------
+  // ---- Emitted by an adapter, absent from the coverage tree -------------------
   //
-  // 🔴 These are the measurement R76 promised, arriving before it ran: constructs an
-  // adapter emits today that the tree has NO instance of, so nothing tests them. They
-  // are declared here rather than left nameless — a shape with no name cannot be
-  // reported as uncovered, it just vanishes, which is R76's whole objection.
+  // Nothing measures these yet. They are declared rather than left unnamed, because a shape
+  // with no name cannot be reported as uncovered. `UNTESTED_SHAPE_IDS` lists them.
   {
     id: 'js.import.dynamic',
     label: 'a dynamic import() of an image',
     spec: '§8.5',
     emission: 'engine',
-    why: '🔴 NO TREE INSTANCE. Emitted by collectFromImportExpression; nothing measures it.',
+    why:
+      'A dynamic `import()` of an image, emitted by `collectFromImportExpression`. The ' +
+      'coverage tree has no instance of it, so nothing measures it.',
   },
   {
     id: 'js.new-url',
@@ -799,8 +700,9 @@ export const SHAPES = [
     spec: '§8.5',
     emission: 'engine',
     why:
-      '🔴 NO TREE INSTANCE, and this is the loudest of the four: it is the asset pattern VITE AND ' +
-      "WEBPACK 5 BOTH DOCUMENT. Not an exotic shape — a whole build tool's default, untested.",
+      '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
+      'document, emitted by the JavaScript adapter. The coverage tree has no instance of it, ' +
+      'so nothing measures it.',
   },
   {
     id: 'js.jsx.srcset',
@@ -808,25 +710,25 @@ export const SHAPES = [
     spec: '§8.5',
     emission: 'engine',
     why:
-      '🔴 NO TREE INSTANCE. The tree tests html.img.srcset.* but that is a different adapter and a ' +
-      'different code path — JSX srcSet is split by addJsxAttributeValue.',
+      'A `srcSet` candidate list in JSX, split with the same `parseSrcset` the HTML adapter ' +
+      'uses. The coverage tree has no instance of it; its `html.img.srcset.*` rows reach that ' +
+      'code only through the HTML adapter.',
   },
   {
     id: 'js.jsx.svg',
     label: 'a JSX inline-SVG <image href>',
     spec: '§8.5',
     emission: 'engine',
-    why: '🔴 NO TREE INSTANCE. collectFromJsxSvgImage; the HTML twin is tested, this one is not.',
+    why:
+      'An `<image href>` or `<feImage href>` in inline SVG inside JSX, read by ' +
+      '`collectFromJsxSvgImage`. The coverage tree tests the HTML version (`html.svg.*`) but ' +
+      'has no JSX instance, so nothing measures this one.',
   },
 ] as const satisfies readonly ShapeDeclaration[];
 
 /**
- * Every shape id, as a type.
- *
- * Derived from `SHAPES` rather than written out, so an adapter naming a shape that does
- * not exist is a compile error and the list has no second spelling to fall out of step
- * with. The coverage tree is the only other copy, and `shapes.reconcile.test.ts` holds
- * that one.
+ * Every shape id, as a type. Derived from `SHAPES`, so an adapter naming a shape that does
+ * not exist is a compile error.
  */
 export type ShapeId = (typeof SHAPES)[number]['id'];
 
@@ -834,11 +736,10 @@ export type ShapeId = (typeof SHAPES)[number]['id'];
 export const SHAPE_IDS: ReadonlySet<string> = new Set(SHAPES.map((shape) => shape.id));
 
 /**
- * Shapes that no tree entry instantiates, so nothing measures them.
+ * Shapes an adapter emits that no coverage-tree entry instantiates, so nothing measures them.
  *
- * ⚠️ **An `absent` shape that never gains an instance becomes furniture.** The matrix
- * prints these as an explicit growth list rather than as rows, so they read as a debt
- * somebody owes rather than as a table that happens to have gaps in it.
+ * `shapes.reconcile.test.ts` accepts these ids without a tree instance and fails once one
+ * gains an instance, so the list cannot outlive the gap.
  */
 export const UNTESTED_SHAPE_IDS: readonly string[] = [
   'js.import.dynamic',
