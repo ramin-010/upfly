@@ -1,7 +1,3 @@
 {
-  "files": {
-    "packages/core/src/shapes.ts": {
-      "output-reference": 4
-    }
-  }
+  "files": {}
 }

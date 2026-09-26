@@ -54,8 +54,6 @@ export interface ShapeDeclaration {
   readonly id: string;
   /** How the shape reads in prose, for a matrix row. */
   readonly label: string;
-  /** Which coverage-tree spec section asked for it. */
-  readonly spec: string;
   readonly emission: ShapeEmission;
   /**
    * What the construct is and why the engine emits, declines or leaves it, with any gap that
@@ -93,11 +91,10 @@ export interface ShapeDeclaration {
  */
 export const SHAPES = [
   // ---- HTML -------------------------------------------------------------------
-  { id: 'html.img.src', label: 'img@src', spec: '4a', emission: 'engine' },
+  { id: 'html.img.src', label: 'img@src', emission: 'engine' },
   {
     id: 'html.rawtext.swallowed',
     label: 'markup swallowed by an unclosed raw-text element',
-    spec: '4a',
     emission: 'declined',
     why:
       "Everything after an unclosed raw-text tag such as `<style>` is the element's content, " +
@@ -109,19 +106,18 @@ export const SHAPES = [
   {
     id: 'html.img.srcset.single',
     label: 'img@srcset, one candidate',
-    spec: '4a',
     emission: 'engine',
   },
-  { id: 'html.img.srcset.x', label: 'img@srcset, x descriptors', spec: '4a', emission: 'engine' },
-  { id: 'html.img.srcset.w', label: 'img@srcset, w descriptors', spec: '4a', emission: 'engine' },
-  { id: 'html.source.srcset', label: 'source@srcset', spec: '4a', emission: 'engine' },
-  { id: 'html.source.src', label: 'source@src', spec: '4a', emission: 'engine' },
-  { id: 'html.video.src', label: 'video@src', spec: '4a', emission: 'engine' },
-  { id: 'html.video.poster', label: 'video@poster', spec: '4a', emission: 'engine' },
-  { id: 'html.audio.src', label: 'audio@src', spec: '4a', emission: 'engine' },
-  { id: 'html.embed.src', label: 'embed@src', spec: '4a', emission: 'engine' },
-  { id: 'html.input.src', label: 'input@src', spec: '4a', emission: 'engine' },
-  { id: 'html.track.src', label: 'track@src', spec: '4a', emission: 'engine' },
+  { id: 'html.img.srcset.x', label: 'img@srcset, x descriptors', emission: 'engine' },
+  { id: 'html.img.srcset.w', label: 'img@srcset, w descriptors', emission: 'engine' },
+  { id: 'html.source.srcset', label: 'source@srcset', emission: 'engine' },
+  { id: 'html.source.src', label: 'source@src', emission: 'engine' },
+  { id: 'html.video.src', label: 'video@src', emission: 'engine' },
+  { id: 'html.video.poster', label: 'video@poster', emission: 'engine' },
+  { id: 'html.audio.src', label: 'audio@src', emission: 'engine' },
+  { id: 'html.embed.src', label: 'embed@src', emission: 'engine' },
+  { id: 'html.input.src', label: 'input@src', emission: 'engine' },
+  { id: 'html.track.src', label: 'track@src', emission: 'engine' },
   // Three `<link href>` rows. `linkImageClaim` in `html.ts` claims icons and preloaded
   // images in two independent branches, so each can break without the other, and what it
   // refuses is a third row. Each is named for what the link asserts, not for what its
@@ -129,13 +125,11 @@ export const SHAPES = [
   {
     id: 'html.link.href.icon',
     label: 'link@href asserted as an icon',
-    spec: '4a',
     emission: 'engine',
   },
   {
     id: 'html.link.href.preload',
     label: 'link@href asserted as a preloaded image',
-    spec: '4a',
     emission: 'engine',
     why:
       'A `<link rel="preload" as="image">`, the usual way a page preloads its hero image, ' +
@@ -146,31 +140,28 @@ export const SHAPES = [
   {
     id: 'html.link.href.other',
     label: 'link@href the predicate refuses',
-    spec: '4a',
     emission: 'unclaimed',
     why:
       'A `<link href>` whose `rel` names neither an icon nor a preloaded image, such as a ' +
       'stylesheet or a web app manifest. `linkImageClaim` refuses it and nothing is emitted: ' +
       'the file is real, but it is read as a source file, not indexed as an image.',
   },
-  { id: 'html.object.data', label: 'object@data', spec: '4a', emission: 'engine' },
+  { id: 'html.object.data', label: 'object@data', emission: 'engine' },
   {
     id: 'html.iframe.src',
     label: 'iframe@src',
-    spec: '4a',
     emission: 'unclaimed',
     why:
       'An `<iframe src>` names an HTML document: a real file, but never an image asset. The ' +
       'HTML adapter does not read the attribute, because reporting the document would be a ' +
       'false finding.',
   },
-  { id: 'html.svg.image.href', label: 'SVG image@href', spec: '4a', emission: 'engine' },
-  { id: 'html.svg.image.xlink', label: 'SVG image@xlink:href', spec: '4a', emission: 'engine' },
-  { id: 'html.svg.feimage', label: 'SVG feImage', spec: '4a', emission: 'engine' },
+  { id: 'html.svg.image.href', label: 'SVG image@href', emission: 'engine' },
+  { id: 'html.svg.image.xlink', label: 'SVG image@xlink:href', emission: 'engine' },
+  { id: 'html.svg.feimage', label: 'SVG feImage', emission: 'engine' },
   {
     id: 'html.style.element',
     label: '<style> element carrying CSS',
-    spec: '4a',
     emission: 'engine',
     why:
       'A `url()` in CSS inside a `<style>` element. It is named for the host, because what ' +
@@ -181,26 +172,23 @@ export const SHAPES = [
   {
     id: 'html.style.attribute',
     label: 'style="" attribute carrying CSS',
-    spec: '4a',
     emission: 'engine',
   },
   {
     id: 'html.percent-encoded',
     label: 'a percent-encoded path',
-    spec: '4a,4h',
     emission: 'engine',
   },
 
   // ---- CSS and its dialects ----------------------------------------------------
-  { id: 'css.url.bare', label: 'url() unquoted', spec: '4b', emission: 'engine' },
-  { id: 'css.url.single', label: 'url() single-quoted', spec: '4b', emission: 'engine' },
-  { id: 'css.url.double', label: 'url() double-quoted', spec: '4b', emission: 'engine' },
-  { id: 'css.url.nested', label: 'url() inside another function', spec: '4b', emission: 'engine' },
-  { id: 'css.image-set', label: 'image-set()', spec: '4b', emission: 'engine' },
+  { id: 'css.url.bare', label: 'url() unquoted', emission: 'engine' },
+  { id: 'css.url.single', label: 'url() single-quoted', emission: 'engine' },
+  { id: 'css.url.double', label: 'url() double-quoted', emission: 'engine' },
+  { id: 'css.url.nested', label: 'url() inside another function', emission: 'engine' },
+  { id: 'css.image-set', label: 'image-set()', emission: 'engine' },
   {
     id: 'css.image-set.webkit',
     label: '-webkit-image-set()',
-    spec: '4b',
     emission: 'engine',
     why:
       'The vendor-prefixed `-webkit-image-set()`. It is named for the construct rather than ' +
@@ -210,7 +198,6 @@ export const SHAPES = [
   {
     id: 'css.url.in-comment',
     label: 'url() inside a comment',
-    spec: '4b',
     emission: 'declined',
     why:
       'A `url()` inside a CSS, SCSS or Less comment is not a reference, and the CSS adapter ' +
@@ -220,44 +207,39 @@ export const SHAPES = [
   {
     id: 'css.url.in-selector',
     label: 'url() inside a selector',
-    spec: '4b',
     emission: 'declined',
     why:
       'An attribute-selector value that happens to spell `url()`, as in ' +
       '`li[data-bg="url(/img/x.png)"]`. The CSS adapter reads declarations, never selectors, ' +
       'so nothing is emitted.',
   },
-  { id: 'css.var', label: 'url() behind a custom property', spec: '4b', emission: 'engine' },
-  { id: 'css.font-face', label: '@font-face src', spec: '4b', emission: 'engine' },
+  { id: 'css.var', label: 'url() behind a custom property', emission: 'engine' },
+  { id: 'css.font-face', label: '@font-face src', emission: 'engine' },
   {
     id: 'css.fragment',
     label: 'url(#fragment)',
-    spec: '4b,4g',
     emission: 'declined',
     why:
       'A `url(#id)` naming an element in the same document, such as an SVG filter or clip ' +
       'path, not a file. `isExternalUrl` drops it before anything is emitted.',
   },
-  { id: 'scss.url', label: 'url() in .scss', spec: '4b', emission: 'engine' },
-  { id: 'scss.variable', label: 'url($variable)', spec: '4b,4c', emission: 'engine' },
+  { id: 'scss.url', label: 'url() in .scss', emission: 'engine' },
+  { id: 'scss.variable', label: 'url($variable)', emission: 'engine' },
   {
     id: 'scss.interpolation.trailing',
     label: 'url() with trailing #{} interpolation',
-    spec: '4b',
     emission: 'engine',
   },
   {
     id: 'scss.interpolation.leading',
     label: 'url() with leading #{} interpolation',
-    spec: '4b',
     emission: 'engine',
   },
-  { id: 'less.url', label: 'url() in .less', spec: '4b', emission: 'engine' },
-  { id: 'less.variable', label: 'url(@variable)', spec: '4b', emission: 'engine' },
+  { id: 'less.url', label: 'url() in .less', emission: 'engine' },
+  { id: 'less.variable', label: 'url(@variable)', emission: 'engine' },
   {
     id: 'less.interpolation',
     label: 'url() with @{} interpolation',
-    spec: '4b',
     emission: 'engine',
   },
 
@@ -265,13 +247,11 @@ export const SHAPES = [
   {
     id: 'js.import.static',
     label: 'static ESM import of an image',
-    spec: '4c',
     emission: 'engine',
   },
   {
     id: 'js.import.alias.mapped',
     label: 'import through a tsconfig paths alias',
-    spec: '4c',
     emission: 'engine',
     adapterEmitsAs: [
       'js.import.static',
@@ -289,7 +269,6 @@ export const SHAPES = [
   {
     id: 'js.import.alias.unmapped',
     label: 'import through an alias that maps nowhere',
-    spec: '4c',
     emission: 'engine',
     adapterEmitsAs: [
       'js.import.static',
@@ -299,29 +278,25 @@ export const SHAPES = [
     ],
     needsToSee: 'the tsconfig/vite paths table, which arrives long after the adapter has run',
   },
-  { id: 'js.require', label: 'require() of an image', spec: '4c', emission: 'engine' },
+  { id: 'js.require', label: 'require() of an image', emission: 'engine' },
   {
     id: 'js.template.pattern',
     label: 'template literal, one unknown segment',
-    spec: '4c',
     emission: 'engine',
   },
   {
     id: 'js.template.dynamic',
     label: 'template literal, nothing static left',
-    spec: '4c',
     emission: 'engine',
   },
   {
     id: 'js.concat.dynamic',
     label: 'path assembled by concatenation',
-    spec: '4c',
     emission: 'engine',
   },
   {
     id: 'js.concat.pattern',
     label: 'path assembled by concatenation, one unknown segment',
-    spec: '4c',
     emission: 'engine',
     why:
       "A `+` chain such as `'/icons/icon-' + size + '.png'`: a fixed directory and one unknown " +
@@ -333,34 +308,30 @@ export const SHAPES = [
   {
     id: 'js.string.literal',
     label: 'a path-shaped string literal',
-    spec: '4c',
     emission: 'engine',
   },
   {
     id: 'js.jsx.attribute',
     label: 'a literal path in a JSX attribute',
-    spec: '4c',
     emission: 'engine',
   },
-  { id: 'js.cssinjs', label: 'CSS-in-JS carrying a url()', spec: '4c', emission: 'engine' },
+  { id: 'js.cssinjs', label: 'CSS-in-JS carrying a url()', emission: 'engine' },
 
   // ---- Markdown ----------------------------------------------------------------
-  { id: 'md.image', label: '![alt](path)', spec: '4d', emission: 'engine' },
+  { id: 'md.image', label: '![alt](path)', emission: 'engine' },
   {
     id: 'md.image.reference-style',
     label: '![alt][label]',
-    spec: '4d',
     emission: 'declined',
     why:
       'A reference-style image, `![alt][label]`, names a label, not a path. The path sits in ' +
       "the label's definition, reported as `md.reference-definition`, so emitting the use " +
       'site too would count one reference twice.',
   },
-  { id: 'md.reference-definition', label: '[label]: path', spec: '4d', emission: 'engine' },
+  { id: 'md.reference-definition', label: '[label]: path', emission: 'engine' },
   {
     id: 'md.raw-html',
     label: 'raw HTML inside markdown',
-    spec: '4d',
     emission: 'engine',
     why:
       'An HTML element written inside a markdown file. The markdown adapter hands its masked ' +
@@ -370,13 +341,11 @@ export const SHAPES = [
   {
     id: 'md.style-attribute',
     label: 'a style attribute inside markdown',
-    spec: '4d',
     emission: 'engine',
   },
   {
     id: 'md.prose-mention',
     label: 'a path named in prose',
-    spec: '4d',
     emission: 'declined',
     why:
       'A path named in a sentence is not a reference, and rewriting it would edit prose. The ' +
@@ -386,7 +355,6 @@ export const SHAPES = [
   {
     id: 'md.code-fence',
     label: 'a path inside a fenced code block',
-    spec: '4d',
     emission: 'declined',
     why:
       'A path inside a fenced code block is an example, not a reference. ' +
@@ -395,7 +363,6 @@ export const SHAPES = [
   {
     id: 'md.indented-code',
     label: 'a path inside an indented code block',
-    spec: '4d',
     emission: 'declined',
     why:
       'A path inside an indented code block is an example, not a reference. ' +
@@ -408,7 +375,6 @@ export const SHAPES = [
   {
     id: 'md.inline-code',
     label: 'a path inside inline code',
-    spec: '4d',
     emission: 'declined',
     why:
       'A path inside an inline code span, such as a markdown image written between ' +
@@ -418,7 +384,6 @@ export const SHAPES = [
   {
     id: 'md.frontmatter.scalar',
     label: 'an image path in YAML frontmatter',
-    spec: '4d',
     emission: 'gap',
     why:
       'An image path in a YAML frontmatter key such as `image:` or `cover:`. No adapter reads ' +
@@ -428,23 +393,20 @@ export const SHAPES = [
   {
     id: 'md.frontmatter.nested',
     label: 'an image path nested inside frontmatter',
-    spec: '4d',
     emission: 'gap',
   },
-  { id: 'mdx.import', label: 'an ESM import in MDX', spec: '4d', emission: 'engine' },
-  { id: 'mdx.jsx', label: 'a JSX attribute in MDX', spec: '4d', emission: 'engine' },
+  { id: 'mdx.import', label: 'an ESM import in MDX', emission: 'engine' },
+  { id: 'mdx.jsx', label: 'a JSX attribute in MDX', emission: 'engine' },
 
   // ---- JSON --------------------------------------------------------------------
   {
     id: 'json.webmanifest.icon',
     label: 'a webmanifest icon entry',
-    spec: '4e',
     emission: 'engine',
   },
   {
     id: 'json.webmanifest.other',
     label: 'a webmanifest screenshot or shortcut icon',
-    spec: '4e',
     emission: 'engine',
     adapterEmitsAs: ['json.webmanifest.icon'],
     needsToSee:
@@ -458,13 +420,11 @@ export const SHAPES = [
   {
     id: 'json.config.value',
     label: 'an image path in an ordinary JSON config',
-    spec: '4e',
     emission: 'engine',
   },
   {
     id: 'json.config.glob',
     label: 'a glob in a JSON config',
-    spec: '4e',
     emission: 'declined',
     why:
       'A glob such as `**/*.png` in a JSON config names a set of files, not one file. The ' +
@@ -476,19 +436,16 @@ export const SHAPES = [
   {
     id: 'astro.import.frontmatter',
     label: 'an ESM import in the frontmatter fence',
-    spec: '4f',
     emission: 'engine',
   },
   {
     id: 'astro.template.literal',
     label: 'a literal path in the template body',
-    spec: '4f',
     emission: 'engine',
   },
   {
     id: 'astro.template.expression',
     label: 'a path from an expression in the template body',
-    spec: '4f',
     emission: 'declined',
     why:
       'An expression such as `<img src={heroPath} />` in an `.astro` template carries no ' +
@@ -498,17 +455,16 @@ export const SHAPES = [
   {
     id: 'astro.style.element',
     label: 'a <style> element in an .astro file',
-    spec: '4f',
     emission: 'engine',
   },
 
   // ---- File types nothing reads -----------------------------------------------
-  { id: 'unread.vue', label: 'a reference inside .vue', spec: '4j', emission: 'gap' },
-  { id: 'unread.svelte', label: 'a reference inside .svelte', spec: '4j', emission: 'gap' },
-  { id: 'unread.njk', label: 'a reference inside .njk', spec: '4j', emission: 'gap' },
-  { id: 'unread.liquid', label: 'a reference inside .liquid', spec: '4j', emission: 'gap' },
-  { id: 'unread.erb', label: 'a reference inside .erb', spec: '4j', emission: 'gap' },
-  { id: 'unread.php', label: 'a reference inside .php', spec: '4j', emission: 'gap' },
+  { id: 'unread.vue', label: 'a reference inside .vue', emission: 'gap' },
+  { id: 'unread.svelte', label: 'a reference inside .svelte', emission: 'gap' },
+  { id: 'unread.njk', label: 'a reference inside .njk', emission: 'gap' },
+  { id: 'unread.liquid', label: 'a reference inside .liquid', emission: 'gap' },
+  { id: 'unread.erb', label: 'a reference inside .erb', emission: 'gap' },
+  { id: 'unread.php', label: 'a reference inside .php', emission: 'gap' },
 
   // ---- Decoys: text that looks like a reference and is not --------------------
   //
@@ -521,19 +477,16 @@ export const SHAPES = [
   {
     id: 'decoy.comment',
     label: 'a filename inside a code comment',
-    spec: '4k.4',
     emission: 'declined',
   },
   {
     id: 'decoy.log-message',
     label: 'a path inside a log message',
-    spec: '4k.4',
     emission: 'declined',
   },
   {
     id: 'decoy.typo',
     label: 'a name one character from a real file',
-    spec: '4k.4',
     emission: 'declined',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists — adapters never touch the disk, by design',
@@ -545,7 +498,6 @@ export const SHAPES = [
   {
     id: 'decoy.not-a-path',
     label: 'extension-shaped text that is not a path',
-    spec: '4k.4',
     emission: 'declined',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
@@ -558,7 +510,6 @@ export const SHAPES = [
   {
     id: 'decoy.glob',
     label: 'a glob rather than a path',
-    spec: '4k.4',
     emission: 'declined',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
@@ -571,13 +522,11 @@ export const SHAPES = [
   {
     id: 'decoy.windows-path',
     label: 'a backslash-separated path',
-    spec: '4k.4',
     emission: 'declined',
   },
   {
     id: 'decoy.query-or-hash',
     label: 'a real file with a query string or fragment',
-    spec: '4k.4,4g',
     emission: 'engine',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the file exists',
@@ -591,7 +540,6 @@ export const SHAPES = [
   {
     id: 'decoy.regex',
     label: 'an extension inside a regular expression',
-    spec: '4k.4',
     emission: 'declined',
     why:
       'An image extension inside a regular expression, such as `/\\.(png|jpe?g|svg)$/i`, is ' +
@@ -608,7 +556,6 @@ export const SHAPES = [
   {
     id: 'path.data-uri',
     label: 'a data: URI',
-    spec: '4g',
     emission: 'declined',
     why:
       'A `data:` URI carries the image itself, so there is no file to point at, and rewriting ' +
@@ -618,7 +565,6 @@ export const SHAPES = [
   {
     id: 'path.absolute-url',
     label: 'an absolute URL',
-    spec: '4g',
     emission: 'unclaimed',
     why:
       'An absolute URL such as `https://cdn.example.com/hero.png` names a real, reachable file ' +
@@ -628,7 +574,6 @@ export const SHAPES = [
   {
     id: 'path.protocol-relative',
     label: 'a protocol-relative URL',
-    spec: '4g',
     emission: 'unclaimed',
     why:
       'A protocol-relative URL such as `//cdn.example.com/hero.png` names a remote file over ' +
@@ -639,7 +584,6 @@ export const SHAPES = [
   {
     id: 'path.charref',
     label: 'a path spelled with HTML character references',
-    spec: '4a,4g',
     emission: 'engine',
     why:
       'A path spelled with HTML character references, such as `/gallery/a&amp;b.png`. ' +
@@ -651,7 +595,6 @@ export const SHAPES = [
   {
     id: 'path.bare-specifier',
     label: 'a bare package specifier',
-    spec: '4c,4g',
     emission: 'engine',
     adapterEmitsAs: ['js.string.literal'],
     needsToSee: 'whether the first path segment is an installed package — node_modules',
@@ -667,7 +610,6 @@ export const SHAPES = [
   {
     id: 'pattern.partial',
     label: 'a pattern matching only some of the files it names',
-    spec: '4c,4b',
     emission: 'engine',
     adapterEmitsAs: ['js.template.pattern', 'scss.interpolation.trailing'],
     needsToSee: 'which of the files the pattern names actually exist on disk',
@@ -688,7 +630,6 @@ export const SHAPES = [
   {
     id: 'js.import.dynamic',
     label: 'a dynamic import() of an image',
-    spec: '§8.5',
     emission: 'engine',
     why:
       'A dynamic `import()` of an image, emitted by `collectFromImportExpression`. The ' +
@@ -697,7 +638,6 @@ export const SHAPES = [
   {
     id: 'js.new-url',
     label: "new URL('./x.png', import.meta.url)",
-    spec: '§8.5',
     emission: 'engine',
     why:
       '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
@@ -707,7 +647,6 @@ export const SHAPES = [
   {
     id: 'js.jsx.srcset',
     label: 'a JSX srcSet candidate list',
-    spec: '§8.5',
     emission: 'engine',
     why:
       'A `srcSet` candidate list in JSX, split with the same `parseSrcset` the HTML adapter ' +
@@ -717,7 +656,6 @@ export const SHAPES = [
   {
     id: 'js.jsx.svg',
     label: 'a JSX inline-SVG <image href>',
-    spec: '§8.5',
     emission: 'engine',
     why:
       'An `<image href>` or `<feImage href>` in inline SVG inside JSX, read by ' +

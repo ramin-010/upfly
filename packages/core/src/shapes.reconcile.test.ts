@@ -275,7 +275,6 @@ describe('the reconciliation is proved able to fail', () => {
     const declare = (over: Partial<ShapeDeclaration>): ShapeDeclaration => ({
       id: 'a.real.shape',
       label: 'a shape',
-      spec: '4a',
       emission: 'engine',
       ...over,
     });
