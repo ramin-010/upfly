@@ -62,6 +62,7 @@ describe('couldHoldReference', () => {
       ['a decimal entity dot', '![alt](hero&#46;png)'],
       ['a hex entity dot', '![alt](hero&#x2E;png)'],
       ['an entity dot in a link definition', '[label]: hero&#46;png'],
+      ['a named entity dot', '![alt](hero&period;png)'],
       ['a percent-encoded dot', '![alt](hero%2Epng)'],
       ['🔴 a percent-encoded extension LETTER, which `%2` misses', '![alt](hero.%70ng)'],
       ['🔴 a wholly percent-encoded extension', '![alt](hero%2E%70%6E%67)'],

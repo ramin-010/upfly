@@ -93,7 +93,7 @@ describe('verifyBroken asks every spelling', () => {
   });
 
   it('and an undecodable spelling is still judged on its literal text alone', async () => {
-    const result = await verifyFindings(root, brokenReport('./img/caf&eacute;.png'), ['']);
+    const result = await verifyFindings(root, brokenReport('./img/caf&eacut;.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-genuine');
   });

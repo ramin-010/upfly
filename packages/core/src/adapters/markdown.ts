@@ -18,6 +18,7 @@ import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
 import {
   TEMPLATE_HOLE_PATTERN,
+  holdsUndecodableCharacterReference,
   isExternalUrl,
   splitPathSuffix,
   templateExpressionReason,
@@ -374,6 +375,24 @@ function addReference(
 
   const { path, suffix } = splitPathSuffix(raw);
   if (path === '') return;
+
+  // CommonMark decodes character references in a destination, and the resolver tries the
+  // decoded spelling. When no spelling decodes them all the file is unknown, and looking up
+  // the text as written would report a miss as broken.
+  if (holdsUndecodableCharacterReference(path)) {
+    references.push({
+      file,
+      start,
+      end: start + path.length,
+      rawPath: path,
+      kind: 'md',
+      shape,
+      ceiling: 'unsafe',
+      asserted: true,
+      note: 'the path holds character references that cannot be fully decoded, such as a misspelled name or one beside a percent-escape, so the file it names is not known',
+    });
+    return;
+  }
 
   references.push({
     file,

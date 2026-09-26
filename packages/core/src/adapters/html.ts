@@ -18,6 +18,7 @@ import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import {
   decodeCharacterReferencesWithMap,
+  holdsUndecodableCharacterReference,
   isExternalUrl,
   parseSrcset,
   provablyNotAFile,
@@ -216,7 +217,7 @@ function collectFromAttribute(input: {
       addEntityEscapedReference({ start, end }, context);
       return;
     }
-    addCharacterReferenceReference(raw, { start, end }, context);
+    addCharacterReferenceReference(raw, decodedValue, { start, end }, context);
   };
 
   if (name === 'style') {
@@ -429,9 +430,9 @@ function describeUrlFunction(css: string): string {
  * and the path is plain in the source, so the CSS is decoded for the parser and each
  * reference is mapped back to source offsets. Three guards must hold, or the caller refuses
  * the whole attribute, so the worst case is a refusal and never a wrong range:
- * 1. Our decoder finishes. It knows numeric references and five named ones; `&nbsp;` stops it.
- * 2. Our decoded text equals parse5's. parse5 knows every named reference in the HTML spec,
- *    so where the two differ our offsets would describe text the browser never saw.
+ * 1. Our decoder finishes. A name the HTML spec does not define, such as `&eacut;`, stops it.
+ * 2. Our decoded text equals parse5's, which also decodes legacy names without a semicolon:
+ *    where the two differ, our offsets would describe text the browser never saw.
  * 3. Each mapped range starts within the attribute, runs forwards, and is no shorter than
  *    the path the CSS adapter found.
  *
@@ -445,7 +446,7 @@ function collectFromEscapedStyleAttribute(
 ): boolean {
   const decoded = decodeCharacterReferencesWithMap(raw);
   if (decoded === null) return false;
-  // Guard 2: agree with parse5, which knows every named reference.
+  // Guard 2: agree with parse5, which also decodes legacy names without their semicolon.
   if (decoded.text !== parserValue) return false;
 
   let found: RawReference[];
@@ -569,17 +570,19 @@ function escapedIsSomebodyElses(raw: string, isSrcset: boolean): boolean {
  * invariant holds; the resolver also tries the decoded spelling, and `relocate` re-encodes
  * when it writes. `/gallery/a&amp;b.png` names `a&b.png` and can be rewritten.
  *
- * That needs the whole path to decode. A `high` ceiling means a lookup, and a lookup that
- * misses reports `broken`, so a path holding a reference outside the decoder's bound stays
- * `unsafe`: declining is only a refusal, while a false `broken` is the one error the
- * engine promises not to make.
+ * That needs the decoded spelling to be parse5's reading, which a legacy name without its
+ * semicolon breaks, and complete, which a percent-escape beside the references breaks. A
+ * `high` ceiling means a lookup that can report `broken`, so any other path stays `unsafe`.
  */
 function addCharacterReferenceReference(
   raw: string,
+  parserValue: string,
   range: { start: number; end: number },
   context: Context,
 ): void {
-  const decodable = spellingsOf(raw).some(({ spelling }) => spelling === 'html-entities');
+  const decoded = spellingsOf(raw).find(({ spelling }) => spelling === 'html-entities');
+  const decodable =
+    decoded?.path === parserValue && !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
   if (!decodable) {
     addEntityEscapedReference(range, context);
     return;

@@ -231,6 +231,36 @@ describe('markdownAdapter', () => {
     });
   });
 
+  /**
+   * CommonMark decodes character references in a destination, so `caf&eacute;.png` names
+   * a file whose name holds an e with an acute accent, and the resolver tries that spelling.
+   * When no spelling decodes a destination fully the file is unknown, so looking the text up
+   * as written could report a picture that exists as broken.
+   */
+  describe('character references in a destination', () => {
+    it('keeps a destination the decoder can read, spelled as written', () => {
+      const source = '![Our cafe](/img/caf&eacute;.png)';
+      expect(slices(source)).toEqual(['/img/caf&eacute;.png']);
+      expect(find(source)[0]?.ceiling).toBe('high');
+    });
+
+    it.each([
+      ['a misspelled name', '![a](/img/caf&eacut;.png)'],
+      ['a number past the last code point', '![a](/img/caf&#x110000;.png)'],
+      ['a reference beside a percent-escape', '![a](/img/caf&eacute;%20x.png)'],
+      ['a link reference definition', '[a]: /img/caf&eacut;.png'],
+    ])('refuses %s rather than look up the text as written', (_name, source) => {
+      const references = find(source);
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/cannot be fully decoded/);
+    });
+
+    it('leaves a bare ampersand in a file name alone', () => {
+      expect(find('![a](/img/c&s.png)')[0]?.ceiling).toBe('high');
+    });
+  });
+
   describe('offsets are UTF-16 code units', () => {
     it('stays aligned after an emoji', () => {
       const source = '# Launch 🎉\n\n![Logo](./logo.png)';

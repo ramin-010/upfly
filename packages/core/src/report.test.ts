@@ -2082,7 +2082,7 @@ describe('classifyReference: the four boxes of the accuracy table', () => {
             resolution: 'dynamic',
             confidence: 'unsafe',
             resolvedPath: null,
-            rawPath: '/img/caf&eacute;.png',
+            rawPath: '/img/caf&eacute.png',
             note: 'contains HTML character references, so the path text cannot be located exactly',
           }),
         ),

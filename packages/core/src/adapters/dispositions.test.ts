@@ -107,10 +107,11 @@ describe('path.charref: the spelling beats the construct', () => {
     expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
   });
 
-  it('stays unsafe when the entity is one the decoder does not know', () => {
+  it('stays unsafe when the reference is one the decoder does not read', () => {
     // The control for the assertion above: promoting the ceiling means a lookup, and a
-    // lookup that misses becomes a `broken` finding. A path we cannot fully decode is
-    // refused rather than guessed at.
-    expect(only(html('<img src="/gallery/caf&eacute;.png">')).ceiling).toBe('unsafe');
+    // lookup that misses becomes a `broken` finding. A path we cannot fully decode, here a
+    // legacy name without its semicolon that parse5 still decodes, is refused rather than
+    // guessed at.
+    expect(only(html('<img src="/gallery/caf&eacute.png">')).ceiling).toBe('unsafe');
   });
 });

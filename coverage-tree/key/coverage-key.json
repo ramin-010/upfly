@@ -641,6 +641,14 @@
       "height": 64
     },
     {
+      "path": "apps/docs/public/img/café.png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
+    },
+    {
       "path": "apps/docs/public/img/diagram.png",
       "bytes": 54495,
       "sha256": "afc726f7e9ad45cf",
@@ -6674,6 +6682,55 @@
           "target": "apps/docs/public/img/avatar.png",
           "offset": 180,
           "line": 6,
+          "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/entity-named.md",
+      "entries": [
+        {
+          "raw": "/img/caf&eacute;.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "The file name holds an é, spelled with the named character reference &eacute;. CommonMark decodes named and numeric references in a link destination, so this names café.png, which exists. A decoder that knew only a few names would look up the text as written and report a picture that is there as broken.",
+          "decoded": "/img/café.png",
+          "target": "apps/docs/public/img/café.png",
+          "offset": 152,
+          "line": 6,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/entity-misspelled.md",
+      "entries": [
+        {
+          "raw": "/img/caf&eacut;.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "dynamic",
+          "why": "&eacut; looks like a character reference but names none, so the decoder cannot read it and the file it means is not known. The markdown adapter refuses a destination it cannot fully decode, as the HTML adapter refuses such an attribute, rather than look up the text as written, where a miss would be reported as broken.",
+          "offset": 113,
+          "line": 5,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/entity-named-html.md",
+      "entries": [
+        {
+          "raw": "/img/caf&eacute;.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "The same picture through raw HTML, where the HTML parser decodes &eacute; in the src attribute, so the path names café.png. The HTML adapter resolves an attribute whose path the decoder can read and refuses one it cannot, so a decoder that did not know the name would report this as unsafe.",
+          "decoded": "/img/café.png",
+          "target": "apps/docs/public/img/café.png",
+          "offset": 120,
+          "line": 5,
           "column": 11
         }
       ]

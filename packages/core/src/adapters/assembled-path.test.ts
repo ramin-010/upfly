@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TEMPLATE_HOLES,
   assembledPathIsGlobbable,
+  holdsUndecodableCharacterReference,
   interpolationChunks,
   isExternalUrl,
   provablyNotAFile,
@@ -268,15 +269,47 @@ describe('spellingsOf', () => {
   });
 
   /**
-   * A path that cannot be fully decoded offers no decoded spelling at all. A lookup that
-   * misses falls through to `broken`, and a false `broken` is the one outcome the engine
-   * promises never to produce, so `&eacute;` stays unreadable rather than becoming a wrong
-   * answer.
+   * A path that cannot be fully decoded offers no decoded spelling at all, not even with the
+   * references that do decode. A lookup that misses falls through to `broken`, and a false
+   * `broken` is the one outcome the engine promises never to produce, so a path holding the
+   * misspelled `&eacut;` stays unreadable rather than becoming a wrong answer.
    */
   it('offers nothing decoded when one reference is outside the bound', () => {
-    expect(spellingsOf('caf&eacute;.png').map((candidate) => candidate.spelling)).toEqual([
+    expect(spellingsOf('a&amp;caf&eacut;.png').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);
+  });
+
+  /**
+   * CommonMark decodes a character reference in a link destination when the HTML
+   * specification defines its name (CommonMark 0.31.2, section 2.5), and the resolver tries
+   * that decoded spelling. Most cases are the specification's own examples.
+   */
+  it.each([
+    ['/f&ouml;&ouml;', `/f${String.fromCodePoint(0xf6, 0xf6)}`],
+    ['caf&eacute;.png', `caf${String.fromCodePoint(0xe9)}.png`],
+    ['&copy;&AElig;&Dcaron;&frac34;', String.fromCodePoint(0xa9, 0xc6, 0x10e, 0xbe)],
+    ['&HilbertSpace;&ngE;', String.fromCodePoint(0x210b, 0x2267, 0x338)],
+    ['&Lt;&LT;&AMP;', String.fromCodePoint(0x226a, 0x3c, 0x26)],
+    ['&#35;&#1234;&#X22;&#xcab;', String.fromCodePoint(0x23, 0x4d2, 0x22, 0xcab)],
+  ])('decodes %s as CommonMark does', (written, decoded) => {
+    expect(spellingsOf(written)).toContainEqual({ spelling: 'html-entities', path: decoded });
+  });
+
+  it.each([
+    'caf&eacut;.png',
+    '&notit;',
+    '&ThisIsNotDefined;',
+    '&MadeUpEntity;',
+    '&x;',
+    '&Amp;',
+    '&APOS;',
+    '&copy',
+    '&#87654321;',
+    '&#abcdef0;',
+    '&hi?;',
+  ])('offers only the literal spelling of %s, which CommonMark does not decode', (written) => {
+    expect(spellingsOf(written).map((candidate) => candidate.spelling)).toEqual(['literal']);
   });
 
   it('offers nothing decoded when the percent-encoding is malformed', () => {
@@ -289,6 +322,27 @@ describe('spellingsOf', () => {
     expect(spellingsOf('/images/c&s.png').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);
+  });
+});
+
+/** What the markdown adapter asks before it lets a destination be looked up. */
+describe('holdsUndecodableCharacterReference', () => {
+  it('is true when something written as a reference does not decode', () => {
+    expect(holdsUndecodableCharacterReference('caf&eacut;.png')).toBe(true);
+    expect(holdsUndecodableCharacterReference('caf&#x110000;.png')).toBe(true);
+  });
+
+  // The file is `caf` with an accent then ` x.png`, which no spelling the resolver tries
+  // reaches: it decodes the reference or the escape, never both.
+  it('is true for a reference beside a percent-escape', () => {
+    expect(holdsUndecodableCharacterReference('caf&eacute;%20x.png')).toBe(true);
+  });
+
+  it('is false for a path that decodes, or that holds no reference at all', () => {
+    expect(holdsUndecodableCharacterReference('caf&eacute;.png')).toBe(false);
+    expect(holdsUndecodableCharacterReference('c&s.png')).toBe(false);
+    expect(holdsUndecodableCharacterReference('hero%20image.png')).toBe(false);
+    expect(holdsUndecodableCharacterReference('hero.png')).toBe(false);
   });
 });
 

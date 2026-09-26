@@ -375,7 +375,7 @@ describe('htmlAdapter', () => {
    * covers the encoded source text, so `source.slice(start, end) === rawPath` holds.
    */
   describe('character-reference paths are located, decoded and re-encoded', () => {
-    for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png']) {
+    for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png', 'caf&eacute;.png']) {
       it(`locates ${written} exactly, without decoding into rawPath`, () => {
         const source = `<img src="/gallery/${written}">`;
         const references = find(source);
@@ -391,11 +391,24 @@ describe('htmlAdapter', () => {
     }
 
     it('refuses a reference it cannot fully decode rather than risking a false broken', () => {
-      const references = find('<img src="/gallery/caf&eacute;.png">');
+      // parse5 decodes the legacy `&eacute` without its semicolon here; our decoder does not.
+      const references = find('<img src="/gallery/caf&eacute.png">');
       expect(references).toHaveLength(1);
       expect(references[0]?.ceiling).toBe('unsafe');
       expect(references[0]?.note).toMatch(/character references/);
     });
+
+    // A lookup of any other spelling could report a file that exists as broken. parse5 also
+    // decodes the legacy `&copy` before the dot, and the resolver decodes a reference or a
+    // percent-escape, never both.
+    it.each(['caf&eacute;&copy.png', 'caf&eacute;%20x.png'])(
+      'refuses %s, whose decoded spelling is not what a browser reads',
+      (written) => {
+        const references = find(`<img src="/gallery/${written}">`);
+        expect(references).toHaveLength(1);
+        expect(references[0]?.ceiling).toBe('unsafe');
+      },
+    );
   });
 
   /**
@@ -440,13 +453,13 @@ describe('htmlAdapter', () => {
     });
 
     /**
-     * This check is what makes a five-entity decoder safe beside parse5, which knows every
-     * named reference. Where the two disagree our offsets would describe text the browser
-     * never saw, so the attribute is refused: the worst case is a refusal, never a wrong
-     * range.
+     * This check is what makes our decoder safe beside parse5, which also decodes some
+     * legacy names written without their semicolon. Where the two disagree our offsets would
+     * describe text the browser never saw, so the attribute is refused: the worst case is a
+     * refusal, never a wrong range.
      */
     it('refuses when our decoder and the parser disagree', () => {
-      const source = '<span style="background: url(&quot;/caf&eacute;.png&quot;)"></span>';
+      const source = '<span style="background: url(&quot;/caf&eacute.png&quot;)"></span>';
       const references = find(source);
 
       expect(references).toHaveLength(1);

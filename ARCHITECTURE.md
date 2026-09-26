@@ -485,11 +485,20 @@ assumed.
 A path that cannot be fully decoded offers no decoded spelling at all. A partly decoded path is
 neither what the author wrote nor the file's name, and looking it up would miss, which for an
 asserted reference means a `broken` finding. The decoder knows numeric references (`&#38;`,
-`&#x26;`) and the five predefined names `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&apos;`, and none
-of the other HTML named references. So the HTML adapter reports a path such as `caf&eacute;.png`
-as `unsafe`, a refusal with a reason, instead of giving it a ceiling that leads to a lookup.
-Widening the bound would mean depending on a complete entity table. Percent-decoding uses
-`decodeURIComponent`, and text it rejects, such as `100%`, is treated the same way.
+`&#x26;`) and every named reference the HTML specification defines, taken from parse5's table:
+each name is decoded once inside an attribute value, where it counts only whole and with its
+semicolon. That is how CommonMark decodes a link destination, so `![](caf&eacute;.png)` names
+`café.png`, as `<img src="caf&eacute;.png">` does. Anything else written like a reference, such as
+the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`, and text it
+rejects, such as `100%`, is treated the same way.
+
+The spellings are tried one at a time, so a path that needs both decodings, such as
+`caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
+reference the decoder cannot read, or references beside a percent-escape, is therefore reported as
+`unsafe` by the Markdown adapter, a refusal with a reason instead of a ceiling that leads to a
+lookup. The HTML adapter refuses the same paths, and also any whose decoded spelling differs from
+parse5's reading of the attribute, as when a legacy name such as `&copy` is written without its
+semicolon: parse5 still decodes it before a `.`, and our decoder does not.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
@@ -764,12 +773,12 @@ same way:
 
 - Another host's URL is dropped first, as an unescaped one is. An entity in a query string
   (`https://example.com/a.png?w=1&amp;h=2`) does not make the file this project's.
-- A single-URL attribute whose whole path decodes is resolved. Its range and `rawPath` stay the
-  encoded source text; the resolver also tries the decoded spelling (`spellingsOf`), and a rewrite
-  writes the new path re-encoded (`spell`). `/gallery/a&amp;b.png` names `a&b.png` and can be
-  rewritten.
-- A path the decoder cannot finish stays `unsafe`, as "Percent-encoded and entity-encoded paths"
-  explains.
+- A single-URL attribute whose decoded spelling is parse5's own reading of it is resolved. Its
+  range and `rawPath` stay the encoded source text; the resolver also tries the decoded spelling
+  (`spellingsOf`), and a rewrite writes the new path re-encoded (`spell`). `/gallery/a&amp;b.png`
+  names `a&b.png` and can be rewritten.
+- Any other path stays `unsafe`, and so does one with a percent-escape beside its references, as
+  "Percent-encoded and entity-encoded paths" explains.
 - A `srcset` stays `unsafe`. It is a list, so its one range is not one path.
 
 A `style` attribute is CSS and never meets the external-URL test: `width: 100%` begins with letters
@@ -783,10 +792,12 @@ such as an emoji, is two code units even when one reference spells it, and both 
 reference's start. It keeps the result only when three guards hold, and otherwise reports the
 attribute as unread:
 
-1. The decoder finishes. A named reference outside its five, such as `&nbsp;`, stops it.
-2. Its decoded text equals parse5's. parse5 knows every named reference in the HTML
-   specification, so where the two disagree the offsets would describe text the browser never
-   saw. This comparison is what makes a bounded decoder safe to use.
+1. The decoder finishes. A name the HTML specification does not define, such as `&eacut;`, stops
+   it.
+2. Its decoded text equals parse5's. parse5 also decodes some legacy names written without their
+   semicolon, such as `&eacute` before a `.`, which our decoder leaves alone, so where the two
+   disagree the offsets would describe text the browser never saw. This comparison is what makes
+   a bounded decoder safe to use.
 3. Each mapped range starts within the attribute, runs forwards, and is no shorter than the path
    the CSS adapter found. `rawPath` is sliced from the source, so it always matches its range.
 
@@ -1067,10 +1078,10 @@ So the list errs wide (`style` matches the word "styling" in prose) and has four
    matches `styled`), and the CSS-in-JS tags `keyframes`, `createGlobalStyle` and `injectGlobal`.
    `url($icon-path)` in SCSS is reported as `dynamic` and holds no extension at all.
 3. Encoded spellings. The resolver also tries a path's entity-decoded and percent-decoded forms, so
-   `![alt](hero&#46;png)` resolves to `hero.png`. The named entities it decodes (`&amp;`, `&lt;`,
-   `&gt;`, `&quot;`, `&apos;`) cannot spell an extension character, so every entity that hides one
-   is numeric and contains `&#`. Percent-decoding applies to any character, and `hero.%70ng` is
-   `hero.png`, so the token is `%` rather than `%2`.
+   `![alt](hero&#46;png)` resolves to `hero.png`. Of the named references the HTML specification
+   defines, only `&period;` spells an extension character, so the tokens are `&#` and `&period;`.
+   Percent-decoding applies to any character, and `hero.%70ng` is `hero.png`, so the token is `%`
+   rather than `%2`.
 4. Template markers, the opener of every syntax in `TEMPLATE_HOLES`. A templated destination such
    as `![logo]({{ site.logo }})` is reported as `dynamic` and has no static extension.
 

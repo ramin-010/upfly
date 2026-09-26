@@ -5,6 +5,7 @@
  * the text an author wrote, which is all an adapter may do.
  */
 
+import { parseFragment } from 'parse5';
 import type { ReferenceKind } from '../types.js';
 
 /**
@@ -212,19 +213,33 @@ export const NOT_GLOBBABLE_REASON =
  */
 export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities';
 
-/**
- * The named references the decoder knows, alongside numeric ones. Any other name, such as
- * `&eacute;`, leaves the path undecoded rather than half decoded.
- */
-const PREDEFINED_ENTITIES: ReadonlyMap<string, string> = new Map([
-  ['amp', '&'],
-  ['lt', '<'],
-  ['gt', '>'],
-  ['quot', '"'],
-  ['apos', "'"],
-]);
-
 const ENTITY = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+/**
+ * What each named reference looked up so far stands for. Only names the table defines are
+ * kept, so the cache is bounded by the table rather than by the text read.
+ */
+const NAMED_REFERENCES = new Map<string, string>();
+
+/**
+ * The text a named character reference such as `&eacute;` stands for, or `null` when the
+ * HTML specification defines no such name.
+ *
+ * The table is parse5's, which is the specification's, and CommonMark decodes the same
+ * names in a link destination. The name is decoded inside an attribute value, where it
+ * counts only whole and with its semicolon, as in CommonMark: there `&notit;` stays as
+ * written, where a document's text would decode the legacy `&not` in it.
+ */
+function decodeNamedReference(name: string): string | null {
+  const known = NAMED_REFERENCES.get(name);
+  if (known !== undefined) return known;
+
+  const [element] = parseFragment(`<i title="&${name};">`).childNodes;
+  const value = element !== undefined && 'attrs' in element ? element.attrs[0]?.value : undefined;
+  if (value === undefined || value === `&${name};`) return null;
+  NAMED_REFERENCES.set(name, value);
+  return value;
+}
 
 /**
  * Every spelling this path could be, literal first.
@@ -287,9 +302,9 @@ export function spell(path: string, spelling: PathSpelling): string {
  * the decoded text parses as the browser reads it. `map[i]` is the source offset of decoded
  * code unit `i`, with one more entry for the end, so a decoded range `[a, b)` maps to
  * `[map[a], map[b])` and a reference's whole span belongs to the character it produced.
- * This decoder knows fewer references than the HTML parser, so `html.ts` declines when the
- * two decode an attribute differently. See "Percent-encoded and entity-encoded paths" in
- * ARCHITECTURE.md.
+ * The HTML parser also decodes some legacy names written without their semicolon, which
+ * this decoder leaves as they are, so `html.ts` declines when the two decode an attribute
+ * differently. See "Percent-encoded and entity-encoded paths" in ARCHITECTURE.md.
  */
 export function decodeCharacterReferencesWithMap(
   text: string,
@@ -333,7 +348,7 @@ function decodeOneReference(body: string): string | null {
     if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
     return String.fromCodePoint(code);
   }
-  return PREDEFINED_ENTITIES.get(body.toLowerCase()) ?? null;
+  return decodeNamedReference(body);
 }
 
 /**
@@ -345,27 +360,29 @@ function decodeCharacterReferences(text: string): string | null {
 
   let decodable = true;
   const decoded = text.replace(ENTITY, (match, body: string) => {
-    if (body.startsWith('#')) {
-      const isHex = body[1] === 'x' || body[1] === 'X';
-      const code = Number.parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
-      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
-        decodable = false;
-        return match;
-      }
-      return String.fromCodePoint(code);
-    }
-    const named = PREDEFINED_ENTITIES.get(body.toLowerCase());
-    if (named === undefined) {
-      decodable = false;
-      return match;
-    }
-    return named;
+    const character = decodeOneReference(body);
+    if (character === null) decodable = false;
+    return character ?? match;
   });
 
   // An `&` outside a reference is part of the file name (`c&s.png`). Only a reference the
   // decoder cannot read makes the text undecodable.
   return decodable ? decoded : null;
 }
+
+/**
+ * Whether a path holds character references that no spelling the resolver tries decodes
+ * completely, so which file it names is not known: one the decoder cannot read, such as
+ * the misspelled `&eacut;`, or any beside a percent-escape, as in `caf&eacute;%20x.png`,
+ * since the resolver decodes one way or the other and never both.
+ */
+export function holdsUndecodableCharacterReference(path: string): boolean {
+  const decoded = decodeCharacterReferences(path);
+  if (decoded === null) return true;
+  return decoded !== path && PERCENT_ESCAPE.test(path);
+}
+
+const PERCENT_ESCAPE = /%[0-9A-Fa-f]{2}/;
 
 /**
  * The text with percent-escapes resolved, or `null` when it is not valid percent-encoding.

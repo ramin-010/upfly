@@ -29,10 +29,11 @@ const ASSERTING_TOKENS: readonly string[] = [
 ];
 
 // The resolver also tries a path's entity-decoded and percent-decoded spellings, so an
-// extension can be written `hero&#46;png` or `hero%2Epng`. No named entity spells an
-// extension character, so `&#` covers entities. Percent-decoding applies to every
-// character (`hero.%70ng` is `hero.png`), so the token is `%`, not `%2`.
-const ENCODED_SPELLING_TOKENS: readonly string[] = ['&#', '%'];
+// extension can be written `hero&#46;png`, `hero&period;png` or `hero%2Epng`. `&period;` is
+// the one named reference that spells an extension character, so it and `&#` cover
+// entities. Percent-decoding applies to every character (`hero.%70ng` is `hero.png`), so
+// the token is `%`, not `%2`.
+const ENCODED_SPELLING_TOKENS: readonly string[] = ['&#', '&period;', '%'];
 
 // A templated destination such as `![logo]({{ site.logo }})` is reported as `dynamic` and
 // has no static extension. Imported, so a new template syntax is covered here too.

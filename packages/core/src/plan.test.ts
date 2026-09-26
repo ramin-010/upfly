@@ -256,6 +256,36 @@ describe('references it refuses to rewrite', () => {
   });
 });
 
+describe('a path that resolved through its decoded spelling', () => {
+  it('is rewritten as the author spelled it, so it decodes to the converted file', () => {
+    // Only the extension is swapped, so the reference still spells the accent the same way.
+    const cafe = `public/img/caf${String.fromCodePoint(0xe9)}`;
+    const plan = planOptimization(
+      input({
+        assets: [asset(`${cafe}.png`)],
+        references: [
+          resolved('docs/guide.md', '/img/caf&eacute;.png', `${cafe}.png`, {
+            kind: 'md',
+            shape: 'md.image',
+            resolvedVia: 'serving-root',
+            spelling: 'html-entities',
+          }),
+        ],
+      }),
+    );
+
+    expect(plan.conversions.map((conversion) => conversion.target)).toEqual([`${cafe}.webp`]);
+    expect(plan.rewrites.flatMap((rewrite) => rewrite.edits)).toEqual([
+      {
+        start: 10,
+        end: 30,
+        replacement: '/img/caf&eacute;.webp',
+        expected: '/img/caf&eacute;.png',
+      },
+    ]);
+  });
+});
+
 describe('a root-relative path that resolved at the project root', () => {
   const tree = {
     assets: [asset('public/hero.png')],
