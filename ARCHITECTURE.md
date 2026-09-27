@@ -589,7 +589,8 @@ that text for the asset's filename, in one pass building a set of names, not one
 - **No hit → `dead`**, confidently.
 
 `unscannedExtensions` is still reported. It stops being the trigger and becomes what it should
-always have been: a coverage statement, and how a user finds out they want an adapter.
+always have been: a coverage statement, and how a user finds out they want an adapter. Its caveat
+counts only the files no adapter claimed; a file an adapter could not parse is listed under skipped.
 
 The sweep reads three things: files **no adapter claimed**, the raw path of every reference we
 **could not resolve**, and the asset filenames `scan` saw in the files it **did** read, collected

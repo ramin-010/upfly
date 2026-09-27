@@ -24,7 +24,7 @@ import type { ServingRoots } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';
-import type { Reference } from './types.js';
+import type { Reference, UnscannedFile } from './types.js';
 import type { Adapter } from './types.js';
 
 /**
@@ -1142,20 +1142,13 @@ describe('buildReport', () => {
   });
 
   describe('a file that could not be parsed', () => {
-    it('reads as the reason alone, while the JSON keeps the codes', () => {
-      const ROOT = '/repo';
-      const reason = 'parse-failed';
-      const detail =
-        'ADAPTER_PARSE_FAILED: Could not parse: invalid css syntax at line 2, column 17';
-      const report = buildReport({
-        graph: buildGraph({
-          root: ROOT,
-          assets: [],
-          references: [],
-          unscannedFiles: [
-            { path: `${ROOT}/site.css`, relative: 'site.css', extension: '.css', reason, detail },
-          ],
-        }),
+    const ROOT = '/repo';
+    const reason = 'parse-failed';
+    const detail = 'ADAPTER_PARSE_FAILED: Could not parse: invalid css syntax at line 2, column 17';
+
+    function reportWithUnread(unscannedFiles: UnscannedFile[]) {
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles }),
         audit: {
           findings: [],
           publicDirDeadCount: 0,
@@ -1178,6 +1171,12 @@ describe('buildReport', () => {
         sweep: { mentions: new Map(), skipped: [] },
         servingRoots: { dirs: ['public'], declared: true },
       });
+    }
+
+    it('reads as the reason alone, while the JSON keeps the codes', () => {
+      const report = reportWithUnread([
+        { path: `${ROOT}/site.css`, relative: 'site.css', extension: '.css', reason, detail },
+      ]);
 
       expect(report.skipped).toEqual([
         { what: 'site.css', stage: 'scan', reason: `${reason}: ${detail}` },
@@ -1185,6 +1184,31 @@ describe('buildReport', () => {
       expect(renderReport(report)).toContain(
         '  could not be parsed:\n    site.css — invalid css syntax at line 2, column 17\n',
       );
+      expect(report.caveats.map((caveat) => caveat.code)).not.toContain('unscanned-extensions');
+    });
+
+    it('is not counted among the file types no adapter reads', () => {
+      const report = reportWithUnread([
+        {
+          path: `${ROOT}/a.njk`,
+          relative: 'a.njk',
+          extension: '.njk',
+          reason: 'unclaimed-extension',
+          detail: '',
+        },
+        { path: `${ROOT}/b.scss`, relative: 'b.scss', extension: '.scss', reason, detail },
+        {
+          path: `${ROOT}/c.css`,
+          relative: 'c.css',
+          extension: '.css',
+          reason: 'unreadable',
+          detail: 'EACCES',
+        },
+      ]);
+
+      const caveat = report.caveats.find((entry) => entry.code === 'unscanned-extensions');
+      expect(caveat?.count).toBe(1);
+      expect(caveat?.message).toContain('1 file type had no adapter, so 1 file went unread');
     });
   });
 

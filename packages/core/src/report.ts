@@ -34,7 +34,7 @@ import type {
   ResolvedVia,
   UnscannedExtension,
 } from './types.js';
-import { groupUnscanned } from './unscanned.js';
+import { countExtensions, groupUnscanned } from './unscanned.js';
 
 /**
  * The report's schema version, carried in `Report.version`.
@@ -1229,7 +1229,13 @@ function caveats(
 
   // Unread files make three caveats rather than one, because a reader acts on each group
   // differently. See `groupUnscanned`.
-  const groups = groupUnscanned(input.graph.unscannedExtensions);
+  // Only the files no adapter claimed: one an adapter could not parse is under skipped, and
+  // counting it here would say the file type has no adapter.
+  const groups = groupUnscanned(
+    countExtensions(
+      input.graph.unscannedFiles.filter((file) => file.reason === 'unclaimed-extension'),
+    ),
+  );
 
   // Said once per run rather than in every decline reason. Each image comes first with
   // where it is still named, which is what the user acts on. Then the check's limit: it
