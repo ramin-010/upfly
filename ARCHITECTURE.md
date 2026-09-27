@@ -628,6 +628,13 @@ it matched there is what the pattern names. The fix belongs here and not in the 
 resolves each reference before any run-wide measure exists, and whose link would claim a use
 rather than hedge one and count toward that measure.
 
+A pattern an adapter declined is never globbed at all (rung 0), so the sweep globs it the same way,
+and `` alt={`../img/team-${id}.jpg`} `` hedges `src/img/team-1.jpg` rather than leaving it dead.
+Nothing resolved it, so a relative one could be anchored at its file or at the project root; the
+files it names end with its segments after any leading `./` or `../`, and the open base matches
+that ending. The sweep also reads the path a reference's text proves as well as the text, so an
+escaped string names what its escapes decode to.
+
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real
 references and no adapter reads them, so `.svg` is recorded as unread even though it is also an

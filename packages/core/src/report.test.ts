@@ -2198,6 +2198,49 @@ describe('what a path that did not resolve names, in a project held in memory', 
     expect(report.references.declinedValues.count).toBe(2);
   });
 
+  it('hedges each asset a declined pattern could name, relative or assembled, and links none', async () => {
+    // The resolver never globs a declined value, and a pattern's holes leave no file name to
+    // find, so the sweep globs it with the base left open. The pattern fixes its directory,
+    // so a file of the same shape outside an `img` directory is not one it could name.
+    const sources = {
+      'src/index.html': page(),
+      'src/components/Thumb.jsx':
+        "export const Thumb = ({ id, n }) => <img src={src} alt={`../img/team-${id}.jpg`} data-badge={'/img/badge-' + n + '.png'} />;\n",
+    };
+    const team = ['src/img/team-1.jpg', 'src/img/team-2.jpg', 'src/team-3.jpg'];
+    const assets = [...SERVED, ...team, 'src/img/badge-1.png'];
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(team.map((asset) => verdictOf(report, asset))).toEqual([
+      'possibly-dead',
+      'possibly-dead',
+      'dead',
+    ]);
+    expect(evidenceOf(report, 'src/img/team-2.jpg')).toEqual([
+      'unresolved-reference src/components/Thumb.jsx:1 ../img/team-${id}.jpg',
+    ]);
+    expect(evidenceOf(report, 'src/img/badge-1.png')).toEqual([
+      "unresolved-reference src/components/Thumb.jsx:1 /img/badge-' + n + '.png",
+    ]);
+    expect(report.references.declinedValues.count).toBe(2);
+  });
+
+  it('hedges an asset a declined string names only once its escapes are decoded', async () => {
+    const escaped = `/img/caf${String.fromCharCode(92)}u00e9.png`;
+    const sources = {
+      'src/index.html': page(),
+      'src/Thumb.jsx': `export const Thumb = () => <img src={src} title={'${escaped}'} />;\n`,
+    };
+
+    const report = await reportForFiles(sources, [...SERVED, 'src/img/café.png'], SERVED_FROM_SRC);
+
+    expect(verdictOf(report, 'src/img/café.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/café.png')).toEqual([
+      `unresolved-reference src/Thumb.jsx:1 ${escaped}`,
+    ]);
+  });
+
   it('hedges an asset a root-relative + chain could name, reading the path the chain proves', async () => {
     // A chain's text is not its path: the reference quotes the source from the first operand
     // to the last, and the path it proves is `/img/badge-`, a hole, then `.png`.

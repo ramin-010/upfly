@@ -9,7 +9,7 @@
  * See "`possibly-dead`, and why "zero references" is usually a lie" in ARCHITECTURE.md.
  */
 
-import { spellingsOf, splitPathSuffix } from './adapters/reference-path.js';
+import { interpolationChunks, spellingsOf, splitPathSuffix } from './adapters/reference-path.js';
 import { citeReferences, lineOf } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
@@ -220,9 +220,10 @@ async function sweepFiles(
  * its line and a line costs a re-read. `citeReferences` re-reads once per file, and only
  * for references that named a candidate.
  *
- * A pattern's holes leave no file name to find, so a root-relative pattern the run had no
- * serving root to glob is tested against every candidate, as the resolver would glob it
- * from whichever directory the site serves.
+ * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
+ * tested against every candidate, as the resolver would glob it from whichever directory the
+ * site serves: a root-relative one the run had no serving root to glob, and one an adapter
+ * declined.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -231,12 +232,14 @@ async function sweepUnresolvedReferences(
   skipped: SweepSkip[],
 ): Promise<void> {
   const hits: { reference: Reference; asset: string }[] = [];
-  const unglobbed = new Map(
-    patternsWithoutServingRoot(options.graph).map((reference) => [
-      reference,
-      servedFromAnyRoot(provenPath(reference)),
-    ]),
-  );
+  const unglobbed = new Map([
+    ...patternsWithoutServingRoot(options.graph).map(
+      (reference) => [reference, servedFromAnyRoot(provenPath(reference))] as const,
+    ),
+    ...declinedPatterns(options.graph).map(
+      (reference) => [reference, servedFromAnyRoot(openBased(provenPath(reference)))] as const,
+    ),
+  ]);
   const assets = [...candidates.values()].flat();
 
   for (const reference of unknownTargetReferences(options.graph)) {
@@ -271,20 +274,41 @@ async function sweepUnresolvedReferences(
 }
 
 /**
+ * The patterns an adapter declined. The resolver never globs one, so, like a pattern a run
+ * had no serving root to glob, what it names is unknown rather than absent.
+ */
+function declinedPatterns(graph: Graph): readonly Reference[] {
+  return graph.byResolution.discarded.filter(
+    (reference) =>
+      reference.declined === true && interpolationChunks(provenPath(reference)).length > 1,
+  );
+}
+
+/**
+ * A declined pattern as `servedFromAnyRoot` reads it. Nothing resolved it, so a relative one
+ * may be anchored at its file or at the project root; either way a file it names ends with
+ * its segments after any leading `./` or `../`, and that ending is what an open base matches.
+ */
+function openBased(pattern: string): string {
+  return `/${pattern.replace(/^(?:\.{1,2}\/)+/, '').replace(/^\/+/, '')}`;
+}
+
+/**
  * The file names a path that did not resolve could stand for, lowercased as the candidates
  * are.
  *
  * It is read in every spelling the resolver would look it up in, so `/img/my%20photo.png`
- * names `my photo.png`. A spelling's last segment is taken whole, because a decoded name
- * can hold what no filename token can: `/img/a&amp;b.png` names `a&b.png`. Each spelling
- * is also searched for tokens, since a dynamic path can hold a name anywhere.
+ * names `my photo.png`, and as the path its text proves, so an escaped string names what its
+ * escapes decode to. A spelling's last segment is taken whole, because a decoded name can
+ * hold what no filename token can: `/img/a&amp;b.png` names `a&b.png`. Each spelling is also
+ * searched for tokens, since a dynamic path can hold a name anywhere.
  */
 function namesIn(reference: Reference): ReadonlySet<string> {
   const { path } = splitPathSuffix(reference.rawPath);
   const spelled = spellingsOf(path, reference.kind).map((spelling) => spelling.path);
   const names = new Set<string>();
 
-  for (const text of [reference.rawPath, ...spelled]) {
+  for (const text of [reference.rawPath, ...spelled, provenPath(reference)]) {
     names.add(text.slice(text.lastIndexOf('/') + 1).toLowerCase());
     for (const [token] of tokens(text)) names.add(token.toLowerCase());
   }
