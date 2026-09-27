@@ -92,7 +92,7 @@ export const markdownAdapter: Adapter = defineAdapter({
     // on purpose: it matches any tag, known or not, and narrowing it to `img` or `src`
     // would risk skipping a real reference.
     if (MARKUP_OPENER.test(masked)) {
-      // A `<style>` block whose CSS will not parse makes this throw. Everything collected
+      // A `<style>` left unclosed makes this throw, its CSS running to the end. Everything collected
       // above is still correct, so it rides along with the failure, and `scan` still
       // reports the file as unparseable.
       try {

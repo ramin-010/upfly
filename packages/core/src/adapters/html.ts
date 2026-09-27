@@ -295,6 +295,12 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
         }),
       );
     } catch (error) {
+      // parse5 has already found where a closed element ends, so its CSS failing is that
+      // element's alone, as in a browser, which drops only the rules it cannot read.
+      if (error instanceof UpflyError && !isUnclosed(element)) {
+        addStyleElementRefusal(css, location, error, context);
+        continue;
+      }
       throw styleElementFailure(element, context, error);
     }
   }
@@ -307,11 +313,10 @@ const UNCLOSED_RAWTEXT =
   'or write &lt;style&gt; if the word was meant as text.';
 
 /**
- * Turn a CSS parse failure inside `<style>` into an error about the user's document.
+ * Turn a CSS parse failure inside an unclosed `<style>` into an error about the user's
+ * document, naming the tag and its line.
  *
- * The parser's position (`line 1, column 2`) is relative to the `<style>` body, which for a
- * tag never closed is the rest of the file, so the message names the tag and its line. An
- * unclosed `<style>` is not an engine defect: in HTML every character is markup, so it
+ * An unclosed `<style>` is not an engine defect: in HTML every character is markup, so it
  * opens a raw-text element that runs to the end of the document, as it does in a browser.
  * Masking the tag, as `maskUnclosedRawText` does for Markdown prose, would disagree with
  * the browser about what the page renders.
@@ -326,17 +331,7 @@ function styleElementFailure(element: ParsedElement, context: Context, error: un
     throw error;
   }
 
-  const location = element.sourceCodeLocation;
-  // parse5 leaves `endTag` unset when the tag was never closed.
-  const unclosed =
-    location !== undefined &&
-    location !== null &&
-    (location.endTag === null || location.endTag === undefined);
-  if (!unclosed) {
-    return new UpflyError(error.code, error.message, partial, error.diagnostic);
-  }
-
-  const line = location?.startTag?.startLine;
+  const line = element.sourceCodeLocation?.startTag?.startLine;
   const where = line === undefined ? 'A <style>' : `The <style> on line ${line}`;
   return new UpflyError(
     'ADAPTER_PARSE_FAILED',
@@ -344,6 +339,41 @@ function styleElementFailure(element: ParsedElement, context: Context, error: un
     partial,
     error.diagnostic,
   );
+}
+
+/** Whether parse5 found no end tag, so the element runs to the end of the document. */
+function isUnclosed(element: ParsedElement): boolean {
+  const location = element.sourceCodeLocation;
+  // parse5 leaves `endTag` unset when the tag was never closed.
+  return (
+    location !== undefined &&
+    location !== null &&
+    (location.endTag === null || location.endTag === undefined)
+  );
+}
+
+/**
+ * A closed `<style>` element whose CSS does not parse, refused as one construct with a note
+ * saying whether it could hide a reference. The rest of the document is still read.
+ */
+function addStyleElementRefusal(
+  css: string,
+  location: { readonly startOffset: number; readonly endOffset: number },
+  error: UpflyError,
+  context: Context,
+): void {
+  context.references.push({
+    file: context.file,
+    start: location.startOffset,
+    end: location.endOffset,
+    rawPath: css,
+    kind: 'css-url',
+    shape: 'html.style.element',
+    ceiling: 'unsafe',
+    asserted: false,
+    unread: true,
+    note: `could not parse the <style> element: ${error.message}${describeUrlFunction(css)}`,
+  });
 }
 
 /**
@@ -370,7 +400,9 @@ function addStyleAttributeRefusal(
 }
 
 /**
- * The end of a style-attribute refusal's note, shared by the escaped and the unparseable
+ * The end of the note for CSS the adapter could not read, shared by the style attribute,
+ * escaped or unparseable, and the `<style>` element, so they cannot drift: it says whether
+ * the CSS holds a url-taking function.
  * case so the two cannot drift: it says whether the CSS holds a url-taking function.
  * `report.ts` counts the refusal as correct when the note says "no reference in it to
  * find", so that wording is load-bearing.

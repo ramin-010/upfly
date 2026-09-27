@@ -1,7 +1,8 @@
 import { type DefaultTreeAdapterMap, html, parse } from 'parse5';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { UpflyError } from '../errors.js';
 import type { RawReference } from '../types.js';
+import { htmlAdapter } from './html.js';
 import { markdownAdapter, maskInactiveRegions } from './markdown.js';
 
 function find(text: string, file = '/project/README.md'): RawReference[] {
@@ -427,19 +428,40 @@ describe('markdownAdapter', () => {
       expect(references.map((reference) => reference.rawPath)).toEqual(['./in-css.png']);
     });
 
+    it('refuses a closed <style> whose CSS does not parse, and reads both sides of it', () => {
+      const text = [
+        '![one](./one.png)',
+        '',
+        '<style>',
+        '  a { color: ; ;; }} unclosed',
+        '</style>',
+        '',
+        '<img src="./two.png">',
+      ].join('\n');
+
+      const references = markdownAdapter.findReferences({ file: 'guide.md', text });
+      expect(references.map((reference) => reference.rawPath)).toEqual([
+        './one.png',
+        '\n  a { color: ; ;; }} unclosed\n',
+        './two.png',
+      ]);
+      expect(references[1]).toMatchObject({ unread: true, shape: 'md.style-attribute' });
+    });
+
     it('keeps the references it already found when the HTML hand-off throws', () => {
-      // A closed `<style>` whose CSS will not parse still throws, which is right: the
-      // failure has to reach the report. The references above it must survive the throw,
-      // or their assets look dead.
+      // Only a `<style>` never closed makes the HTML reader throw, and this reader blanks
+      // such a tag first, so the throw is stood in for. The references above it must
+      // survive it, or their assets look dead.
+      const handOff = vi.spyOn(htmlAdapter, 'findReferences').mockImplementation(() => {
+        throw new UpflyError('ADAPTER_PARSE_FAILED', 'Could not parse: stood in for a failure');
+      });
       const text = [
         '# Guide',
         '',
         '![one](./one.png)',
         '![two](./two.png)',
         '',
-        '<style>',
-        '  a { color: ; ;; }} unclosed',
-        '</style>',
+        '<p>markup</p>',
       ].join('\n');
 
       let thrown: unknown;
@@ -447,6 +469,8 @@ describe('markdownAdapter', () => {
         markdownAdapter.findReferences({ file: 'guide.md', text });
       } catch (error) {
         thrown = error;
+      } finally {
+        handOff.mockRestore();
       }
 
       expect(thrown).toBeInstanceOf(UpflyError);

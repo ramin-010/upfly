@@ -634,7 +634,31 @@ describe('htmlAdapter', () => {
 
     it('names where a <style> element fails to parse in the file, not in the element', () => {
       const source = '<p>one</p>\n<style>\n  .a { color: red }\n  .b { margin 0.5em }\n</style>\n';
-      expect(() => find(source)).toThrow('at line 4, column 8');
+      expect(find(source)[0]?.note).toContain('at line 4, column 8');
+    });
+
+    it('refuses a closed <style> whose CSS does not parse, and reads the page after it', () => {
+      const source =
+        '<style>\n.a { //*radius: 50%; }\n</style>\n' +
+        '<meta property="og:image" content="/og.png">\n<img src="b.png">';
+      const references = find(source);
+      expect(references.map((reference) => reference.rawPath)).toEqual([
+        '\n.a { //*radius: 50%; }\n',
+        '/og.png',
+        'b.png',
+      ]);
+      expect(references[0]).toMatchObject({
+        shape: 'html.style.element',
+        ceiling: 'unsafe',
+        unread: true,
+      });
+      expect(references[0]?.note).toContain('no reference in it to find');
+    });
+
+    it('still fails the page at a <style> never closed, whose CSS is the rest of it', () => {
+      expect(() => find('<p>a</p>\n<style>\n.a { //*x }\n<img src="b.png">')).toThrow(
+        'The <style> on line 2 is never closed',
+      );
     });
 
     it('reports an unparseable style attribute instead of dropping it', () => {

@@ -7573,6 +7573,49 @@
           "column": 15
         }
       ]
+    },
+    {
+      "path": "apps/web/unparsed-style.html",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "html.meta.content.image",
+          "expect": "resolved",
+          "why": "The page's preview image, after a `<style>` block whose CSS does not parse. The HTML parser has already found where that block ends, and a browser drops only the declaration it cannot read, so everything after the block is markup.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 319,
+          "line": 14,
+          "column": 40
+        },
+        {
+          "raw": "/img/spacer.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "An image in the body of the same page, after the block that does not parse.",
+          "target": "apps/web/public/img/spacer.png",
+          "offset": 393,
+          "line": 18,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/styled-note.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.raw-html",
+          "expect": "resolved",
+          "why": "Raw HTML in Markdown after a `<style>` block whose CSS does not parse. The block ends at its closing tag, so the image after it is markup and is shown.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 107,
+          "line": 11,
+          "column": 11
+        }
+      ]
     }
   ]
 }

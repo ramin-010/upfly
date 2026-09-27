@@ -969,6 +969,11 @@ reported with a note saying whether its CSS contains `url()` or `image-set()`. W
 no reference to find, and the report counts the refusal as correct; with one, a reference may be
 hidden, and it counts as a miss.
 
+A closed `<style>` element whose CSS does not parse is refused the same way, as one construct.
+parse5 has already found where it ends, and a browser drops only the rules it cannot read, so the
+rest of the document is still read. Only an unclosed `<style>` fails the document: everything after
+it is its CSS.
+
 ### Reference shapes
 
 Every reference an adapter emits carries a shape: the construct it was written in, such as
