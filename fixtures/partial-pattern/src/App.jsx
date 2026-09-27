@@ -4,11 +4,11 @@ import { useState } from 'react';
 import inlineLogo from './inline-logo.jpg';
 
 /**
- * One reference standing for three images, which is the whole point of this tree.
+ * One reference standing for four files, which is the whole point of this tree.
  *
- * The theme is chosen at runtime, so `theme-${mode}.png` is a single piece of text
- * that has to keep resolving for light, dark and sepia alike. Nothing here can be
- * rewritten unless all three end up at the same extension.
+ * The theme is chosen at runtime, so `theme-${mode}.png` is one piece of text that
+ * matches light, dark, sepia and a fourth file that is not an image and never converts.
+ * A template is never rewritten, so its originals stay and it keeps resolving.
  */
 export function ThemePreview({ mode }) {
   const src = `/theme-${mode}.png`;
@@ -23,11 +23,8 @@ export function Banner() {
 }
 
 export function Screenshot() {
-  // R131's second demonstration, and the one that reaches the REPORT.
-  //
-  // A UI screenshot: flat panels, hard edges, 1px rules. webp 80 does not merely fail
-  // to help, it GROWS 1,912 bytes into 19,426 — ten times the source — while lossless
-  // takes it to 220. That is R47's finding in one file, and unlike `theme-dark.png`
+  // A UI screenshot: flat panels, hard edges, 1px rules. webp 80 makes it larger,
+  // 1,912 bytes into 19,426, while lossless takes it to 220. Unlike `theme-dark.png`,
   // the saving clears `minSavingBytes`, so it becomes a `format-opportunity` and its
   // setting reaches `summary.savingQuality`.
   return <img src="/screenshot.png" alt="A screenshot of the interface" />;
