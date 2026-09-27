@@ -2283,7 +2283,7 @@ describe('the assets a plan examined and did not convert', () => {
   const ROOT = '/repo';
 
   function reportWith(over: {
-    declined?: { path: string; line: null; reason: string }[];
+    declined?: { path: string; line: number | null; reason: string }[];
     include?: boolean;
   }) {
     return buildReport({
@@ -2336,6 +2336,33 @@ describe('the assets a plan examined and did not convert', () => {
 
     const one = renderReport(reportWith({ declined: [...TWO.slice(0, 1)] }));
     expect(one).toMatch(/ {2}1 image, [\d.]+ KB, each with its reason/);
+  });
+
+  it('counts a reference left as written apart from the images, never as one at 0 B', () => {
+    const withReferences = [
+      ...TWO,
+      {
+        path: 'src/App.jsx',
+        line: null,
+        reason: 'a template reference is assembled at runtime, so its text cannot be repointed',
+      },
+      {
+        path: 'pages/old.html',
+        line: 3,
+        reason: 'the page is not UTF-8, so it is never rewritten',
+      },
+    ];
+    const report = reportWith({ declined: withReferences });
+
+    expect(report.declined).toMatchObject({ count: 2, bytes: 4_000 });
+    expect(report.declinedReferences).toEqual({ count: 2, references: null });
+    const rendered = renderReport(report);
+    expect(rendered).toContain('  2 images, ');
+    expect(rendered).toContain('  2 references left as written, each with its reason');
+
+    const listed = renderReport(reportWith({ declined: withReferences, include: true }));
+    expect(listed).toContain('    src/App.jsx  a template reference is assembled at runtime');
+    expect(listed).toContain('    pages/old.html:3  the page is not UTF-8');
   });
 
   it('counts them and totals their size', () => {

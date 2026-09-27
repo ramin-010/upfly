@@ -1557,6 +1557,10 @@ What `replace` never produces is a converted copy nothing asks for beside an ori
 stay, which is the pair of files the policy exists to avoid. `keep-original` is untouched by the
 first half, because two files are what its users asked for.
 
+The report counts the plan's declines in two places: images under `declined`, with their sizes,
+and the references a plan left as written under `declinedReferences`, so a pattern that stays as
+written is never counted as an image.
+
 **Served means under any serving root the resolver used**, and `replace` removes originals only
 there. The planner is handed the same `ServingRoots` value the resolver was, not a folder derived
 beside it, so an image in a monorepo's second website folder is as served as one in its first.

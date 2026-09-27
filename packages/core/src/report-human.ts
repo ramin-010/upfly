@@ -661,18 +661,27 @@ function describe(finding: Finding): string[] {
  */
 function declinedSection(report: Report): string[] {
   const { count: declined, bytes: declinedBytes, assets } = report.declined;
-  if (declined === 0) return [];
+  const { count: left, references } = report.declinedReferences;
+  if (declined === 0 && left === 0) return [];
 
   const hint = assets === null ? ' (use --include-declined to list them)' : '';
-  const lines = [
-    'Examined and not converted',
-    '',
-    `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, each with its reason${hint}`,
-    '',
-  ];
+  const lines = ['Examined and not converted', ''];
+  if (declined > 0) {
+    lines.push(
+      `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, each with its reason${hint}`,
+    );
+  }
+  if (left > 0) {
+    lines.push(`  ${count(left, 'reference')} left as written, each with its reason${hint}`);
+  }
+  lines.push('');
 
   for (const entry of assets ?? []) {
     lines.push(`    ${entry.asset}  ${bytes(entry.bytes)}  ${entry.reason}`);
+  }
+  for (const entry of references ?? []) {
+    const where = entry.line === null ? entry.file : `${entry.file}:${entry.line}`;
+    lines.push(`    ${where}  ${entry.reason}`);
   }
   if (assets !== null) lines.push('');
 

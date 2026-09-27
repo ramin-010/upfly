@@ -53,6 +53,10 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
+  },
   "diagnosticsFile": null,
   "findings": [
     {
@@ -214,6 +218,10 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     "assets": null,
     "bytes": 0,
     "count": 0,
+  },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
   },
   "diagnosticsFile": null,
   "findings": [
@@ -687,6 +695,10 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
+  },
   "diagnosticsFile": null,
   "findings": [
     {
@@ -971,6 +983,10 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
+  },
   "diagnosticsFile": null,
   "findings": [
     {
@@ -1110,6 +1126,10 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
     "assets": null,
     "bytes": 0,
     "count": 0,
+  },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
   },
   "diagnosticsFile": null,
   "findings": [
@@ -1308,6 +1328,10 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
+  },
   "diagnosticsFile": null,
   "findings": [
     {
@@ -1496,6 +1520,10 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "assets": null,
     "bytes": 0,
     "count": 0,
+  },
+  "declinedReferences": {
+    "count": 0,
+    "references": null,
   },
   "diagnosticsFile": null,
   "findings": [

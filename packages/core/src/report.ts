@@ -400,6 +400,23 @@ export interface DeclinedEntry {
   readonly reason: string;
 }
 
+/** The references a plan examined and left as written. */
+export interface DeclinedReferencesReport {
+  readonly count: number;
+  /** Each one, or `null` unless `includeDeclined` asked for the list. */
+  readonly references: readonly DeclinedReferenceEntry[] | null;
+}
+
+/** One reference a plan left as written. */
+export interface DeclinedReferenceEntry {
+  /** POSIX-relative path of the file that holds it. */
+  readonly file: string;
+  /** Its line, when the planner recorded one. */
+  readonly line: number | null;
+  /** Why the planner left it as written, in the planner's own words. */
+  readonly reason: string;
+}
+
 /**
  * An original that `optimize` kept beside its converted file. The references moved to the
  * converted file, so nothing links to the original and the audit found it `dead`; but it
@@ -502,6 +519,11 @@ export interface Report {
   readonly keptOriginals: KeptOriginalReport;
   /** The assets a plan examined and did not convert. */
   readonly declined: DeclinedReport;
+  /**
+   * The references a plan left as written, each with the planner's reason, such as a
+   * pattern whose text cannot be repointed. Kept apart from `declined`, which holds images.
+   */
+  readonly declinedReferences: DeclinedReferencesReport;
   /** Unreferenced vectors beside a broken reference to their raster twin. */
   readonly staleConversions: readonly StaleConversion[];
   readonly references: ReferenceReport;
@@ -586,6 +608,7 @@ export function buildReport(input: ReportInput): Report {
     },
     staleConversions: vectors.staleConversions,
     declined: declinedReport(input),
+    declinedReferences: declinedReferencesReport(input),
     references: referenceReport(input.graph, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
@@ -944,7 +967,7 @@ function declinedValueReport(graph: Graph, includeDiscarded: boolean): DeclinedV
  * the planner and the graph disagree; it is reported with zero bytes rather than dropped.
  */
 function declinedReport(input: ReportInput): DeclinedReport {
-  const declined = input.declined ?? [];
+  const declined = (input.declined ?? []).filter(declinesAnImage);
   const sizeOf = new Map(input.graph.assets.map((node) => [node.asset.relative, node.asset.bytes]));
 
   const assets = declined.map((entry) => ({
@@ -958,6 +981,22 @@ function declinedReport(input: ReportInput): DeclinedReport {
     bytes: assets.reduce((total, entry) => total + entry.bytes, 0),
     assets: input.includeDeclined ? assets : null,
   };
+}
+
+/** The references the plan left as written, with the planner's reasons. */
+function declinedReferencesReport(input: ReportInput): DeclinedReferencesReport {
+  const references = (input.declined ?? [])
+    .filter((entry) => !declinesAnImage(entry))
+    .map((entry) => ({ file: entry.path, line: entry.line, reason: entry.reason }));
+  return { count: references.length, references: input.includeDeclined ? references : null };
+}
+
+/**
+ * Whether a plan's decline is of an image rather than of a reference. A reference's decline
+ * names the source file that holds it, which is never an image: an SVG is not scanned.
+ */
+function declinesAnImage(entry: Declined): boolean {
+  return isImageExtension(extensionOf(entry.path));
 }
 
 function coverageReport(input: ReportInput): CoverageReport {
