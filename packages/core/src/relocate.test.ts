@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import type { PathSpelling } from './adapters/reference-path.js';
-import type { AliasMap } from './aliases.js';
+import { type AliasMap, expandAlias, loadAliases } from './aliases.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
+import { toPosix } from './paths.js';
 import { type Move, planRelocation } from './relocate.js';
 import { resolveReferences } from './resolve.js';
 import { scanSources } from './scan.js';
@@ -341,6 +342,63 @@ describe('relocate, and how a path is re-spelled', () => {
         { aliases },
       ).text,
     ).toBe('~/img/houston.png');
+  });
+
+  it('re-spells a Vite alias read from a real config through the key and its slash', async () => {
+    // Vite's `@` maps `@` and `@/...`, never `@img/...`, which here is the tsconfig's own
+    // alias for a folder holding another image of the same name.
+    const files = new Map([
+      [
+        '/repo/vite.config.ts',
+        [
+          "import path from 'node:path';",
+          "import { defineConfig } from 'vite';",
+          '',
+          'export default defineConfig({',
+          "  resolve: { alias: { '@': path.resolve(__dirname, './src') } },",
+          '});',
+          '',
+        ].join('\n'),
+      ],
+      [
+        '/repo/tsconfig.json',
+        '{ "compilerOptions": { "paths": { "@img/*": ["./shared/img/*"] } } }',
+      ],
+    ]);
+    const aliases = await loadAliases({
+      root: '/repo',
+      files: [...files.keys()].map((path) => ({ path, relative: path.slice('/repo/'.length) })),
+      readFile: async (path) => {
+        const text = files.get(toPosix(path));
+        if (text === undefined) throw new Error(`not in this test: ${path}`);
+        return text;
+      },
+      isFile: (path) => files.has(toPosix(path)),
+    });
+    const graph = graphFor({
+      assets: ['src/assets/x.png', 'shared/img/x.png'],
+      references: [
+        {
+          file: 'src/App.tsx',
+          rawPath: '@/assets/x.png',
+          target: 'src/assets/x.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+
+    const { text } = replacementFor(
+      graph,
+      { from: 'src/assets/x.png', to: 'src/img/x.png' },
+      { aliases },
+    );
+
+    expect(aliases.skipped).toEqual([]);
+    expect(text).toBe('@/img/x.png');
+    // The new text reaches the file that moved, not `shared/img/x.png`.
+    expect(expandAlias(aliases, text ?? '', '/repo/src/App.tsx')[0]).toBe(
+      toPosix(resolve('/repo/src/img/x.png')),
+    );
   });
 
   it('spells only what follows the alias when the path was written percent-encoded', () => {
