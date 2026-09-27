@@ -203,7 +203,6 @@ describe('the shape vocabulary reconciles with the coverage tree', () => {
 function familyExplains(shape: ShapeDeclaration): boolean {
   return (
     (shape.id.startsWith('decoy.') && shape.emission === 'declined') ||
-    (shape.id.startsWith('unread.') && shape.emission === 'gap') ||
     (shape.id.startsWith('path.') && shape.emission === 'declined')
   );
 }
