@@ -45,7 +45,15 @@ export async function createSharpProbe(
     // `MAX_ENCODE_PIXELS` equals sharp's default `limitInputPixels`, so passing it changes
     // no output. It is passed so that the limit in force stays the one
     // `too-large-to-encode` is computed against, even if sharp's default changes.
-    const pipeline = sharp(path, { animated, limitInputPixels: MAX_ENCODE_PIXELS });
+    //
+    // The encode drops metadata, the EXIF orientation tag with it, so `autoOrient` turns the
+    // pixels the way a viewer would; phones store most photos unturned. An embedded colour
+    // profile needs nothing here: sharp converts through it to sRGB before dropping it.
+    const pipeline = sharp(path, {
+      animated,
+      autoOrient: true,
+      limitInputPixels: MAX_ENCODE_PIXELS,
+    });
     switch (format) {
       case 'webp':
         // sharp ignores `quality` when `lossless` is set, so the two are never passed

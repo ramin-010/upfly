@@ -81,6 +81,50 @@ async function animatedGif(name: string, frames: number): Promise<string> {
   return path;
 }
 
+/**
+ * A photo stored as a camera's sensor read it: 400 by 200, the left half red and the right
+ * half blue, with the EXIF tag that tells a viewer how to turn it.
+ */
+async function taggedPhoto(name: string, orientation: number): Promise<string> {
+  const { default: sharp } = await import('sharp');
+  const width = 400;
+  const height = 200;
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let index = 0; index < width * height; index++) {
+    pixels.set(index % width < width / 2 ? [220, 30, 20] : [20, 30, 220], index * 3);
+  }
+
+  const path = join(temp, name);
+  await sharp(pixels, { raw: { width, height, channels: 3 } })
+    .jpeg({ quality: 90 })
+    .withMetadata({ orientation })
+    .toFile(path);
+  return path;
+}
+
+/**
+ * What a viewer shows: the size, and whether a point is red or blue. A viewer honours an
+ * orientation tag, so a file that kept its tag and its unturned pixels would pass too.
+ */
+async function shown(path: string) {
+  const { default: sharp } = await import('sharp');
+  const { data, info } = await sharp(path, { autoOrient: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    size: `${info.width}x${info.height}`,
+    at(x: number, y: number): 'red' | 'blue' | 'neither' {
+      const index = (y * info.width + x) * info.channels;
+      const red = data[index] ?? 0;
+      const blue = data[index + 2] ?? 0;
+      if (red > 150 && blue < 100) return 'red';
+      if (blue > 150 && red < 100) return 'blue';
+      return 'neither';
+    },
+  };
+}
+
 describe('createSharpProbe', () => {
   it('reads a real fixture image', async () => {
     const result = await probe.metadata(join(FIXTURES, 'plain-html/images/hero.jpg'));
@@ -268,4 +312,82 @@ describe('createSharpProbe', () => {
       expect(result?.encoded[0]?.bytes).toBeGreaterThan(asOneFrame);
     });
   });
+});
+
+describe('a converted image looks like the original', () => {
+  // Where the red half of the stored image appears once a viewer turns it, at two points of
+  // the image as shown. Tag 6 is a quarter turn clockwise, 8 anticlockwise and 3 a half
+  // turn, so a quarter turn shows it 200 by 400.
+  it.each([
+    { orientation: 6, size: '200x400', red: [100, 100], blue: [100, 300] },
+    { orientation: 8, size: '200x400', red: [100, 300], blue: [100, 100] },
+    { orientation: 3, size: '400x200', red: [300, 100], blue: [100, 100] },
+  ] as const)(
+    'turns a photo tagged $orientation the way a viewer shows it',
+    async ({ orientation, size, red, blue }) => {
+      const path = await taggedPhoto(`tagged-${orientation}.jpg`, orientation);
+      const destination = join(temp, `tagged-${orientation}.webp`);
+
+      await probe.encodeToFile({ path, format: 'webp', animated: false, destination });
+
+      for (const file of [path, destination]) {
+        const view = await shown(file);
+        expect([file, view.size]).toEqual([file, size]);
+        expect([file, view.at(red[0], red[1]), view.at(blue[0], blue[1])]).toEqual([
+          file,
+          'red',
+          'blue',
+        ]);
+      }
+    },
+  );
+
+  it('measures the turned file it writes, byte for byte', async () => {
+    const { default: sharp } = await import('sharp');
+    const path = await taggedPhoto('tagged-measured.jpg', 6);
+    const destination = join(temp, 'tagged-measured.webp');
+
+    const measured = await probe.encodedBytes({ path, format: 'webp', animated: false });
+    const written = await probe.encodeToFile({
+      path,
+      format: 'webp',
+      animated: false,
+      destination,
+    });
+    // The unturned encode differs in size, so measuring the unturned image cannot pass.
+    const unturned = await sharp(path).webp({ quality: probe.quality.webp }).toBuffer();
+
+    expect(written).toBe(measured);
+    expect(unturned.length).not.toBe(measured);
+    expect((await shown(destination)).size).toBe('200x400');
+  });
+
+  it.each(['webp', 'avif'] as const)(
+    'keeps the colours of a photo with an embedded colour profile, as %s',
+    async (format) => {
+      // Display P3 stores other numbers for the same red. Read as sRGB, those numbers
+      // show a duller red, so the encode has to convert through the profile.
+      const { default: sharp } = await import('sharp');
+      const red = Buffer.alloc(32 * 32 * 3);
+      for (let index = 0; index < red.length; index += 3) red.set([255, 0, 0], index);
+      const path = join(temp, `p3-${format}.png`);
+      await sharp(red, { raw: { width: 32, height: 32, channels: 3 } })
+        .withIccProfile('p3')
+        .png()
+        .toFile(path);
+      const destination = join(temp, `p3.${format}`);
+
+      await probe.encodeToFile({ path, format, animated: false, destination });
+
+      const channels = async (file: string, options: { ignoreIcc?: boolean } = {}) => [
+        ...(await sharp(file, options).raw().toBuffer()).subarray(0, 3),
+      ];
+      const near = (actual: number[], expected: number[]) =>
+        actual.every((value, index) => Math.abs(value - (expected[index] ?? 0)) <= 12);
+      // The fixture stores numbers that differ from the red it shows, or this proves nothing.
+      expect(near(await channels(path, { ignoreIcc: true }), [255, 0, 0])).toBe(false);
+      expect(near(await channels(path), [255, 0, 0])).toBe(true);
+      expect(near(await channels(destination), [255, 0, 0])).toBe(true);
+    },
+  );
 });

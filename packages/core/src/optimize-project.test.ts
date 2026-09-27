@@ -364,3 +364,43 @@ describe('an image removed after the scan read it', () => {
     expect(await readFile(join(root, 'index.html'), 'utf8')).toBe(page);
   });
 });
+
+describe('a phone photo its camera tagged to be turned', () => {
+  it('converts it the way it is shown, while the page moves to it and the original goes', async () => {
+    const { default: sharp } = await import('sharp');
+    const root = await copy();
+    // Stored 400 by 200 with the red half on the left and tagged a quarter turn clockwise,
+    // as a phone stores a portrait: every viewer shows it 200 by 400, the red half on top.
+    const width = 400;
+    const height = 200;
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let index = 0; index < width * height; index++) {
+      pixels.set(index % width < width / 2 ? [220, 30, 20] : [20, 30, 220], index * 3);
+    }
+    await sharp(pixels, { raw: { width, height, channels: 3 } })
+      .jpeg({ quality: 90 })
+      .withMetadata({ orientation: 6 })
+      .toFile(join(root, 'images/phone.jpg'));
+    await writeFile(join(root, 'phone.html'), '<img src="images/phone.jpg" alt="A portrait" />\n');
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'phone.html'), 'utf8')).toContain('src="images/phone.webp"');
+    expect(await files(root)).not.toContain('images/phone.jpg');
+    // Read as a viewer reads it, honouring a tag if the file kept one.
+    const { data, info } = await sharp(join(root, 'images/phone.webp'), { autoOrient: true })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([200, 400]);
+    const top = (100 * info.width + 100) * info.channels;
+    expect(data[top] ?? 0).toBeGreaterThan(150);
+    expect(data[top + 2] ?? 255).toBeLessThan(100);
+  });
+});

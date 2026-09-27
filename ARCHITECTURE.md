@@ -1377,6 +1377,19 @@ reports 370×**2850**, every frame stacked into one strip, which would make an "
 dimensions" finding wrong by a factor of ten. The plain read gives one frame's dimensions and still
 reports `pages`, answering both questions in one pass.
 
+### An image is converted as it is shown
+
+Phones store most photos as the sensor read them, and record the turn a viewer applies in the EXIF
+orientation tag. The encode drops metadata, that tag with it, so every encode, the measuring one and
+the written one alike, turns the pixels first (sharp's `autoOrient`). Without it the converted file
+shows sideways, and under `--replace` the original, which showed correctly, is deleted.
+
+An embedded colour profile needs no code: sharp converts the pixels through it to sRGB before it
+drops the profile, so a Display P3 photo keeps the colours it shows. Colours outside sRGB's range are
+brought inside it, so on a wide-gamut screen the most saturated parts of such a photo can look less
+saturated than the original. Keeping the profile instead would cost its bytes, 480 for Display P3,
+on every image that carries one.
+
 ### Lossless WebP for PNG sources
 
 For a PNG source, the probe measures two WebP encodes, one at the configured quality and one
