@@ -592,7 +592,7 @@ Findings — 10 items
 
   possibly unreferenced (7) — each is named somewhere, but not by a reference Upfly could follow
 
-    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
+    named in a file no adapter reads; an adapter for that file type would find these (3)
       src/index.njk — 2 assets
         src/img/hero.jpg  12.6 KB
           named in src/index.njk:6: hero.jpg
@@ -905,7 +905,7 @@ Findings — 6 items
 
   possibly unreferenced (4) — each is named somewhere, but not by a reference Upfly could follow
 
-    named in a file no adapter reads — an adapter or a config entry would resolve these (3)
+    named in a file no adapter reads; an adapter for that file type would find these (3)
       src/index.njk — 2 assets
         src/img/hero.jpg  12.6 KB
           named in src/index.njk:6: hero.jpg

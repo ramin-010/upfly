@@ -439,7 +439,10 @@ describe('buildReport', () => {
       });
       const text = renderReport(both);
 
-      expect(text).toContain('named in a file no adapter reads');
+      expect(text).toContain(
+        'named in a file no adapter reads; an adapter for that file type would find these',
+      );
+      expect(text).not.toContain('config entry');
       expect(text).not.toContain('named by a path Upfly read but could not resolve');
       expect(text).toContain('src/components/Sponsors.astro — 1 asset');
       expect(text).toContain('named in src/data/logos.ts:80');

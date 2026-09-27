@@ -456,7 +456,7 @@ const MENTION_RANK: readonly MentionSource[] = [
  * matters here: the three differ in what the user can do.
  */
 const MENTION_HEADING: Record<MentionSource, string> = {
-  'unscanned-file': 'in a file no adapter reads — an adapter or a config entry would resolve these',
+  'unscanned-file': 'in a file no adapter reads; an adapter for that file type would find these',
   'scanned-file':
     'in text Upfly read but no adapter claimed — the weakest evidence; look if the asset matters',
   'unresolved-reference': 'by a path Upfly read but could not resolve; those files parse fine',
