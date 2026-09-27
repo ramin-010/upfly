@@ -1,0 +1,6 @@
+{
+  "name": "vue-app",
+  "private": true,
+  "description": "A Vue app as create-vue writes it, with no jsconfig.json, so only its Vite config maps @.",
+  "type": "module"
+}

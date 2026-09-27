@@ -17,6 +17,7 @@ import { parseExpression } from '@babel/parser';
 import type * as t from '@babel/types';
 import { compareStrings, relativePath, toPosix } from './paths.js';
 import type { ReadFilePort } from './scan.js';
+import { readViteAliases } from './vite-config.js';
 
 /** One alias mapping, anchored at an absolute directory. */
 export interface AliasRule {
@@ -31,7 +32,7 @@ export interface AliasRule {
   readonly targets: readonly string[];
   /**
    * Whether the rule matches a prefix rather than the whole path: a tsconfig key ending in
-   * `*`, or any Vite key.
+   * `*`, or a Vite key followed by `/`.
    */
   readonly wildcard: boolean;
   /** Folder of the config that uses the rule: only references from inside it may use it. */
@@ -401,11 +402,9 @@ async function tsconfigField(path: string, options: LoadAliasesOptions): Promise
 // ---------------------------------------------------------------------------
 
 /**
- * Read `resolve.alias` from a Vite config, string values only.
- *
- * Most aliases are computed, such as `'@': path.resolve(__dirname, './src')`, and a config
- * written as a module is not searched at all, so this reads little and reports the rest as
- * unreadable. The alternative is running the file.
+ * Read `resolve.alias` from a Vite config without running it; `readViteAliases` says what it
+ * can read. A Vite key replaces a path that is the key or starts with the key and a `/`, so
+ * each alias makes two rules: `@` matches `@` and `@/x.png`, never `@img/x.png`.
  */
 async function readViteConfig(
   path: string,
@@ -417,78 +416,28 @@ async function readViteConfig(
   const text = await readOrSkip(path, source, options, skipped);
   if (text === null) return;
 
-  let ast: t.Expression;
-  try {
-    // `parseExpression` has no module mode, so only a config whose text is a bare object
-    // literal parses; a module throws and is reported below.
-    ast = parseExpression(`(${text.replace(/^﻿/, '')})`, {
-      plugins: ['typescript'],
-      errorRecovery: true,
-    });
-  } catch {
-    // A full module rather than a bare object, which is the ordinary case. Finding the
-    // alias object inside it means following imports and `defineConfig`, which this
-    // module does not do.
-    skipped.push({
-      what: source,
-      reason:
-        'a Vite config is executable JavaScript; only string-literal aliases can be read statically',
-    });
-    return;
+  const { entries, unread } = readViteAliases(text, path);
+  for (const { find, target } of entries) {
+    rules.push(makeRule(find, [target], dirname(path), dirname(path), source));
+    rules.push(makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source));
   }
-
-  const resolveSection = ast.type === 'ObjectExpression' ? objectValued(ast, 'resolve') : null;
-  const alias = resolveSection === null ? null : objectValued(resolveSection, 'alias');
-  if (alias === null) {
-    skipped.push({
-      what: source,
-      reason: 'no statically readable `resolve.alias` object',
-    });
-    return;
-  }
-
-  for (const property of alias.properties) {
-    const from = propertyKey(property);
-    if (from === null || property.type !== 'ObjectProperty') continue;
-
-    if (property.value.type !== 'StringLiteral') {
-      const line = property.value.loc?.start.line;
-      skipped.push({
-        what: source,
-        reason: `the alias "${from}"${line === undefined ? '' : ` at line ${line}`} is computed, not a string literal — Upfly does not execute config files, so it was not read`,
-      });
-      continue;
-    }
-
-    rules.push(
-      makeRule(from, [property.value.value], dirname(path), dirname(path), source, 'prefix'),
-    );
-  }
+  for (const item of unread) skipped.push({ what: source, reason: item.reason });
 }
 
 // ---------------------------------------------------------------------------
 // shared
 // ---------------------------------------------------------------------------
 
-/**
- * Build one rule.
- *
- * `style` exists because the two config formats mean different things by a key. A
- * tsconfig `paths` key is a pattern: `@/*` matches a prefix, `react` only the whole
- * specifier. A Vite `resolve.alias` string key is always a prefix replacement
- * (`{'@': '/src'}` turns `@/x.png` into `/src/x.png`), so it has no `*` to read the
- * intent from and must be told.
- */
+/** Build one rule from a key in tsconfig's form: `@/*` matches a prefix, `react` the whole path. */
 function makeRule(
   from: string,
   targets: readonly string[],
   base: string,
   scope: string,
   source: string,
-  style: 'pattern' | 'prefix' = 'pattern',
 ): AliasRule {
-  const wildcard = style === 'prefix' || from.endsWith('*');
-  const prefix = from.endsWith('*') ? from.slice(0, -1) : from;
+  const wildcard = from.endsWith('*');
+  const prefix = wildcard ? from.slice(0, -1) : from;
 
   return {
     prefix,

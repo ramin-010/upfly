@@ -468,9 +468,16 @@ Every `resolve.alias` in the validation corpus is `'@': path.resolve(__dirname, 
 JavaScript expression. Evaluating it would mean **executing a config file from a repository the
 user did not write**, in a tool they ran to save bytes. No byte saving buys that. Where the static
 read cannot see a value, the alias is reported as unreadable with its file and line, because a
-limitation a user can see is worth more than a resolution they cannot trust. Today a Vite config is
-read only when its whole text is an object literal, so one written as a module, as real ones are,
-yields no alias.
+limitation a user can see is worth more than a resolution they cannot trust. A Vite config is parsed
+as the module it is (`vite-config.ts`): the config is found through `export default` or
+`module.exports`, `defineConfig(...)`, `satisfies`, a top-level `const` and a function that returns an
+object, and each alias value is evaluated over a closed list whose result depends only on where the
+config file sits: string and template literals, `+`, `__dirname`, `__filename`, `import.meta.url`
+and its `dirname` and `filename`, `path.resolve`, `path.join`, `path.dirname`, `fileURLToPath` and
+`new URL(s, base)`. A name bound more than once is off the list. A string starting with `/` is read
+from the Vite root. A relative string, a bare one, `process.cwd()` and a `path.resolve` with no
+absolute part are reported with their line: Vite reads the first from each importing file, the
+second is a package, and the others depend on the folder Vite runs in.
 
 Two details that are easy to get wrong:
 
@@ -479,8 +486,9 @@ Two details that are easy to get wrong:
   literal) rather than by stripping comments with a regex, which would be "never regex JavaScript"
   wearing a different extension. Values are read off the AST, never reconstructed into an object.
 - **A tsconfig key and a Vite key mean different things.** `"@/*"` is a pattern whose `*` says
-  "prefix"; a Vite string key is *always* a prefix replacement, so `{'@': './src'}` turns
-  `@/x.png` into `./src/x.png`. Treating the Vite form as an exact match resolves nothing at all.
+  "prefix"; a Vite key replaces the whole path or the key followed by `/`, so `{ '@': '/src' }`
+  maps `@` and `@/x.png` but never `@img/x.png`. Each Vite alias therefore makes two rules, the
+  key and the key with `/`.
 
 A config's aliases are its `paths` after `extends`, merged as TypeScript merges them: each base in
 order, then the config's own settings, a `paths` later in the chain replacing an earlier one whole.

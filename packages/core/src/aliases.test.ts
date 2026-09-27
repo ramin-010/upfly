@@ -312,50 +312,62 @@ describe('loadAliases: finding an extends', () => {
 });
 
 describe('loadAliases: Vite', () => {
-  it('reads a string-literal alias as a prefix replacement, not an exact match', async () => {
-    // Vite and tsconfig mean different things by a key. A tsconfig `paths` key is a
-    // pattern where `*` says "prefix"; a Vite string key is always a prefix replacement,
-    // so `{'@': './src'}` turns `@/x.png` into `./src/x.png`. Treating it as an exact
-    // match would silently resolve nothing at all.
+  it('reads a key as the whole path or before a slash, from the Vite root', async () => {
     const map = await load({
-      'vite.config.ts': '{ resolve: { alias: { "@": "./src" } } }',
+      'vite.config.ts': "export default { resolve: { alias: { '@': '/src' } } };\n",
     });
 
     expect(expandAlias(map, '@/x.png', from('a.tsx'))).toEqual([from('src/x.png')]);
+    expect(expandAlias(map, '@', from('a.tsx'))).toEqual([from('src')]);
+    // A key is not a bare prefix: `@img/x.png` is another alias, which this one does not map.
+    expect(expandAlias(map, '@img/x.png', from('a.tsx'))).toEqual([]);
   });
 
-  it('refuses to evaluate a computed alias, and says so with a line', async () => {
-    // Every `resolve.alias` in the validation corpus is exactly this shape. Executing
-    // it would mean running a config file from a repository the user did not write.
+  it('reads a real config module, as Vite templates write it', async () => {
     const map = await load({
-      'vite.config.ts': `{
-        resolve: {
-          alias: {
-            "@": path.resolve(__dirname, "./src")
-          }
-        }
-      }`,
+      'apps/web/vite.config.ts': [
+        'import path from "path"',
+        'import { defineConfig } from "vite"',
+        '',
+        'export default defineConfig({',
+        '  resolve: {',
+        '    alias: {',
+        '      "@": path.resolve(__dirname, "./src"),',
+        '    },',
+        '  },',
+        '})',
+        '',
+      ].join('\n'),
     });
 
-    expect(map.rules).toEqual([]);
-    expect(map.skipped[0]?.what).toBe('vite.config.ts');
-    expect(map.skipped[0]?.reason).toContain('computed');
-    expect(map.skipped[0]?.reason).toContain('line 4');
+    expect(map.skipped).toEqual([]);
+    expect(expandAlias(map, '@/x.png', from('apps/web/src/a.tsx'))).toEqual([
+      from('apps/web/src/x.png'),
+    ]);
   });
 
-  it('reports a real module-shaped config rather than pretending it had no aliases', async () => {
-    // The ordinary case: a config that is a module, not a bare object. Finding the alias
-    // object inside it means following imports and `defineConfig`, which this module
-    // does not do, so the config is reported rather than silently skipped.
+  it('refuses an alias that depends on the folder Vite runs in, and says so with a line', async () => {
     const map = await load({
       'vite.config.ts': [
-        'import { defineConfig } from "vite";',
-        'export default defineConfig({ resolve: { alias: { "@": "./src" } } });',
+        "import path from 'node:path';",
+        'export default {',
+        '  resolve: {',
+        '    alias: {',
+        "      '@': path.resolve(process.cwd(), 'src'),",
+        '    },',
+        '  },',
+        '};',
+        '',
       ].join('\n'),
     });
 
     expect(map.rules).toEqual([]);
-    expect(map.skipped[0]?.reason).toMatch(/executable JavaScript|statically/);
+    expect(map.skipped).toEqual([
+      {
+        what: 'vite.config.ts',
+        reason: 'the alias "@" at line 5 depends on the folder Vite runs in, so it was not read',
+      },
+    ]);
   });
 });
 

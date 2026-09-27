@@ -43,7 +43,7 @@
     }
   ],
   "aliases": {
-    "_": "From tree/tsconfig.json, and in sites/kit-app and sites/nuxt-app from their tsconfig.json, which extends the config the framework generates (.svelte-kit/, .nuxt/). Anything else that is alias-shaped maps nowhere on purpose.",
+    "_": "From tree/tsconfig.json, and in sites/kit-app and sites/nuxt-app from their tsconfig.json, which extends the config the framework generates (.svelte-kit/, .nuxt/). apps/web and sites/vue-app also map @ in their Vite configs. Anything else that is alias-shaped maps nowhere on purpose.",
     "~/*": "shared/*",
     "@img/*": "shared/assets/img/*",
     "@web/*": "apps/web/src/*",
@@ -1247,6 +1247,14 @@
     },
     {
       "path": "sites/nuxt-app/assets/nuxt-hero.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "sites/vue-app/src/assets/vue-logo.png",
       "bytes": 71744,
       "sha256": "8280482eb7711a62",
       "source": "bluemarble",
@@ -7706,6 +7714,53 @@
           "expect": "resolved",
           "why": "In a Nuxt 3 app ~ is the app's own folder, declared in the config Nuxt generates, which this tsconfig.json extends; the workspace's ~/* (shared/) holds no such file.",
           "target": "sites/nuxt-app/assets/nuxt-hero.png",
+          "offset": 18,
+          "line": 1,
+          "column": 19
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/ChartCard.tsx",
+      "entries": [
+        {
+          "raw": "@/assets/chart.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "The web app's Vite config maps @ to its src folder with path.resolve(__dirname, ...), as Vite's React template writes it; the workspace tsconfig maps no @/.",
+          "target": "apps/web/src/assets/chart.png",
+          "offset": 19,
+          "line": 1,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/ChartBadge.tsx",
+      "entries": [
+        {
+          "raw": "@assets/chart.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.unmapped",
+          "expect": "unresolved-alias",
+          "why": "@assets is not @: a Vite key maps the whole path or the key followed by /, so the web app's @ does not map @assets/chart.png, and nothing else does.",
+          "offset": 19,
+          "line": 1,
+          "column": 20
+        }
+      ]
+    },
+    {
+      "path": "sites/vue-app/src/stores/brand.js",
+      "entries": [
+        {
+          "raw": "@/assets/vue-logo.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "create-vue's Vite config maps @ to src with fileURLToPath(new URL('./src', import.meta.url)), which Upfly reads without running the file.",
+          "target": "sites/vue-app/src/assets/vue-logo.png",
           "offset": 18,
           "line": 1,
           "column": 19
