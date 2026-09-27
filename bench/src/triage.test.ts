@@ -66,6 +66,15 @@ describe('triage of the hits the graph did not link', () => {
       ).toContain('different file that shares a basename');
     });
 
+    it('explains a relative path that lands on a different file with the same basename', () => {
+      // From `docs/pages`, `../img/possum.jpg` is `docs/img/possum.jpg`.
+      expect(
+        explanationFor(
+          hit('docs/pages/index.html', '<img src="../img/possum.jpg">', 'src/img/possum.jpg'),
+        ),
+      ).toContain('different file that shares a basename');
+    });
+
     it('explains a filename in a sentence', () => {
       expect(
         explanationFor(
@@ -143,6 +152,16 @@ describe('triage of the hits the graph did not link', () => {
         ),
       ).toBeNull();
     });
+
+    it.each([
+      ['src/pages/index.html', '<img src="../img/possum.jpg">'],
+      ['src/pages/blog/post.html', '<img src="../../img/possum.jpg">'],
+    ])(
+      'does not call a relative path in %s a different file when it lands on the asset',
+      (file, text) => {
+        expect(explanationFor(hit(file, text, 'src/img/possum.jpg'))).toBeNull();
+      },
+    );
 
     it('does not treat a matching path as a collision', () => {
       // The path in the line and the asset are the same file, reached through a

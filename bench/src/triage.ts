@@ -10,6 +10,8 @@
  * every rule: if this image were renamed, would this line break?
  */
 
+import { posix } from 'node:path';
+
 /** A grep hit the graph did not link, as the sweep produced it. */
 export interface Hit {
   readonly asset: string;
@@ -66,7 +68,7 @@ function explain(
   // `/img/mascots/possum.jpg`, which matched `src/img/possum.jpg` by basename. Renaming
   // that asset would not touch the line.
   const named = pathEndingIn(hit.text, token);
-  if (named?.includes('/') === true && !endsWithPath(hit.asset, named)) {
+  if (named?.includes('/') === true && !couldNameAsset(hit.asset, named, hit.file)) {
     return `the line names ${named}, which is a different file that shares a basename`;
   }
 
@@ -124,9 +126,16 @@ function pathEndingIn(text: string, token: string): string | null {
   return text.slice(start, index + token.length).replace(/^\/+/, '');
 }
 
-/** Could `asset` be what `named` refers to, ignoring any serving-root prefix? */
-function endsWithPath(asset: string, named: string): boolean {
-  const suffix = named.replace(/^\.?\/+/, '');
+/**
+ * Could `named`, written in `file`, be `asset`? A path that starts `./` or `../` has one
+ * reading, from the directory of the file that holds it. Any other is compared as a suffix,
+ * which allows for a serving-root prefix.
+ */
+function couldNameAsset(asset: string, named: string, file: string): boolean {
+  if (/^\.\.?\//.test(named)) {
+    return posix.normalize(posix.join(posix.dirname(file), named)) === asset;
+  }
+  const suffix = named.replace(/^\/+/, '');
   return asset === suffix || asset.endsWith(`/${suffix}`);
 }
 
