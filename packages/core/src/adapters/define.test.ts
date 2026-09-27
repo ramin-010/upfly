@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cssAdapter } from './css.js';
+import { defaultAdapters } from './default-adapters.js';
 import { type AdapterDefinition, defineAdapter, rewriteByEdits } from './define.js';
-import { htmlAdapter } from './html.js';
-import { javascriptAdapter } from './javascript.js';
-import { jsonAdapter } from './json.js';
-import { markdownAdapter } from './markdown.js';
 
 /** A definition with the two required members and nothing else. */
 const bare: AdapterDefinition = {
@@ -72,18 +68,10 @@ describe('defineAdapter', () => {
 });
 
 describe('no adapter carries a private copy of rewrite', () => {
-  // Byte-identical copies drift apart, so this fails as soon as one of these adapters
-  // carries its own copy of `rewrite`.
-  const adapters = [
-    ['css', cssAdapter],
-    ['html', htmlAdapter],
-    ['javascript', javascriptAdapter],
-    ['json', jsonAdapter],
-    ['markdown', markdownAdapter],
-  ] as const;
-
-  for (const [name, adapter] of adapters) {
-    it(`${name} uses the shared implementation`, () => {
+  // Byte-identical copies drift apart, so this fails as soon as any default adapter, one
+  // added later included, carries its own copy of `rewrite`.
+  for (const adapter of defaultAdapters) {
+    it(`${adapter.id} uses the shared implementation`, () => {
       expect(adapter.rewrite).toBe(rewriteByEdits);
     });
   }
