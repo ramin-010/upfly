@@ -99,6 +99,11 @@ export function compareStrings(a: string, b: string): number {
   return 0;
 }
 
+/** The tracked extensions without their dots, as a regular-expression alternation. */
+const EXTENSION_ALTERNATION = IMAGE_EXTENSIONS.map((extension) =>
+  extension.slice(1).replace(/[^A-Za-z0-9]/g, '\\$&'),
+).join('|');
+
 /**
  * Matches a filename-shaped token ending in a tracked image extension.
  *
@@ -112,10 +117,12 @@ export function compareStrings(a: string, b: string): number {
  * which would make results depend on what was scanned before them.
  */
 export function imageFilenamePattern(): RegExp {
-  const extensions = IMAGE_EXTENSIONS.map((extension) =>
-    extension.slice(1).replace(/[^A-Za-z0-9]/g, '\\$&'),
-  );
-  return new RegExp(`[\\w@.\\-]+\\.(?:${extensions.join('|')})\\b`, 'gi');
+  return new RegExp(`[\\w@.\\-]+\\.(?:${EXTENSION_ALTERNATION})\\b`, 'gi');
+}
+
+/** Matches a tracked image extension where a name ends: `.png` in `hero (1).png`. */
+function extensionPattern(): RegExp {
+  return new RegExp(`\\.(?:${EXTENSION_ALTERNATION})\\b`, 'gi');
 }
 
 /**
@@ -135,7 +142,8 @@ const FILENAME_CHARACTER = /[\w@.\-]/;
  * while its name appears in the text. So from each match this walks left over ` word` runs
  * and yields every step: `Practice.webp`, then `Firing Practice.webp`. Yielding each step,
  * not only the longest, keeps shorter matches working: the prose `Remove workspace.png`
- * must still match an asset named `workspace.png`.
+ * must still match an asset named `workspace.png`. The names holding parentheses follow,
+ * from a second pass (`namesHoldingParentheses`).
  *
  * It lives here because `scan.ts` and `sweep.ts` do the same lookup, and a hole in only one
  * of two identical lookups is easy to miss.
@@ -161,4 +169,72 @@ export function* imageFilenameCandidates(text: string): Generator<[token: string
     }
     match = pattern.exec(text);
   }
+
+  const extensions = extensionPattern();
+  let extension = extensions.exec(text);
+  while (extension !== null) {
+    yield* namesHoldingParentheses(text, extension.index, extension.index + extension[0].length);
+    extension = extensions.exec(text);
+  }
+}
+
+/** The longest name a common file system allows. */
+const MAX_NAME_LENGTH = 255;
+
+function isNameCharacter(character: string): boolean {
+  return character === '(' || character === ')' || FILENAME_CHARACTER.test(character);
+}
+
+/**
+ * The names holding parentheses that end at the extension starting at `dot`, shortest first,
+ * such as `hero (1).png`, the name a browser gives a second download of `hero.png`.
+ *
+ * A separate pass, because parentheses in `imageFilenamePattern` would change what it finds:
+ * its match in `url(hero.png)` would be `url(hero.png`. Here only an extension starts a walk.
+ */
+function* namesHoldingParentheses(
+  text: string,
+  dot: number,
+  end: number,
+): Generator<[token: string, offset: number]> {
+  for (const start of startsOfNames(text, dot, end)) {
+    if (holdsBalancedParentheses(text, start, end)) yield [text.slice(start, end), start];
+  }
+}
+
+/**
+ * Where a name ending at `dot` could start, nearest first: at each of up to seven
+ * space-separated words, as the space walk counts them, and after each `(`, which may open a
+ * construct such as `url(` rather than belong to the name.
+ */
+function* startsOfNames(text: string, dot: number, end: number): Generator<number> {
+  const floor = Math.max(0, end - MAX_NAME_LENGTH);
+  let start = dot;
+  for (let word = 0; word <= MAX_SPACED_WORDS; word += 1) {
+    const wordEnd = start;
+    while (start > floor && isNameCharacter(text[start - 1] ?? '')) {
+      start -= 1;
+      if (text[start] === '(') yield start + 1;
+    }
+    // An empty word is not part of a name; a run cut at the floor is longer than any name.
+    if (start === wordEnd || (start === floor && isNameCharacter(text[start - 1] ?? ''))) return;
+    yield start;
+    if (text[start - 1] !== ' ') return;
+    start -= 1;
+  }
+}
+
+/** Whether the text from `start` to `end` holds parentheses, all in balanced pairs. */
+function holdsBalancedParentheses(text: string, start: number, end: number): boolean {
+  let depth = 0;
+  let pairs = 0;
+  for (let index = start; index < end; index += 1) {
+    if (text[index] === '(') depth += 1;
+    if (text[index] === ')') {
+      depth -= 1;
+      pairs += 1;
+    }
+    if (depth < 0) return false;
+  }
+  return depth === 0 && pairs > 0;
 }

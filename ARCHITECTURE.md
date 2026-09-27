@@ -632,6 +632,13 @@ covers a name that parses fine and yields no reference, such as `{ file: 'My Log
 file name with no slash, which has the shape of a UI label (see "What counts as a path-shaped
 string").
 
+A name is found with the spaces and parentheses it holds, though the filename token stops at
+both. From each token the search walks left over up to six space-separated words, so
+`Firing Practice.webp` is found whole. A second pass starts at each image extension and walks
+left for names that hold parentheses in balanced pairs: `hero (1).png` is the name a browser
+gives a second download of `hero.png`. The pass is separate because parentheses in the token
+would change what it finds, `url(hero.png` in place of `hero.png` in `url(hero.png)`.
+
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
 `unresolved-alias`, `discarded`, and the root-relative `broken` references that a run with no
 serving root withholds (see "When the serving root cannot be found at all"). `discarded` holds the

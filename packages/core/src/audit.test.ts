@@ -143,6 +143,42 @@ describe('audit', () => {
       ]);
     });
 
+    it('hedges an asset whose name holds parentheses when an unread file names it', async () => {
+      const graph = graphOf({
+        assets: [asset('img/photo(1).png')],
+        unscannedFiles: [
+          {
+            path: `${ROOT}/notes.txt`,
+            relative: 'notes.txt',
+            extension: '.txt',
+            reason: 'unclaimed-extension',
+            detail: '',
+          },
+        ],
+      });
+      const readFile = files({ '/repo/notes.txt': 'see photo(1).png here\n' });
+      const sweep = await sweepForMentions({ graph, readFile });
+
+      const result = await audit({ graph, sweep, readFile });
+
+      expect(result.findings).toEqual([
+        {
+          kind: 'possibly-dead',
+          asset: 'img/photo(1).png',
+          bytes: 1_000,
+          inPublicDir: false,
+          evidence: [
+            {
+              asset: 'img/photo(1).png',
+              source: 'unscanned-file',
+              where: 'notes.txt:1',
+              quote: 'photo(1).png',
+            },
+          ],
+        },
+      ]);
+    });
+
     it('cites file, line and raw path for a hedge from an unresolved reference', async () => {
       // The citation gives the file and the line, so the hedge tells a reader where to
       // look, and it quotes the whole path as written.

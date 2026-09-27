@@ -187,4 +187,44 @@ describe('imageFilenameCandidates', () => {
     expect(all.at(-1)).toBe('three four five six seven eight nine.png');
     expect(all).toHaveLength(7);
   });
+
+  it('finds a name whose parentheses close right before the extension', () => {
+    expect(tokens('see photo(1).png here')).toContain('photo(1).png');
+  });
+
+  it('finds a spaced name ending in a number in parentheses, as browsers name a second download', () => {
+    expect(tokens('see hero (1).png here')).toContain('hero (1).png');
+  });
+
+  it('finds a name whose parentheses sit in an earlier word or before a suffix', () => {
+    expect(tokens('"/gallery/hero image (2) copy.png"')).toContain('hero image (2) copy.png');
+    expect(tokens('logo(dark)@2x.png')).toContain('logo(dark)@2x.png');
+  });
+
+  it('starts a name after a parenthesis that opens a construct', () => {
+    expect(tokens('url(photo(1).png)')).toEqual(['photo(1).png']);
+  });
+
+  it('adds nothing for parentheses around a path, such as `url(/a/hero.png)`', () => {
+    // The control: a name without parentheses is found exactly as before.
+    expect(tokens('url(/a/hero.png)')).toEqual(['hero.png']);
+    expect(tokens('url(hero.png)')).toEqual(['hero.png']);
+    expect(tokens('(see hero.png)')).toEqual(['hero.png', 'see hero.png']);
+  });
+
+  it('reports an offset that points at each name holding parentheses', () => {
+    const text = 'x = "url(my photo (1).png)";';
+    const found = [...imageFilenameCandidates(text)];
+    expect(found.map(([token]) => token)).toContain('my photo (1).png');
+    for (const [token, offset] of found) {
+      expect(text.slice(offset, offset + token.length)).toBe(token);
+    }
+  });
+
+  it('does not walk further left than the longest file name', () => {
+    // No common file system allows a name over 255 characters. The bound also keeps a long
+    // run from being walked again for every extension in it.
+    expect(tokens(`${'a'.repeat(300)}(1).png`)).toEqual([]);
+    expect(tokens(`${'a'.repeat(200)}(1).png`)).toEqual([`${'a'.repeat(200)}(1).png`]);
+  });
 });
