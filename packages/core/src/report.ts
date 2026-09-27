@@ -1231,18 +1231,20 @@ function caveats(
   // differently. See `groupUnscanned`.
   const groups = groupUnscanned(input.graph.unscannedExtensions);
 
-  // Said once per run rather than in every decline reason. The detail matters most: the
-  // check finds only paths that are written down, so without it a reader would take these
+  // Said once per run rather than in every decline reason. Each image comes first with
+  // where it is still named, which is what the user acts on. Then the check's limit: it
+  // finds only paths that are written down, so without it a reader would take these
   // refusals as covering paths a program assembles at runtime too.
-  const heldBack = (input.declined ?? []).filter((entry) =>
-    entry.reason.includes(MENTION_SURVIVES),
-  );
+  const heldBack = (input.declined ?? [])
+    .filter((entry) => entry.reason.includes(MENTION_SURVIVES))
+    .sort((a, b) => compareStrings(a.path, b.path));
   if (heldBack.length > 0) {
     list.push({
       code: 'replace-held-back',
       count: heldBack.length,
       message: `${plural(heldBack.length, 'image')} kept rather than replaced, because a literal mention of the original's path would have outlived the rewrite`,
       detail: [
+        ...heldBack.map((entry) => `${entry.path}: ${entry.reason}`),
         'This check reads text, so it finds a path that is written down. A path a program',
         "assembles at runtime, such as '/images/' + name + '.png', matches nothing, so",
         'replacing is safe here against literal mentions and no wider than that.',

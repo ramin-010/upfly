@@ -2389,6 +2389,24 @@ describe('the assets a plan examined and did not convert', () => {
     expect(caveat?.detail.join(' ')).not.toContain('\u2014');
   });
 
+  it('names where each held-back image is still named, without asking for the list', () => {
+    // The mention is what the user acts on, so it is in the caveat itself, not only behind
+    // `--include-declined`. Listed by image path, whatever order the planner used.
+    const report = reportWith({
+      declined: [
+        { path: 'public/logo.png', line: null, reason: `deploy.yml:1 ${MENTION_SURVIVES}` },
+        { path: 'public/banner.png', line: null, reason: `legacy/old.html:4 ${MENTION_SURVIVES}` },
+      ],
+    });
+
+    const caveat = report.caveats.find((entry) => entry.code === 'replace-held-back');
+    expect(caveat?.detail.slice(0, 2)).toEqual([
+      `public/banner.png: legacy/old.html:4 ${MENTION_SURVIVES}`,
+      `public/logo.png: deploy.yml:1 ${MENTION_SURVIVES}`,
+    ]);
+    expect(report.declined.assets).toBeNull();
+  });
+
   it('says nothing about replace when nothing was held back', () => {
     // Here so the assertion above means something: a caveat that always prints proves
     // nothing about a run that actually held an image back.

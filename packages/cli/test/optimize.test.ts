@@ -67,6 +67,19 @@ function committedFiles(root: string): string[] {
 }
 
 describe('upfly optimize without --apply', () => {
+  it('names the excluded page that keeps an original, without --include-declined', () => {
+    const root = copyFixture('plain-html', tempFolder(roots, 'upfly-optimize-'));
+    write(root, 'legacy/old.html', '<img src="../images/logo.png">\n');
+    commitAll(root);
+
+    const run = upfly(['optimize', root, '--replace', '--public', '.', '--exclude', 'legacy']);
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain(
+      'images/logo.png: converting it would delete the original, and legacy/old.html:1 still names its path, in a file this run excluded',
+    );
+  });
+
   it('shows the plan and writes nothing, not even its own folder', () => {
     const root = standalone();
     const before = snapshot(root, ['.git']);
