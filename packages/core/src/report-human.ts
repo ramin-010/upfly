@@ -315,7 +315,7 @@ function skippedSection(report: Report): string[] {
     // the count. "Did not resolve", not "was not a reference": many of these do name a
     // real asset, such as `{ file: 'gitbook.svg' }` joined to a directory at run time,
     // and the possibly-dead evidence below may cite them as proof an asset is alive.
-    const hint = references.discarded === null ? ' (use --include-discarded to list them)' : '';
+    const hint = listHint('--include-discarded', references.discarded, references.discardedCount);
     lines.push(
       `${count(references.discardedCount, 'path-shaped string')} did not resolve to an asset${hint}`,
       '',
@@ -337,11 +337,19 @@ function skippedSection(report: Report): string[] {
  * The values an adapter declined, one line per reason. A reason names the construct, such as
  * the attribute, so a reader who knows that a prop holds a file path can see which prop.
  */
+/**
+ * The hint naming the flag that lists what a count stands for, or nothing when the list is
+ * already there. "It" at a count of one, "them" otherwise.
+ */
+function listHint(flag: string, list: readonly unknown[] | null, n: number): string {
+  return list === null ? ` (use ${flag} to list ${n === 1 ? 'it' : 'them'})` : '';
+}
+
 function declinedValueLines(report: Report): string[] {
   const { count: total, byReason, values } = report.references.declinedValues;
   if (total === 0) return [];
 
-  const hint = values === null ? ' (use --include-discarded to list them)' : '';
+  const hint = listHint('--include-discarded', values, total);
   const lines = [
     `${count(total, 'value')} with an image extension linked nothing, written where Upfly reads no file path${hint}`,
     '',
@@ -701,14 +709,15 @@ function declinedSection(report: Report): string[] {
   const { count: left, references } = report.declinedReferences;
   if (declined === 0 && left === 0) return [];
 
-  const hint = assets === null ? ' (use --include-declined to list them)' : '';
   const lines = ['Examined and not converted', ''];
   if (declined > 0) {
+    const hint = listHint('--include-declined', assets, declined);
     lines.push(
       `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, each with its reason${hint}`,
     );
   }
   if (left > 0) {
+    const hint = listHint('--include-declined', references, left);
     lines.push(`  ${count(left, 'reference')} left as written, each with its reason${hint}`);
   }
   lines.push('');

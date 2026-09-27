@@ -1345,8 +1345,9 @@ describe('buildReport', () => {
       // is not costs more trust than no message would.
       const text = renderReport(reportOf(false));
 
-      expect(text).toContain('1 path-shaped string did not resolve to an asset');
-      expect(text).toContain('--include-discarded');
+      expect(text).toContain(
+        '1 path-shaped string did not resolve to an asset (use --include-discarded to list it)',
+      );
       expect(text).not.toContain('use --json to inspect');
     });
 
@@ -2438,6 +2439,14 @@ describe('the assets a plan examined and did not convert', () => {
     const listed = renderReport(reportWith({ declined: withReferences, include: true }));
     expect(listed).toContain('    src/App.jsx  a template reference is assembled at runtime');
     expect(listed).toContain('    pages/old.html:3  the page is not UTF-8');
+  });
+
+  it('says "it" in the list hint at a count of one, "them" otherwise', () => {
+    const one = renderReport(reportWith({ declined: [...TWO.slice(0, 1)] }));
+    const two = renderReport(reportWith({ declined: TWO }));
+
+    expect(one).toContain('each with its reason (use --include-declined to list it)');
+    expect(two).toContain('each with its reason (use --include-declined to list them)');
   });
 
   it('counts them and totals their size', () => {
