@@ -225,12 +225,7 @@ export interface OptimizationPlan {
   readonly refusal: PlanRefusal | null;
 }
 
-/**
- * Every asset a pattern reference could match, as sorted absolute paths.
- *
- * Exposed so the caller can measure exactly these before planning, whatever encode cap
- * is otherwise in force.
- */
+/** Every asset a pattern reference could match, as sorted absolute paths. */
 export function patternTargets(graph: Graph): readonly string[] {
   const targets = new Set<string>();
   for (const reference of graph.references) {

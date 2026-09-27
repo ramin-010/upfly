@@ -1345,7 +1345,8 @@ Selection is largest source first, ties broken by path, so *which* assets are me
 deterministic function of the repository. Assets that could never be encoded (a vector, or one
 already in every requested format) leave the running before the cap applies, so they cannot occupy
 a slot they will not use. A byte or pixel floor can sit underneath as a secondary filter; the count
-is what bounds.
+is what bounds. Every asset competes for the cap alike: a pattern's targets get no exemption, since a
+pattern is never rewritten.
 
 What makes this safe is that it degrades exactly **one** of the four findings. `dead` and `broken`
 need no probe at all, and `oversized` needs only the ~1 ms header read, which still happens for every

@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type PipelineProgress, runPipeline, servingRootsFor } from './pipeline.js';
 
@@ -116,4 +117,30 @@ describe('a construct Upfly could not read', () => {
       ]),
     );
   });
+});
+
+describe('the encode cap', () => {
+  const partialPattern = fileURLToPath(
+    new URL('../../../fixtures/partial-pattern', import.meta.url),
+  );
+
+  it.each([
+    [2, ['public/banner.png', 'src/inline-logo.jpg']],
+    [3, ['public/banner.png', 'public/theme-sepia.png', 'src/inline-logo.jpg']],
+  ])(
+    'measures the %i largest images, whether a pattern names them or not',
+    async (cap, largest) => {
+      const output = await runPipeline({
+        root: partialPattern,
+        servingRoots: servingRootsFor({ dirs: ['public'], declared: true }),
+        publicDirs: (servingRoots) => servingRoots.dirs,
+        probeOptions: { formats: ['webp'], maxEncodedAssets: cap },
+      });
+
+      const measured = (output.probes ?? [])
+        .filter((probe) => probe.encoded.length > 0)
+        .map((probe) => probe.relative);
+      expect(measured).toEqual(largest);
+    },
+  );
 });

@@ -20,7 +20,6 @@ import { detectConventionRoots } from './conventions.js';
 import { discover } from './discover.js';
 import { hashCandidates } from './duplicates.js';
 import { type Graph, buildGraph } from './graph.js';
-import { alwaysMeasureFor } from './optimize.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { type AssetProbe, type ProbeDiagnostic, type ProbeOptions, probeAssets } from './probe.js';
 import { type ServingRoots, resolveReferences } from './resolve.js';
@@ -51,8 +50,8 @@ export interface PipelineInput {
    * Probe options, or `null` to skip probing.
    *
    * A value rather than a function, so that an object literal naming `alwaysMeasure` is a
-   * compile error: the pipeline decides that field, and excess-property checks apply only
-   * to a fresh literal. `null` rather than an empty object, because `audit` reads the
+   * compile error: the cap applies to every asset alike, and excess-property checks apply
+   * only to a fresh literal. `null` rather than an empty object, because `audit` reads the
    * presence of probes as "was probed".
    */
   readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure' | 'onDiagnostic'> | null;
@@ -203,10 +202,6 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
           {
             probe: await createSharpProbe(),
             ...input.probeOptions,
-            // Every asset a pattern could match is measured whatever the cap says, because
-            // an unmeasured target leaves the pattern undecidable. The input type forbids a
-            // caller from setting this.
-            alwaysMeasure: alwaysMeasureFor(graph),
             onDiagnostic: (entry) => diagnostics.push(entry),
           },
         );

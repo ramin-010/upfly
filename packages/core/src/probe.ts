@@ -244,12 +244,9 @@ export interface ProbeOptions {
    */
   readonly maxEncodedAssets?: number;
   /**
-   * Assets to measure whatever the cap says.
-   *
-   * A pattern reference is rewritten only if every asset it matches converts alike, so
-   * one unmeasured match leaves the pattern undecidable. `Asset` objects rather than
-   * paths: the cap is keyed on the absolute `asset.path` while the planner mostly uses
-   * relative paths, and objects leave no string to get wrong.
+   * Assets to measure whatever the cap says. `Asset` objects rather than paths: the cap is
+   * keyed on the absolute `asset.path` while the planner mostly uses relative paths, and
+   * objects leave no string to get wrong.
    */
   readonly alwaysMeasure?: readonly Asset[];
   /**
