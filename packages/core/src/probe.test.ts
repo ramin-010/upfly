@@ -283,6 +283,9 @@ describe('probeAssets', () => {
 
         expect(result?.skipped[0]?.code).toBe('too-large-to-encode');
         expect(result?.skipped[0]?.reason).toContain('resize it');
+        // No option, flag or config field raises the limit, so the reason offers none.
+        expect(result?.skipped[0]?.reason).not.toContain('raise the limit');
+        expect(result?.skipped[0]?.reason).toContain('every frame counted');
       });
 
       it('counts every frame, because an animation is decoded as one strip', async () => {

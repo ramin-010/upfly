@@ -277,7 +277,7 @@ const FAILURE_REASON: Record<
   'not-an-image': 'this file could not be read as an image, so nothing about it could be measured',
   'svg-unreadable':
     'this SVG could not be read — its dimensions, its XML or its size defeated the parser — so nothing about it could be measured',
-  'too-large-to-encode': `this image is larger than the ${groupDigits(MAX_ENCODE_PIXELS)} pixels we will decode to measure an encode, so there is no size to compare (resize it, or raise the limit)`,
+  'too-large-to-encode': `this image is larger than the ${groupDigits(MAX_ENCODE_PIXELS)} pixels Upfly decodes to measure an encode, every frame counted, so there is no size to compare (resize it to have it measured)`,
   'encode-failed': 'the image decoded but re-encoding it failed, so there is no size to compare',
 };
 
