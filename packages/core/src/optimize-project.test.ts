@@ -252,6 +252,28 @@ describe('an image a link preview or a download link names', () => {
     ]);
   });
 
+  it('keeps a Markdown link to an image as it keeps an HTML one, while an embed moves', async () => {
+    const root = await copy();
+    // `images/logo.png` is shown; `images/hero.jpg` is linked, so a reader saves the file.
+    const page = '![Logo](images/logo.png)\n\n[Download the picture](images/hero.jpg)\n';
+    await writeFile(join(root, 'notes.md'), page);
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'notes.md'), 'utf8')).toBe(
+      page.replace('](images/logo.png)', '](images/logo.webp)'),
+    );
+    expect(await files(root)).toContain('images/hero.jpg');
+    expect(optimize.plan.keptOriginals.map((entry) => entry.asset)).toContain('images/hero.jpg');
+  });
+
   it('keeps a preview path a component passes through a helper, as it keeps a plain one', async () => {
     const root = await copy();
     // The helper makes the address absolute, as crawlers require. The path inside the call

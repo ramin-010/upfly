@@ -966,3 +966,16 @@ describe('code spans follow CommonMark', () => {
     expect(survives(text, '![T](/img/a.png)')).toBe(true);
   });
 });
+
+describe('a plain link and an embed are told apart', () => {
+  it('reads a link as md.link, which keeps its format, and an embed as md.image', () => {
+    const shapes = find('![Shown](/img/a.png) [Saved](/img/b.png)').map((reference) => [
+      reference.rawPath,
+      reference.shape,
+    ]);
+    expect(shapes).toEqual([
+      ['/img/a.png', 'md.image'],
+      ['/img/b.png', 'md.link'],
+    ]);
+  });
+});

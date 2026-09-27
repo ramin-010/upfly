@@ -709,9 +709,11 @@ converts one, but a link is what shows it is used, and an SVG named only by a li
 otherwise be counted as an unused vector. Such an image is often named nowhere else,
 and before the claims it was reported dead while the site used it. Both references link their
 asset and are never rewritten: the sites that fetch previews may not read a converted format, and a
-person following a link expects the format it names. The rule lives on the shape, as `formatKept`
-in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what it does
-there. Because the shape carries the rule, it survives where another shape would otherwise take
+person following a link expects the format it names. A plain Markdown link, `[text](path)`, is the
+same thing written in Markdown, so it has its own shape, `md.link`, with the same rule, while an
+embed, `![alt](path)`, stays `md.image` and is repointed. The rule lives on the shape, as
+`formatKept` in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what
+it does there. Because the shape carries the rule, it survives where another shape would otherwise take
 over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the
 HTML adapter found, and a JSX template, which elsewhere takes a template's shape. A JSX value at
 such a position that is not one string or template is not one path, so each path found inside it

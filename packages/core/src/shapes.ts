@@ -393,6 +393,17 @@ export const SHAPES = [
   // ---- Markdown ----------------------------------------------------------------
   { id: 'md.image', label: '![alt](path)', emission: 'engine' },
   {
+    id: 'md.link',
+    label: '[text](path)',
+    emission: 'engine',
+    formatKept: LINK_FORMAT_KEPT,
+    why:
+      'A plain Markdown link, the `html.a.href.image` of Markdown: following it hands over ' +
+      'the file it names. The adapter reads every one, and the resolver drops those that name ' +
+      'no asset, so one that survives links an image, which is never reported dead and which ' +
+      '`optimize` never repoints.',
+  },
+  {
     id: 'md.image.reference-style',
     label: '![alt][label]',
     emission: 'declined',

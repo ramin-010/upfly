@@ -428,6 +428,12 @@
       "motivation": "The ordinary markdown image."
     },
     {
+      "id": "md.link",
+      "label": "[text](path)",
+      "spec": "4d",
+      "motivation": "A plain link to an image, which hands over the file itself: linked, and never rewritten."
+    },
+    {
       "id": "md.image.reference-style",
       "label": "![alt][label]",
       "spec": "4d",
@@ -7395,6 +7401,70 @@
           "offset": 188,
           "line": 7,
           "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/download-link.md",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.link",
+          "expect": "resolved",
+          "why": "A plain link to an image hands over the file itself, so the photo it names is used: /img/hero.jpg, which exists. It is never rewritten, since whoever follows it expects the format the link names.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 150,
+          "line": 6,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/diagram-link.md",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.link",
+          "expect": "resolved",
+          "why": "The same plain link with a title: the diagram it names is used, /img/diagram.png, which exists, and the link keeps the format it names.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 122,
+          "line": 5,
+          "column": 15
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/bracketed-link.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.link",
+          "expect": "resolved",
+          "why": "A plain link with its destination in angle brackets: the image it names is used, /img/avatar.png, which exists, and the link keeps the format it names.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 131,
+          "line": 5,
+          "column": 26
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/link-in-mdx.mdx",
+      "entries": [
+        {
+          "raw": "/img/screenshot.png",
+          "occurrence": 1,
+          "shape": "md.link",
+          "expect": "resolved",
+          "why": "A plain link in MDX, read by the same Markdown scanner: the screenshot it names is used, /img/screenshot.png, which exists, and the link keeps the format it names.",
+          "target": "apps/docs/public/img/screenshot.png",
+          "offset": 122,
+          "line": 5,
+          "column": 23
         }
       ]
     }

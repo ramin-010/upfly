@@ -339,7 +339,8 @@ interface InlineLink {
  * multiplies its backtracking, so the brackets are paired in one pass and each destination
  * is read forward once. A link to an image file is as real a reference as an embed
  * (following it fetches the file), and the resolver drops anything that is not a tracked
- * asset, so both are read.
+ * asset, so both are read. A link is `md.link`, which is never rewritten: whoever follows it
+ * saves the file in the format the link names.
  */
 function collectLinks(masked: string, file: string, references: RawReference[]): void {
   const links: InlineLink[] = [];
@@ -358,7 +359,8 @@ function collectLinks(masked: string, file: string, references: RawReference[]):
   for (const link of links) {
     if (!link.image && holdsBetween(plainOpens, link.open, link.close)) continue;
     const { start, end } = link.destination;
-    addReference(masked.slice(start, end), start, file, references, 'md.image');
+    const shape = link.image ? 'md.image' : 'md.link';
+    addReference(masked.slice(start, end), start, file, references, shape);
   }
 }
 
