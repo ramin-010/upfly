@@ -920,12 +920,58 @@ body`,
     });
 
     it('declines a preview value it cannot read as one path rather than guessing inside it', () => {
-      // Guessed, the literals here would be rewritable strings standing in a preview image.
+      // A choice or a chain is declined, so none of its literals is read or rewritten. A path
+      // found deeper, as in a call, is read and keeps the position's shape (below).
       expect(
         find(`<meta property="og:image" content={big ? '/img/a.png' : '/img/b.png'} />`),
       ).toEqual([]);
       expect(find(`<meta property="og:image" content={'/img/a.png' + '?v=' + v} />`)).toEqual([]);
       expect(find(`<a href={'/img/a.png' + '?download=1'}>x</a>`)).toEqual([]);
+    });
+
+    it.each([
+      ['a call', `absolute('/img/banner.png')`, '/img/banner.png'],
+      ['a URL built against the site', `new URL('/img/banner.png', site).href`, '/img/banner.png'],
+      [
+        'a URL the bundler resolves',
+        `new URL('./banner.png', import.meta.url).href`,
+        './banner.png',
+      ],
+      ['a require()', `require('./banner.png')`, './banner.png'],
+      ['a call in a template', "`${origin}${absolute('/img/banner.png')}`", '/img/banner.png'],
+      ['a call in a choice', `big ? absolute('/img/banner.png') : fallback`, '/img/banner.png'],
+    ])('keeps the preview shape on a path found inside %s', (_name, value, path) => {
+      // Under the shape of whatever found it, the path could be repointed at a converted file.
+      const found = find(`<meta property="og:image" content={${value}} />`);
+      const inside = found.filter((reference) => reference.rawPath === path);
+      expect(inside.map((reference) => reference.shape)).toEqual(['js.jsx.meta.content.image']);
+    });
+
+    it('keeps the link shape on an image found inside a link value, and only on an image', () => {
+      const shapes = (source: string) => find(source).map((reference) => reference.shape);
+      expect(shapes(`<a href={absolute('/img/team.jpg')}>x</a>`)).toEqual(['js.jsx.a.href.image']);
+      expect(shapes(`<a href={new URL('/img/team.jpg', site).href}>x</a>`)).toEqual([
+        'js.jsx.a.href.image',
+      ]);
+      // A document is no image, so the link claims nothing and the guess keeps its own shape.
+      expect(shapes(`<a href={absolute('/files/report.pdf')}>x</a>`)).toEqual([
+        'js.string.literal',
+      ]);
+    });
+
+    it('leaves a guess its own shape where the position keeps no format', () => {
+      const shapes = (source: string) => find(source).map((reference) => reference.shape);
+      expect(shapes(`<meta name="description" content={absolute('/img/logo.png')} />`)).toEqual([
+        'js.string.literal',
+      ]);
+      expect(shapes(`<img src={absolute('/img/logo.png')} />`)).toEqual(['js.string.literal']);
+    });
+
+    it('lets the innermost attribute decide, so an element nested in a preview value keeps its shape', () => {
+      const found = find(
+        `<meta property="og:image" content={render(<img src="/img/logo.png" />)} />`,
+      );
+      expect(found.map((reference) => reference.shape)).toEqual(['js.jsx.attribute']);
     });
   });
 

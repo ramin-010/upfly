@@ -45,7 +45,7 @@ import {
   splitPathSuffix,
   staticExtensionOf,
 } from './reference-path.js';
-import { type ClaimedElement, urlPosition } from './url-attributes.js';
+import { urlPosition } from './url-attributes.js';
 
 /**
  * Which Babel plugins each extension needs.
@@ -164,6 +164,7 @@ export function findJavaScriptReferences(input: {
       handled: new Set(),
       constantNamed: sameFileConstants((ast as File).program),
       chainParts: new Set(),
+      attributeValues: [],
     };
     walk(ast, (node) => collectFromNode(node, context));
 
@@ -178,7 +179,9 @@ export function findJavaScriptReferences(input: {
         !context.handled.has(reference.start),
     );
 
-    return [...context.references, ...guesses].sort((a, b) => a.start - b.start);
+    return [...context.references, ...guesses]
+      .map((reference) => withPositionShape(reference, context))
+      .sort((a, b) => a.start - b.start);
   }
 }
 
@@ -299,6 +302,19 @@ interface Context {
    * second, shorter chain. A chain in an attribute that names no file is here whole.
    */
   readonly chainParts: Set<BabelNode>;
+  /** Every JSX attribute value, so a path found inside one can take its shape. */
+  readonly attributeValues: AttributeValue[];
+}
+
+/** Where one JSX attribute's value sits, and what it makes of a path found inside it. */
+interface AttributeValue {
+  readonly start: number;
+  readonly end: number;
+  /**
+   * The attribute's shape when it keeps the file's format for a path with this text, or
+   * `null` when a path found here keeps the shape it was found with.
+   */
+  readonly keptShape: (text: string) => ShapeId | null;
 }
 
 /** Keys that hold position or comment data rather than child nodes. */
@@ -775,7 +791,7 @@ function isBundlerUrlConstruction(node: BabelNode): boolean {
  * does. Every other value is recorded as examined, however it is written:
  * `` alt={`/hero.png`} `` is display text as much as `alt="/hero.png"` is. Decided at the
  * element, because a claim such as a `<link>`'s `rel` reads the attributes beside the one
- * it judges.
+ * it judges. Each value is also noted with the same claim, for `withPositionShape`.
  */
 function collectFromJsxElement(node: JSXOpeningElement, context: Context): void {
   const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
@@ -790,11 +806,13 @@ function collectFromJsxElement(node: JSXOpeningElement, context: Context): void 
   for (const attribute of attributes) {
     const name = markupName(attribute);
     const component = COMPONENT_URL_ATTRIBUTES.get(name);
-    const element: ClaimedElement = {
-      attribute: other,
-      valueText: () => jsxValueText(attribute.value, context),
-    };
-    const shape = component ?? urlPosition(tag, name, element)?.jsx;
+    // The shape this attribute gives a path whose text `valueText` reads: the value's own
+    // text here, or later the text of a path found inside the value.
+    const shapeFor = (valueText: () => string | null): ShapeId | undefined =>
+      component ?? urlPosition(tag, name, { attribute: other, valueText })?.jsx;
+    noteAttributeValue(attribute, shapeFor, context);
+
+    const shape = shapeFor(() => jsxValueText(attribute.value, context));
     if (shape === undefined) {
       const value = attribute.value;
       declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
@@ -813,6 +831,41 @@ function collectFromJsxElement(node: JSXOpeningElement, context: Context): void 
       shape === 'js.jsx.srcset',
     );
   }
+}
+
+/** Note where an attribute's value sits and what it makes of a path found inside it. */
+function noteAttributeValue(
+  attribute: JSXAttribute,
+  shapeFor: (valueText: () => string | null) => ShapeId | undefined,
+  context: Context,
+): void {
+  const { value } = attribute;
+  if (typeof value?.start !== 'number' || typeof value.end !== 'number') return;
+  context.attributeValues.push({
+    start: value.start,
+    end: value.end,
+    keptShape: (text) => {
+      const shape = shapeFor(() => text);
+      return shape !== undefined && whyFormatKept(shape) !== null ? shape : null;
+    },
+  });
+}
+
+/**
+ * A reference found inside an attribute value that keeps the file's format, given that
+ * attribute's shape: in `content={absolute('/og.png')}` the path is a guess inside a call,
+ * and under a guess's shape `optimize` could repoint a link preview. The innermost value
+ * decides, so a nested `<img src>` keeps its own shape, and a link asks its claim of each
+ * path found, so a document inside one keeps the shape it was found with.
+ */
+function withPositionShape(reference: RawReference, context: Context): RawReference {
+  let innermost: AttributeValue | undefined;
+  for (const value of context.attributeValues) {
+    const inside = value.start <= reference.start && reference.end <= value.end;
+    if (inside && (innermost === undefined || value.start > innermost.start)) innermost = value;
+  }
+  const shape = innermost?.keptShape(reference.assembledPath ?? reference.rawPath) ?? null;
+  return shape === null ? reference : { ...reference, shape };
 }
 
 /** An attribute's name as markup spells it, lowercased, with React's spellings mapped. */
@@ -881,8 +934,9 @@ function addJsxAttributeValue(
     }
     // Anything else (an identifier, a call, a conditional) is not read as a path here.
     // Literals inside it still reach the speculative rules, and an import behind it is
-    // read on its own. Where the format is kept they are declined instead, because a guess
-    // that resolves may be rewritten.
+    // read on its own. Where the format is kept, a choice or a chain is declined, and a path
+    // found deeper, as in a call, takes this position's shape after the walk
+    // (`withPositionShape`), so neither is rewritten.
     if (formatKept) declineValue(expression, context);
   }
 }

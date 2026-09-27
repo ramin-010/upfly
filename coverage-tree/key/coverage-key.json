@@ -7196,6 +7196,38 @@
           "column": 19
         }
       ]
+    },
+    {
+      "path": "apps/web/src/components/ShareImage.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "The Open Graph image, passed through a helper that makes it absolute, as crawlers require. The path is found as a guess inside the call, and it takes the preview position's shape, because the shape is what tells the planner never to rewrite it: under its own shape, optimize would repoint the preview at a converted file.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 377,
+          "line": 10,
+          "column": 55
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/ShareLink.tsx",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A download link whose address is built with new URL against the site, not the bundler's form. The path is a guess inside that expression, and it takes the link's shape, so the link keeps handing over the format it names.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 193,
+          "line": 6,
+          "column": 23
+        }
+      ]
     }
   ]
 }

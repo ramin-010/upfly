@@ -364,7 +364,8 @@ export const SHAPES = [
       'The link-preview image of `html.meta.content.image`, written by a component. The JSX ' +
       'reader takes the position from the list the HTML adapter reads, so each can break ' +
       'without the other. A template value keeps this shape, since a template shape would ' +
-      'lose the rule against rewriting.',
+      'lose the rule against rewriting, and so does a path found anywhere inside another ' +
+      "value, such as a helper call's argument, guessed or asserted (`withPositionShape`).",
   },
   {
     id: 'js.jsx.a.href.image',
@@ -373,7 +374,8 @@ export const SHAPES = [
     formatKept: LINK_FORMAT_KEPT,
     why:
       'The link to an image of `html.a.href.image`, written by a component, read from the ' +
-      'same list. A template value keeps this shape, as for the link-preview image.',
+      'same list. A template value keeps this shape, as for the link-preview image, and so ' +
+      'does an image path found inside another value, the claim asked of that path.',
   },
   { id: 'js.cssinjs', label: 'CSS-in-JS carrying a url()', emission: 'engine' },
 

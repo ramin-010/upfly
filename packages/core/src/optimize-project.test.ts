@@ -200,6 +200,41 @@ describe('an image a link preview or a download link names', () => {
       { path: 'share.html', line: null, reason: expect.stringContaining('link preview') },
     ]);
   });
+
+  it('keeps a preview path a component passes through a helper, as it keeps a plain one', async () => {
+    const root = await copy();
+    // The helper makes the address absolute, as crawlers require. The path inside the call
+    // is found as a guess, which must still carry the rule against rewriting a preview.
+    const component = [
+      "const absolute = (path) => new URL(path, 'https://example.com').href;",
+      '',
+      'export function ShareImage() {',
+      '  return <meta property="og:image" content={absolute(\'/images/logo.png\')} />;',
+      '}',
+      '',
+    ].join('\n');
+    await writeFile(join(root, 'ShareImage.jsx'), component);
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'ShareImage.jsx'), 'utf8')).toBe(component);
+    // index.html's <img src> still moves to the converted file; the preview keeps the original.
+    expect(await readFile(join(root, 'index.html'), 'utf8')).toContain('src="images/logo.webp"');
+    expect(await files(root)).toEqual(
+      expect.arrayContaining(['images/logo.png', 'images/logo.webp']),
+    );
+    expect(optimize.plan.keptOriginals.map((entry) => entry.asset)).toContain('images/logo.png');
+    expect(optimize.plan.declined.filter((entry) => entry.path === 'ShareImage.jsx')).toEqual([
+      { path: 'ShareImage.jsx', line: null, reason: expect.stringContaining('link preview') },
+    ]);
+  });
 });
 
 describe('an image removed after the scan read it', () => {

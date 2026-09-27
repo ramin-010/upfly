@@ -693,9 +693,13 @@ person following a link expects the format it names. The rule lives on the shape
 in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what it does
 there. Because the shape carries the rule, it survives where another shape would otherwise take
 over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the
-HTML adapter found, and a JSX template, which elsewhere takes a template's shape. For the same
-reason the JSX reader declines, rather than guesses inside, a value at such a position that is not
-one string or template, such as a choice between two paths.
+HTML adapter found, and a JSX template, which elsewhere takes a template's shape. A JSX value at
+such a position that is not one string or template is not one path: the reader declines a choice
+or a `+` chain there, and a path found anywhere else inside the value, such as a call's argument in
+`content={absolute('/og.png')}`, a `require()` or a `new URL(…)`, takes the position's shape once
+the walk ends (`withPositionShape`), as everything an Astro braced value yields does. Under its own
+shape a guess that resolved could be repointed. The innermost attribute value decides, and a link
+asks its claim of each path found, so a PDF inside a link keeps the shape it was found with.
 
 The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
 template's markup in a separate fragment, and that markup is live: a script clones it into the
