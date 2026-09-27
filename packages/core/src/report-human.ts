@@ -14,7 +14,7 @@ import { staticExtensionOf } from './adapters/reference-path.js';
 import type { Finding, OversizeDimension } from './audit.js';
 import { formatBytes as bytes } from './format.js';
 import { compareStrings, isImageExtension } from './paths.js';
-import type { Report, SkipStage, SkippedItem } from './report.js';
+import type { ReferenceEntry, Report, SkipStage, SkippedItem } from './report.js';
 import type { MentionSource } from './sweep.js';
 
 /** Render the report as plain text. */
@@ -233,7 +233,11 @@ function skippedSection(report: Report): string[] {
     // no static extension (`/view/${style}/${name}`): nothing a reader can check, and
     // listing them buries the few they can. The count still reports every one.
     const listed = references.unsafe.filter((entry) => showsAnImageFilename(entry.rawPath));
-    const counted = references.unsafe.length - listed.length;
+    const unlisted = references.unsafe.filter((entry) => !showsAnImageFilename(entry.rawPath));
+    const counted = unlisted.length;
+    const cssWithNothing = references.unsafe.some(
+      (entry) => entry.refusalReason === 'no-reference-in-it-to-find',
+    );
 
     // The heading keeps apart references that had no answer to find (built at run time,
     // or deliberately out of scope) and ones Upfly failed to resolve. One heading over
@@ -247,8 +251,16 @@ function skippedSection(report: Report): string[] {
       lines.push(
         `${count(references.unsafe.length, 'reference')} had no answer to find`,
         '',
-        '  none of these is a path that points at a file — each is built at run time, or',
-        '  names something deliberately outside what Upfly indexes',
+        ...(cssWithNothing
+          ? [
+              '  none of these is a path that points at a file: each is built at run time, is CSS',
+              '  that holds no url() or image-set(), or names something deliberately outside what',
+              '  Upfly indexes',
+            ]
+          : [
+              '  none of these is a path that points at a file — each is built at run time, or',
+              '  names something deliberately outside what Upfly indexes',
+            ]),
         '',
       );
     } else if (refused.length === 0) {
@@ -276,13 +288,7 @@ function skippedSection(report: Report): string[] {
         lines.push('    — and this one is ours: an answer exists and we did not find it');
       }
     }
-    if (counted > 0) {
-      lines.push(
-        listed.length === 0
-          ? '  none with a filename to check — each builds its path at runtime'
-          : `  plus ${counted} with no filename to check — each builds its path at runtime`,
-      );
-    }
+    if (counted > 0) lines.push(...countedLines(unlisted, listed.length === 0));
     lines.push('');
   }
 
@@ -655,6 +661,32 @@ function describe(finding: Finding): string[] {
       return unhandled;
     }
   }
+}
+
+/**
+ * The line for the unsafe references that show no filename. When every one builds its path
+ * at run time, one line says so; otherwise each kind is counted on its own line, since
+ * "built at run time" is false of CSS that holds no url() and of a path Upfly missed.
+ */
+function countedLines(unlisted: readonly ReferenceEntry[], nothingListed: boolean): string[] {
+  const lead = nothingListed
+    ? '  none with a filename to check'
+    : `  plus ${unlisted.length} with no filename to check`;
+  if (unlisted.every((entry) => entry.refusalReason === 'assembled-at-runtime')) {
+    return [`${lead} — each builds its path at runtime`];
+  }
+  const kinds: readonly [string | null, string][] = [
+    ['assembled-at-runtime', 'built at run time'],
+    ['no-reference-in-it-to-find', 'in CSS that holds no url() or image-set()'],
+    ['out-of-scope', 'outside what Upfly indexes'],
+    [null, 'that Upfly could not resolve'],
+  ];
+  const lines = [`${lead}:`];
+  for (const [reason, words] of kinds) {
+    const n = unlisted.filter((entry) => entry.refusalReason === reason).length;
+    if (n > 0) lines.push(`    ${n} ${words}`);
+  }
+  return lines;
 }
 
 /**

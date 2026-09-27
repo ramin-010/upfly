@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
+import { htmlAdapter } from './adapters/html.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
@@ -955,6 +956,42 @@ describe('buildReport', () => {
         rawPaths.map((rawPath, index) => dynamicReference('app.ts', rawPath, index * 100)),
       );
     }
+
+    /** The HTML adapter's own refusal of a style attribute, resolved as a run resolves it. */
+    function styleRefusal(css: string): Reference[] {
+      const file = `${ROOT}/page.html`;
+      const raw = htmlAdapter.findReferences({ file, text: `<div style="${css}"></div>` });
+      return resolveReferences(raw, {
+        root: ROOT,
+        assets: [],
+        servingRoots: { dirs: [''], declared: true },
+        excludedRoots: [],
+        exists: () => false,
+      });
+    }
+
+    it('says what each counted reference is, when not all are built at run time', () => {
+      const text = renderReport(
+        reportOf([
+          ...styleRefusal('margin 0 0 0 15px'),
+          dynamicReference('app.ts', '/view/${style}/${name}', 0),
+        ]),
+      );
+
+      expect(text).toContain('  none with a filename to check:\n');
+      expect(text).toContain('    1 built at run time\n');
+      expect(text).toContain('    1 in CSS that holds no url() or image-set()\n');
+      expect(text).not.toContain('each builds its path at runtime');
+      expect(text).toContain(
+        'each is built at run time, is CSS\n  that holds no url() or image-set()',
+      );
+    });
+
+    it('keeps the one line when every counted reference is built at run time', () => {
+      const text = renderReport(reportWith(['/view/${style}/${name}', '/api/${id}']));
+
+      expect(text).toContain('  none with a filename to check — each builds its path at runtime\n');
+    });
 
     function reportOf(references: readonly Reference[]) {
       return buildReport({
