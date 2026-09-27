@@ -1267,7 +1267,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
       "code": "public-dir-dead",
       "count": 2,
       "detail": [],
-      "message": "this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove",
+      "message": "this project is served from its own root, so 2 unreferenced images may be linked from outside this repository, and Upfly cannot confidently call an unreferenced image here safe to remove",
     },
     {
       "code": "duplicates-not-checked",
@@ -1427,7 +1427,7 @@ Findings — 3 items
 
 Worth knowing
 
-  this project is served from its own root, so 2 unreferenced images may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove
+  this project is served from its own root, so 2 unreferenced images may be linked from outside this repository, and Upfly cannot confidently call an unreferenced image here safe to remove
   assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "

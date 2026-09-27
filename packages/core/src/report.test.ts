@@ -2455,6 +2455,50 @@ describe('the public-dir caveat counts what the report lists', () => {
 
     expect(caveat?.count).toBe(listed);
   });
+
+  it('reads correctly at a count of one', () => {
+    const caveat = reportWithDeadPublicAssets().caveats.find(
+      (entry) => entry.code === 'public-dir-dead',
+    );
+
+    expect(caveat?.count).toBe(1);
+    expect(caveat?.message).not.toContain('any of them');
+  });
+});
+
+describe('the framework caveat at a count of one', () => {
+  it('holds no verb or pronoun that has to agree with the count', () => {
+    const ROOT = '/repo';
+    const report = buildReport({
+      graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [{ asset: 'app/icon.png', reason: 'a framework reads it by its name' }],
+        unreadableSources: [],
+        probed: false,
+        duplicatesChecked: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [],
+        sourceFiles: [],
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots: [],
+        excludedFiles: [],
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: ['public'], declared: true },
+    });
+
+    const caveat = report.caveats.find((entry) => entry.code === 'framework-conventions');
+    expect(caveat?.message).toBe(
+      '1 unreferenced image not reported dead, because a framework reads each one by its filename',
+    );
+  });
 });
 
 /**

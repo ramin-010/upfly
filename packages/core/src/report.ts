@@ -1129,7 +1129,7 @@ function caveats(
       code: 'public-dir-dead',
       count: deadInPublic,
       message: servesFromRoot
-        ? `this project is served from its own root, so ${plural(deadInPublic, 'unreferenced image')} may be linked from outside this repository and Upfly cannot confidently call any of them safe to remove`
+        ? `this project is served from its own root, so ${plural(deadInPublic, 'unreferenced image')} may be linked from outside this repository, and Upfly cannot confidently call an unreferenced image here safe to remove`
         : `${plural(deadInPublic, 'unreferenced image')} under the public directory may be linked from outside this repository`,
       detail: [],
     });
@@ -1143,7 +1143,7 @@ function caveats(
     list.push({
       code: 'framework-conventions',
       count: convention.length,
-      message: `${plural(convention.length, 'unreferenced image')} are read by a framework from the filename, so they are not reported dead`,
+      message: `${plural(convention.length, 'unreferenced image')} not reported dead, because a framework reads each one by its filename`,
       detail: convention.map((link) => `${link.asset} — ${link.reason}`),
     });
   }
