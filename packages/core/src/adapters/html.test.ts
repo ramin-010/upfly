@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RawReference } from '../types.js';
-import { htmlAdapter } from './html.js';
+import { NO_REFERENCE_TO_FIND, htmlAdapter } from './html.js';
 import { decodeCharacterReferencesWithMap } from './reference-path.js';
 
 /**
@@ -388,7 +388,7 @@ describe('htmlAdapter', () => {
         const references = find('<div style="margin 0 0 &quot;x&quot;"></div>');
 
         expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
-        expect(references[0]?.note).toMatch(/no reference in it to find/);
+        expect(references[0]?.note).toContain(NO_REFERENCE_TO_FIND);
       });
     });
   });
@@ -403,7 +403,7 @@ describe('htmlAdapter', () => {
     it('says there is nothing to find when no url-taking function is present', () => {
       const references = find('<div style="float:right; margin 0 0 0 15px; border:0;"></div>');
       expect(references).toHaveLength(1);
-      expect(references[0]?.note).toMatch(/no reference in it to find/);
+      expect(references[0]?.note).toContain(NO_REFERENCE_TO_FIND);
       expect(references[0]?.ceiling).toBe('unsafe');
     });
 
@@ -527,7 +527,7 @@ describe('htmlAdapter', () => {
 
       expect(references).toHaveLength(1);
       expect(references[0]?.ceiling).toBe('unsafe');
-      expect(references[0]?.note).toMatch(/no reference in it to find/);
+      expect(references[0]?.note).toContain(NO_REFERENCE_TO_FIND);
     });
 
     /**
@@ -652,7 +652,7 @@ describe('htmlAdapter', () => {
         ceiling: 'unsafe',
         unread: true,
       });
-      expect(references[0]?.note).toContain('no reference in it to find');
+      expect(references[0]?.note).toContain(NO_REFERENCE_TO_FIND);
     });
 
     it('still fails the page at a <style> never closed, whose CSS is the rest of it', () => {

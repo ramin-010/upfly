@@ -9,6 +9,7 @@
  * ARCHITECTURE.md.
  */
 
+import { NO_REFERENCE_TO_FIND } from './adapters/html.js';
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
 import { excludedByRule } from './discover.js';
@@ -149,11 +150,13 @@ const REFUSAL_REASONS: ReadonlyArray<{
       '2026-09-25, on five public repositories: astro-docs, eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the engine have changed since, this bound has not been re-measured.',
   },
   {
-    // A style attribute the HTML adapter could not read that holds no url-taking function,
-    // so there is no reference in it to find. The adapter decides that and says so in its
-    // note, and this matches the note's wording rather than deciding again.
+    // CSS the HTML adapter could not read, in a style attribute or a `<style>` element, that
+    // holds no url-taking function, so there is no reference in it to find. The adapter
+    // decides that and ends its note with `NO_REFERENCE_TO_FIND`; this reads it rather than
+    // deciding again.
     id: 'no-reference-in-it-to-find',
-    holds: (reference) => (reference.note ?? '').includes('no reference in it to find'),
+    holds: (reference) =>
+      reference.unread === true && (reference.note ?? '').endsWith(NO_REFERENCE_TO_FIND),
     bound: null,
     measuredAgainst: null,
   },

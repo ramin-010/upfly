@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { htmlAdapter } from './adapters/html.js';
+import { NO_REFERENCE_TO_FIND, htmlAdapter } from './adapters/html.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
@@ -2731,13 +2731,33 @@ describe('classifyReference: the four boxes of the accuracy table', () => {
       expect(refusalReasonId(entry)).toBe('assembled-at-runtime');
     });
 
+    it("reads the HTML adapter's own verdict on CSS it could not read", () => {
+      const resolve = (css: string) =>
+        resolveReferences(
+          htmlAdapter.findReferences({ file: '/p/page.html', text: `<div style="${css}"></div>` }),
+          {
+            root: '/p',
+            assets: [],
+            servingRoots: { dirs: [''], declared: true },
+            excludedRoots: [],
+            exists: () => false,
+          },
+        );
+      const [nothing] = resolve('margin 0 0 0 15px');
+      const [hidden] = resolve('background url(/a.png)');
+
+      expect(nothing && refusalReasonId(nothing)).toBe('no-reference-in-it-to-find');
+      expect(hidden && refusalReasonId(hidden)).toBeNull();
+    });
+
     it('counts a style attribute the adapter proved holds no reference', () => {
       const entry = reference({
         resolution: 'dynamic',
         confidence: 'unsafe',
         resolvedPath: null,
         rawPath: 'margin 0 0 0 15px',
-        note: 'could not parse the style attribute: … — and it contains no url() or image-set(), so there is no reference in it to find',
+        unread: true,
+        note: `could not parse the style attribute: … — and it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`,
       });
       expect(classifyReference(entry)).toBe('correctly-refused');
       expect(refusalReasonId(entry)).toBe('no-reference-in-it-to-find');

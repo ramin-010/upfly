@@ -402,15 +402,13 @@ function addStyleAttributeRefusal(
 /**
  * The end of the note for CSS the adapter could not read, shared by the style attribute,
  * escaped or unparseable, and the `<style>` element, so they cannot drift: it says whether
- * the CSS holds a url-taking function.
- * case so the two cannot drift: it says whether the CSS holds a url-taking function.
- * `report.ts` counts the refusal as correct when the note says "no reference in it to
- * find", so that wording is load-bearing.
+ * the CSS holds a url-taking function. Without one the note ends with
+ * `NO_REFERENCE_TO_FIND`, which `report.ts` reads to count the refusal as correct.
  */
 function describeUrlFunction(css: string): string {
   return CSS_URL_FUNCTION.test(css)
     ? ' — and it contains a url-taking function, so a reference may be hidden in it'
-    : ' — and it contains no url() or image-set(), so there is no reference in it to find';
+    : ` — and it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`;
 }
 
 /**
@@ -508,6 +506,12 @@ function collectFromStyleAttribute(
     });
   }
 }
+
+/**
+ * The end of a refusal's note when the CSS holds no url-taking function. The report reads it
+ * to count such a refusal as correct, so the adapter and the report share this one string.
+ */
+export const NO_REFERENCE_TO_FIND = 'there is no reference in it to find';
 
 /**
  * The CSS functions that take a file path, to decide whether an unparseable declaration
