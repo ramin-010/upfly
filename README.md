@@ -42,7 +42,7 @@ Upfly audit
 [...]
 Examined and not converted
 
-  4 images, 93.4 KB, with no conversion to offer (use --include-declined to list them)
+  4 images, 93.4 KB, each with its reason (use --include-declined to list them)
 [...]
 Plan
 

@@ -374,11 +374,10 @@ export type UnusedVectorEntry =
     };
 
 /**
- * The assets a plan examined and offered no action on.
+ * The assets a plan examined and did not convert.
  *
- * Shaped like `unusedVectors`, and for the same reason: a count with the total size,
- * itemised only on request, because there is nothing to offer rather than because the list
- * is long. Zero for an audit-only run, which makes no plan.
+ * Shaped like `unusedVectors`: a count with the total size, itemised with each reason only
+ * on request. Zero for an audit-only run, which makes no plan.
  */
 export interface DeclinedReport {
   readonly count: number;
@@ -397,7 +396,7 @@ export interface DeclinedEntry {
   /** POSIX-relative path. */
   readonly asset: string;
   readonly bytes: number;
-  /** Why the planner offered no action, in the planner's own words. */
+  /** Why the planner did not convert it, in the planner's own words. */
   readonly reason: string;
 }
 
@@ -501,7 +500,7 @@ export interface Report {
   readonly unusedVectors: UnusedVectorReport;
   /** Originals kept beside the converted file their references now use. */
   readonly keptOriginals: KeptOriginalReport;
-  /** The assets a plan examined and offered no action on. */
+  /** The assets a plan examined and did not convert. */
   readonly declined: DeclinedReport;
   /** Unreferenced vectors beside a broken reference to their raster twin. */
   readonly staleConversions: readonly StaleConversion[];

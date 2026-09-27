@@ -2279,7 +2279,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
   });
 });
 
-describe('the assets a plan examined and offered nothing for', () => {
+describe('the assets a plan examined and did not convert', () => {
   const ROOT = '/repo';
 
   function reportWith(over: {
@@ -2327,6 +2327,17 @@ describe('the assets a plan examined and offered nothing for', () => {
     { path: 'b.png', line: null, reason: 'nothing links to it' },
   ];
 
+  it('says each has its reason, never that there was nothing to offer', () => {
+    // Many had a measured saving: an original kept, or two files that would convert to one
+    // name. The line claims only what holds for all of them.
+    const two = renderReport(reportWith({ declined: TWO }));
+    expect(two).toMatch(/ {2}2 images, [\d.]+ KB, each with its reason \(use --include-declined/);
+    expect(two).not.toContain('no conversion to offer');
+
+    const one = renderReport(reportWith({ declined: [...TWO.slice(0, 1)] }));
+    expect(one).toMatch(/ {2}1 image, [\d.]+ KB, each with its reason/);
+  });
+
   it('counts them and totals their size', () => {
     expect(reportWith({ declined: TWO }).declined).toMatchObject({ count: 2, bytes: 4_000 });
   });
@@ -2356,9 +2367,9 @@ describe('the assets a plan examined and offered nothing for', () => {
   });
 
   it('withholds the list unless it was asked for, and says so', () => {
-    // Withheld because there is no action to offer, as with unreferenced vectors, not
-    // because it is long. `null` rather than `[]`, because an empty array reads as "there
-    // were none".
+    // Withheld because each already has its reason in the plan, as with unreferenced
+    // vectors, not because it is long. `null` rather than `[]`, because an empty array
+    // reads as "there were none".
     const report = reportWith({ declined: TWO });
 
     expect(report.declined.assets).toBeNull();

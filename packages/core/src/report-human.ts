@@ -652,8 +652,8 @@ function describe(finding: Finding): string[] {
 }
 
 /**
- * What the plan looked at and offered nothing for: one counted line with the total size,
- * and the list only when asked for, because there is no action to offer for these.
+ * What the plan examined and did not convert: one counted line with the total size, and
+ * the list, each entry with the planner's reason, only when asked for.
  *
  * Silent when there is nothing to say, which includes every audit-only run: a report
  * built without a plan has no declines, and "0 images" would suggest the planner ran and
@@ -667,7 +667,7 @@ function declinedSection(report: Report): string[] {
   const lines = [
     'Examined and not converted',
     '',
-    `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, with no conversion to offer${hint}`,
+    `  ${count(declined, 'image')}, ${bytes(declinedBytes)}, each with its reason${hint}`,
     '',
   ];
 
