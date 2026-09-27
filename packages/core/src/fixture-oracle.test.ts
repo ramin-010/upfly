@@ -184,8 +184,8 @@ async function detected(root: { label: string; dir: string }): Promise<Detected>
  * - `oracle-boundary`: detected under a longer spelling the harvest cuts short. Some
  *   detected path in the file must contain the harvested token.
  * - `ignored`: a correct engine ignores it (a comment, a code fence, prose, a remote URL, a
- *   JSON key, escaped markup). The file must be claimed and this exact path undetected;
- *   whether the path really is not a reference is judgement, which the reason records.
+ *   JSON key, escaped markup). The file must be claimed and no path detected in it may contain
+ *   the token; whether it really is not a reference is judgement, which the reason records.
  */
 type NotDetected =
   | { readonly why: 'ignored'; readonly because: string }
@@ -452,6 +452,23 @@ describe('fixture references, derived rather than pasted', () => {
       for (const [key, path, entry] of entriesFor()) {
         if (entry.why !== 'ignored') continue;
         if (!found.claimed.has(key)) misfiled.push(`${key}  ->  ${path}`);
+      }
+
+      expect(misfiled.sort()).toEqual([]);
+    });
+
+    it('only claims ignored when no detected path contains it', async () => {
+      // The mirror of the oracle-boundary check. A path detected under a longer spelling was
+      // read, so filing it as ignored would say the engine skips a path it found.
+      const found = await detected(root);
+      const misfiled: string[] = [];
+
+      for (const [key, path, entry] of entriesFor()) {
+        if (entry.why !== 'ignored') continue;
+        const seen = [...(found.byFile.get(key) ?? new Set<string>())];
+        if (seen.some((detectedPath) => detectedPath.includes(path))) {
+          misfiled.push(`${key}  ->  ${path}`);
+        }
       }
 
       expect(misfiled.sort()).toEqual([]);
