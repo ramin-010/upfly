@@ -11,6 +11,7 @@
 
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
+import { excludedByRule } from './discover.js';
 import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
@@ -1254,6 +1255,23 @@ function caveats(
         'This check reads text, so it finds a path that is written down. A path a program',
         "assembles at runtime, such as '/images/' + name + '.png', matches nothing, so",
         'replacing is safe here against literal mentions and no wider than that.',
+      ],
+    });
+  }
+
+  // What the project's own rules left out. Upfly never reads it, so an image only it uses is
+  // reported as unreferenced. The directories pruned by name are not listed: they hold no page
+  // the project serves from its own sources, and naming them would fire on every run.
+  const byRule = input.discovery.excludedRoots.filter(excludedByRule);
+  const excluded = byRule.length + input.discovery.excludedFiles.length;
+  if (excluded > 0) {
+    list.push({
+      code: 'excluded-roots',
+      count: excluded,
+      message: `Your ignore rules left out ${plural(excluded, 'path')}, which Upfly did not scan for references, so an image used only there can show as unreferenced`,
+      detail: [
+        ...byRule.map((root) => `${root.relative}/: ${root.reason}`),
+        ...input.discovery.excludedFiles,
       ],
     });
   }

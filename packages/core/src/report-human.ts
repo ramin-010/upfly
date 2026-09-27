@@ -187,7 +187,13 @@ function skippedSection(report: Report): string[] {
     references.discardedCount === 0 &&
     references.declinedValues.count === 0
   ) {
-    return ['Nothing was skipped.', ''];
+    const excluded = report.caveats.some((caveat) => caveat.code === 'excluded-roots');
+    return [
+      excluded
+        ? 'Nothing was skipped apart from the paths your ignore rules left out, listed under Worth knowing.'
+        : 'Nothing was skipped.',
+      '',
+    ];
   }
 
   const lines: string[] = [];

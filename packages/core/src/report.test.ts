@@ -24,7 +24,7 @@ import type { ServingRoots } from './resolve.js';
 import { scanSources } from './scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';
-import type { Reference, UnscannedFile } from './types.js';
+import type { ExcludedRoot, Reference, UnscannedFile } from './types.js';
 import type { Adapter } from './types.js';
 
 /**
@@ -2946,5 +2946,71 @@ describe('renderReport and the accuracy boxes', () => {
 
   it('prints nothing about bounds when none apply', async () => {
     expect(await withUnsafe([entry({})])).not.toContain('known to get wrong');
+  });
+});
+
+describe('what the ignore rules left out', () => {
+  const ROOT = '/repo';
+  const LEGACY: ExcludedRoot = {
+    path: `${ROOT}/legacy`,
+    relative: 'legacy',
+    reason: "the ignore rule 'legacy/'",
+  };
+  const DEPENDENCIES: ExcludedRoot = {
+    path: `${ROOT}/node_modules`,
+    relative: 'node_modules',
+    reason: 'a dependency directory',
+  };
+
+  function reportExcluding(excludedRoots: ExcludedRoot[], excludedFiles: string[]) {
+    return buildReport({
+      graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+      audit: {
+        findings: [],
+        publicDirDeadCount: 0,
+        conventionLinked: [],
+        unreadableSources: [],
+        probed: false,
+        duplicatesChecked: false,
+      },
+      discovery: {
+        root: ROOT,
+        assets: [],
+        sourceFiles: [],
+        directories: [],
+        ignoredCount: 0,
+        skipped: [],
+        excludedRoots,
+        excludedFiles,
+        unscannedFiles: [],
+      },
+      sweep: { mentions: new Map(), skipped: [] },
+      servingRoots: { dirs: ['public'], declared: true },
+    });
+  }
+
+  it("names the paths the project's rules left out, and not the directories pruned by name", () => {
+    // Upfly never reads them, so an image only they use is reported as unreferenced.
+    const report = reportExcluding([LEGACY, DEPENDENCIES], ['drafts/old.html']);
+
+    const caveat = report.caveats.find((entry) => entry.code === 'excluded-roots');
+    expect(caveat?.count).toBe(2);
+    expect(caveat?.message).toContain('can show as unreferenced');
+    expect(caveat?.detail).toEqual(["legacy/: the ignore rule 'legacy/'", 'drafts/old.html']);
+  });
+
+  it('says so where it would otherwise say that nothing was skipped', () => {
+    const rendered = renderReport(reportExcluding([LEGACY], []));
+
+    expect(rendered).toContain(
+      'Nothing was skipped apart from the paths your ignore rules left out, listed under Worth knowing.',
+    );
+  });
+
+  it('stays quiet when only directories pruned by name were left out', () => {
+    const report = reportExcluding([DEPENDENCIES], []);
+
+    expect(report.caveats.map((entry) => entry.code)).not.toContain('excluded-roots');
+    expect(renderReport(report)).toContain('Nothing was skipped.\n');
   });
 });

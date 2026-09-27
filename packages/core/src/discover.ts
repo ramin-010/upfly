@@ -53,6 +53,14 @@ export const DEFAULT_IGNORED_DIRECTORIES: readonly string[] = Object.freeze([
 
 const DEFAULT_IGNORED_DIRECTORY_SET = new Set(DEFAULT_IGNORED_DIRECTORIES);
 
+/**
+ * Whether a directory the walk left out was excluded by one of the project's own rules,
+ * rather than pruned by name as dependencies, caches, build output and version control are.
+ */
+export function excludedByRule(root: ExcludedRoot): boolean {
+  return !DEFAULT_IGNORED_DIRECTORY_SET.has(root.relative.split('/').pop() ?? '');
+}
+
 /** Default name of the per-project ignore file, read from the root only. */
 export const IGNORE_FILE_NAME = '.upflyignore';
 
@@ -160,9 +168,7 @@ export interface ExcludedFiles {
 export async function listExcludedFiles(discovery: DiscoveryResult): Promise<ExcludedFiles> {
   const files = [...discovery.excludedFiles];
   const unread: { file: string; reason: string }[] = [];
-  const pending = discovery.excludedRoots
-    .filter((root) => !DEFAULT_IGNORED_DIRECTORY_SET.has(root.relative.split('/').pop() ?? ''))
-    .map((root) => root.path);
+  const pending = discovery.excludedRoots.filter(excludedByRule).map((root) => root.path);
 
   for (let directory = pending.pop(); directory !== undefined; directory = pending.pop()) {
     let entries: Dirent[];

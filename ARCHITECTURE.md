@@ -1201,7 +1201,9 @@ resolver prefix-tests references against these to produce `out-of-scope` instead
 It records what it **did not read**, too. Every file no adapter claimed lands in `unscannedFiles`
 with its path, which is what the audit sweeps to decide `dead` against `possibly-dead`. Ignored
 and pruned entries are deliberately absent (an ignore rule is an instruction, not a gap in our
-coverage), and so is the ignore file itself, which we obviously did read.
+coverage), and so is the ignore file itself, which we obviously did read. The report still names
+what the project's own rules left out, since an image used only there shows as unreferenced; the
+directories pruned by name are not listed.
 
 One reader looks past an exclusion: the search `optimize` makes before `replace` deletes an
 original. An exclusion limits what a run changes, not what it checks before removing a file that a
