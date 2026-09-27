@@ -676,8 +676,8 @@ each adapter gives its reference, so a row added to the list is read in both, an
 `url-attributes.test.ts` checks that the same markup yields the same paths at the same offsets in
 a page and in a component. JSX keeps one rule of its own beside the list: `src`, `srcSet` and
 `poster` are read on any element, because a component such as `<Image>` hands them on to an
-`<img>`. The JSX reader decides each attribute at the element, and every attribute is either read
-or declined, never neither.
+`<img>`. The JSX reader decides each attribute at the element: it is read or declined, and a value
+that a claim reading the value's text cannot judge whole is judged path by path (below).
 
 Two more claims make the list read what a page names only in its head or in a link. A `<meta
 content>` names a link preview's image when its `property` or `name` is `og:image`,
@@ -694,12 +694,15 @@ in `SHAPES`, where the planner reads it; see "A link says the asset is alive" fo
 there. Because the shape carries the rule, it survives where another shape would otherwise take
 over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the
 HTML adapter found, and a JSX template, which elsewhere takes a template's shape. A JSX value at
-such a position that is not one string or template is not one path: the reader declines a choice
-or a `+` chain there, and a path found anywhere else inside the value, such as a call's argument in
-`content={absolute('/og.png')}`, a `require()` or a `new URL(…)`, takes the position's shape once
-the walk ends (`withPositionShape`), as everything an Astro braced value yields does. Under its own
-shape a guess that resolved could be repointed. The innermost attribute value decides, and a link
-asks its claim of each path found, so a PDF inside a link keeps the shape it was found with.
+such a position that is not one string or template is not one path, so each path found inside it
+is read as it would be anywhere else: a branch of a choice, a literal or a pattern in a `+` chain,
+a call's argument in `content={absolute('/og.png')}`, a `require()` or a `new URL(…)`. Each takes
+the position's shape once the walk ends (`withPositionShape`), as everything an Astro braced value
+yields does. Under its own shape a guess that resolved could be repointed. The innermost attribute
+value decides, and a link asks its claim of each path found, so a PDF inside a link keeps the
+shape it was found with. A link's claim reads the value's text, so a link whose value has none of
+its own, such as `href={photo || '/img/team.jpg'}`, is not declined at the element: each path in
+it is judged by the claim the same way.
 
 The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
 template's markup in a separate fragment, and that markup is live: a script clones it into the

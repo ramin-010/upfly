@@ -174,7 +174,8 @@ function metaImageClaim(element: ClaimedElement): ShapeId | null {
  * spelling. The spellings are the resolver's, so `hero%2Epng` counts. A vector counts as a
  * raster does: `optimize` never converts one, but the link is what shows it is used. A link
  * to a page or a document claims nothing, and a value with no text of its own, such as a
- * variable, cannot show an extension.
+ * variable, cannot show an extension. The JSX reader then asks again of each path it finds
+ * inside that value.
  */
 function anchorImageClaim(element: ClaimedElement): ShapeId | null {
   const text = element.valueText();

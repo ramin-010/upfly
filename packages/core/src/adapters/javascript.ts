@@ -784,14 +784,15 @@ function isBundlerUrlConstruction(node: BabelNode): boolean {
 }
 
 /**
- * Read or decline every attribute of one JSX element, never neither.
+ * Read or decline every attribute of one JSX element.
  *
  * An attribute is read when the component rule or a position in `url-attributes.ts` claims
  * it, the list the HTML adapter reads, so a component names a file exactly where a page
  * does. Every other value is recorded as examined, however it is written:
  * `` alt={`/hero.png`} `` is display text as much as `alt="/hero.png"` is. Decided at the
  * element, because a claim such as a `<link>`'s `rel` reads the attributes beside the one
- * it judges. Each value is also noted with the same claim, for `withPositionShape`.
+ * it judges. Each value is also noted with the same claim, for `withPositionShape`, which
+ * judges path by path a value that a claim reading the value's text cannot judge whole.
  */
 function collectFromJsxElement(node: JSXOpeningElement, context: Context): void {
   const tag = node.name.type === 'JSXIdentifier' ? node.name.name.toLowerCase() : '';
@@ -812,8 +813,16 @@ function collectFromJsxElement(node: JSXOpeningElement, context: Context): void 
       component ?? urlPosition(tag, name, { attribute: other, valueText })?.jsx;
     noteAttributeValue(attribute, shapeFor, context);
 
-    const shape = shapeFor(() => jsxValueText(attribute.value, context));
+    let askedForText = false;
+    const shape = shapeFor(() => {
+      askedForText = true;
+      return jsxValueText(attribute.value, context);
+    });
     if (shape === undefined) {
+      // A claim that reads the value's text, such as a link's, cannot judge a value with no
+      // text of its own, such as a choice between two links. Each path found inside it is
+      // judged by the claim after the walk, as a call's argument is.
+      if (askedForText && jsxValueText(attribute.value, context) === null) continue;
       const value = attribute.value;
       declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
       continue;
@@ -932,12 +941,10 @@ function addJsxAttributeValue(
       addTemplateReference(expression, context, 'attr', templated, label);
       return;
     }
-    // Anything else (an identifier, a call, a conditional) is not read as a path here.
-    // Literals inside it still reach the speculative rules, and an import behind it is
-    // read on its own. Where the format is kept, a choice or a chain is declined, and a path
-    // found deeper, as in a call, takes this position's shape after the walk
-    // (`withPositionShape`), so neither is rewritten.
-    if (formatKept) declineValue(expression, context);
+    // Anything else (an identifier, a call, a choice, a `+` chain) is not read as a path
+    // here. Literals inside it still reach the speculative rules, and an import behind it
+    // is read on its own. Where the format is kept, each path found inside takes this
+    // position's shape after the walk (`withPositionShape`), so none is rewritten.
   }
 }
 

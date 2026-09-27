@@ -919,14 +919,73 @@ body`,
       expect(reference?.ceiling).toBe('high');
     });
 
-    it('declines a preview value it cannot read as one path rather than guessing inside it', () => {
-      // A choice or a chain is declined, so none of its literals is read or rewritten. A path
-      // found deeper, as in a call, is read and keeps the position's shape (below).
+    it.each([
+      [
+        'a choice in a preview',
+        `<meta property="og:image" content={big ? '/img/a.png' : '/img/b.png'} />`,
+        ['/img/a.png', '/img/b.png'],
+        'js.jsx.meta.content.image',
+      ],
+      [
+        'a fallback in a preview',
+        `<meta name="twitter:image" content={image ?? '/img/a.png'} />`,
+        ['/img/a.png'],
+        'js.jsx.meta.content.image',
+      ],
+      [
+        'a query added to a preview by a chain',
+        `<meta property="og:image" content={'/img/a.png' + '?v=' + v} />`,
+        ['/img/a.png'],
+        'js.jsx.meta.content.image',
+      ],
+      [
+        'a preview assembled by a chain',
+        `<meta property="og:image" content={'/img/' + name + '.png'} />`,
+        [`/img/' + name + '.png`],
+        'js.jsx.meta.content.image',
+      ],
+      [
+        'a choice between links',
+        `<a href={big ? '/img/a.png' : '/img/b.png'}>x</a>`,
+        ['/img/a.png', '/img/b.png'],
+        'js.jsx.a.href.image',
+      ],
+      [
+        'a fallback in a link',
+        `<a href={photo || '/img/a.png'} download>x</a>`,
+        ['/img/a.png'],
+        'js.jsx.a.href.image',
+      ],
+      [
+        'a query added to a link by a chain',
+        `<a href={'/img/a.png' + '?download=1'}>x</a>`,
+        ['/img/a.png'],
+        'js.jsx.a.href.image',
+      ],
+    ])('reads %s, each path under the position shape', (_name, source, expected, shape) => {
+      // Neither one string nor one template, so each path inside is found as a guess and
+      // then takes the position's shape, which is what stops the planner rewriting it.
+      const found = find(source);
+      expect(found.map((reference) => reference.rawPath)).toEqual(expected);
+      expect(slices(source)).toEqual(expected);
+      expect(found.map((reference) => reference.shape)).toEqual(expected.map(() => shape));
+      expect(found.every((reference) => !reference.asserted)).toBe(true);
+    });
+
+    it('asks the link claim of each branch, so a document in a link keeps its own shape', () => {
+      const found = find(`<a href={big ? '/img/a.png' : '/files/report.pdf'}>x</a>`);
+      expect(found.map(({ rawPath, shape }) => [rawPath, shape])).toEqual([
+        ['/img/a.png', 'js.jsx.a.href.image'],
+        ['/files/report.pdf', 'js.string.literal'],
+      ]);
+    });
+
+    it('still declines a choice where the claim refuses for a reason other than the text', () => {
+      // A stylesheet link names no image whatever its value spells, and a tooltip is text.
       expect(
-        find(`<meta property="og:image" content={big ? '/img/a.png' : '/img/b.png'} />`),
+        find(`<link rel="stylesheet" href={dark ? '/img/dark.png' : '/img/light.png'} />`),
       ).toEqual([]);
-      expect(find(`<meta property="og:image" content={'/img/a.png' + '?v=' + v} />`)).toEqual([]);
-      expect(find(`<a href={'/img/a.png' + '?download=1'}>x</a>`)).toEqual([]);
+      expect(find(`<img title={big ? '/img/a.png' : '/img/b.png'} />`)).toEqual([]);
     });
 
     it.each([

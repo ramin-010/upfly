@@ -7228,6 +7228,65 @@
           "column": 23
         }
       ]
+    },
+    {
+      "path": "apps/web/src/components/PreviewChoice.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "The Open Graph image when the page is wide, one branch of a choice. A choice is not one path, so each branch is found as a guess, and it takes the preview position's shape, which tells the planner never to rewrite it. Declined instead, the banner named here would link nothing.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 208,
+          "line": 3,
+          "column": 53
+        },
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "The other branch of the same choice, read the same way: both pictures can be the preview, so both are linked and neither is rewritten.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 228,
+          "line": 3,
+          "column": 73
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/PreviewVersion.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.meta.content.image",
+          "expect": "resolved",
+          "why": "A Twitter card image with a version query added by a + chain. The literal is a complete path on its own, so it is the reference, found as a guess, and it takes the preview position's shape; the query stays outside the range.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 216,
+          "line": 3,
+          "column": 47
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/DownloadFallback.tsx",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A download link whose value falls back to the team photo. A link claims an image by its value's text, and a fallback has no text of its own, so the claim is asked of the path found inside it: an image, so it takes the link's shape and keeps the format it names.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 182,
+          "line": 4,
+          "column": 24
+        }
+      ]
     }
   ]
 }
