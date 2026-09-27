@@ -546,6 +546,20 @@ describe('scanSources', () => {
     expect(result.texts.map((text) => text.holdsReplacementCharacter)).toEqual([true]);
   });
 
+  it('refuses a path holding U+FFFD in such a text, whatever the adapter, and no other', async () => {
+    const result = await scanSources({
+      sourceFiles: [sourceFile('index.html', 'test-html')],
+      adapters,
+      readFile: filesystem({ '/repo/index.html': 'ref:caf\uFFFD.png\nref:hero.png' }),
+    });
+
+    const [unreadable, clean] = result.references;
+    expect(unreadable?.ceiling).toBe('unsafe');
+    expect(unreadable?.note).toContain('not valid UTF-8');
+    expect(clean?.rawPath).toBe('hero.png');
+    expect(clean?.ceiling).toBe('high');
+  });
+
   it('scans nothing without complaint', async () => {
     const result = await scanSources({ sourceFiles: [], adapters, readFile: filesystem({}) });
 

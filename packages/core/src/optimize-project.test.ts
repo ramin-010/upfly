@@ -205,6 +205,31 @@ describe('a page that is not UTF-8', () => {
     });
     expect(await readFile(join(root, 'latin1.html'))).toEqual(latin1);
   });
+
+  it('reads a name its bytes cannot spell as unknown, never as broken', async () => {
+    const root = await copy();
+    // `images/café.png` exists. The page names it in Latin-1, where 0xE9 reads as U+FFFD,
+    // so the path the text holds names no file: whether it meant this one cannot be known.
+    await cp(join(root, 'images/logo.png'), join(root, 'images/café.png'));
+    const page = Buffer.from('<img src="images/caf\xE9.png" alt="">\n', 'latin1');
+    await writeFile(join(root, 'latin1.html'), page);
+
+    const { pipeline } = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: false,
+    });
+
+    const replacement = String.fromCodePoint(0xfffd);
+    const broken = pipeline.audit.findings.filter(
+      (finding) => finding.kind === 'broken' && finding.rawPath.includes(replacement),
+    );
+    expect(broken).toEqual([]);
+    const reference = pipeline.graph.references.find((entry) => entry.file.endsWith('latin1.html'));
+    expect(reference?.resolution).toBe('dynamic');
+    expect(reference?.note).toContain('not valid UTF-8');
+  });
 });
 
 describe('an image a link preview or a download link names', () => {

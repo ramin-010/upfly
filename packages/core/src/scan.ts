@@ -207,6 +207,34 @@ interface ScannedFile {
   readonly text: ScannedText | null;
 }
 
+/**
+ * Why a path holding U+FFFD, in a text that did not read cleanly as UTF-8, names no file
+ * Upfly can know.
+ */
+const NAME_NOT_READABLE =
+  'the page is not valid UTF-8, so the file name this path holds cannot be read: U+FFFD stands where its bytes were';
+
+/**
+ * A reference whose path holds U+FFFD, which decoding put where the page's bytes were not
+ * UTF-8, refused rather than looked up. The name as the page spells it cannot be read back,
+ * so a lookup reports a file that exists (`café.png`, written in Latin-1) as broken. The
+ * resolver gives an `unsafe` reference no target, and the note says why.
+ */
+function refuseUnreadableNames<Scanned extends { readonly references: readonly RawReference[] }>(
+  scanned: Scanned,
+  text: string,
+): Scanned {
+  if (!text.includes(REPLACEMENT_CHARACTER)) return scanned;
+  return {
+    ...scanned,
+    references: scanned.references.map((reference) =>
+      reference.rawPath.includes(REPLACEMENT_CHARACTER)
+        ? { ...reference, ceiling: 'unsafe', note: NAME_NOT_READABLE }
+        : reference,
+    ),
+  };
+}
+
 async function scanOne(
   file: SourceFile,
   adapter: Adapter,
@@ -227,7 +255,7 @@ async function scanOne(
     };
   }
 
-  const scanned = parseOne(file, adapter, text, assetBasenames);
+  const scanned = refuseUnreadableNames(parseOne(file, adapter, text, assetBasenames), text);
   if (scanned.references.length === 0) return { ...scanned, text: null };
   return {
     ...scanned,

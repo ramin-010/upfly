@@ -1455,8 +1455,11 @@ as U+FFFD and would be written back as that character's three bytes. So the scan
 a text holds U+FFFD (`ScannedText.holdsReplacementCharacter`), and the planner declines every
 rewrite in such a file with that reason, which a dry run shows; under `replace`, an original a
 declined reference still needs is kept, as for any declined reference. The file is still read,
-and its references still link, so nothing it names looks unused. A valid file that holds U+FFFD
-itself cannot be told apart from the text alone, and loses only its rewrites.
+and its references still link, so nothing it names looks unused. The exception is a path that
+itself holds U+FFFD: the page named a file in bytes that did not decode, `café.png` written in
+Latin-1, and that name cannot be read back, so the scan refuses the reference (`unsafe`, with the
+reason) rather than letting a lookup call a file that exists broken. A valid file that holds
+U+FFFD itself cannot be told apart from the text alone, and loses only its rewrites.
 
 The transaction makes the precise check for a caller that builds its own plan: `prepare`
 refuses an edit target whose bytes differ from its text re-encoded as UTF-8.
