@@ -662,6 +662,15 @@ a path that names it. A spelling's last segment is looked up whole as well as se
 filename tokens, because a decoded name can hold characters no token can: `a&amp;b.png` decodes
 to `a&b.png`, whose only token is `b.png`.
 
+A mention cites the line that holds the name and quotes that line. Most unresolved paths fit on
+one line, and are cited where they start and quoted whole. A construct an adapter refuses whole,
+such as a `<style>` block or a style attribute whose CSS does not parse, or a CSS-in-JS template,
+is one reference whose path is its whole text, and it can run for a hundred lines with the name
+far below the first. Its mention cites the first of its lines that names the asset, each line
+read in every spelling as the whole path is, and quotes that line alone. The lines are the source
+text's: a refused CSS-in-JS template's path is flattened, each hole a comment on one line. A name
+no line holds, such as a file a pattern matched, is cited at the path's first line of text.
+
 **No basename sweep can rescue a filename assembled at runtime.** `` `background-${dir}.png` ``
 never contains the string `background-ltr.png`, so there is a test pinning that limit, of *the
 sweep*, so nobody "fixes" it for a case no sweep can reach. It is a limit of the sweep and not of

@@ -2520,6 +2520,124 @@ describe('what a path that did not resolve names, in a project held in memory', 
       'unresolved-reference src/badges.js:1 @/img/badge-${n}.png',
     ]);
   });
+
+  it('cites the line of a style block that names the asset, and quotes that line alone', async () => {
+    // The block's CSS does not parse, so the adapter refuses it whole, as one reference that
+    // starts on the line of its `<style>` tag, two lines above the name.
+    const sources = {
+      'src/index.html': page(),
+      'src/card.html':
+        '<!doctype html>\n<title>t</title>\n<style>\n.a {\n  background: url(img/hero.png);\n}\n.b { color red }\n</style>\n<p>x</p>\n',
+    };
+
+    const report = await reportForFiles(sources, [...SERVED, 'src/img/hero.png'], SERVED_FROM_SRC);
+
+    expect(verdictOf(report, 'src/img/hero.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/hero.png')).toEqual([
+      'unresolved-reference src/card.html:5 background: url(img/hero.png);',
+    ]);
+  });
+
+  it('cites the line that names the asset in a style attribute, a CSS-in-JS template and a Markdown style block that do not parse', async () => {
+    const sources = {
+      'src/index.html': page(),
+      'src/badge.html':
+        '<!doctype html>\n<title>t</title>\n<div style="\n  background: url(img/badge.png);\n  color red">x</div>\n',
+      'src/Card.jsx':
+        'import styled from "styled-components";\n\nexport const Card = styled.div`\n  color red;\n  background: url(./img/card.png);\n`;\n',
+      'src/post.md':
+        '# Post\n\n<style>\n.x { color red }\n.y {\n  background: url(img/note.png);\n}\n</style>\n\nText.\n',
+    };
+    const assets = [...SERVED, 'src/img/badge.png', 'src/img/card.png', 'src/img/note.png'];
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(evidenceOf(report, 'src/img/badge.png')).toEqual([
+      'unresolved-reference src/badge.html:4 background: url(img/badge.png);',
+    ]);
+    expect(evidenceOf(report, 'src/img/card.png')).toEqual([
+      'unresolved-reference src/Card.jsx:5 background: url(./img/card.png);',
+    ]);
+    expect(evidenceOf(report, 'src/img/note.png')).toEqual([
+      'unresolved-reference src/post.md:6 background: url(img/note.png);',
+    ]);
+  });
+
+  it('cites the line of a CSS-in-JS template by its source, where a hole before the name spans lines', async () => {
+    // The refused template's path is flattened, each hole a comment of the same length on one
+    // line, so only the source says the name is on the line where the hole ends.
+    const sources = {
+      'src/index.html': page(),
+      'src/Card.jsx':
+        'import styled from "styled-components";\n\nexport const Card = styled.div`\n  color red;\n  ${(props) =>\n    props.dark} background: url(./img/card.png);\n`;\n',
+    };
+
+    const report = await reportForFiles(sources, [...SERVED, 'src/img/card.png'], SERVED_FROM_SRC);
+
+    expect(evidenceOf(report, 'src/img/card.png')).toEqual([
+      'unresolved-reference src/Card.jsx:6 props.dark} background: url(./img/card.png);',
+    ]);
+  });
+
+  it('quotes a line of a CRLF file without its carriage return', async () => {
+    const card = [
+      '<!doctype html>',
+      '<title>t</title>',
+      '<style>',
+      '.a {',
+      '  background: url(img/hero.png);',
+      '}',
+      '.b { color red }',
+      '</style>',
+      '',
+    ].join('\r\n');
+
+    const report = await reportForFiles(
+      { 'src/index.html': page(), 'src/card.html': card },
+      [...SERVED, 'src/img/hero.png'],
+      SERVED_FROM_SRC,
+    );
+
+    expect(evidenceOf(report, 'src/img/hero.png')).toEqual([
+      'unresolved-reference src/card.html:5 background: url(img/hero.png);',
+    ]);
+  });
+
+  it('cites the line of a name a style block holds only percent-encoded', async () => {
+    // `img/my%20photo.png` holds no token spelling `my photo.png`, so each line is read in
+    // every spelling, as the whole block was when it named the asset.
+    const sources = {
+      'src/index.html': page(),
+      'src/card.html':
+        '<style>\n.a {\n  background: url(img/my%20photo.png);\n}\n.b { color red }\n</style>\n',
+    };
+
+    const report = await reportForFiles(
+      sources,
+      [...SERVED, 'src/img/my photo.png'],
+      SERVED_FROM_SRC,
+    );
+
+    expect(evidenceOf(report, 'src/img/my photo.png')).toEqual([
+      'unresolved-reference src/card.html:3 background: url(img/my%20photo.png);',
+    ]);
+  });
+
+  it('cites a pattern that spans lines at its first line, since no line of it holds a name', async () => {
+    // The pattern's hole leaves no file name to find, so the asset it could name is cited
+    // where the pattern starts, and quoted by that line.
+    const sources = {
+      'src/index.html': page(),
+      'src/app.js': 'export const tile = (n) => `/img/pattern-${\n  n\n}.png`;\n',
+    };
+
+    const report = await reportForFiles(sources, [...SERVED, 'src/img/pattern-1.png']);
+
+    expect(verdictOf(report, 'src/img/pattern-1.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/pattern-1.png')).toEqual([
+      'unresolved-reference src/app.js:1 /img/pattern-${',
+    ]);
+  });
 });
 
 describe('the assets a plan examined and did not convert', () => {

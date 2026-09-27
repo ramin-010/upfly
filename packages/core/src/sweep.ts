@@ -16,7 +16,7 @@ import {
   spellingsOf,
   splitPathSuffix,
 } from './adapters/reference-path.js';
-import { citeReferences, lineOf } from './citation.js';
+import { citationAt, lineOf, withSourceTexts } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
@@ -25,7 +25,7 @@ import { provenPath } from './reference.js';
 import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
 import { servedFromAnyRoot } from './resolve.js';
 import type { ReadFilePort, ScannedMention } from './scan.js';
-import type { Reference } from './types.js';
+import type { Reference, ReferenceKind } from './types.js';
 
 /** Where an asset's name turned up. */
 export type MentionSource =
@@ -56,7 +56,10 @@ export interface Mention {
    * rather than a hint.
    */
   readonly where: string;
-  /** The text that named it: the matched token, or the whole unresolved path. */
+  /**
+   * The text that named it: the matched token, or the unresolved path, only the line of it
+   * that names the asset when the path spans lines.
+   */
   readonly quote: string;
 }
 
@@ -223,7 +226,7 @@ async function sweepFiles(
  * Paths the engine read but could not resolve.
  *
  * Searching them costs no IO, since the strings are in the graph, but each mention cites
- * its line and a line costs a re-read. `citeReferences` re-reads once per file, and only
+ * its line and a line costs a re-read. `withSourceTexts` re-reads once per file, and only
  * for references that named a candidate.
  *
  * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
@@ -237,7 +240,7 @@ async function sweepUnresolvedReferences(
   mentions: Map<string, Mention[]>,
   skipped: SweepSkip[],
 ): Promise<void> {
-  const hits: { reference: Reference; asset: string }[] = [];
+  const hits = new Map<Reference, ReadonlySet<string>>();
   const unglobbed = new Map([
     ...patternsWithoutServingRoot(options.graph).map(
       (reference) => [reference, servedFromAnyRoot(provenPath(reference))] as const,
@@ -265,26 +268,61 @@ async function sweepUnresolvedReferences(
     if (couldName !== undefined) {
       for (const asset of assets.filter(couldName)) named.add(asset);
     }
-    for (const asset of named) hits.push({ reference, asset });
+    if (named.size > 0) hits.set(reference, named);
   }
-  if (hits.length === 0) return;
+  if (hits.size === 0) return;
 
-  const { citations, unreadable } = await citeReferences({
-    references: hits.map((hit) => hit.reference),
-    root: options.graph.root,
-    readFile: options.readFile,
-  });
+  const unreadable = await withSourceTexts(
+    { references: [...hits.keys()], root: options.graph.root, readFile: options.readFile },
+    (file, text, references) => {
+      for (const reference of references) {
+        for (const asset of hits.get(reference) ?? []) {
+          record(mentions, {
+            asset,
+            source: 'unresolved-reference',
+            ...nameSite(file, text, reference, asset),
+          });
+        }
+      }
+    },
+  );
   // A file that cannot be re-read loses the line, not the mention, and is listed as skipped.
   skipped.push(...unreadable);
+}
 
-  for (const hit of hits) {
-    record(mentions, {
-      asset: hit.asset,
-      source: 'unresolved-reference',
-      where: citations.get(hit.reference)?.where ?? '',
-      quote: hit.reference.rawPath,
-    });
+/**
+ * Where an asset's name sits inside the reference that named it, and the text to quote.
+ *
+ * A reference on one line is cited where it starts and quoted whole. One an adapter refused
+ * whole, such as a `<style>` block whose CSS does not parse, can run for a hundred lines and
+ * rarely names the file on its first, so it is cited at its first line that names the file,
+ * read as `namesIn` reads the whole, and quoted by that line alone. A name no line holds,
+ * such as one a pattern matched, is cited at the reference's first line of text.
+ */
+function nameSite(
+  file: string,
+  text: string | null,
+  reference: Reference,
+  asset: string,
+): { where: string; quote: string } {
+  // The source rather than `rawPath`, which a CSS-in-JS template flattens. A file that could
+  // not be re-read leaves `rawPath`, and no line to cite.
+  const written = text === null ? reference.rawPath : text.slice(reference.start, reference.end);
+  if (!written.includes('\n')) {
+    return { where: citationAt(file, text, reference.start).where, quote: reference.rawPath };
   }
+
+  const name = asset.slice(asset.lastIndexOf('/') + 1).toLowerCase();
+  const lines = written.split('\n');
+  const naming = lines.findIndex((line) => namesInText(line, reference.kind).has(name));
+  const firstText = lines.findIndex((line) => line.trim() !== '');
+  const cited = naming === -1 ? Math.max(0, firstText) : naming;
+  const offset = lines.slice(0, cited).reduce((sum, line) => sum + line.length + 1, 0);
+  return {
+    where: citationAt(file, text, reference.start + offset).where,
+    // `trim` also drops the carriage return that ends each line of a CRLF file.
+    quote: (lines[cited] ?? '').trim(),
+  };
 }
 
 /**
@@ -371,15 +409,25 @@ function afterAliasToken(pattern: string): string {
  * searched for tokens, since a dynamic path can hold a name anywhere.
  */
 function namesIn(reference: Reference): ReadonlySet<string> {
-  const { path } = splitPathSuffix(reference.rawPath);
-  const spelled = spellingsOf(path, reference.kind).map((spelling) => spelling.path);
-  const names = new Set<string>();
+  const names = namesInText(reference.rawPath, reference.kind);
+  addNames(names, provenPath(reference));
+  return names;
+}
 
-  for (const text of [reference.rawPath, ...spelled, provenPath(reference)]) {
-    names.add(text.slice(text.lastIndexOf('/') + 1).toLowerCase());
-    for (const [token] of tokens(text)) names.add(token.toLowerCase());
+/** The file names a text could stand for, in every spelling a reference of `kind` is read in. */
+function namesInText(text: string, kind: ReferenceKind): Set<string> {
+  const { path } = splitPathSuffix(text);
+  const names = new Set<string>();
+  for (const spelled of [text, ...spellingsOf(path, kind).map((spelling) => spelling.path)]) {
+    addNames(names, spelled);
   }
   return names;
+}
+
+/** Add a text's last segment and every filename token in it, lowercased. */
+function addNames(names: Set<string>, text: string): void {
+  names.add(text.slice(text.lastIndexOf('/') + 1).toLowerCase());
+  for (const [token] of tokens(text)) names.add(token.toLowerCase());
 }
 
 /**

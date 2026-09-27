@@ -286,6 +286,61 @@ describe('sweepForMentions', () => {
       ]);
     });
 
+    it('cites the line inside a reference that names the asset, and quotes that line alone', async () => {
+      // A `<style>` block whose CSS did not parse is one reference from the end of its tag to
+      // its closing tag, and the name is two lines below where it starts. The file is CRLF.
+      const source = [
+        '<style>',
+        '.a {',
+        '  background: url(img/hero.png);',
+        '}',
+        '.b { color red }',
+        '</style>',
+        '',
+      ].join('\r\n');
+      const start = '<style>'.length;
+      const block = source.slice(start, source.indexOf('</style>'));
+      const graph = graphOf({
+        assets: [asset('img/hero.png')],
+        references: [unlinked('index.html', block, 'dynamic', start)],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/index.html': source }),
+      });
+
+      expect(result.mentions.get('img/hero.png')).toEqual([
+        {
+          asset: 'img/hero.png',
+          source: 'unresolved-reference',
+          where: 'index.html:3',
+          quote: 'background: url(img/hero.png);',
+        },
+      ]);
+    });
+
+    it('quotes the line of a reference that spans lines when its file cannot be re-read', async () => {
+      // With no text there is no line to cite, so the reference's own text is read instead.
+      const block = '\n.a {\n  background: url(img/hero.png);\n}\n';
+      const graph = graphOf({
+        assets: [asset('img/hero.png')],
+        references: [unlinked('index.html', block, 'dynamic', 7)],
+      });
+
+      const result = await sweepForMentions({ graph, readFile: files({}) });
+
+      expect(result.mentions.get('img/hero.png')).toEqual([
+        {
+          asset: 'img/hero.png',
+          source: 'unresolved-reference',
+          where: 'index.html',
+          quote: 'background: url(img/hero.png);',
+        },
+      ]);
+      expect(result.skipped.map((skip) => skip.relative)).toEqual(['index.html']);
+    });
+
     it('sweeps an unresolved alias', async () => {
       const graph = graphOf({
         assets: [asset('src/assets/logo.png')],

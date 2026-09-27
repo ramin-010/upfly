@@ -48,6 +48,24 @@ export interface CitationOptions {
 
 /** Cite every reference given, reading each source file at most once. */
 export async function citeReferences(options: CitationOptions): Promise<CitationResult> {
+  const citations = new Map<Reference, Citation>();
+  const unreadable = await withSourceTexts(options, (file, text, references) => {
+    for (const reference of references) {
+      citations.set(reference, citationAt(file, text, reference.start));
+    }
+  });
+  return { citations, unreadable };
+}
+
+/**
+ * Read the file each reference sits in, once per file, and hand `cite` its text with the
+ * references in it, or `null` for a file that could not be re-read. Returns those files,
+ * sorted by `relative`.
+ */
+export async function withSourceTexts(
+  options: CitationOptions,
+  cite: (file: string, text: string | null, references: readonly Reference[]) => void,
+): Promise<readonly UnreadableSource[]> {
   const byFile = new Map<string, Reference[]>();
   for (const reference of options.references) {
     const list = byFile.get(reference.file);
@@ -55,9 +73,7 @@ export async function citeReferences(options: CitationOptions): Promise<Citation
     else list.push(reference);
   }
 
-  const citations = new Map<Reference, Citation>();
   const unreadable: UnreadableSource[] = [];
-
   for (const [path, references] of byFile) {
     const file = relativePath(options.root, path);
 
@@ -67,19 +83,17 @@ export async function citeReferences(options: CitationOptions): Promise<Citation
     } catch (error) {
       unreadable.push({ relative: file, reason: describe(error) });
     }
-
-    for (const reference of references) {
-      const line = text === null ? null : lineOf(text, reference.start);
-      citations.set(reference, {
-        file,
-        line,
-        where: line === null ? file : `${file}:${line}`,
-      });
-    }
+    cite(file, text, references);
   }
 
   unreadable.sort((a, b) => compareStrings(a.relative, b.relative));
-  return { citations, unreadable };
+  return unreadable;
+}
+
+/** The citation of an offset in a file's text, or of the file alone when there is no text. */
+export function citationAt(file: string, text: string | null, offset: number): Citation {
+  const line = text === null ? null : lineOf(text, offset);
+  return { file, line, where: line === null ? file : `${file}:${line}` };
 }
 
 /**
