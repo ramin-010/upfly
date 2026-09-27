@@ -4,12 +4,13 @@ import type { CommandName } from './args.js';
 
 const GENERAL = `Usage: upfly <command> [dir] [options]
 
-Finds every image in a project and every place it is referenced.
+Finds the images in a project and the references to them in the files it can read, and
+names the files it could not read.
 
 Commands:
   audit [dir]      Report images, references, and what could be smaller. Changes nothing.
-  optimize [dir]   Convert images and update every reference to them. Shows the plan and
-                   changes nothing unless run with --apply.
+  optimize [dir]   Convert images and update the references it can rewrite. Shows the plan
+                   and changes nothing unless run with --apply.
   undo [dir]       Put back every file the last optimize --apply changed.
 
 Options for every command:
@@ -24,8 +25,9 @@ upfly.config.json is read if there is one.
 
 const AUDIT = `Usage: upfly audit [dir] [options]
 
-Reports every image in the project, every reference to it, the references that point at
-nothing, the images nothing references, and how much smaller each image would be as WebP.
+Reports the images in the project, the references to them in the files it can read, the
+references that point at nothing, the images nothing references, and how much smaller each
+image would be as WebP.
 It reads the project and changes nothing.
 
 Options:
@@ -47,7 +49,7 @@ configuration file belongs to another tool, 4 for a failure Upfly did not antici
 
 const OPTIMIZE = `Usage: upfly optimize [dir] [options]
 
-Converts each image that measures smaller as WebP (or AVIF) and updates every reference
+Converts each image that measures smaller as WebP (or AVIF) and updates the references
 to it that Upfly can rewrite safely. Without --apply it writes nothing and shows the plan:
 what would be converted, which files would change, and why anything is left alone.
 
@@ -57,8 +59,8 @@ Options:
                          the only ones to review
   --commit               With --apply: commit exactly the files the run wrote, as one
                          commit that git revert undoes
-  --replace              Remove each original once every reference to it has moved to the
-                         converted file. Without it, originals are kept beside it
+  --replace              Remove each original once no file Upfly reads still names it.
+                         Without it, originals are kept beside the converted file
   --format <webp|avif>   The format to convert to (default webp)
   --public <dir>         A folder the site is served from, such as public; repeat it for
                          several, and use . for the project root itself
