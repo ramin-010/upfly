@@ -89,7 +89,7 @@ function write(options: AuditOptions, io: Io, report: Report, output: PipelineOu
   const said = output.diagnostics.length + output.scanDiagnostics.length;
   if (said > 0) {
     io.stderr.write(
-      `The imaging and parsing libraries left ${said} ${said === 1 ? 'message' : 'messages'} of their own about the files above; \`upfly audit --json\` includes them.\n`,
+      `The imaging and parsing libraries left ${said} ${said === 1 ? 'message' : 'messages'} of their own; \`upfly audit --json\` includes their text.\n`,
     );
   }
 }

@@ -393,6 +393,30 @@ function couldEncode(asset: Asset, formats: readonly EncodeFormat[]): boolean {
   return formats.some((format) => extension !== `.${format}`);
 }
 
+/**
+ * The size of a lossless encode, or `Infinity` when it fails. The measurement at the configured
+ * quality then stands, so nothing is reported missing; the library's message still reaches the
+ * diagnostics.
+ */
+async function losslessSize(
+  asset: Asset,
+  format: EncodeFormat,
+  animated: boolean,
+  options: ProbeOptions,
+): Promise<number> {
+  try {
+    return await options.probe.encodedBytes({ path: asset.path, format, animated, lossless: true });
+  } catch (error) {
+    options.onDiagnostic?.({
+      asset: asset.relative,
+      measurement: format,
+      code: 'encode-failed',
+      detail: `lossless encode: ${describe(error)}`,
+    });
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
 async function probeOne(
   asset: Asset,
   options: ProbeOptions,
@@ -452,7 +476,7 @@ async function probeOne(
       // ARCHITECTURE.md.
       const tryLossless = format === 'webp' && asset.extension === '.png';
       const losslessBytes = tryLossless
-        ? await options.probe.encodedBytes({ path: asset.path, format, animated, lossless: true })
+        ? await losslessSize(asset, format, animated, options)
         : Number.POSITIVE_INFINITY;
 
       const useLossless = losslessBytes < lossyBytes;

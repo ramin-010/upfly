@@ -1378,6 +1378,8 @@ it is better on both axes and there is nothing left to weigh. The choice needs n
 text-heavy images and never consults a perceptual metric. That matters: PSNR rates text-heavy images
 higher at every quality, so it would argue for lowering quality on exactly the images that lose most
 from it. A byte comparison against an exact encode cannot be misled by a metric it does not use.
+If the lossless encode fails, the measurement at the configured quality stands, and the library's
+message goes to the diagnostics rather than the report.
 
 The trigger is the source container, not the picture. `bench/src/lossless-cohort.ts` encodes every
 raster image in the five validation repositories, 5,857 of them: lossless beats webp 80 on 1,736, by

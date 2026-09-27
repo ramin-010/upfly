@@ -112,6 +112,15 @@ describe('upfly audit', () => {
     expect(snapshot(root)).toEqual(before);
   });
 
+  it('counts the messages the parsers left, without claiming they concern the files listed', () => {
+    const result = upfly(['audit', site({ 'src/broken.scss': '.a { color: red' }), '--no-probe']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      'The imaging and parsing libraries left 1 message of their own; `upfly audit --json` includes their text.',
+    );
+  });
+
   it('prints JSON lines under --json: progress first, the report last', () => {
     const result = upfly(['audit', site(), '--json', '--no-probe']);
     const lines = result.stdout

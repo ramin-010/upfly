@@ -348,6 +348,35 @@ describe('probeAssets', () => {
       ]);
     });
 
+    it('keeps the lossy measurement when only the lossless encode fails', async () => {
+      const diagnostics: ProbeDiagnostic[] = [];
+      const probe: ImageProbe = {
+        ...fakeProbe(),
+        encodedBytes: async ({ lossless }) => {
+          if (lossless === true) throw new Error('lossless encoder ran out of memory');
+          return 400;
+        },
+      };
+      const [result] = await probeAssets([asset('hero.png')], {
+        probe,
+        formats: ['webp'],
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      });
+
+      expect(result?.encoded).toEqual([
+        { format: 'webp', quality: DEFAULT_ENCODE_QUALITY.webp, bytes: 400 },
+      ]);
+      expect(result?.skipped).toEqual([]);
+      expect(diagnostics).toEqual([
+        {
+          asset: 'hero.png',
+          measurement: 'webp',
+          code: 'encode-failed',
+          detail: 'lossless encode: lossless encoder ran out of memory',
+        },
+      ]);
+    });
+
     it('keeps a multi-line failure to its first line', async () => {
       const diagnostics: ProbeDiagnostic[] = [];
       await probeAssets([asset('a.png')], {
