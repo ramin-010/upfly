@@ -452,11 +452,24 @@ async function probeOne(
     options.onDiagnostic?.({ asset: asset.relative, measurement, code, detail: describe(error) });
   };
 
-  let metadata: ImageMetadata | null = null;
+  let metadata: ImageMetadata;
   try {
     metadata = await options.probe.metadata(asset.path);
   } catch (error) {
-    fail('metadata', headerFailureCode(asset), error);
+    // Nothing is encoded without a header, so every format is declined here, before any
+    // code below could guess a frame count. The entries carry the metadata failure's code,
+    // so they cannot contradict it with something vaguer in the same report.
+    const code = headerFailureCode(asset);
+    fail('metadata', code, error);
+    const declined = [...options.formats]
+      .sort()
+      .map((format): ProbeSkip => ({ measurement: format, code, reason: ENCODE_FOLLOWS[code] }));
+    return {
+      relative: asset.relative,
+      metadata: null,
+      encoded: [],
+      skipped: [...skipped, ...declined],
+    };
   }
 
   const capped = withinCap !== null && !withinCap.has(asset.path);
@@ -483,7 +496,7 @@ async function probeOne(
     try {
       // Encode every frame: a GIF encoded as its first frame alone reports a saving that
       // is only achievable by throwing the other frames away.
-      const animated = (metadata?.pages ?? 1) > 1;
+      const animated = metadata.pages > 1;
       const lossyBytes = await options.probe.encodedBytes({ path: asset.path, format, animated });
 
       // For a PNG source going to WebP, also measure a lossless encode and keep whichever
@@ -517,15 +530,9 @@ async function probeOne(
 /** Why this asset should not be encoded to this format at all, or `null` to measure. */
 function encodeSkipReason(
   asset: Asset,
-  metadata: ImageMetadata | null,
+  metadata: ImageMetadata,
   format: EncodeFormat,
 ): Pick<ProbeSkip, 'code' | 'reason'> | null {
-  if (metadata === null) {
-    // The same code as the metadata failure, so the encode entry cannot contradict it
-    // with something vaguer in the same report.
-    const code = headerFailureCode(asset);
-    return { code, reason: ENCODE_FOLLOWS[code] };
-  }
   if (isVectorExtension(extensionOf(asset.path))) {
     return {
       code: 'vector',

@@ -162,16 +162,18 @@ describe('probeAssets', () => {
       expect(encodedBytes).not.toHaveBeenCalled();
     });
 
-    it('treats an unreadable header as still rather than guessing', async () => {
-      // Unreachable through `probeAssets` (a failed header skips the encode), but
-      // the default matters if that ordering ever changes: `animated: true` on a
-      // still is the more expensive wrong answer.
-      const [result] = await probeAssets([asset('broken.png')], {
-        probe: fakeProbe({ metadataFails: 'Input file has corrupt header' }),
-        formats: ['webp'],
-      });
+    it('never calls the encoder when the header cannot be read', async () => {
+      // With no header there is no frame count to encode by. A real encoder fails on the
+      // same file, which would also leave `encoded` empty, so the call itself is checked.
+      const encodedBytes = vi.fn(async () => 400);
+      const probe: ImageProbe = {
+        ...fakeProbe({ metadataFails: 'Input file has corrupt header' }),
+        encodedBytes,
+      };
 
-      expect(result?.encoded).toEqual([]);
+      await probeAssets([asset('broken.png')], { probe, formats: ['webp'] });
+
+      expect(encodedBytes).not.toHaveBeenCalled();
     });
   });
 
