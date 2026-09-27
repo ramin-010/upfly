@@ -132,9 +132,9 @@ export type Resolution =
    */
   | 'resolved-pattern'
   /**
-   * No static path to resolve: the ceiling was `unsafe`, or a pattern matched no asset.
-   * Not `broken`, because nobody typed a wrong path: `url($hero)` is not knowable until
-   * the preprocessor runs.
+   * No static path to resolve: the ceiling was `unsafe`, or a pattern matched no asset (one
+   * through an alias no rule maps is `unresolved-alias`). Not `broken`, because nobody typed
+   * a wrong path: `url($hero)` is not knowable until the preprocessor runs.
    */
   | 'dynamic'
   /**
@@ -150,7 +150,10 @@ export type Resolution =
    * path (`RawReference.declined`), which is never looked up. Counted, never a finding.
    */
   | 'discarded'
-  /** Alias-shaped (`@/…`, `~/…`, `#…`), and no alias the project declares maps it. */
+  /**
+   * Alias-shaped (`@/…`, `~/…`, `#…`), as a path or a pattern, and no alias the project
+   * declares maps it.
+   */
   | 'unresolved-alias';
 
 /**

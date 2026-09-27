@@ -158,7 +158,12 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
         : { matches: matchThroughAlias(pattern, raw, context), via: 'serving-root' as const };
     const [first, ...rest] = matches;
     if (first === undefined) {
-      return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
+      if (provablyNotAnAsset(raw)) return null;
+      // Through an alias no rule covers, a pattern is unresolved, as rung 6 calls a literal one.
+      return unlinked(
+        raw,
+        throughUnmappedAlias(pattern, raw, context) ? 'unresolved-alias' : 'dynamic',
+      );
     }
     return {
       ...raw,
@@ -375,12 +380,38 @@ function matchThroughAlias(
   raw: RawReference,
   context: ResolveContext,
 ): readonly string[] {
-  if (!isAliasShaped(pattern, raw.kind)) return [];
+  if (!isAliasShapedPattern(pattern, raw.kind)) return [];
   for (const candidate of expandAlias(context.aliases, withHoles(pattern), raw.file)) {
     const matches = context.index.matchGlob(candidate);
     if (matches.length > 0) return matches;
   }
   return [];
+}
+
+/**
+ * Whether a pattern is written through an alias no declared rule covers. A package-shaped
+ * pattern is not an alias: it names files inside `node_modules`, and stays `dynamic`.
+ */
+function throughUnmappedAlias(
+  pattern: string,
+  raw: RawReference,
+  context: ResolveContext,
+): boolean {
+  const fixed = withHoles(pattern);
+  return (
+    isAliasShapedPattern(pattern, raw.kind) &&
+    !isPackageSpecifier(fixed, raw.kind) &&
+    expandAlias(context.aliases, fixed, raw.file).length === 0
+  );
+}
+
+/**
+ * Whether a pattern is written against an alias, read from its fixed text. One that starts
+ * with a hole, such as `${base}/img/${n}.png`, has no fixed start for an alias to be.
+ */
+function isAliasShapedPattern(pattern: string, kind: RawReference['kind']): boolean {
+  const fixed = withHoles(pattern);
+  return !fixed.startsWith(HOLE) && isAliasShaped(fixed, kind);
 }
 
 /**

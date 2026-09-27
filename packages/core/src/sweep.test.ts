@@ -557,6 +557,64 @@ describe('sweepForMentions', () => {
       },
     );
 
+    it('hedges what a pattern through an unread alias could name', async () => {
+      // No rule maps `@/`, so the resolver could not expand the pattern. What follows the
+      // alias is globbed from any directory, and every directory it fixes has to be there.
+      const source = 'export const icon = (n) => import(`@/img/alias-${n}.png`);';
+      const graph = graphOf({
+        assets: [asset('src/img/alias-1.png'), asset('src/icons/alias-1.png')],
+        references: [
+          {
+            ...unlinked('app.js', '@/img/alias-${n}.png', 'unresolved-alias', source.indexOf('@/')),
+            kind: 'import',
+            ceiling: 'medium',
+          },
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/app.js': source }),
+      });
+
+      expect(result.mentions.get('src/img/alias-1.png')).toEqual([
+        {
+          asset: 'src/img/alias-1.png',
+          source: 'unresolved-reference',
+          where: 'app.js:1',
+          quote: '@/img/alias-${n}.png',
+        },
+      ]);
+      expect([...result.mentions.keys()]).toEqual(['src/img/alias-1.png']);
+    });
+
+    it('hedges what a + chain through an unread alias could name, reading the path it proves', async () => {
+      const source = "export const badge = (n) => import('~/img/badge-' + n + '.png');";
+      const graph = graphOf({
+        assets: [asset('src/img/badge-1.png')],
+        references: [
+          {
+            ...unlinked(
+              'app.js',
+              "~/img/badge-' + n + '.png",
+              'unresolved-alias',
+              source.indexOf('~/'),
+            ),
+            kind: 'string',
+            ceiling: 'medium',
+            assembledPath: '~/img/badge-${}.png',
+          },
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/app.js': source }),
+      });
+
+      expect([...result.mentions.keys()]).toEqual(['src/img/badge-1.png']);
+    });
+
     it('leaves a path that is one hole and nothing else to the mentions', async () => {
       const graph = graphOf({
         assets: [asset('public/img/cover.png')],

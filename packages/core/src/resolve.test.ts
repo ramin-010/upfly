@@ -1266,14 +1266,61 @@ describe('rung 2 through a declared alias', () => {
       skipped: [],
     };
 
+    // For this file no rule maps `@/`, so the pattern is unresolved, as a literal path is.
     expect(throughAlias({ rawPath: '@/img/alias-${n}.png' }, { map: elsewhere })?.resolution).toBe(
-      'dynamic',
+      'unresolved-alias',
     );
   });
 
   it('leaves a pattern that starts with a hole to the ladder', () => {
     // An alias prefix is fixed text, and the text a hole stands for is unknown.
     expect(throughAlias({ rawPath: '${base}/img/alias-${n}.png' })?.resolution).toBe('dynamic');
+  });
+
+  it('calls a pattern through an alias no rule covers unresolved-alias', () => {
+    // As rung 6 calls a literal path through it: a config Upfly did not read may map it.
+    expect(throughAlias({ rawPath: '~/img/alias-${n}.png' })?.resolution).toBe('unresolved-alias');
+    expect(
+      throughAlias({
+        rawPath: "~/img/alias-' + n + '.png",
+        assembledPath: '~/img/alias-${}.png',
+        kind: 'string',
+        asserted: false,
+      })?.resolution,
+    ).toBe('unresolved-alias');
+  });
+
+  it('keeps a pattern dynamic when a rule covers its alias and the glob names nothing', () => {
+    expect(throughAlias({ rawPath: '@/img/missing-${n}.png' })?.resolution).toBe('dynamic');
+  });
+
+  it('keeps a package-shaped pattern dynamic', () => {
+    expect(throughAlias({ rawPath: '@scope/pkg/img/icon-${n}.png' })?.resolution).toBe('dynamic');
+    expect(throughAlias({ rawPath: 'some-pkg/img/icon-${n}.png' })?.resolution).toBe('dynamic');
+  });
+
+  it('reads no alias into a leading hole, even through a rule for every bare path', () => {
+    // A `"*"` key maps every bare specifier, and a pattern that starts with a hole has no
+    // fixed start for it to map.
+    const everyPath: AliasMap = {
+      rules: [
+        {
+          prefix: '',
+          targets: [join(ROOT, 'types')],
+          wildcard: true,
+          scope: toPosix(ROOT),
+          source: 'tsconfig.json',
+        },
+      ],
+      skipped: [],
+    };
+
+    expect(
+      throughAlias(
+        { rawPath: '${base}/img/alias-${n}.png' },
+        { map: everyPath, extra: [asset('types/lib/img/alias-5.png')] },
+      )?.resolution,
+    ).toBe('dynamic');
   });
 });
 

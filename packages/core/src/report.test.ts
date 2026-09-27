@@ -2494,6 +2494,32 @@ describe('what a path that did not resolve names, in a project held in memory', 
       ),
     ).toEqual([undefined, undefined, 'dead']);
   });
+
+  it('hedges each asset a pattern through an alias no rule maps could name', async () => {
+    // With no rule for `@/`, nothing says where the pattern points, so both badges may be in
+    // use. What follows the alias fixes `img/`, so a file of the same shape elsewhere is dead.
+    const sources = {
+      'src/index.html': page(),
+      'src/badges.js': 'export const badge = (n) => import(`@/img/badge-${n}.png`);',
+    };
+    const assets = [
+      ...SERVED,
+      'src/img/badge-1.png',
+      'src/img/badge-2.png',
+      'src/icons/badge-3.png',
+    ];
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(
+      ['src/img/badge-1.png', 'src/img/badge-2.png', 'src/icons/badge-3.png'].map((asset) =>
+        verdictOf(report, asset),
+      ),
+    ).toEqual(['possibly-dead', 'possibly-dead', 'dead']);
+    expect(evidenceOf(report, 'src/img/badge-2.png')).toEqual([
+      'unresolved-reference src/badges.js:1 @/img/badge-${n}.png',
+    ]);
+  });
 });
 
 describe('the assets a plan examined and did not convert', () => {

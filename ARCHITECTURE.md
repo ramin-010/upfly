@@ -141,7 +141,7 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 |---|---|---|---|
 | 0 | declined by the adapter | `discarded` if it names an image, else *dropped* | `<img title="/img/team.jpg">` |
 | 1 | `ceiling === 'unsafe'` | `dynamic` | `url($hero)` |
-| 2 | `ceiling === 'medium'`, globbed as written, else through a declared alias | `resolved-pattern` / `dynamic` | `` `./img/${name}.png` ``, `` `@/img/${n}.png` `` |
+| 2 | `ceiling === 'medium'`, globbed as written, else through a declared alias | `resolved-pattern` / `dynamic` / `unresolved-alias` | `` `./img/${name}.png` ``, `` `@/img/${n}.png` `` |
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
@@ -178,7 +178,8 @@ wearing a different costume. Such a reference is never rewritten, since its text
 rather than a path: the planner keeps every original it matches, and says so when only some of
 them convert. A pattern that names nothing at the written path is expanded through a declared
 alias, as rung 4b expands a literal one, and each expansion is globbed anchored, in the order
-rung 4b tries them, until one names a file.
+rung 4b tries them, until one names a file. Through an alias no rule covers, a pattern is
+`unresolved-alias`, as a literal path is at rung 6; a package-shaped one stays `dynamic`.
 
 **Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
 nearest first, then the project root. A monorepo has one `public/` per app (shadcn-ui has twelve),
@@ -688,6 +689,11 @@ Nothing resolved it, so a relative one could be anchored at its file or at the p
 files it names end with its segments after any leading `./` or `../`, and the open base matches
 that ending. The sweep also reads the path a reference's text proves as well as the text, so an
 escaped string names what its escapes decode to.
+
+A pattern through an alias no rule maps is `unresolved-alias`, and only a rule could say which
+directory the alias stands for, so the sweep drops the alias, the first segment, and globs the
+rest the same way (`unmappedAliasPatterns`): with no config that maps `@/`,
+`` `@/img/badge-${n}.png` `` hedges `src/img/badge-1.png` and not `src/icons/badge-1.png`.
 
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real

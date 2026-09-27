@@ -228,8 +228,8 @@ async function sweepFiles(
  *
  * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
  * tested against every candidate, as the resolver would glob it from whichever directory the
- * site serves: a root-relative one the run had no serving root to glob, and one an adapter
- * declined.
+ * site serves: a root-relative one the run had no serving root to glob, one written through
+ * an alias no rule maps, and one an adapter declined.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -241,6 +241,10 @@ async function sweepUnresolvedReferences(
   const unglobbed = new Map([
     ...patternsWithoutServingRoot(options.graph).map(
       (reference) => [reference, servedFromAnyRoot(provenPath(reference))] as const,
+    ),
+    ...unmappedAliasPatterns(options.graph).map(
+      (reference) =>
+        [reference, servedFromAnyRoot(afterAliasToken(provenPath(reference)))] as const,
     ),
     ...declinedPatterns(options.graph).map(
       (reference) => [reference, servedFromAnyRoot(openBased(provenPath(reference)))] as const,
@@ -334,6 +338,26 @@ function declinedPatterns(graph: Graph): readonly Reference[] {
  */
 function openBased(pattern: string): string {
   return `/${pattern.replace(/^(?:\.{1,2}\/)+/, '').replace(/^\/+/, '')}`;
+}
+
+/**
+ * The patterns written through an alias no rule maps. The resolver could not expand one, so,
+ * like a pattern a run had no serving root to glob, what it names is unknown rather than
+ * absent. Only a pattern reaches the resolver with a `medium` ceiling.
+ */
+function unmappedAliasPatterns(graph: Graph): readonly Reference[] {
+  return graph.byResolution['unresolved-alias'].filter(
+    (reference) => reference.ceiling === 'medium',
+  );
+}
+
+/**
+ * A pattern through an unmapped alias as `servedFromAnyRoot` reads it: the alias, its first
+ * segment, dropped, since only a rule could say which directory it stands for.
+ */
+function afterAliasToken(pattern: string): string {
+  const slash = pattern.indexOf('/');
+  return slash === -1 ? `/${pattern}` : pattern.slice(slash);
 }
 
 /**
