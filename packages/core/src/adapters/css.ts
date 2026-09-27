@@ -74,8 +74,13 @@ export function findCssReferences(input: {
    * its own `css.*` shape, because it breaks the same way in every host.
    */
   readonly hostShape?: ShapeId;
+  /**
+   * Where `text` starts in its file, 1-based, when it is embedded in another file, so that a
+   * parse failure names the file's line and column. Defaults to the start of the file.
+   */
+  readonly startsAt?: { readonly line: number; readonly column: number };
 }): RawReference[] {
-  const { file, text, baseOffset = 0, extension = '.css', hostShape } = input;
+  const { file, text, baseOffset = 0, extension = '.css', hostShape, startsAt } = input;
 
   const parse = PARSERS.get(extension);
   if (parse === undefined) {
@@ -97,6 +102,7 @@ export function findCssReferences(input: {
       // What we tried to read it as, which is the dialect the extension claimed.
       dialect: extension.replace(/^\./, '') || 'css',
       position: 'postcss',
+      ...(startsAt === undefined ? {} : { origin: startsAt }),
     });
     throw new UpflyError('ADAPTER_PARSE_FAILED', failure.message, [], failure.diagnostic);
   }

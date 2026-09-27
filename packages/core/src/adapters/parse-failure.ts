@@ -58,6 +58,18 @@ function positionOf(error: unknown, style: PositionStyle): Position | null {
   return { line, column: column + 1 };
 }
 
+/** A position counted from the start of a fragment, counted from the start of its file. */
+function inFile(
+  at: Position | null,
+  origin: { readonly line: number; readonly column: number } | undefined,
+): Position | null {
+  if (at === null || origin === undefined) return at;
+  return {
+    line: origin.line + at.line - 1,
+    column: at.line === 1 ? origin.column + at.column - 1 : at.column,
+  };
+}
+
 /**
  * Our sentence for a parse failure, and the parser's text kept out of it.
  *
@@ -69,9 +81,14 @@ export function parseFailure(input: {
   readonly error: unknown;
   readonly dialect: string;
   readonly position: PositionStyle;
+  /**
+   * Where the parsed text starts in its file, 1-based, when it is a fragment such as the CSS
+   * in a `<style>` element: the parser counts from the fragment, the report from the file.
+   */
+  readonly origin?: { readonly line: number; readonly column: number };
 }): ParseFailure {
-  const { error, dialect, position } = input;
-  const at = positionOf(error, position);
+  const { error, dialect, position, origin } = input;
+  const at = inFile(positionOf(error, position), origin);
   const diagnostic = error instanceof Error ? error.message : String(error);
 
   return {

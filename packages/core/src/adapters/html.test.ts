@@ -627,6 +627,16 @@ describe('htmlAdapter', () => {
       expect(paths('<img src alt="hero.png"><img hidden src="a.png">')).toEqual(['a.png']);
     });
 
+    it('names where a style attribute fails to parse in the file, not in the attribute', () => {
+      const source = '<p>one</p>\n<p>two</p>\n<p style="color: red; margin 0.5em">x</p>';
+      expect(find(source)[0]?.note).toContain('at line 3, column 23');
+    });
+
+    it('names where a <style> element fails to parse in the file, not in the element', () => {
+      const source = '<p>one</p>\n<style>\n  .a { color: red }\n  .b { margin 0.5em }\n</style>\n';
+      expect(() => find(source)).toThrow('at line 4, column 8');
+    });
+
     it('reports an unparseable style attribute instead of dropping it', () => {
       const references = find('<div style="background: url(hero.png"></div>');
       expect(references).toHaveLength(1);

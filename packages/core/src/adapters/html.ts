@@ -146,6 +146,7 @@ function collectFromElement(element: ParsedElement, context: Context): void {
       // browser sees, and so our bounded decoder can be checked against a complete one
       // before any offset derived from it is trusted.
       decodedValue: attribute.value,
+      location,
       context,
     });
   }
@@ -163,9 +164,22 @@ function collectFromAttribute(input: {
   entityEscaped: boolean;
   /** That decoded value, for the style branch, the one that can map offsets back. */
   decodedValue: string;
+  /** Where parse5 found the attribute, from which the style branch places its value. */
+  location: SourceStart;
   context: Context;
 }): void {
-  const { element, tagName, name, raw, start, end, entityEscaped, decodedValue, context } = input;
+  const {
+    element,
+    tagName,
+    name,
+    raw,
+    start,
+    end,
+    entityEscaped,
+    decodedValue,
+    location,
+    context,
+  } = input;
 
   // Every URL-valued position below answers the character-reference question through this
   // one helper, so a new position gets the same answer. It drops another host's URL first,
@@ -193,7 +207,7 @@ function collectFromAttribute(input: {
       addStyleAttributeRefusal(raw, { start, end }, context);
       return;
     }
-    collectFromStyleAttribute(raw, start, context);
+    collectFromStyleAttribute(raw, start, positionFrom(context.text, location, start), context);
     return;
   }
 
@@ -277,6 +291,7 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
           text: css,
           baseOffset: location.startOffset,
           hostShape: 'html.style.element',
+          startsAt: { line: location.startLine, column: location.startCol },
         }),
       );
     } catch (error) {
@@ -422,7 +437,12 @@ function collectFromEscapedStyleAttribute(
   return true;
 }
 
-function collectFromStyleAttribute(css: string, baseOffset: number, context: Context): void {
+function collectFromStyleAttribute(
+  css: string,
+  baseOffset: number,
+  startsAt: { line: number; column: number },
+  context: Context,
+): void {
   try {
     context.references.push(
       ...findCssReferences({
@@ -430,6 +450,7 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
         text: css,
         baseOffset,
         hostShape: 'html.style.attribute',
+        startsAt,
       }),
     );
   } catch (error) {
@@ -465,6 +486,26 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
  * `style` attribute cannot hold. If the CSS adapter learns another position, add it here.
  */
 const CSS_URL_FUNCTION = /\b(?:url|(?:-[a-z]+-)?image-set)\s*\(/i;
+
+/** The start of something parse5 located, as its source location records it (1-based). */
+interface SourceStart {
+  readonly startLine: number;
+  readonly startCol: number;
+  readonly startOffset: number;
+}
+
+/** The 1-based line and column of `offset`, counted on from a start parse5 recorded before it. */
+function positionFrom(
+  text: string,
+  from: SourceStart,
+  offset: number,
+): { line: number; column: number } {
+  const between = text.slice(from.startOffset, offset);
+  const lastNewline = between.lastIndexOf('\n');
+  if (lastNewline === -1) return { line: from.startLine, column: from.startCol + between.length };
+  const newlines = between.split('\n').length - 1;
+  return { line: from.startLine + newlines, column: between.length - lastNewline };
+}
 
 /**
  * Locate the value inside an attribute's source range.
