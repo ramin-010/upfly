@@ -1244,8 +1244,8 @@ function caveats(
       message: `${plural(heldBack.length, 'image')} kept rather than replaced, because a literal mention of the original's path would have outlived the rewrite`,
       detail: [
         'This check reads text, so it finds a path that is written down. A path a program',
-        "assembles at runtime — '/images/' + name + '.png' — matches nothing, so replacing",
-        'is safe here against literal mentions and no wider than that.',
+        "assembles at runtime, such as '/images/' + name + '.png', matches nothing, so",
+        'replacing is safe here against literal mentions and no wider than that.',
       ],
     });
   }

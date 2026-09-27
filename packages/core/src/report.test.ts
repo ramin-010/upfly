@@ -2383,7 +2383,10 @@ describe('the assets a plan examined and did not convert', () => {
     const caveat = report.caveats.find((entry) => entry.code === 'replace-held-back');
     expect(caveat?.count).toBe(1);
     expect(caveat?.message).toContain('kept rather than replaced');
-    expect(caveat?.detail.join(' ')).toContain('assembles at runtime');
+    expect(caveat?.detail.join(' ')).toContain(
+      "assembles at runtime, such as '/images/' + name + '.png', matches nothing",
+    );
+    expect(caveat?.detail.join(' ')).not.toContain('\u2014');
   });
 
   it('says nothing about replace when nothing was held back', () => {
