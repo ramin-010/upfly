@@ -228,8 +228,10 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
  * under a directory the walk pruned, reported with the rule responsible, or failing that on
  * a file that exists anyway because a file-level ignore rule such as `*.png` excluded it. The
  * spellings are the ones rung 4 looked up, in its order, so `unindexed%20photo.png` finds an
- * ignored `unindexed photo.png`. The fallback costs a `stat` per candidate path of each
- * spelling of a reference that did not resolve, which is cheap against a false `broken`. A
+ * ignored `unindexed photo.png`. An alias-shaped path is also asked about through each
+ * expansion of each spelling, after the plain candidates, so an alias into a pruned folder is
+ * out of scope with its rule. The fallback costs a `stat` per candidate path of each spelling
+ * of a reference that did not resolve, which is cheap against a false `broken`. A
  * Windows drive path outside the project is out of scope with no `stat`: whether one machine
  * holds that file says nothing about the project.
  */
@@ -250,10 +252,15 @@ function outOfScope(
     };
   }
 
-  const candidates = spellings.flatMap(({ path: spelled }) =>
-    candidatePaths(spelled, raw, context.root, context.publicDirs),
-  );
-  for (const { path: candidate } of candidates) {
+  const candidates = [
+    ...spellings.flatMap(({ path: spelled }) =>
+      candidatePaths(spelled, raw, context.root, context.publicDirs).map(({ path: at }) => at),
+    ),
+    ...(isAliasShaped(path, raw.kind)
+      ? spellings.flatMap(({ path: spelled }) => expandAlias(context.aliases, spelled, raw.file))
+      : []),
+  ];
+  for (const candidate of candidates) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
       if (!candidate.startsWith(prefix)) continue;

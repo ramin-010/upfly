@@ -1216,3 +1216,56 @@ describe('rung 4b: a declared alias, in every spelling the path could be read in
     expect(found && 'spelling' in found ? found.spelling : undefined).toBeUndefined();
   });
 });
+
+describe('rung 5 through a declared alias', () => {
+  const aliases: AliasMap = {
+    rules: [
+      {
+        prefix: '~/',
+        targets: [ROOT],
+        wildcard: true,
+        scope: toPosix(ROOT),
+        source: 'tsconfig.json',
+      },
+    ],
+    skipped: [],
+  };
+  const excludedRoots = [
+    { path: join(ROOT, 'legacy'), relative: 'legacy', reason: "the ignore rule 'legacy/'" },
+    { path: join(ROOT, 'old site'), relative: 'old site', reason: "the ignore rule 'old site/'" },
+  ];
+
+  function throughAlias(rawPath: string, exists: (path: string) => boolean = NOTHING_EXISTS) {
+    return resolveReferences([raw({ rawPath })], {
+      root: ROOT,
+      assets: ASSETS,
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      aliases,
+      excludedRoots,
+      exists,
+    })[0];
+  }
+
+  it('names the rule that excluded the folder an alias points into', () => {
+    const found = throughAlias('~/legacy/old.png');
+    expect(found?.resolution).toBe('out-of-scope');
+    expect(found && 'exclusionReason' in found ? found.exclusionReason : '').toBe(
+      "the ignore rule 'legacy/'",
+    );
+  });
+
+  it('does so when only the decoded spelling reaches the folder', () => {
+    const found = throughAlias('~/old%20site/logo.png');
+    expect(found && 'exclusionReason' in found ? found.exclusionReason : '').toBe(
+      "the ignore rule 'old site/'",
+    );
+  });
+
+  it('finds a file on disk that nothing indexes, through the alias', () => {
+    const hidden = toPosix(join(ROOT, 'hidden.png'));
+    const found = throughAlias('~/hidden.png', (candidate) => candidate === hidden);
+    expect(found && 'exclusionReason' in found ? found.exclusionReason : '').toBe(
+      'resolved outside the indexed asset set',
+    );
+  });
+});

@@ -145,7 +145,7 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
-| 5 | under an excluded root, exists on disk, or a drive path outside the project | `out-of-scope` | `../legacy/old.png` |
+| 5 | under an excluded root, exists on disk, or a drive path outside the project, as written or through a declared alias | `out-of-scope` | `../legacy/old.png` |
 | 6 | alias-shaped, nothing matched | `unresolved-alias` | `@/assets/logo.png` |
 | 6b | a package specifier | `out-of-scope` | `@11ty/logo/img/logo.png` |
 | 7 | asserted | `broken` | `./missing.png`, a real finding |

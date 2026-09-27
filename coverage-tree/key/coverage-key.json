@@ -1228,6 +1228,14 @@
       "source": "solvay",
       "width": 80,
       "height": 60
+    },
+    {
+      "path": "shared/assets/archive/old-logo.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
     }
   ],
   "unreferencedOccurrences": [],
@@ -7638,6 +7646,21 @@
           "offset": 103,
           "line": 5,
           "column": 13
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/archive.ts",
+      "entries": [
+        {
+          "raw": "~/assets/archive/old-logo.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "out-of-scope",
+          "why": "The alias maps it and the file is on disk, but the ignore file excludes its folder: a real file Upfly does not index, with the rule named, never unresolved or broken.",
+          "offset": 21,
+          "line": 1,
+          "column": 22
         }
       ]
     }
