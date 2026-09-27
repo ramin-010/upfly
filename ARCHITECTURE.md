@@ -1377,6 +1377,13 @@ reports 370×**2850**, every frame stacked into one strip, which would make an "
 dimensions" finding wrong by a factor of ten. The plain read gives one frame's dimensions and still
 reports `pages`, answering both questions in one pass.
 
+AVIF is the other half of the trap. sharp writes AVIF as a single still image, so an animation
+encoded to it with `animated` comes out as one picture of every frame stacked: a six-frame 24×12 GIF
+becomes one 24×72 still, far smaller than the GIF, which the probe would report as a saving and
+`optimize` would write in its place. So an animation is never measured as a format in
+`STILL_ONLY_FORMATS`: the skip, `drops-animation`, says why and that WebP keeps the animation. The
+sharp probe also refuses that pair outright, so no caller of `encodeToFile` can write one.
+
 ### An image is converted as it is shown
 
 Phones store most photos as the sensor read them, and record the turn a viewer applies in the EXIF

@@ -10,7 +10,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { EncodeFormat, ImageMetadata, ImageProbe } from './probe.js';
-import { DEFAULT_ENCODE_QUALITY, MAX_ENCODE_PIXELS } from './probe.js';
+import { DEFAULT_ENCODE_QUALITY, MAX_ENCODE_PIXELS, STILL_ONLY_FORMATS } from './probe.js';
 
 /**
  * Build the sharp-backed probe.
@@ -39,6 +39,12 @@ export async function createSharpProbe(
    * their settings.
    */
   const encoder = (path: string, format: EncodeFormat, animated: boolean, lossless = false) => {
+    if (animated && STILL_ONLY_FORMATS.has(format)) {
+      throw new Error(
+        `${format} is written as a single still image, so an animation cannot be encoded to it without stacking its frames into one picture`,
+      );
+    }
+
     // Without `animated`, sharp encodes the first frame alone, and every animated GIF
     // would report a saving only achievable by destroying the animation.
     //

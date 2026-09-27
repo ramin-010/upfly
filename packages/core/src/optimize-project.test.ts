@@ -404,3 +404,48 @@ describe('a phone photo its camera tagged to be turned', () => {
     expect(data[top + 2] ?? 255).toBeLessThan(100);
   });
 });
+
+describe('an animated GIF, when the run converts to AVIF', () => {
+  it('stays, with its page as written, since AVIF would hold one still picture of its frames', async () => {
+    const { default: sharp } = await import('sharp');
+    const root = await copy();
+    // Six frames of a moving gradient. A single AVIF image of them all is a quarter of the
+    // GIF's size, so measuring it would pass for a saving.
+    const size = 64;
+    const frames = await Promise.all(
+      Array.from({ length: 6 }, (_, frame) => {
+        const pixels = Buffer.alloc(size * size * 3);
+        for (let pixel = 0; pixel < size * size; pixel++) {
+          const x = pixel % size;
+          const y = Math.floor(pixel / size);
+          pixels.set(
+            [(x * 4 + frame * 20) % 256, (y * 4) % 256, ((x + y) * 2 + frame * 10) % 256],
+            pixel * 3,
+          );
+        }
+        return sharp(pixels, { raw: { width: size, height: size, channels: 3 } })
+          .png()
+          .toBuffer();
+      }),
+    );
+    await sharp(frames, { join: { animated: true } })
+      .gif()
+      .toFile(join(root, 'images/loop.gif'));
+    const page = '<img src="images/loop.gif" alt="A loop" />\n';
+    await writeFile(join(root, 'loop.html'), page);
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'avif',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'loop.html'), 'utf8')).toBe(page);
+    const after = await files(root);
+    expect(after).toContain('images/loop.gif');
+    expect(after).not.toContain('images/loop.avif');
+  });
+});

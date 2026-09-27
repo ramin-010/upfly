@@ -121,6 +121,28 @@ describe('probeAssets', () => {
       expect(encodedBytes).toHaveBeenCalledWith(expect.objectContaining({ animated: false }));
     });
 
+    it('declines to encode an animation to AVIF, which it would write as one still picture', async () => {
+      const encodedBytes = vi.fn(async () => 4764);
+      const probe: ImageProbe = { ...fakeProbe({ pages: 6, format: 'gif' }), encodedBytes };
+
+      const [result] = await probeAssets([asset('loop.gif')], {
+        probe,
+        formats: ['avif', 'webp'],
+      });
+
+      // WebP keeps the animation, so the same image is still measured as WebP.
+      expect(result?.encoded.map((entry) => entry.format)).toEqual(['webp']);
+      expect(result?.skipped).toEqual([
+        {
+          measurement: 'avif',
+          code: 'drops-animation',
+          reason:
+            'animated, and Upfly writes AVIF as a single still image, which would stack every frame into one picture (WebP keeps the animation)',
+        },
+      ]);
+      expect(encodedBytes).not.toHaveBeenCalledWith(expect.objectContaining({ format: 'avif' }));
+    });
+
     it('treats an unreadable header as still rather than guessing', async () => {
       // Unreachable through `probeAssets` (a failed header skips the encode), but
       // the default matters if that ordering ever changes: `animated: true` on a

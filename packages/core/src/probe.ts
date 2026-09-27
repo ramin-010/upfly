@@ -122,6 +122,11 @@ export type ProbeSkipCode =
   | 'vector'
   /** The asset is already in the format we would convert it to. */
   | 'already-target-format'
+  /**
+   * An animation, going to a format in `STILL_ONLY_FORMATS`: the encode would stack every
+   * frame into one still picture.
+   */
+  | 'drops-animation'
   /** Deliberately not measured, to bound how long the audit takes. */
   | 'beyond-encode-cap';
 
@@ -209,6 +214,13 @@ export const DEFAULT_ENCODE_QUALITY: Readonly<Record<EncodeFormat, number>> = Ob
  * never by reading libvips' error text.
  */
 export const MAX_ENCODE_PIXELS = 0x3fff * 0x3fff;
+
+/**
+ * Formats written as a single still image. sharp writes AVIF that way, and an animation sent
+ * to it comes out as one picture of every frame stacked, so an animation is never encoded
+ * to one of these.
+ */
+export const STILL_ONLY_FORMATS: ReadonlySet<EncodeFormat> = new Set(['avif']);
 
 /** Everything measured about one asset. */
 export interface AssetProbe {
@@ -357,7 +369,8 @@ export async function probeAssets(
  * Assets that could never be encoded (a vector, or one already in every requested
  * format) are removed before the cap applies, so they cannot hold a slot they will not
  * use. That test is by extension, all that is known before a header read; a mislabelled
- * file is caught later by `metadata.format` and leaves its slot unused.
+ * file, or an animation going to a still-only format, is caught after the header read and
+ * leaves its slot unused.
  */
 function assetsWithinCap(
   assets: readonly Asset[],
@@ -512,6 +525,12 @@ function encodeSkipReason(
   }
   if (metadata.format === format)
     return { code: 'already-target-format', reason: `already ${format}` };
+  if (metadata.pages > 1 && STILL_ONLY_FORMATS.has(format)) {
+    return {
+      code: 'drops-animation',
+      reason: `animated, and Upfly writes ${format.toUpperCase()} as a single still image, which would stack every frame into one picture (WebP keeps the animation)`,
+    };
+  }
   return null;
 }
 

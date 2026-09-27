@@ -311,6 +311,30 @@ describe('createSharpProbe', () => {
 
       expect(result?.encoded[0]?.bytes).toBeGreaterThan(asOneFrame);
     });
+
+    it('refuses to encode an animation to AVIF, which it would write as one still picture', async () => {
+      const path = await animatedGif('loop5', 6);
+      const destination = join(temp, 'loop5.avif');
+
+      await expect(
+        probe.encodeToFile({ path, format: 'avif', animated: true, destination }),
+      ).rejects.toThrow(/single still image/);
+      await expect(probe.encodedBytes({ path, format: 'avif', animated: true })).rejects.toThrow(
+        /single still image/,
+      );
+      expect(await readdir(temp)).not.toContain('loop5.avif');
+    });
+
+    it('keeps every frame of an animation written as WebP', async () => {
+      // The refusal above tells the user WebP keeps the animation, so that is checked.
+      const { default: sharp } = await import('sharp');
+      const path = await animatedGif('loop6', 6);
+      const destination = join(temp, 'loop6.webp');
+
+      await probe.encodeToFile({ path, format: 'webp', animated: true, destination });
+
+      expect((await sharp(destination).metadata()).pages).toBe(6);
+    });
   });
 });
 
