@@ -7499,6 +7499,42 @@
           "column": 12
         }
       ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/fence-in-steps.mdx",
+      "entries": [
+        {
+          "raw": "/cat.jpg",
+          "occurrence": 1,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "Inside a fence indented under a list item, as step lists write one: an example, not a reference.",
+          "offset": 102,
+          "line": 6,
+          "column": 14
+        },
+        {
+          "raw": "/chat.jpg",
+          "occurrence": 1,
+          "shape": "md.code-fence",
+          "expect": "discarded",
+          "why": "The same fence, past a blank line inside it, in raw HTML: an example, not a reference.",
+          "offset": 127,
+          "line": 8,
+          "column": 15
+        },
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "A real image after a list whose step holds a fenced example indented under the list item. The example is code, so its /cat.jpg and /chat.jpg are never references; this one, /img/avatar.png, which exists, is.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 226,
+          "line": 13,
+          "column": 15
+        }
+      ]
     }
   ]
 }

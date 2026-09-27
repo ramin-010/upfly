@@ -1012,3 +1012,36 @@ describe('an MDX attribute in braces is read as MDX reads it', () => {
     expect(reference?.declined).toBeUndefined();
   });
 });
+
+describe('a fence indented under a list item', () => {
+  it.each([
+    ['backticks', '```'],
+    ['tildes', '~~~'],
+  ])('is masked when fenced with %s, blank lines and all', (_name, fence) => {
+    const text = [
+      '1. Add the image.',
+      '',
+      `    ${fence}mdx`,
+      '    ![A cat](/cat.jpg)',
+      '',
+      '    <img src="/chat.jpg" />',
+      `    ${fence}`,
+      '',
+      '![The author](/img/avatar.png)',
+    ].join('\n');
+
+    expect(paths(text)).toEqual(['/img/avatar.png']);
+  });
+
+  it('opens nothing when no closing line follows, so a stray fence line blanks nothing', () => {
+    const text = [
+      '1. Type three backticks:',
+      '',
+      '    ```',
+      '',
+      '![The author](/img/avatar.png)',
+    ].join('\n');
+
+    expect(paths(text)).toEqual(['/img/avatar.png']);
+  });
+});

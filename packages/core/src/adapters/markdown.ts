@@ -966,39 +966,60 @@ function maskUnclosedRawText(text: string): string {
  * step for the rest of the file: a fenced example turns live and a real reference after
  * it is blanked, with no error either way. ` ```ts ` can only open a block, and a
  * ` ```` ` block can quote a ` ``` ` one, as documentation about Markdown often does.
+ * A fence indented past three spaces, as one inside a list item's step is, opens only
+ * when a closing line follows beside its indent, so a stray fence line never blanks the
+ * rest of the file.
  */
 function maskFencedBlocks(text: string): string {
   const lines = text.split('\n');
-  let fence: { char: string; length: number } | null = null;
+  let open: FenceLine | null = null;
 
-  const maskedLines = lines.map((line) => {
-    const opening = /^ {0,3}((`{3,})|(~{3,}))([^\n]*)$/.exec(line);
-    const marker = opening?.[1];
-    const info = opening?.[4] ?? '';
+  const maskedLines = lines.map((line, index) => {
+    const fence = fenceLine(line);
 
-    if (fence === null) {
-      if (marker !== undefined) {
-        fence = { char: marker.charAt(0), length: marker.length };
+    if (open === null) {
+      const opener = fence;
+      if (
+        opener !== null &&
+        (opener.indent <= 3 ||
+          lines.slice(index + 1).some((later) => closes(fenceLine(later), opener)))
+      ) {
+        open = opener;
         return blank(line);
       }
       return line;
     }
 
-    // A closing fence: same character, at least as long, and no info string. A
-    // backtick fence's info string may not contain a backtick either, so a line of
-    // pure backticks longer than the opener still closes.
-    if (
-      marker !== undefined &&
-      marker.charAt(0) === fence.char &&
-      marker.length >= fence.length &&
-      info.trim() === ''
-    ) {
-      fence = null;
-    }
+    if (closes(fence, open)) open = null;
     return blank(line);
   });
 
   return maskedLines.join('\n');
+}
+
+/** A line of three or more backticks or tildes: its indent, the run, and what follows it. */
+interface FenceLine {
+  readonly indent: number;
+  readonly marker: string;
+  readonly info: string;
+}
+
+function fenceLine(line: string): FenceLine | null {
+  const match = /^( *)(`{3,}|~{3,})([^\n]*)$/.exec(line);
+  if (match === null) return null;
+  return { indent: match[1]?.length ?? 0, marker: match[2] ?? '', info: match[3] ?? '' };
+}
+
+/**
+ * Whether a line closes the fence `opener` began: the same character, a run at least as
+ * long, and no info string (a backtick fence's info may not hold a backtick, so a line of
+ * pure backticks longer than the opener still closes). At the margin a closer may be
+ * indented up to three spaces; under a list item it sits beside the opener's indent.
+ */
+function closes(line: FenceLine | null, opener: FenceLine): boolean {
+  if (line === null || line.marker.charAt(0) !== opener.marker.charAt(0)) return false;
+  if (line.marker.length < opener.marker.length || line.info.trim() !== '') return false;
+  return opener.indent <= 3 ? line.indent <= 3 : Math.abs(line.indent - opener.indent) <= 3;
 }
 
 function maskPattern(text: string, pattern: RegExp): string {
