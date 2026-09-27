@@ -12,4 +12,11 @@ describe('the help text', () => {
       expect(text).not.toMatch(/every (place|reference)/);
     },
   );
+
+  it('says the audit measures the largest images in the configured format', () => {
+    // It encodes the configured format, AVIF included, and by default only the 100 largest.
+    const text = helpText('audit');
+    expect(text).not.toMatch(/each\s+image would be as WebP/);
+    expect(text).toMatch(/the\s+largest images would be as WebP, or AVIF when the config names it/);
+  });
 });

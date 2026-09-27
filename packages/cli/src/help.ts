@@ -26,8 +26,8 @@ upfly.config.json is read if there is one.
 const AUDIT = `Usage: upfly audit [dir] [options]
 
 Reports the images in the project, the references to them in the files it can read, the
-references that point at nothing, the images nothing references, and how much smaller each
-image would be as WebP.
+references that point at nothing, the images nothing references, and how much smaller the
+largest images would be as WebP, or AVIF when the config names it.
 It reads the project and changes nothing.
 
 Options:
