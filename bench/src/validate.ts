@@ -34,6 +34,7 @@ import {
   linkedPaths,
   renderReport,
 } from 'upfly-core';
+import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
 import { type Triaged, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
@@ -526,9 +527,7 @@ async function falseNegativeSweep(
     }
   }
 
-  return unaccounted.sort(
-    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.asset.localeCompare(b.asset),
-  );
+  return unaccounted.sort(byFileLineAsset);
 }
 
 async function* walk(directory: string): AsyncGenerator<string> {
@@ -862,9 +861,7 @@ function groupResidue(entries: readonly Triaged[]): ResidueGroup[] {
     });
   }
 
-  return groups.sort(
-    (a, b) => b.entries.length - a.entries.length || a.label.localeCompare(b.label),
-  );
+  return groups.sort(byGroupSize);
 }
 
 /** The shapes present in a group, so the label still says what kind of line it is. */
