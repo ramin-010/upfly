@@ -90,10 +90,9 @@ describe('framework fixtures', () => {
   });
 
   it.each(NAMES)('%s: every claimed source file parses', async (name) => {
-    // Discovery and reading only: `scanSources` records an adapter that throws as a
-    // `parse-failed` file rather than rejecting. A parse failure shows up in the exact
-    // `unscannedExtensions` each tree asserts below.
-    await expect(scan(name)).resolves.toBeDefined();
+    // `scanSources` records an adapter that throws as a `parse-failed` file rather than
+    // rejecting, so the list of such files is what shows a parse failure.
+    expect((await scan(name)).unscanned).toEqual([]);
   });
 
   it.each(NAMES)('%s: finds references', async (name) => {
