@@ -440,7 +440,7 @@ describe('buildReport', () => {
       const text = renderReport(both);
 
       expect(text).toContain('named in a file no adapter reads');
-      expect(text).not.toContain('could not resolve —');
+      expect(text).not.toContain('named by a path Upfly read but could not resolve');
       expect(text).toContain('src/components/Sponsors.astro — 1 asset');
       expect(text).toContain('named in src/data/logos.ts:80');
     });
@@ -2014,6 +2014,17 @@ describe('the references withheld when the serving root cannot be found', () => 
     if (diagnosis?.kind !== 'serving-root-unknown') throw new Error('no diagnosis');
     return { report, diagnosis };
   }
+
+  it('does not call the withheld paths nothing to fix', async () => {
+    // Declaring the serving root resolves them, and the diagnosis above says so.
+    const { report } = await diagnosed();
+    const text = renderReport(report);
+
+    expect(text).toContain(
+      'named by a path Upfly read but could not resolve; those files parse fine',
+    );
+    expect(text).not.toContain('nothing to fix');
+  });
 
   it('names every broken reference it counts, as a finding or under the diagnosis', async () => {
     // `byResolution` counts every broken reference, so each one has to be findable by

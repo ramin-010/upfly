@@ -602,7 +602,7 @@ Findings — 10 items
         src/img/favicon.png  70 B
           named in src/_includes/base.njk:4: favicon.png
 
-    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (4)
+    named by a path Upfly read but could not resolve; those files parse fine (4)
       src/css/site.css — 3 assets
         src/img/diagram.png  71.7 KB
           named in src/css/site.css:12: /img/diagram.png
@@ -915,7 +915,7 @@ Findings — 6 items
         src/img/favicon.png  70 B
           named in src/_includes/base.njk:4: favicon.png
 
-    named by a path Upfly read but could not resolve — nothing to fix; those files parse fine (1)
+    named by a path Upfly read but could not resolve; those files parse fine (1)
       src/posts/first.md — 1 asset
         src/img/templated.png  70 B
           named in src/posts/first.md:7: {{ site.url }}/img/templated.png
