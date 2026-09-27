@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { NO_REFERENCE_TO_FIND, htmlAdapter } from './adapters/html.js';
+import type { AliasMap } from './aliases.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
@@ -104,6 +105,7 @@ async function reportFor(
   });
 
   return buildReport({
+    aliases: { rules: [], skipped: [] },
     graph,
     audit: auditResult,
     discovery,
@@ -241,6 +243,7 @@ describe('buildReport', () => {
     function cappedReport() {
       const ROOT = '/repo';
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -325,6 +328,7 @@ describe('buildReport', () => {
       });
 
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [
@@ -404,6 +408,7 @@ describe('buildReport', () => {
       // something to do about it, and neither citation may be dropped. Spelled `.png`
       // so the report does not demote it as a vector.
       const both = buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [
@@ -461,6 +466,7 @@ describe('buildReport', () => {
 
     function reportWithCapped(n: number) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -552,6 +558,7 @@ describe('buildReport', () => {
       capped?: number;
       failed?: number;
       extraProbes?: readonly AssetProbe[];
+      aliases?: AliasMap;
       assets?: number;
       alsoAvif?: boolean;
       alsoLossless?: boolean;
@@ -641,6 +648,7 @@ describe('buildReport', () => {
         },
         sweep: { mentions: new Map(), skipped: [] },
         servingRoots: { dirs: ['public'], declared: true },
+        aliases: over.aliases ?? { rules: [], skipped: [] },
         ...(probes.length > 0 ? { probes } : {}),
       });
 
@@ -733,6 +741,26 @@ describe('buildReport', () => {
       expect(report.summary.unmeasuredAssets).toBe(3);
     });
 
+    it('lists every alias config it could not read, under its own label', () => {
+      const unread = 'extends "@acme/cfg", which could not be found, so its aliases were not read';
+      const cwd = 'the alias "@" at line 5 depends on the folder Vite runs in, so it was not read';
+      const report = reportOf({
+        aliases: {
+          rules: [],
+          skipped: [
+            { what: 'vite.config.ts', reason: cwd },
+            { what: 'apps/web/tsconfig.json', reason: unread },
+          ],
+        },
+      });
+
+      expect(report.skipped.filter((item) => item.stage === 'aliases')).toEqual([
+        { what: 'apps/web/tsconfig.json', stage: 'aliases', reason: unread },
+        { what: 'vite.config.ts', stage: 'aliases', reason: cwd },
+      ]);
+      expect(renderReport(report)).toContain('had path aliases Upfly could not read');
+    });
+
     it('says plainly that it measured everything when it did', () => {
       expect(headlineOf({ saving: 4_200_000, assets: 10 })).toContain(
         'measured across all 10 images',
@@ -757,6 +785,7 @@ describe('buildReport', () => {
 
     function sizeReport(findings: Finding[]) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings,
@@ -855,6 +884,7 @@ describe('buildReport', () => {
 
     function reportWith(probes: ReturnType<typeof probe>[]) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -961,6 +991,7 @@ describe('buildReport', () => {
       // could not handle and beside conversion messages, read as "why are we trying
       // to convert fonts?" They are not being converted at all.
       const report = buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -1060,6 +1091,7 @@ describe('buildReport', () => {
 
     function reportOf(references: readonly Reference[]) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -1162,6 +1194,7 @@ describe('buildReport', () => {
 
     function reportFrom(assets: ReturnType<typeof png>[], linked: string[], deadAssets: string[]) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({
           root: ROOT,
           assets,
@@ -1250,6 +1283,7 @@ describe('buildReport', () => {
 
     function reportWithUnread(unscannedFiles: UnscannedFile[]) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles }),
         audit: {
           findings: [],
@@ -1337,6 +1371,7 @@ describe('buildReport', () => {
 
     function reportOf(includeDiscarded: boolean) {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: discardedGraph(),
         audit: {
           findings: [],
@@ -1480,6 +1515,7 @@ describe('buildReport', () => {
         },
       ];
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -1607,6 +1643,7 @@ describe('buildReport', () => {
 
     function reportOf(findings: readonly Finding[], includeUnusedVectors = false): Report {
       return buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings,
@@ -1840,6 +1877,7 @@ describe('byResolvedVia: the field that says which links may be rewritten', () =
     );
 
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({ root: ROOT, assets: [ASSET], references, unscannedFiles: [] }),
       audit: {
         findings: [],
@@ -1938,6 +1976,7 @@ describe('the headline reads correctly at a count of one', () => {
     );
 
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({
         root: ROOT,
         assets: [linked, orphan],
@@ -1993,6 +2032,7 @@ describe('the serving roots the report discloses', () => {
 
   function reportWith(dirs: readonly string[], declared: boolean): Report {
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
       audit: {
         findings: [],
@@ -2221,6 +2261,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
     });
 
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph,
       audit: auditResult,
       discovery: {
@@ -2425,6 +2466,7 @@ describe('the assets a plan examined and did not convert', () => {
     include?: boolean;
   }) {
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({
         root: ROOT,
         assets: [
@@ -2613,6 +2655,7 @@ describe('the public-dir caveat counts what the report lists', () => {
 
   function reportWithDeadPublicAssets(): Report {
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({ root: ROOT, assets: [png, svg], references: [], unscannedFiles: [] }),
       audit: {
         findings: [
@@ -2675,6 +2718,7 @@ describe('the framework caveat at a count of one', () => {
   it('holds no verb or pronoun that has to agree with the count', () => {
     const ROOT = '/repo';
     const report = buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
       audit: {
         findings: [],
@@ -3106,6 +3150,7 @@ describe('what the ignore rules left out', () => {
 
   function reportExcluding(excludedRoots: ExcludedRoot[], excludedFiles: string[]) {
     return buildReport({
+      aliases: { rules: [], skipped: [] },
       graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
       audit: {
         findings: [],

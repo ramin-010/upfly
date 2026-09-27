@@ -149,7 +149,30 @@ describe('loadAliases: tsconfig', () => {
     const map = await load({ 'tsconfig.json': '{ "compilerOptions": { not json at all' });
 
     expect(map.rules).toEqual([]);
-    expect(map.skipped[0]?.reason).toContain('could not be parsed');
+    expect(map.skipped).toEqual([
+      { what: 'tsconfig.json', reason: 'could not be parsed, so its aliases were not read' },
+    ]);
+  });
+
+  it('says a config could not be read by its error code alone, never the path', async () => {
+    const error = Object.assign(
+      new Error(`EACCES: permission denied, open '${from('tsconfig.json')}'`),
+      {
+        code: 'EACCES',
+      },
+    );
+    const map = await loadAliases({
+      root: ROOT,
+      files: [{ path: from('tsconfig.json'), relative: 'tsconfig.json' }],
+      readFile: async () => {
+        throw error;
+      },
+      isFile: () => true,
+    });
+
+    expect(map.skipped).toEqual([
+      { what: 'tsconfig.json', reason: 'could not be read (EACCES), so its aliases were not read' },
+    ]);
   });
 });
 

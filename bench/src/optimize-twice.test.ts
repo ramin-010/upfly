@@ -138,6 +138,7 @@ describe('the audit after a keep-original run', () => {
         probeOptions: null,
       });
       const report = buildReport({
+        aliases: { rules: [], skipped: [] },
         graph: output.graph,
         audit: output.audit,
         discovery: output.discovery,

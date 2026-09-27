@@ -57,6 +57,7 @@ export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode>
     discovery: output.discovery,
     sweep: output.sweep,
     servingRoots: output.servingRoots,
+    aliases: output.aliases,
     ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeDiscarded: options.includeDiscarded,
     includeUnusedVectors: options.includeUnusedSvg,

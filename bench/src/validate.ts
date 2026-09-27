@@ -222,6 +222,7 @@ async function runPipeline(repo: RepoSpec, probed: boolean): Promise<PipelineRes
     discovery: output.discovery,
     sweep: output.sweep,
     servingRoots: output.servingRoots,
+    aliases: output.aliases,
     ...(output.probes === undefined ? {} : { probes: output.probes }),
     includeUnusedVectors: true,
     // The report names the file this run writes the libraries' own words to. A bare name

@@ -477,7 +477,9 @@ and its `dirname` and `filename`, `path.resolve`, `path.join`, `path.dirname`, `
 `new URL(s, base)`. A name bound more than once is off the list. A string starting with `/` is read
 from the Vite root. A relative string, a bare one, `process.cwd()` and a `path.resolve` with no
 absolute part are reported with their line: Vite reads the first from each importing file, the
-second is a package, and the others depend on the folder Vite runs in.
+second is a package, and the others depend on the folder Vite runs in. Each alias Upfly could not
+read, and each config it could not read or parse or whose `extends` it could not find, reaches the
+report's `skipped` list under the stage `aliases`, with no path and none of a library's own words.
 
 Two details that are easy to get wrong:
 

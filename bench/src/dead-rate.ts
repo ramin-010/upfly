@@ -137,6 +137,7 @@ async function main(): Promise<void> {
     publicDirs: options.publicDirs,
   });
   const report = buildReport({
+    aliases: { rules: [], skipped: [] },
     graph,
     audit: auditResult,
     discovery,

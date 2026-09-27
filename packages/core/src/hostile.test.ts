@@ -101,6 +101,7 @@ async function runEverything(root: string, options: { probe?: boolean } = {}) {
   });
 
   const report = buildReport({
+    aliases: { rules: [], skipped: [] },
     graph,
     audit: auditResult,
     discovery,

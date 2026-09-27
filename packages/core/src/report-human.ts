@@ -176,6 +176,7 @@ const STAGE_LABEL: Record<SkipStage, string> = {
   sweep: 'too large to search for asset filenames',
   citation: 'could not be re-read for a line number',
   measurement: 'could not be measured',
+  aliases: 'had path aliases Upfly could not read',
 };
 
 /**

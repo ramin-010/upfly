@@ -251,7 +251,7 @@ async function parseTsConfig(path: string, context: TsContext): Promise<ParsedCo
     if (resolved === null) {
       skipped.push({
         what: source,
-        reason: `extends "${target}", which could not be found — its aliases were not read`,
+        reason: `extends "${target}", which could not be found, so its aliases were not read`,
       });
       continue;
     }
@@ -464,11 +464,9 @@ async function parseObject(
     // trailing commas that make `JSON.parse` throw.
     const ast = parseExpression(text.replace(/^﻿/, ''), {});
     return ast.type === 'ObjectExpression' ? ast : null;
-  } catch (error) {
-    skipped.push({
-      what: source,
-      reason: `could not be parsed, so its aliases were not read: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch {
+    // The parser's own words change between versions and are no report's business.
+    skipped.push({ what: source, reason: 'could not be parsed, so its aliases were not read' });
     return null;
   }
 }
@@ -482,9 +480,11 @@ async function readOrSkip(
   try {
     return await options.readFile(path);
   } catch (error) {
+    // The error code alone: the message names the absolute path, which no report carries.
+    const code = error instanceof Error && 'code' in error ? String(error.code) : null;
     skipped.push({
       what: source,
-      reason: `could not be read, so its aliases were not read: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `could not be read${code === null ? '' : ` (${code})`}, so its aliases were not read`,
     });
     return null;
   }

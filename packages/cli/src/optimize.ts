@@ -365,6 +365,7 @@ function notes(options: OptimizeOptions, git: GitState, unfinished: Refusal | nu
 function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, outcome: Outcome) {
   const { pipeline, optimize: run } = result;
   const report = buildReport({
+    aliases: pipeline.aliases,
     graph: pipeline.graph,
     audit: pipeline.audit,
     discovery: pipeline.discovery,

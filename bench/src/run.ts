@@ -421,6 +421,7 @@ async function main(): Promise<void> {
   );
   const [, reportMs] = await timed('report', () =>
     buildReport({
+      aliases: { rules: [], skipped: [] },
       graph,
       audit: auditResult,
       discovery,

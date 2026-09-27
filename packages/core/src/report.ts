@@ -11,6 +11,7 @@
 
 import { NO_REFERENCE_TO_FIND } from './adapters/html.js';
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
+import type { AliasMap } from './aliases.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
 import { excludedByRule } from './discover.js';
 import { formatBytes, plural } from './format.js';
@@ -352,7 +353,7 @@ export interface NotExercised {
 }
 
 /** Where a skip happened, so a reader can tell a parse failure from a bad symlink. */
-export type SkipStage = 'discovery' | 'scan' | 'sweep' | 'citation' | 'measurement';
+export type SkipStage = 'discovery' | 'scan' | 'sweep' | 'citation' | 'measurement' | 'aliases';
 
 /** One thing the engine declined to do, and why. */
 export interface SkippedItem {
@@ -562,6 +563,11 @@ export interface ReportInput {
    * so no caller can build a report that passes a guessed root off as a declared one.
    */
   readonly servingRoots: ServingRoots;
+  /**
+   * The aliases the resolver was given. Required, so every alias setting Upfly found and could
+   * not read reaches `skipped`.
+   */
+  readonly aliases: AliasMap;
   /** Absent for a `--no-probe` run. */
   readonly probes?: readonly AssetProbe[];
   /**
@@ -1086,6 +1092,10 @@ function collectSkips(input: ReportInput): SkippedItem[] {
 
   for (const skip of input.sweep.skipped) {
     items.push({ what: skip.relative, stage: 'sweep', reason: skip.reason });
+  }
+
+  for (const skip of input.aliases.skipped) {
+    items.push({ what: skip.what, stage: 'aliases', reason: skip.reason });
   }
 
   for (const source of input.audit.unreadableSources) {

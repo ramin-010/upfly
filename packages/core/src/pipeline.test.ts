@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type PipelineProgress, runPipeline, servingRootsFor } from './pipeline.js';
+import { buildReport } from './report.js';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -72,6 +73,50 @@ describe('runPipeline reads an extends the way TypeScript does', () => {
     expect(aliases.skipped).toEqual([
       { what: 'web/tsconfig.json', reason: expect.stringContaining('could not be found') },
     ]);
+  });
+});
+
+describe('the report of a pipeline run', () => {
+  it('names each alias setting it could not read, with its file and line, and no path', async () => {
+    const root = project({
+      'tsconfig.json': '{ "extends": "@acme/uninstalled" }',
+      'vite.config.ts': [
+        "import path from 'node:path';",
+        'export default {',
+        "  resolve: { alias: { '@': path.resolve(process.cwd(), 'src') } },",
+        '};',
+      ].join(String.fromCharCode(10)),
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    const report = buildReport({
+      graph: output.graph,
+      audit: output.audit,
+      discovery: output.discovery,
+      sweep: output.sweep,
+      servingRoots: output.servingRoots,
+      aliases: output.aliases,
+    });
+
+    expect(report.skipped.filter((item) => item.stage === 'aliases')).toEqual([
+      {
+        what: 'tsconfig.json',
+        stage: 'aliases',
+        reason:
+          'extends "@acme/uninstalled", which could not be found, so its aliases were not read',
+      },
+      {
+        what: 'vite.config.ts',
+        stage: 'aliases',
+        reason: 'the alias "@" at line 3 depends on the folder Vite runs in, so it was not read',
+      },
+    ]);
+    expect(JSON.stringify(report.skipped)).not.toContain(root.slice(0, 12));
   });
 });
 
