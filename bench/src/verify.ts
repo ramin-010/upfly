@@ -453,7 +453,7 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
     subject: asset,
     verdict: 'confirmed-genuine',
     evidence: [
-      `grepped ${index.filesGrepped} files including pruned and ignored directories:`,
+      `grepped ${index.filesGrepped} files, including directories the project's ignore file excludes:`,
       `no mention of ${posix.basename(asset)} anywhere, under any image extension`,
     ],
   };
@@ -698,12 +698,15 @@ function pushHit(into: Map<string, Hit[]>, key: string, hit: Hit): void {
 }
 
 /**
- * Directories the oracle does not index: version control, dependencies and generated
- * output. A stale bundle can name an asset the source no longer uses, and a dependency can
- * hold a user's filename by coincidence; either would call a correct `dead` false. Minified
- * bundles are also where the filename pattern is slowest.
+ * Directories the oracle does not index: every directory the engine prunes by default
+ * (version control, dependencies, generated output and Upfly's own records), which a test
+ * holds it to. A stale bundle can name an asset the source no longer uses, a dependency can
+ * hold a user's filename by coincidence, and Upfly's manifests name every file it touched;
+ * any of them would call a correct `dead` false. Minified bundles are also where the
+ * filename pattern is slowest. The list is the oracle's own, not imported from the engine.
  */
-const ORACLE_SKIPS: ReadonlySet<string> = new Set([
+export const ORACLE_SKIPS: ReadonlySet<string> = new Set([
+  '.astro',
   '.git',
   'node_modules',
   '.next',
@@ -712,6 +715,8 @@ const ORACLE_SKIPS: ReadonlySet<string> = new Set([
   '.output',
   '.turbo',
   '.cache',
+  '.parcel-cache',
+  '.upfly',
   'dist',
   'build',
   'out',

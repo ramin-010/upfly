@@ -9,10 +9,11 @@
 
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { DEFAULT_IGNORED_DIRECTORIES } from 'upfly-core';
 import type { BrokenFinding, DeadFinding, Mention, PossiblyDeadFinding, Report } from 'upfly-core';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { verifyFindings } from './verify.js';
+import { ORACLE_SKIPS, verifyFindings } from './verify.js';
 
 let root = '';
 
@@ -187,5 +188,30 @@ describe('verifyHedge asks every spelling too', () => {
     ]);
 
     expect(result.items[0]?.verdict).toBe('confirmed-false');
+  });
+});
+
+describe('the oracle skips every folder the engine prunes', () => {
+  // A mention in generated output or in Upfly's own records is no use of the image: it
+  // would make a correct dead finding look false.
+  it.each(['.astro/data-store.json', '.upfly/manifest.json'])(
+    'does not let a mention in %s call a correct dead finding false',
+    async (mention) => {
+      const own = mkdtempSync(join(tmpdir(), 'verify-pruned-'));
+      mkdirSync(join(own, 'img'), { recursive: true });
+      writeFileSync(join(own, 'img', 'lonely.png'), 'x');
+      mkdirSync(join(own, dirname(mention)), { recursive: true });
+      writeFileSync(join(own, mention), '{ "image": "lonely.png" }');
+
+      const result = await verifyFindings(own, deadReport('img/lonely.png'), ['']);
+
+      expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+    },
+  );
+
+  it('holds every name the engine prunes', () => {
+    for (const name of DEFAULT_IGNORED_DIRECTORIES) {
+      expect([name, ORACLE_SKIPS.has(name)]).toEqual([name, true]);
+    }
   });
 });

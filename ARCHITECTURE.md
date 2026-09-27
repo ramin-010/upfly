@@ -2127,8 +2127,9 @@ The check differs from the engine on purpose in three ways:
   `existsSync`, which is case-insensitive on Windows and would call a `broken` finding false when
   the reference breaks on a case-sensitive filesystem.
 
-It does not index version control, dependencies or generated output (`ORACLE_SKIPS`). Generated
-output is derived from source: while the source names an asset the check finds it there, and a stale
+It does not index version control, dependencies, generated output or Upfly's own records
+(`ORACLE_SKIPS`): every directory the engine prunes by default, which a test holds it to, in a list
+of its own rather than the engine's. Generated output is derived from source: while the source names an asset the check finds it there, and a stale
 bundle adds only a mention of an asset the source no longer uses, which would call a correct `dead`
 false. A user's filename inside a dependency is a coincidence rather than a reference. And minified
 bundles are the filename pattern's slowest input, because it is quadratic over a long run of word
