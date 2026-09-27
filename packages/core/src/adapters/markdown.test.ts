@@ -1,6 +1,7 @@
 import { type DefaultTreeAdapterMap, html, parse } from 'parse5';
 import { describe, expect, it, vi } from 'vitest';
 import { UpflyError } from '../errors.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve.js';
 import type { RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
 import { markdownAdapter, maskInactiveRegions } from './markdown.js';
@@ -270,11 +271,31 @@ describe('markdownAdapter', () => {
       ['a misspelled name', '![a](/img/caf&eacut;.png)'],
       ['a reference beside a percent-escape', '![a](/img/caf&eacute;%20x.png)'],
       ['a link reference definition', '[a]: /img/caf&eacut;.png'],
+      // `&period;` is a dot, so only the reading that decodes it shows `.png`.
+      ['a name whose extension shows once read', '![a](/im&x;g/a&period;png)'],
     ])('refuses %s rather than look up the text as written', (_name, source) => {
       const references = find(source);
       expect(references).toHaveLength(1);
       expect(references[0]?.ceiling).toBe('unsafe');
       expect(references[0]?.note).toMatch(/cannot be fully decoded/);
+    });
+
+    // `&T;` names no character, but no reading of these ends in an image extension, so they
+    // name no image whatever it meant, and the resolver drops them as it drops any such link.
+    it.each([
+      ['a link', '[AT&T](/wiki/AT&T;)'],
+      ['a link reference definition', '[wiki]: /wiki/AT&T;'],
+    ])('keeps %s that no reading makes an image, and the resolver drops it', (_name, source) => {
+      const references = find(source);
+      const resolved = resolveReferences(references, {
+        root: '/project',
+        assets: [],
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        exists: () => false,
+      });
+
+      expect(resolved.map((reference) => reference.resolution)).toEqual([]);
+      expect(references.map((reference) => reference.ceiling)).toEqual(['high']);
     });
 
     it('leaves a bare ampersand in a file name alone', () => {

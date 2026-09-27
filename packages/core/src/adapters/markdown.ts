@@ -22,6 +22,7 @@ import {
   holdsUndecodableMarkdownEscape,
   isAsciiPunctuation,
   isExternalUrl,
+  markdownDestinationCouldNameAnImage,
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
@@ -644,8 +645,10 @@ function addReference(
 
   // CommonMark decodes backslash escapes and character references in a destination, and
   // the resolver tries that reading. When no spelling decodes them all the file is unknown,
-  // and looking up the text as written would report a miss as broken.
-  if (holdsUndecodableMarkdownEscape(path)) {
+  // and looking up the text as written would report a miss as broken. A destination none of
+  // whose readings ends in an image extension, such as `/wiki/AT&T;`, names no image either
+  // way, so it is kept, and the resolver drops it as it drops any link to a page.
+  if (holdsUndecodableMarkdownEscape(path) && markdownDestinationCouldNameAnImage(path)) {
     references.push({
       file,
       start,

@@ -6,6 +6,7 @@
  */
 
 import { parseFragment } from 'parse5';
+import { extensionOf, isImageExtension } from '../paths.js';
 import type { ReferenceKind } from '../types.js';
 
 /**
@@ -415,8 +416,11 @@ function decodeCharacterReferences(text: string): string | null {
  * A backslash before an ASCII punctuation character is removed and character references
  * are decoded, in one pass (CommonMark 0.31.2, sections 2.4 and 2.5): `my\_photo.png` reads
  * `my_photo.png`, and `\&eacute;` reads `&eacute;`, since an escaped `&` starts no reference.
+ *
+ * With `keepUndecodable`, a character reference the decoder cannot read stays as written, as
+ * CommonMark keeps a name it does not know, so the result is never `null`.
  */
-export function decodeMarkdownDestination(text: string): string | null {
+export function decodeMarkdownDestination(text: string, keepUndecodable = false): string | null {
   const decoded: string[] = [];
   let index = 0;
 
@@ -438,8 +442,8 @@ export function decodeMarkdownDestination(text: string): string | null {
     }
 
     const value = decodeOneReference(match[1] ?? '');
-    if (value === null) return null;
-    decoded.push(value);
+    if (value === null && !keepUndecodable) return null;
+    decoded.push(value ?? match[0]);
     index += match[0].length;
   }
 
@@ -492,6 +496,19 @@ export function holdsUndecodableMarkdownEscape(path: string): boolean {
   const decoded = decodeMarkdownDestination(path);
   if (decoded === null) return true;
   return decoded !== path && PERCENT_ESCAPE.test(path);
+}
+
+/**
+ * Whether some reading of a Markdown destination ends in an image extension: as written, or
+ * as CommonMark reads it with a reference the decoder cannot read kept as text, each also
+ * percent-decoded. These readings include every spelling the resolver tries, and it drops a
+ * path none of whose spellings shows an image extension.
+ */
+export function markdownDestinationCouldNameAnImage(path: string): boolean {
+  const read = decodeMarkdownDestination(path, true) ?? path;
+  return [path, decodePercent(path), read, decodePercent(read)].some(
+    (reading) => reading !== null && isImageExtension(extensionOf(reading)),
+  );
 }
 
 /**

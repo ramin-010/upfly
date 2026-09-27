@@ -21,6 +21,7 @@ import {
   holdsUndecodableMarkdownEscape,
   interpolationChunks,
   isExternalUrl,
+  markdownDestinationCouldNameAnImage,
   provablyNotAFile,
   spell,
   spellingsOf,
@@ -441,6 +442,29 @@ describe('decodeMarkdownDestination', () => {
 
   it('gives no reading when a character reference cannot be decoded', () => {
     expect(decodeMarkdownDestination('/img/caf&eacut;.png')).toBeNull();
+  });
+
+  it('keeps a reference it cannot decode as written when asked, as CommonMark keeps it', () => {
+    expect(decodeMarkdownDestination('/im&x;g/a&period;png', true)).toBe('/im&x;g/a.png');
+  });
+});
+
+/** What the markdown adapter asks before it refuses a destination it cannot fully decode. */
+describe('markdownDestinationCouldNameAnImage', () => {
+  // Each path ends in an image extension in that reading alone: `&sol;` reads as a slash, and
+  // a lone `%` leaves nothing percent-decoded.
+  it.each([
+    ['as written', '/img/100%&sol;.png'],
+    ['as written, percent-decoded', '/img/a&sol;%2Epng'],
+    ['as CommonMark reads it', '/im&x;g/100%a&period;png'],
+    ['as CommonMark reads it, percent-decoded', '/im&x;g/a&percnt;2Epng'],
+  ])('is true when the path ends in an image extension %s', (_name, path) => {
+    expect(markdownDestinationCouldNameAnImage(path)).toBe(true);
+  });
+
+  it('is false when no reading ends in one', () => {
+    expect(markdownDestinationCouldNameAnImage('/wiki/AT&T;')).toBe(false);
+    expect(markdownDestinationCouldNameAnImage('/wiki/caf&eacute;%20x')).toBe(false);
   });
 });
 

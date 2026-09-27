@@ -579,10 +579,13 @@ The spellings are tried one at a time, so a path that needs both decodings, such
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
 reference the decoder cannot read, or references or backslash escapes beside a percent-escape
 (`my\_photo%20x.png`), is therefore reported as `unsafe` by the Markdown adapter, a refusal with a
-reason instead of a ceiling that leads to a lookup. The HTML adapter refuses the same
-character-reference paths, and also any whose decoded spelling differs from parse5's reading of the
-attribute, as when a legacy name such as `&copy` is written without its semicolon: parse5 still
-decodes it before a `.`, and our decoder does not.
+reason instead of a ceiling that leads to a lookup. That holds only while some reading of the path
+ends in an image extension: as written or as CommonMark reads it, where an unknown name stays
+text, each also percent-decoded. `/wiki/AT&T;` shows none, so it names no image whatever `&T;`
+meant; it is kept like any other link, and the resolver drops it. The HTML adapter refuses the same
+character-reference paths, extension or not, and also any whose decoded spelling differs from
+parse5's reading of the attribute, as when a legacy name such as `&copy` is written without its
+semicolon: parse5 still decodes it before a `.`, and our decoder does not.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
