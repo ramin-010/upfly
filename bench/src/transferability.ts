@@ -12,7 +12,7 @@
  * Read-only. Usage: `pnpm --filter upfly-bench run transferability`
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { stdout } from 'node:process';
 import {
@@ -62,7 +62,7 @@ async function classify(root: string, publicDirs: readonly string[]) {
     root: discovery.root,
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
     readFile: readFileText,
-    exists: (path: string) => existsSync(path),
+    isFile: (path: string) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
   });
   const references = resolveReferences(scanned.references, {
     root: discovery.root,

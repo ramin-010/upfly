@@ -457,8 +457,11 @@ That minimum is judgement rather than measurement.
 
 `@/assets/logo.png` resolves only if the project declares that alias somewhere the engine can read
 **without running anything**. `loadAliases` parses `tsconfig`/`jsconfig` `paths` (following
-`extends`, including by name into `node_modules`) and a `vite.config.*` `resolve.alias`, and hands
-the resolver a map; the resolver stays pure.
+`extends` to the file TypeScript would load: a path starting `./` or `../` names a file, `.json`
+added when missing, and anything else is a package in `node_modules`, read through its `tsconfig`
+field, its `tsconfig.json`, or a path inside it; a folder is never a config and `exports` is not
+followed) and a `vite.config.*` `resolve.alias`, and hands the resolver a map; the resolver stays
+pure.
 
 **A config is read statically or not at all, and that is a hard line rather than a trade-off.**
 Every `resolve.alias` in the validation corpus is `'@': path.resolve(__dirname, './src')`, a

@@ -20,7 +20,7 @@ function fs(files: Record<string, string>) {
       if (text === undefined) throw new Error(`ENOENT: ${path}`);
       return text;
     },
-    exists: (path: string) => byPosix.has(toPosix(path)),
+    isFile: (path: string) => byPosix.has(toPosix(path)),
   };
 }
 
@@ -29,10 +29,10 @@ async function load(
   files: Record<string, string>,
   hidden: readonly string[] = [],
 ): Promise<AliasMap> {
-  const { files: list, readFile, exists } = fs(files);
+  const { files: list, readFile, isFile } = fs(files);
   const unseen = new Set(hidden.map((relative) => toPosix(resolve(ROOT, relative))));
   const discovered = list.filter((file) => !unseen.has(file.path));
-  return loadAliases({ root: ROOT, files: discovered, readFile, exists });
+  return loadAliases({ root: ROOT, files: discovered, readFile, isFile });
 }
 
 const from = (relative: string) => toPosix(resolve(ROOT, relative));
@@ -108,7 +108,7 @@ describe('loadAliases: tsconfig', () => {
     // Pruning `node_modules` keeps it out of the asset graph; it does not forbid reading
     // it. The config there is not in the `files` list, so only the explicit `extends`
     // makes it reachable, which is what this tests.
-    const { readFile, exists } = fs({
+    const { readFile, isFile } = fs({
       'tsconfig.json': '{ "extends": "astro/tsconfigs/strict" }',
       'node_modules/astro/tsconfigs/strict.json':
         '{ "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }',
@@ -117,7 +117,7 @@ describe('loadAliases: tsconfig', () => {
       root: ROOT,
       files: [{ path: from('tsconfig.json'), relative: 'tsconfig.json' }],
       readFile,
-      exists,
+      isFile,
     });
 
     expect(map.rules).toHaveLength(1);
@@ -260,6 +260,54 @@ describe('loadAliases: an inherited paths', () => {
 
     expect(expandAlias(map, '~/x.png', from('packages/ui/a.ts'))).toEqual([from('shared/x.png')]);
     expect(expandAlias(map, '~/x.png', from('apps/web/a.ts'))).toEqual([]);
+  });
+});
+
+/**
+ * An `extends` names the file TypeScript would load. A relative or rooted path names a file,
+ * `.json` added when missing; anything else is a package in `node_modules`.
+ */
+describe('loadAliases: finding an extends', () => {
+  const PATHS = '{ "compilerOptions": { "paths": { "@/*": ["${configDir}/src/*"] } } }';
+
+  it.each([
+    [
+      'the tsconfig field of its package.json',
+      '@acme/cfg',
+      {
+        'node_modules/@acme/cfg/package.json': '{ "tsconfig": "./configs/base.json" }',
+        'node_modules/@acme/cfg/configs/base.json': PATHS,
+      },
+    ],
+    ['its tsconfig.json', '@tsconfig/x', { 'node_modules/@tsconfig/x/tsconfig.json': PATHS }],
+    [
+      'the tsconfig.json of a folder inside it',
+      '@acme/cfg/react',
+      { 'node_modules/@acme/cfg/react/tsconfig.json': PATHS },
+    ],
+  ])('finds a package through %s', async (_how, target, installed) => {
+    const map = await load(
+      { 'tsconfig.json': `{ "extends": "${target}" }`, ...installed },
+      Object.keys(installed),
+    );
+
+    expect(map.skipped).toEqual([]);
+    expect(expandAlias(map, '@/x.png', from('a.ts'))).toEqual([from('src/x.png')]);
+  });
+
+  it('reads a path with no ./ as a package, as TypeScript does', async () => {
+    const map = await load(
+      {
+        'tsconfig.json': '{ "extends": ".nuxt/tsconfig.json" }',
+        '.nuxt/tsconfig.json': '{ "compilerOptions": { "paths": { "~/*": ["../*"] } } }',
+      },
+      ['.nuxt/tsconfig.json'],
+    );
+
+    expect(map.rules).toEqual([]);
+    expect(map.skipped).toEqual([
+      { what: 'tsconfig.json', reason: expect.stringContaining('could not be found') },
+    ]);
   });
 });
 

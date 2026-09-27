@@ -108,7 +108,7 @@ const aliases = await loadAliases({
   root: discovery.root,
   files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
   readFile: readFileText,
-  exists: (path) => existsSync(path),
+  isFile: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
 });
 const resolveUnder = (servingRoots) =>
   resolveReferences(scanned.references, {

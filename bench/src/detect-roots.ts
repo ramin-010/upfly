@@ -10,7 +10,7 @@
  * disagreement costs anything. See "Serving roots" in ARCHITECTURE.md.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv, stdout } from 'node:process';
@@ -91,7 +91,7 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     root: discovery.root,
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
     readFile: readFileText,
-    exists: (path) => existsSync(path),
+    isFile: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
   });
 
   const resolveWith = (servingRoots: ServingRoots): readonly Reference[] =>

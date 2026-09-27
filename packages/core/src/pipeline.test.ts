@@ -27,6 +27,54 @@ function site(): string {
   return root;
 }
 
+/** A project outside the workspace holding exactly these files. */
+function project(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), 'upfly-pipeline-'));
+  roots.push(root);
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  return root;
+}
+
+describe('runPipeline reads an extends the way TypeScript does', () => {
+  const run = (root: string) =>
+    runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+  it('finds a package by its tsconfig.json, never reading the folder as a config', async () => {
+    const root = project({
+      'tsconfig.json': '{ "extends": "@tsconfig/x" }',
+      'node_modules/@tsconfig/x/tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@/*": ["${configDir}/src/*"] } } }',
+    });
+
+    const { aliases } = await run(root);
+
+    expect(aliases.skipped).toEqual([]);
+    expect(aliases.rules.map((rule) => [rule.prefix, rule.targets.length])).toEqual([['@/', 1]]);
+    expect(aliases.rules[0]?.targets[0]?.endsWith('/src')).toBe(true);
+  });
+
+  it('does not take a relative extends that names a folder for the config inside it', async () => {
+    const root = project({
+      'web/tsconfig.json': '{ "extends": "./configs" }',
+      'web/configs/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }',
+    });
+
+    const { aliases } = await run(root);
+
+    expect(aliases.skipped).toEqual([
+      { what: 'web/tsconfig.json', reason: expect.stringContaining('could not be found') },
+    ]);
+  });
+});
+
 describe('runPipeline', () => {
   it('reports each stage as it finishes, with what it counted', async () => {
     const events: PipelineProgress[] = [];

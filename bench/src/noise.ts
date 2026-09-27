@@ -14,7 +14,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform } from 'node:os';
 import { join } from 'node:path';
@@ -89,7 +89,7 @@ async function buildOnce(root: string, declared: ServingRoots | null): Promise<n
     root: discovery.root,
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
     readFile: readFileText,
-    exists: (path) => existsSync(path),
+    isFile: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
   });
   const servingRoots = declared ?? detectServingRoots(discovery);
   const references = resolveReferences(scanned.references, {

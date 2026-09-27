@@ -62,8 +62,11 @@ export interface LoadAliasesOptions {
   /** Every file `discover` found, claimed or not, so there is no second walk. */
   readonly files: readonly { readonly path: string; readonly relative: string }[];
   readonly readFile: ReadFilePort;
-  /** Whether a path exists, for `extends` targets. Same port shape as the resolver's. */
-  readonly exists: (path: string) => boolean;
+  /**
+   * Whether a path is a file, for `extends` targets. A folder answers `false`: TypeScript
+   * never reads a folder as a config.
+   */
+  readonly isFile: (path: string) => boolean;
 }
 
 const TS_CONFIG = /^(tsconfig(\.[^/]+)?\.json|jsconfig\.json)$/;
@@ -73,7 +76,7 @@ const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
  * Read every alias the project declares. An alias that cannot be read statically is
  * returned in `skipped` with a reason, never evaluated.
  *
- * The filesystem is reached only through `readFile` and `exists`, so this can be tested
+ * The filesystem is reached only through `readFile` and `isFile`, so this can be tested
  * against an in-memory map.
  */
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
@@ -243,7 +246,7 @@ async function parseTsConfig(path: string, context: TsContext): Promise<ParsedCo
   const bases: string[] = [];
   const extendsValue = objectProperty(object, 'extends');
   for (const target of extendsValue === null ? [] : extendsTargets(extendsValue)) {
-    const resolved = resolveExtends(target, dirname(path), options);
+    const resolved = await resolveExtends(target, dirname(path), options);
     if (resolved === null) {
       skipped.push({
         what: source,
@@ -320,34 +323,76 @@ function extendsTargets(node: t.Expression): readonly string[] {
 }
 
 /**
- * Where an `extends` points.
+ * The config an `extends` names, found as TypeScript finds it, or `null`.
  *
- * A relative or absolute target is taken literally. A bare specifier is a package, found by
- * looking inside `node_modules`. That is allowed because the path is explicit and named:
- * `discover`'s prune keeps that tree out of the asset graph, it does not forbid opening a
- * file there.
+ * A rooted path, or one starting `./` or `../`, names a file, with `.json` added when that
+ * file is missing; a folder is never a config. Anything else is a package, looked for in
+ * `node_modules` from the config's folder up: its own config (the `tsconfig` field of its
+ * `package.json`, else its `tsconfig.json`), or a path inside it (that file, `.json` added,
+ * or that folder's `tsconfig.json`). A package's `exports` map is not followed. Reading a
+ * file in `node_modules` is allowed because the path is explicit and named: `discover`'s
+ * prune keeps that tree out of the asset graph, it does not forbid opening a file there.
  */
-function resolveExtends(target: string, from: string, options: LoadAliasesOptions): string | null {
-  const direct = target.startsWith('.') || isAbsolute(target) ? resolvePath(from, target) : null;
-
-  if (direct !== null) {
-    for (const candidate of [direct, `${direct}.json`]) {
-      if (options.exists(candidate)) return candidate;
-    }
-    return null;
+async function resolveExtends(
+  target: string,
+  from: string,
+  options: LoadAliasesOptions,
+): Promise<string | null> {
+  const written = target.replaceAll('\\', '/');
+  if (isAbsolute(written) || written.startsWith('./') || written.startsWith('../')) {
+    return fileOrJson(resolvePath(from, written), options);
   }
 
-  // A package specifier. Walk up looking for `node_modules/<target>`, adding `.json`
-  // the way TypeScript does when the target names no extension.
+  const [first = '', second = '', ...rest] = written.split('/');
+  const scoped = first.startsWith('@');
+  const name = scoped ? `${first}/${second}` : first;
+  const inside = (scoped ? rest : [second, ...rest]).filter((part) => part !== '').join('/');
+
   let directory = from;
   for (;;) {
-    const base = resolvePath(directory, 'node_modules', target);
-    for (const candidate of [base, `${base}.json`]) {
-      if (options.exists(candidate)) return candidate;
-    }
+    const root = resolvePath(directory, 'node_modules', name);
+    const found = await packageConfig(root, inside, options);
+    if (found !== null) return found;
     const parent = dirname(directory);
     if (parent === directory) return null;
     directory = parent;
+  }
+}
+
+/** The config a package at `root` offers, or the one at `inside` it. */
+async function packageConfig(
+  root: string,
+  inside: string,
+  options: LoadAliasesOptions,
+): Promise<string | null> {
+  if (inside !== '') {
+    const path = resolvePath(root, inside);
+    return fileOrJson(path, options) ?? fileOrNull(resolvePath(path, 'tsconfig.json'), options);
+  }
+  const field = await tsconfigField(resolvePath(root, 'package.json'), options);
+  const declared = field === null ? null : fileOrJson(resolvePath(root, field), options);
+  return declared ?? fileOrNull(resolvePath(root, 'tsconfig.json'), options);
+}
+
+/** `path` when it is a file, else `path.json` when `path` has no such ending and that is. */
+function fileOrJson(path: string, options: LoadAliasesOptions): string | null {
+  if (options.isFile(path)) return path;
+  return !path.endsWith('.json') ? fileOrNull(`${path}.json`, options) : null;
+}
+
+function fileOrNull(path: string, options: LoadAliasesOptions): string | null {
+  return options.isFile(path) ? path : null;
+}
+
+/** The `tsconfig` field of a `package.json`, when the file has one that is a string. */
+async function tsconfigField(path: string, options: LoadAliasesOptions): Promise<string | null> {
+  if (!options.isFile(path)) return null;
+  try {
+    const manifest: unknown = JSON.parse(await options.readFile(path));
+    if (typeof manifest !== 'object' || manifest === null || !('tsconfig' in manifest)) return null;
+    return typeof manifest.tsconfig === 'string' ? manifest.tsconfig : null;
+  } catch {
+    return null;
   }
 }
 

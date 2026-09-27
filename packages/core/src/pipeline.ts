@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { type AliasMap, loadAliases } from './aliases.js';
@@ -161,7 +161,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     root: discovery.root,
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
     readFile: readFileText,
-    exists: (path) => existsSync(path),
+    isFile: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
   });
   const servingRoots = input.servingRoots(discovery, scanned);
   const references = resolveReferences(scanned.references, {
