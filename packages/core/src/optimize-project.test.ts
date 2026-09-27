@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -124,6 +124,57 @@ describe('a source file saved after the scan read it', () => {
     await expect(run).rejects.toMatchObject({ code: 'TRANSACTION_FOREIGN_CHANGE' });
     expect(planned).toContain('index.html');
     expect(await readFile(page, 'utf8')).toBe(saved);
+  });
+});
+
+describe('an original that a page the run excludes still shows', () => {
+  // `--exclude` and `.upflyignore` limit what a run changes. The search a delete makes
+  // first reads past them, or the page they left out loses its picture while the run
+  // reports that every reference to it moved.
+  const OLD_PAGE = '<!doctype html>\n<img src="../images/logo.png" alt="Logo" />\n';
+
+  async function replaceIn(root: string, extraIgnores?: readonly string[]) {
+    return optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+      ...(extraIgnores === undefined ? {} : { extraIgnores }),
+    });
+  }
+
+  it.each([
+    ['a directory left out with --exclude', ['legacy'], null],
+    ['a directory listed in .upflyignore', undefined, 'legacy/\n'],
+    ['one file left out with --exclude', ['legacy/old.html'], null],
+  ] as const)('stays when %s names it', async (_how, extraIgnores, ignoreFile) => {
+    const root = await copy();
+    await mkdir(join(root, 'legacy'));
+    await writeFile(join(root, 'legacy/old.html'), OLD_PAGE);
+    if (ignoreFile !== null) await writeFile(join(root, '.upflyignore'), ignoreFile);
+
+    const { optimize } = await replaceIn(root, extraIgnores);
+
+    expect(await readFile(join(root, 'legacy/old.html'), 'utf8')).toBe(OLD_PAGE);
+    expect(await files(root)).toContain('images/logo.png');
+    const declined = optimize.plan.declined.find((entry) => entry.path === 'images/logo.png');
+    expect(declined?.reason).toContain('legacy/old.html:2');
+  });
+
+  it('is still deleted when only a directory pruned by name, such as node_modules, names it', async () => {
+    // Dependencies, caches and build output hold none of the project's own pages, and build
+    // output is made again from the sources the run reads, so the search leaves them out.
+    const root = await copy();
+    await mkdir(join(root, 'node_modules/theme'), { recursive: true });
+    await writeFile(join(root, 'node_modules/theme/old.html'), OLD_PAGE);
+
+    const { optimize } = await replaceIn(root);
+
+    expect(optimize.plan.conversions.map((conversion) => conversion.asset)).toContain(
+      'images/logo.png',
+    );
+    expect(await files(root)).not.toContain('images/logo.png');
   });
 });
 

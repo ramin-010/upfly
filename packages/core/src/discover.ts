@@ -93,6 +93,7 @@ interface WalkState {
   readonly excludedRoots: ExcludedRoot[];
   readonly unscannedFiles: UnscannedFile[];
   ignoredCount: number;
+  readonly excludedFiles: string[];
 }
 
 /**
@@ -115,6 +116,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     excludedRoots: [],
     unscannedFiles: [],
     ignoredCount: 0,
+    excludedFiles: [],
   };
   const ignoreFileName = options.ignoreFile ?? IGNORE_FILE_NAME;
   const ignoreFilePath = join(root, ignoreFileName);
@@ -129,9 +131,64 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     sourceFiles: state.sourceFiles.sort(byRelativePath),
     directories: state.directories.sort(compareStrings),
     ignoredCount: state.ignoredCount,
+    excludedFiles: state.excludedFiles.sort(compareStrings),
     skipped: state.skipped.sort(byRelativePath),
     excludedRoots: state.excludedRoots.sort(byRelativePath),
     unscannedFiles: state.unscannedFiles.sort(byRelativePath),
+  };
+}
+
+/** The files a run's rules kept it from reading, for the search a delete makes first. */
+export interface ExcludedFiles {
+  /** POSIX-relative and sorted, raster images left out. */
+  readonly files: readonly string[];
+  /** Each directory inside an excluded one that could not be listed, with the error code. */
+  readonly unread: readonly { readonly file: string; readonly reason: string }[];
+}
+
+/**
+ * Every file an ignore rule kept out of the walk: those it excluded by name, and everything
+ * under a directory it excluded.
+ *
+ * Only the search before `replace` deletes an original reads these. An exclusion limits
+ * what a run changes, not what it checks before removing a file that a page it left out
+ * may still show. Directories pruned by name stay unread here too, at any depth:
+ * dependencies, caches, build output, version control and Upfly's own records hold no page
+ * the project serves from its sources, and build output is made again from the sources the
+ * run reads. Symbolic links are not followed, as in the walk.
+ */
+export async function listExcludedFiles(discovery: DiscoveryResult): Promise<ExcludedFiles> {
+  const files = [...discovery.excludedFiles];
+  const unread: { file: string; reason: string }[] = [];
+  const pending = discovery.excludedRoots
+    .filter((root) => !DEFAULT_IGNORED_DIRECTORY_SET.has(root.relative.split('/').pop() ?? ''))
+    .map((root) => root.path);
+
+  for (let directory = pending.pop(); directory !== undefined; directory = pending.pop()) {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      unread.push({ file: relativePath(discovery.root, directory), reason: errnoCode(error) });
+      continue;
+    }
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (!DEFAULT_IGNORED_DIRECTORY_SET.has(entry.name)) pending.push(path);
+        continue;
+      }
+      const extension = extensionOf(entry.name);
+      if (entry.isFile() && (!isImageExtension(extension) || extension === SVG_EXTENSION)) {
+        files.push(relativePath(discovery.root, path));
+      }
+    }
+  }
+
+  return {
+    files: files.sort(compareStrings),
+    unread: unread.sort((a, b) => compareStrings(a.file, b.file)),
   };
 }
 
@@ -361,12 +418,16 @@ function classifyEntry(
     return;
   }
 
+  const extension = extensionOf(entry.name);
   if (input.rules.matcher.ignores(relative)) {
     input.state.ignoredCount += 1;
+    // Kept by path for the search a delete makes first. A raster image names nothing.
+    if (!isImageExtension(extension) || extension === SVG_EXTENSION) {
+      input.state.excludedFiles.push(relative);
+    }
     return;
   }
 
-  const extension = extensionOf(entry.name);
   if (isImageExtension(extension)) {
     input.state.assetCandidates.push({ path, relative, extension });
     // An SVG is an asset and a container. `<image href>`, `<use href>` and a `<style>`

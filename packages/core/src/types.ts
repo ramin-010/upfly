@@ -377,6 +377,12 @@ export interface DiscoveryResult {
    * per file inside it: the walk never looks inside.
    */
   readonly ignoredCount: number;
+  /**
+   * Every file an ignore rule excluded by name, POSIX-relative and sorted, raster images
+   * left out: the walk saw these and did not read them. Files inside an excluded directory
+   * are not here, since the walk never looks inside one; `listExcludedFiles` finds them.
+   */
+  readonly excludedFiles: readonly string[];
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
   /**

@@ -4,6 +4,7 @@
  * this, so what those builds prove is what users run.
  */
 
+import { listExcludedFiles } from './discover.js';
 import { createNodeFileStore } from './file-store-node.js';
 import {
   type OptimizeInput,
@@ -73,6 +74,12 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
   });
   const { discovery } = pipeline;
+  // Under replace, the search a delete makes first reads past the run's exclusions: they
+  // limit what the run changes, and a page one left out may still show the original.
+  const excluded =
+    input.publicPolicy === 'replace'
+      ? await listExcludedFiles(discovery)
+      : { files: [], unread: [] };
 
   const result = await optimize({
     graph: pipeline.graph,
@@ -82,12 +89,16 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     store: createNodeFileStore(discovery.root),
     // Every file the walk found, not only those the graph holds a reference in: the search
     // for leftover mentions of a deleted original is for references the graph missed.
-    files: [...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
+    files: [
+      ...[...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
+      ...excluded.files,
+    ],
     // A directory the walk could not list reached no search, so a mention inside it cannot
     // be ruled out.
     unread: discovery.skipped
       .filter((entry) => entry.reason === 'unreadable-directory')
-      .map((entry) => ({ file: entry.relative, reason: entry.detail })),
+      .map((entry) => ({ file: entry.relative, reason: entry.detail }))
+      .concat(excluded.unread),
     servingRoots: pipeline.servingRoots,
     format: input.format,
     publicPolicy: input.publicPolicy,

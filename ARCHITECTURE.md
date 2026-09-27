@@ -1175,6 +1175,14 @@ with its path, which is what the audit sweeps to decide `dead` against `possibly
 and pruned entries are deliberately absent (an ignore rule is an instruction, not a gap in our
 coverage), and so is the ignore file itself, which we obviously did read.
 
+One reader looks past an exclusion: the search `optimize` makes before `replace` deletes an
+original. An exclusion limits what a run changes, not what it checks before removing a file that a
+page it left out may still show. So the walk keeps each file a rule excluded by name in
+`excludedFiles` (raster images aside, which name nothing), and `listExcludedFiles` lists what the
+excluded directories hold. The directories pruned by name stay unread even then: dependencies,
+caches, build output, version control and `.upfly` hold no page the project serves from its own
+sources, and build output is made again from them.
+
 ## Scanning: one place that owns adapter failure
 
 `scan` reads each source file and hands the text to the adapter that claimed it. It exists
@@ -1742,7 +1750,9 @@ whose path survives elsewhere is not converted, its decline names where the ment
 report adds one caveat for the run stating the search's bound. A gap in the search is treated the
 same way: when a file could not be opened, or the walk could not list a directory, a mention inside
 it cannot be ruled out, so no original is deleted, and each decline names the first thing that could
-not be read. What that leaves uncovered is under "The transaction".
+not be read. The search also reads what the run's rules excluded, since an excluded page can still
+show the original (see "Discovery" for what stays unread and why). What that leaves uncovered is
+under "The transaction".
 
 ## Performance budget
 

@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { discover } from './discover.js';
+import { discover, listExcludedFiles } from './discover.js';
 import { UpflyError } from './errors.js';
 import type { Adapter } from './types.js';
 
@@ -451,6 +451,7 @@ describe('discover', () => {
       sourceFiles: [],
       directories: ['empty'],
       ignoredCount: 0,
+      excludedFiles: [],
       skipped: [],
       excludedRoots: [],
       unscannedFiles: [],
@@ -527,5 +528,39 @@ describe('discover', () => {
 
       expect(result.directories).toEqual(['public']);
     });
+  });
+});
+
+describe('listExcludedFiles', () => {
+  it('lists what the rules kept out, but no raster image and nothing a name prunes', async () => {
+    const root = await makeTree({
+      'index.html': '',
+      'notes.txt': '',
+      'drafts.html': '',
+      'legacy/old.html': '',
+      'legacy/icon.svg': '',
+      'legacy/photo.png': '',
+      'legacy/node_modules/theme/page.html': '',
+      'node_modules/theme/page.html': '',
+    });
+    const result = await discover({ root, adapters, extraIgnores: ['legacy', 'drafts.html'] });
+
+    const listing = await listExcludedFiles(result);
+
+    expect(listing.files).toEqual(['drafts.html', 'legacy/icon.svg', 'legacy/old.html']);
+    expect(listing.unread).toEqual([]);
+  });
+
+  it('names a directory it could not list, and never skips it in silence', async () => {
+    const root = await makeTree({ 'index.html': '', 'legacy/old.html': '' });
+    const result = await discover({ root, adapters, extraIgnores: ['legacy'] });
+    // Replaced by a file after the walk, so listing it fails as an unreadable one would.
+    await rm(join(root, 'legacy'), { recursive: true });
+    await writeFile(join(root, 'legacy'), '');
+
+    const listing = await listExcludedFiles(result);
+
+    expect(listing.files).toEqual([]);
+    expect(listing.unread.map((entry) => entry.file)).toEqual(['legacy']);
   });
 });
