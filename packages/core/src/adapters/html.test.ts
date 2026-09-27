@@ -370,16 +370,16 @@ describe('htmlAdapter', () => {
       /**
        * A style attribute holds CSS, so the external-URL test must not run on it:
        * `width: 100%` begins with letters and a colon, which reads as a URL scheme. A value
-       * that starts with a space does not, so both spellings are here. Each decodes to
-       * valid CSS with no `url()`, so neither yields a reference.
+       * that starts with a space does not, so both spellings are here. The first also holds
+       * a `url()`, so dropping the attribute and reading nothing both fail it.
        */
-      it('leaves a style attribute alone: its text is CSS, not a URL', () => {
-        for (const source of [
-          '<div style="width: 100%; font: 12px &quot;Inter&quot;"></div>',
-          '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>',
-        ]) {
-          expect(find(source)).toEqual([]);
-        }
+      it('reads a style attribute as CSS, not as a URL', () => {
+        const unspaced =
+          '<div style="width: 100%; font: 12px &quot;Inter&quot;; background: url(&quot;/img/a.png&quot;)"></div>';
+        const spaced = '<div style=" width: 100%; font: 12px &quot;Inter&quot;"></div>';
+
+        expect(paths(unspaced)).toEqual(['/img/a.png']);
+        expect(find(spaced)).toEqual([]);
       });
 
       it('and one that cannot be read still says whether it could be hiding a reference', () => {
