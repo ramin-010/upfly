@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { animatedPng, gradientFrames } from '../test/animated-png.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import type { ImageProbe } from './probe.js';
@@ -334,6 +335,43 @@ describe('createSharpProbe', () => {
       await probe.encodeToFile({ path, format: 'webp', animated: true, destination });
 
       expect((await sharp(destination).metadata()).pages).toBe(6);
+    });
+  });
+
+  describe('an animated PNG, which sharp reads as its first frame', () => {
+    it('reports the frames the file declares', async () => {
+      const path = join(temp, 'loop.png');
+      await writeFile(path, animatedPng(32, 32, gradientFrames(32, 3)));
+
+      expect(await probe.metadata(path)).toEqual({
+        width: 32,
+        height: 32,
+        format: 'png',
+        pages: 3,
+      });
+    });
+
+    it('is measured in no format, since a conversion would keep one still frame', async () => {
+      const path = join(temp, 'loop2.png');
+      await writeFile(path, animatedPng(32, 32, gradientFrames(32, 3)));
+
+      const [result] = await probeAssets([asset(path, 'loop2.png')], {
+        probe,
+        formats: ['avif', 'webp'],
+      });
+
+      expect(result?.encoded).toEqual([]);
+      expect(result?.skipped.map((skip) => [skip.measurement, skip.code])).toEqual([
+        ['avif', 'drops-animation'],
+        ['webp', 'drops-animation'],
+      ]);
+    });
+
+    it('still reads a still PNG as one frame', async () => {
+      expect(await probe.metadata(join(FIXTURES, 'plain-html/images/logo.png'))).toMatchObject({
+        format: 'png',
+        pages: 1,
+      });
     });
   });
 });

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { animatedPng, gradientFrames } from '../test/animated-png.js';
 import { MANIFEST_PATH } from './manifest.js';
 import { optimizeProject } from './optimize-project.js';
 import type { OptimizeProgress } from './optimize.js';
@@ -447,5 +448,30 @@ describe('an animated GIF, when the run converts to AVIF', () => {
     const after = await files(root);
     expect(after).toContain('images/loop.gif');
     expect(after).not.toContain('images/loop.avif');
+  });
+});
+
+describe('an animated PNG', () => {
+  it('stays, with its page as written, since a conversion would keep one still frame', async () => {
+    const root = await copy();
+    // A WebP of the first frame alone is far smaller than the file, so measuring it would
+    // pass for a saving.
+    await writeFile(join(root, 'images/loop.png'), animatedPng(128, 128, gradientFrames(128, 4)));
+    const page = '<img src="images/loop.png" alt="A loop" />\n';
+    await writeFile(join(root, 'loop.html'), page);
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(optimize.manifest?.state).toBe('committed');
+    expect(await readFile(join(root, 'loop.html'), 'utf8')).toBe(page);
+    const after = await files(root);
+    expect(after).toContain('images/loop.png');
+    expect(after).not.toContain('images/loop.webp');
   });
 });

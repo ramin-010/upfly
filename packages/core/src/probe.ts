@@ -123,8 +123,8 @@ export type ProbeSkipCode =
   /** The asset is already in the format we would convert it to. */
   | 'already-target-format'
   /**
-   * An animation, going to a format in `STILL_ONLY_FORMATS`: the encode would stack every
-   * frame into one still picture.
+   * An animation the conversion would not keep: its source format is in
+   * `FIRST_FRAME_ONLY_SOURCES`, or the target is in `STILL_ONLY_FORMATS`.
    */
   | 'drops-animation'
   /** Deliberately not measured, to bound how long the audit takes. */
@@ -221,6 +221,12 @@ export const MAX_ENCODE_PIXELS = 0x3fff * 0x3fff;
  * to one of these.
  */
 export const STILL_ONLY_FORMATS: ReadonlySet<EncodeFormat> = new Set(['avif']);
+
+/**
+ * Source formats read as their first frame even when animated. sharp reads an animated PNG
+ * that way, so converting one would keep a still picture of its first frame.
+ */
+const FIRST_FRAME_ONLY_SOURCES: ReadonlySet<string> = new Set(['png']);
 
 /** Everything measured about one asset. */
 export interface AssetProbe {
@@ -525,6 +531,12 @@ function encodeSkipReason(
   }
   if (metadata.format === format)
     return { code: 'already-target-format', reason: `already ${format}` };
+  if (metadata.pages > 1 && FIRST_FRAME_ONLY_SOURCES.has(metadata.format)) {
+    return {
+      code: 'drops-animation',
+      reason: `an animated ${metadata.format.toUpperCase()}, and Upfly reads only its first frame, so the converted file would be a still picture`,
+    };
+  }
   if (metadata.pages > 1 && STILL_ONLY_FORMATS.has(format)) {
     return {
       code: 'drops-animation',

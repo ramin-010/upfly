@@ -7,7 +7,7 @@
  * machine whose sharp binary does not load, although it reads no pixels at all.
  */
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { EncodeFormat, ImageMetadata, ImageProbe } from './probe.js';
 import { DEFAULT_ENCODE_QUALITY, MAX_ENCODE_PIXELS, STILL_ONLY_FORMATS } from './probe.js';
@@ -86,13 +86,16 @@ export async function createSharpProbe(
       // stacked into one strip, so an oversized-by-dimensions finding would be wrong by
       // the frame count. The plain read gives one frame's size and still reports `pages`.
       const result = await sharp(path).metadata();
+      const format = result.format ?? 'unknown';
 
       return {
         width: result.width ?? 0,
         height: result.height ?? 0,
-        format: result.format ?? 'unknown',
-        // Absent for a still image; present and greater than 1 for an animation.
-        pages: result.pages ?? 1,
+        format,
+        // Absent for a still image; present and greater than 1 for an animation. sharp
+        // reads an animated PNG as its first frame and reports no pages, so a PNG's count
+        // comes from the file.
+        pages: format === 'png' ? await pngFrames(path) : (result.pages ?? 1),
       };
     },
 
@@ -111,4 +114,30 @@ export async function createSharpProbe(
       return size;
     },
   };
+}
+
+/**
+ * The frame count an animated PNG declares in its `acTL` chunk, or 1 for a still PNG.
+ *
+ * `acTL` must come before the first `IDAT`, so only the chunk headers up to there are read.
+ * See https://wiki.mozilla.org/APNG_Specification.
+ */
+async function pngFrames(path: string): Promise<number> {
+  const file = await open(path, 'r');
+  try {
+    // A chunk is its length, its type, its data and a checksum: 12 bytes around the data.
+    // The first 4 bytes of an `acTL` chunk's data are the frame count.
+    const head = Buffer.alloc(12);
+    let position = 8;
+    for (;;) {
+      const { bytesRead } = await file.read(head, 0, head.length, position);
+      if (bytesRead < 8) return 1;
+      const type = head.toString('latin1', 4, 8);
+      if (type === 'acTL') return bytesRead === head.length ? Math.max(1, head.readUInt32BE(8)) : 1;
+      if (type === 'IDAT' || type === 'IEND') return 1;
+      position += head.length + head.readUInt32BE(0);
+    }
+  } finally {
+    await file.close();
+  }
 }

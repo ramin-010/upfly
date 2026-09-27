@@ -143,6 +143,25 @@ describe('probeAssets', () => {
       expect(encodedBytes).not.toHaveBeenCalledWith(expect.objectContaining({ format: 'avif' }));
     });
 
+    it('declines to encode an animated PNG at all, since only its first frame is read', async () => {
+      const encodedBytes = vi.fn(async () => 300);
+      const probe: ImageProbe = { ...fakeProbe({ pages: 3, format: 'png' }), encodedBytes };
+
+      const [result] = await probeAssets([asset('loop.png')], {
+        probe,
+        formats: ['avif', 'webp'],
+      });
+
+      const reason =
+        'an animated PNG, and Upfly reads only its first frame, so the converted file would be a still picture';
+      expect(result?.encoded).toEqual([]);
+      expect(result?.skipped).toEqual([
+        { measurement: 'avif', code: 'drops-animation', reason },
+        { measurement: 'webp', code: 'drops-animation', reason },
+      ]);
+      expect(encodedBytes).not.toHaveBeenCalled();
+    });
+
     it('treats an unreadable header as still rather than guessing', async () => {
       // Unreachable through `probeAssets` (a failed header skips the encode), but
       // the default matters if that ordering ever changes: `animated: true` on a
@@ -321,7 +340,7 @@ describe('probeAssets', () => {
           formats: ['webp'],
         });
         const [animated] = await probeAssets([asset('anim.gif')], {
-          probe: fakeProbe({ ...perFrame, pages: 20 }),
+          probe: fakeProbe({ ...perFrame, pages: 20, format: 'gif' }),
           formats: ['webp'],
         });
 

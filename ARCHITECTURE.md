@@ -1384,6 +1384,12 @@ becomes one 24×72 still, far smaller than the GIF, which the probe would report
 `STILL_ONLY_FORMATS`: the skip, `drops-animation`, says why and that WebP keeps the animation. The
 sharp probe also refuses that pair outright, so no caller of `encodeToFile` can write one.
 
+An animated PNG is the third form. sharp reads one as its first frame and reports no pages, so it
+would be measured and converted as a still, and `--replace` would delete the animation. So
+`metadata()` reads a PNG's frame count from the file's own `acTL` chunk, which the format puts before
+the first image data, and an animated source in `FIRST_FRAME_ONLY_SOURCES` is measured in no format,
+with the same code and its own reason.
+
 ### An image is converted as it is shown
 
 Phones store most photos as the sensor read them, and record the turn a viewer applies in the EXIF
