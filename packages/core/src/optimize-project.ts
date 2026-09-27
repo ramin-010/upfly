@@ -95,6 +95,7 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ],
     // A directory the walk could not list reached no search, so a mention inside it cannot
     // be ruled out.
+    excludedFiles: excluded.files,
     unread: discovery.skipped
       .filter((entry) => entry.reason === 'unreadable-directory')
       .map((entry) => ({ file: entry.relative, reason: entry.detail }))

@@ -557,6 +557,45 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     expect(declined?.reason).toContain('cannot rewrite');
   });
 
+  it('says the run excluded the file when only an excluded file still names the path', async () => {
+    // The search reads what the run's rules left out, so the original stays, but the path
+    // there is one Upfly would have rewritten had the run included the file.
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'legacy/old.html': '<img src="/logo.png">',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'legacy/old.html'],
+    );
+
+    const result = await optimize({ ...input, excludedFiles: ['legacy/old.html'] });
+
+    expect(result.plan.conversions).toEqual([]);
+    const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    expect(declined?.reason).toBe(
+      'converting it would delete the original, and legacy/old.html:1 still names its path, in a file this run excluded',
+    );
+  });
+
+  it('names a mention in a file the run reads before one in a file it excluded', async () => {
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'deploy.yml': 'banner: /logo.png\n',
+        'legacy/old.html': '<img src="/logo.png">',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'deploy.yml', 'legacy/old.html'],
+    );
+
+    const result = await optimize({ ...input, excludedFiles: ['legacy/old.html'] });
+
+    const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    expect(declined?.reason).toContain('deploy.yml:1');
+    expect(declined?.reason).toContain('cannot rewrite');
+  });
+
   it('does not refuse under keep-original, where nothing is deleted', async () => {
     // The other half of the trade. With the original left on disk the surviving mention
     // still resolves, so refusing would cost a saving to prevent nothing. Same tree as the

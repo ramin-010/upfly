@@ -50,10 +50,11 @@ export type RootLinkPolicy = 'when-no-serving-root' | 'always' | 'never';
 
 /**
  * The phrase that marks a decline because a literal mention of the path would survive the
- * rewrite. `report.ts` finds those declines by matching this text to raise a run-level
- * caveat, so the wording lives in one place and the caveat follows any rewording.
+ * rewrite, in a form Upfly cannot rewrite or in a file the run excluded. `report.ts` finds
+ * those declines by matching this text to raise a run-level caveat, so the wording lives in
+ * one place and the caveat follows any rewording.
  */
-export const MENTION_SURVIVES = 'still names its path in a form Upfly cannot rewrite';
+export const MENTION_SURVIVES = 'still names its path';
 
 export interface PlanInput {
   readonly graph: Graph;
@@ -78,6 +79,11 @@ export interface PlanInput {
    * searches against that plan, and plans again with this set.
    */
   readonly blockedByMention?: ReadonlyMap<string, string>;
+  /**
+   * Assets not to convert because converting would delete the original while a file the
+   * run excluded still names it, each mapped to where (`file:line`). Filled by `optimize`.
+   */
+  readonly blockedByExclusion?: ReadonlyMap<string, string>;
   /**
    * Assets not to convert because converting would delete the original while something
    * the search could not read may still name it, each mapped to what that is (a path, and
@@ -416,7 +422,15 @@ function convertDecision(
       convert: false,
       // Names where the mention is, so the user does not have to search the repository
       // for a path the search already found.
-      reason: `converting it would delete the original, and ${surviving} ${MENTION_SURVIVES}`,
+      reason: `converting it would delete the original, and ${surviving} ${MENTION_SURVIVES} in a form Upfly cannot rewrite`,
+    };
+  }
+
+  const excluded = input.blockedByExclusion?.get(relative);
+  if (excluded !== undefined) {
+    return {
+      convert: false,
+      reason: `converting it would delete the original, and ${excluded} ${MENTION_SURVIVES}, in a file this run excluded`,
     };
   }
 

@@ -1784,8 +1784,9 @@ report adds one caveat for the run stating the search's bound. A gap in the sear
 same way: when a file could not be opened, or the walk could not list a directory, a mention inside
 it cannot be ruled out, so no original is deleted, and each decline names the first thing that could
 not be read. The search also reads what the run's rules excluded, since an excluded page can still
-show the original (see "Discovery" for what stays unread and why). What that leaves uncovered is
-under "The transaction".
+show the original (see "Discovery" for what stays unread and why). When the only mention is in a
+file the run excluded, the decline says so, rather than that Upfly cannot rewrite the path there.
+What that leaves uncovered is under "The transaction".
 
 ## Performance budget
 

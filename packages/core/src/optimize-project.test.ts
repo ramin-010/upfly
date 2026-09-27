@@ -159,7 +159,10 @@ describe('an original that a page the run excludes still shows', () => {
     expect(await readFile(join(root, 'legacy/old.html'), 'utf8')).toBe(OLD_PAGE);
     expect(await files(root)).toContain('images/logo.png');
     const declined = optimize.plan.declined.find((entry) => entry.path === 'images/logo.png');
-    expect(declined?.reason).toContain('legacy/old.html:2');
+    expect(declined?.reason).toContain(
+      'legacy/old.html:2 still names its path, in a file this run excluded',
+    );
+    expect(declined?.reason).not.toContain('cannot rewrite');
   });
 
   it('is still deleted when only a directory pruned by name, such as node_modules, names it', async () => {
