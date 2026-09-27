@@ -632,9 +632,14 @@ async function buildIndex(root: string): Promise<RepoIndex> {
 
   assertOracleSeesSpaces(makePattern);
 
+  const unlistable = (directory: string, error: unknown): void => {
+    const rel = relative(root, directory).replaceAll('\\', '/');
+    unreadable.push(`${rel}/ — ${error instanceof Error ? error.message : String(error)}`);
+  };
+
   let walked = 0;
   const startedAt = Date.now();
-  for await (const absolute of walk(root)) {
+  for await (const absolute of walk(root, unlistable)) {
     const rel = relative(root, absolute).replaceAll('\\', '/');
     files.add(rel);
     walked += 1;
@@ -723,11 +728,19 @@ export const ORACLE_SKIPS: ReadonlySet<string> = new Set([
   'coverage',
 ]);
 
-async function* walk(directory: string): AsyncGenerator<string> {
+/**
+ * Every file under `directory`, outside the skipped folders. A directory it cannot list
+ * goes to `unlistable` rather than being dropped, because a dead verdict may rest on it.
+ */
+async function* walk(
+  directory: string,
+  unlistable: (directory: string, error: unknown) => void,
+): AsyncGenerator<string> {
   let entries: Dirent[];
   try {
     entries = await readdir(directory, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    unlistable(directory, error);
     return;
   }
 
@@ -735,7 +748,7 @@ async function* walk(directory: string): AsyncGenerator<string> {
     if (entry.isSymbolicLink()) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!ORACLE_SKIPS.has(entry.name)) yield* walk(path);
+      if (!ORACLE_SKIPS.has(entry.name)) yield* walk(path, unlistable);
     } else if (entry.isFile()) {
       yield path;
     }

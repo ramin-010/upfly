@@ -7,7 +7,7 @@
  * exercise the oracle's decoding. The inputs are written here instead.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DEFAULT_IGNORED_DIRECTORIES } from 'upfly-core';
@@ -240,4 +240,30 @@ describe('the oracle skips every folder the engine prunes', () => {
       expect([name, ORACLE_SKIPS.has(name)]).toEqual([name, true]);
     }
   });
+});
+
+/** Permission bits do nothing on Windows, and root reads a directory whatever its mode. */
+const cannotDropPermissions = process.platform === 'win32' || process.getuid?.() === 0;
+
+describe('the oracle says what it could not read', () => {
+  it.skipIf(cannotDropPermissions)(
+    'records a directory it cannot list, with the reason',
+    async () => {
+      // The only mention of the image sits in the directory the oracle cannot list, so a dead
+      // verdict would rest on it, and the list of what went unread has to say so.
+      const own = mkdtempSync(join(tmpdir(), 'verify-locked-'));
+      mkdirSync(join(own, 'img'), { recursive: true });
+      mkdirSync(join(own, 'locked'), { recursive: true });
+      writeFileSync(join(own, 'img', 'lonely.png'), 'x');
+      writeFileSync(join(own, 'locked', 'notes.txt'), 'uses lonely.png');
+      chmodSync(join(own, 'locked'), 0o000);
+      try {
+        const result = await verifyFindings(own, deadReport('img/lonely.png'), ['']);
+
+        expect(result.unreadable).toEqual([expect.stringMatching(/^locked\/ — EACCES/)]);
+      } finally {
+        chmodSync(join(own, 'locked'), 0o755);
+      }
+    },
+  );
 });
