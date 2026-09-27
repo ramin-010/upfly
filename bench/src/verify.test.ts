@@ -191,6 +191,32 @@ describe('verifyHedge asks every spelling too', () => {
   });
 });
 
+describe('a name the token pattern cannot hold is searched for literally', () => {
+  // `photo(1).png` holds parentheses, which the oracle's token pattern stops at, so only its
+  // literal search can see the mention.
+  function site(): string {
+    const own = mkdtempSync(join(tmpdir(), 'verify-literal-'));
+    mkdirSync(join(own, 'img'), { recursive: true });
+    writeFileSync(join(own, 'img', 'photo(1).png'), 'x');
+    writeFileSync(join(own, 'notes.txt'), 'See img/photo(1).png for the picture.');
+    return own;
+  }
+
+  it('calls a dead finding false when a file names the image', async () => {
+    const result = await verifyFindings(site(), deadReport('img/photo(1).png'), ['']);
+
+    expect(result.items[0]?.verdict).toBe('confirmed-false');
+  });
+
+  it('confirms a hedge whose evidence is that mention', async () => {
+    const result = await verifyFindings(site(), hedgeReport('img/photo(1).png', 'notes.txt:1'), [
+      '',
+    ]);
+
+    expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+});
+
 describe('the oracle skips every folder the engine prunes', () => {
   // A mention in generated output or in Upfly's own records is no use of the image: it
   // would make a correct dead finding look false.
