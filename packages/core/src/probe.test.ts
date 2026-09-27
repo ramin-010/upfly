@@ -233,7 +233,7 @@ describe('probeAssets', () => {
       ]);
     });
 
-    it('keeps the library own words out of the skip and sends them to the sink', async () => {
+    it("keeps the library's own words out of the skip and sends them to the sink", async () => {
       // The report is byte-identical for the same input, and libvips does not word the
       // same failure the same way every time. What Upfly concluded is stable and what
       // libvips said is not, so only the first reaches the report.
