@@ -204,8 +204,13 @@ describe('hostile inputs', () => {
 
     expect(report.summary.findings.broken).toBe(0);
     expect(report.summary.linkedReferences).toBe(1);
-    // The risk is a citation on the wrong line, from a line count inflated or deflated
-    // by carriage returns. Only the path is asserted here, not the line or the offsets.
+    // Offsets count into the text as read, carriage returns included, because a rewrite
+    // edits that text at them. Nothing here is cited, since everything resolves: the
+    // combined test at the end of this file checks a cited line in a CRLF file.
+    const source = await readFile(join(root, 'page.html'), 'utf8');
+    for (const reference of graph.references) {
+      expect(source.slice(reference.start, reference.end)).toBe(reference.rawPath);
+    }
     expect(graph.references[0]?.rawPath).toBe('hero.png');
   });
 
@@ -294,8 +299,11 @@ describe('hostile inputs', () => {
     const { report, text } = await runEverything(root, { probe: true });
 
     // Only `missing.png` does not exist. The empty and truncated images do, so their
-    // references resolve.
-    expect(report.findings.filter((finding) => finding.kind === 'broken')).toHaveLength(1);
+    // references resolve. It is on line 3, after two CRLF line ends, which a count that
+    // took each carriage return for a line break would cite as line 5.
+    const broken = report.findings.filter((finding) => finding.kind === 'broken');
+    expect(broken.map((finding) => [finding.rawPath, finding.line])).toEqual([['missing.png', 3]]);
+    expect(broken[0]?.where).toBe('page.html:3');
     // The unparseable stylesheet is reported by name, so this still fails if it starts
     // parsing and something else takes its place among the scan skips. `unread.vue`
     // cannot: an unclaimed extension is coverage, not failure, and `collectSkips`
