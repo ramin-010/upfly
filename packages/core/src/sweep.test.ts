@@ -525,6 +525,54 @@ describe('sweepForMentions', () => {
       expect(result.mentions.size).toBe(0);
     });
 
+    it.each([
+      ['a Liquid hole', '/img/liquid-{{ n }}.png'],
+      ['an EJS hole', '/img/liquid-<%= n %>.png'],
+    ])(
+      'hedges what %s could name, which the resolver never globs, with the serving root found',
+      async (_name, pattern) => {
+        const linked = Array.from({ length: 19 }, (_, index) => `public/a${index}.png`);
+        const graph = graphOf({
+          assets: [
+            ...linked.map(asset),
+            asset('public/img/liquid-1.png'),
+            asset('public/img/liquid-2.png'),
+            asset('public/liquid-3.png'),
+          ],
+          references: [
+            ...linked.map((target, index) => resolved('index.html', `/a${index}.png`, target)),
+            { ...unlinked('post.md', pattern, 'dynamic'), kind: 'md', ceiling: 'unsafe' },
+          ],
+        });
+
+        const result = await sweepForMentions({
+          graph,
+          readFile: files({ '/repo/post.md': pattern }),
+        });
+
+        expect([...result.mentions.keys()].sort()).toEqual([
+          'public/img/liquid-1.png',
+          'public/img/liquid-2.png',
+        ]);
+      },
+    );
+
+    it('leaves a path that is one hole and nothing else to the mentions', async () => {
+      const graph = graphOf({
+        assets: [asset('public/img/cover.png')],
+        references: [
+          { ...unlinked('post.md', '{{ page.image }}', 'dynamic'), kind: 'md', ceiling: 'unsafe' },
+        ],
+      });
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: files({ '/repo/post.md': '{{ page.image }}' }),
+      });
+
+      expect(result.mentions.size).toBe(0);
+    });
+
     it('still cites the file when its source cannot be re-read for a line', async () => {
       const graph = graphOf({
         assets: [asset('img/hero.png')],

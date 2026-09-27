@@ -624,7 +624,11 @@ asset's path, in whole segments, so `/img/pattern-${n}.png` hedges `src/img/patt
 `src/pattern-1.png`. The set is defined once, by `patternsWithoutServingRoot`, under the same
 condition as the withheld references and for the same reason: its target is unknown rather than
 absent. Once the serving root is found, the resolver has globbed the pattern against it, and what
-it matched there is what the pattern names. The fix belongs here and not in the resolver, which
+it matched there is what the pattern names. A hole the resolver never globs is the exception, in
+every run: Liquid's `{{ n }}`, `{% %}` and EJS's `<% %>` are not read as a file-name part, so
+`/img/photo-{{ n }}.png` stays `dynamic` whether or not the serving root is found, and the sweep
+globs it the same way (`unglobbedHolePatterns`), each hole read as one segment. A path whose only
+fixed text is slashes, `{{ page.image }}`, fixes no part of a name and is left to the mentions. The fix belongs here and not in the resolver, which
 resolves each reference before any run-wide measure exists, and whose link would claim a use
 rather than hedge one and count toward that measure.
 

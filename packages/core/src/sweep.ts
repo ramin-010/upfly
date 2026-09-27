@@ -9,7 +9,13 @@
  * See "`possibly-dead`, and why "zero references" is usually a lie" in ARCHITECTURE.md.
  */
 
-import { interpolationChunks, spellingsOf, splitPathSuffix } from './adapters/reference-path.js';
+import {
+  TEMPLATE_HOLES,
+  TEMPLATE_HOLE_PATTERN,
+  interpolationChunks,
+  spellingsOf,
+  splitPathSuffix,
+} from './adapters/reference-path.js';
 import { citeReferences, lineOf } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
@@ -239,6 +245,10 @@ async function sweepUnresolvedReferences(
     ...declinedPatterns(options.graph).map(
       (reference) => [reference, servedFromAnyRoot(openBased(provenPath(reference)))] as const,
     ),
+    ...unglobbedHolePatterns(options.graph).map(
+      (reference) =>
+        [reference, servedFromAnyRoot(openBased(asGlobbedHoles(provenPath(reference))))] as const,
+    ),
   ]);
   const assets = [...candidates.values()].flat();
 
@@ -277,6 +287,39 @@ async function sweepUnresolvedReferences(
  * The patterns an adapter declined. The resolver never globs one, so, like a pattern a run
  * had no serving root to glob, what it names is unknown rather than absent.
  */
+/** The openers of the hole syntaxes the resolver never globs, such as Liquid's `{{`. */
+const UNGLOBBED_OPENERS: readonly string[] = TEMPLATE_HOLES.filter((hole) => !hole.globbed).map(
+  (hole) => hole.opener,
+);
+
+/**
+ * A `dynamic` reference holding a hole the resolver never globs beside a fixed part, such as
+ * Liquid's `/img/photo-{{ n }}.png`. It stays `dynamic` in every run, found serving root or
+ * not, while the files it names sit on disk, so nothing else would hedge them. A path whose
+ * only fixed text is slashes, `{{ page.image }}`, fixes no part of a name, and is left to the
+ * mentions.
+ */
+function unglobbedHolePatterns(graph: Graph): readonly Reference[] {
+  return graph.byResolution.dynamic.filter((reference) => {
+    const path = provenPath(reference);
+    return (
+      UNGLOBBED_OPENERS.some((opener) => path.includes(opener)) &&
+      interpolationChunks(asGlobbedHoles(path)).some((chunk) => chunk.replaceAll('/', '') !== '')
+    );
+  });
+}
+
+/** Every hole, in any syntax. */
+const ANY_HOLE = new RegExp(TEMPLATE_HOLE_PATTERN, 'g');
+
+/**
+ * The path with every hole written in a syntax the glob reads (`#{x}`), since the glob and
+ * the chunking read only the holes the resolver itself globs.
+ */
+function asGlobbedHoles(path: string): string {
+  return path.replace(ANY_HOLE, '#{x}');
+}
+
 function declinedPatterns(graph: Graph): readonly Reference[] {
   return graph.byResolution.discarded.filter(
     (reference) =>
