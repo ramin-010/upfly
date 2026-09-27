@@ -403,7 +403,8 @@ So two things happen below a floor:
 
 1. **`planOptimization` refuses.** It returns a `PlanRefusal` rather than throwing: a throw leaves
    the caller holding nothing, while a returned refusal is a finding with a reason. The audit still
-   reports; only the write path stops.
+   reports; only the write path stops. `upfly optimize` prints no report when it stops, so its
+   message names `upfly audit`, which lists every withheld reference with its file and line.
 2. **`audit` replaces every root-relative `broken` finding with one `serving-root-unknown` finding**
    that names the real problem, says how many findings it replaced, and tells the user to declare a
    serving root. A broken relative path is not affected. Each replaced reference is listed under the

@@ -306,6 +306,12 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
       reason: 'SERVING_ROOT_UNKNOWN',
       message: expect.stringContaining('--public <dir>'),
     });
+    // The run prints no report, so the refusal says where the references it set aside are.
+    expect(result(run.stdout)).toMatchObject({
+      message: expect.stringContaining(
+        '`upfly audit` lists the 10 references that did not resolve',
+      ),
+    });
   });
 
   it('with --commit, before writing anything, when git ignores a file the run would write', () => {

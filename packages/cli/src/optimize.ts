@@ -151,7 +151,8 @@ async function carryOut(
     return {
       code: EXIT_CODES.ABORTED,
       reason: 'SERVING_ROOT_UNKNOWN',
-      message: `${refusal.reason} Name it with --public <dir>, or publicDirs in the config file; use . for the project root.`,
+      // The command prints no report, so the refusal says where the set-aside references are.
+      message: `${refusal.reason} Name it with --public <dir>, or publicDirs in the config file; use . for the project root. \`upfly audit\` lists the ${count(refusal.checkable - refusal.linked, 'reference')} that did not resolve, with the file and line of each.`,
     };
   }
   if (ignored.length > 0) {
