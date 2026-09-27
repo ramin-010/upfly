@@ -162,16 +162,15 @@ const cases = [
     damage: (root) =>
       editKey(root, (key) => {
         const group = key.files.find((f) => f.path === 'apps/web/media.html');
-        let seen = 0;
-        group.entries = group.entries.filter((e) => {
-          if (e.shape !== 'html.input.src') return true;
-          seen += 1;
-          return seen === 1;
-        });
-        // Removing entries can also leave their occurrences unlisted, a different failure.
-        // This line does not allowlist them, it only makes sure the list exists, so the case
-        // relies on the output holding the shape rule's message beside any other.
-        key.unreferencedOccurrences = key.unreferencedOccurrences ?? [];
+        const dropped = group.entries.filter((e) => e.shape === 'html.input.src').slice(1);
+        group.entries = group.entries.filter((e) => !dropped.includes(e));
+        // A dropped entry leaves its path unlisted in the file, a failure of its own, so each
+        // is allowlisted. The token pattern takes in the leading `/`, so the occurrence starts
+        // at the entry's own offset, and the shape rule is left as the only thing to fail.
+        key.unreferencedOccurrences = [
+          ...(key.unreferencedOccurrences ?? []),
+          ...dropped.map((e) => ({ file: group.path, offset: e.offset })),
+        ];
       }),
     expect: 'asks for three to five',
   },
