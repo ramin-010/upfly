@@ -99,7 +99,8 @@ export const markdownAdapter: Adapter = defineAdapter({
         references.push(
           ...htmlAdapter
             .findReferences({ file, text: masked })
-            .map((reference) => asMarkdownShape(reference, isMdx)),
+            .map((reference) => asMarkdownShape(reference, isMdx))
+            .map((reference) => (isMdx ? readMdxExpression(reference, text) : reference)),
         );
       } catch (error) {
         throw withPartial(error, references);
@@ -293,6 +294,95 @@ function blankRanges(text: string, ranges: readonly Line[]): string {
     cursor = range.end;
   }
   return out + text.slice(cursor);
+}
+
+/** Why a braced value in MDX gives no path. */
+const MDX_EXPRESSION_DECLINED = 'an expression in an MDX attribute, which Upfly does not evaluate';
+
+/**
+ * A reference the HTML reader found in an MDX attribute written in braces,
+ * `src={'/img/x.png'}`, read as MDX reads it: the braces hold JavaScript, not text, and the
+ * HTML reader would keep them as part of the path. One string literal is that string.
+ * Anything else is a value Upfly does not evaluate, declined with its reason, so the report
+ * counts it rather than losing it. A quoted value, `src="{x}.png"`, is text in MDX too.
+ * It reads the unmasked text: the mask takes a template literal's backticks for a code span.
+ */
+function readMdxExpression(reference: RawReference, text: string): RawReference {
+  const open = reference.start;
+  if (text.charAt(open) !== '{' || text.charAt(previousNonSpace(text, open)) !== '=') {
+    return reference;
+  }
+  const close = closingBrace(text, open);
+  if (close === -1) return reference;
+
+  const first = nextNonSpace(text, open + 1);
+  const last = previousNonSpace(text, close);
+  const quote = text.charAt(first);
+  const content = text.slice(first + 1, last);
+  const isLiteral =
+    last > first &&
+    (quote === "'" || quote === '"' || quote === '`') &&
+    text.charAt(last) === quote &&
+    !content.includes(quote) &&
+    !content.includes('\\') &&
+    !content.includes('\n') &&
+    !(quote === '`' && content.includes('${'));
+  if (isLiteral) {
+    const { path } = splitPathSuffix(content);
+    return { ...reference, rawPath: path, start: first + 1, end: first + 1 + path.length };
+  }
+  return {
+    ...reference,
+    rawPath: text.slice(open, close + 1),
+    end: close + 1,
+    ceiling: 'unsafe',
+    declined: true,
+    note: MDX_EXPRESSION_DECLINED,
+  };
+}
+
+/** The `}` that closes the brace at `open`, past any string inside, or -1 if none does. */
+function closingBrace(text: string, open: number): number {
+  let depth = 0;
+  for (let index = open; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (char === "'" || char === '"' || char === '`') {
+      index = stringEnd(text, index);
+      if (index === -1) return -1;
+    } else if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+/** The quote that closes the string opened at `open`, or -1 if none does. */
+function stringEnd(text: string, open: number): number {
+  const quote = text.charAt(open);
+  for (let index = open + 1; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (char === '\\') index++;
+    else if (char === quote) return index;
+    else if (quote !== '`' && char === '\n') return -1;
+  }
+  return -1;
+}
+
+/** The first character at or after `at` that is not whitespace. */
+function nextNonSpace(text: string, at: number): number {
+  let index = at;
+  while (index < text.length && text.charAt(index).trim() === '') index++;
+  return index;
+}
+
+/** The last character before `at` that is not whitespace, or -1. */
+function previousNonSpace(text: string, at: number): number {
+  let index = at - 1;
+  while (index >= 0 && text.charAt(index).trim() === '') index--;
+  return index;
 }
 
 /**

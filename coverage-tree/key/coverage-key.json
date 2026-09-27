@@ -7467,6 +7467,38 @@
           "column": 23
         }
       ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/braced-src.mdx",
+      "entries": [
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "resolved",
+          "why": "In MDX an attribute in braces is a JavaScript expression, and one string literal is that string, so the image is /img/diagram.png, which exists. Read as raw HTML, the braces and quotes become part of the path and the reference is dropped with no line.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 127,
+          "line": 5,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/braced-template.mdx",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "mdx.jsx",
+          "expect": "resolved",
+          "why": "A template literal with no hole is a plain string, so this names /img/hero.jpg, which exists. Read as raw HTML, the value is cut at the backtick and the reference is lost.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 108,
+          "line": 5,
+          "column": 12
+        }
+      ]
     }
   ]
 }

@@ -763,7 +763,11 @@ Four things they share, and each was a bug before it was a rule:
   implementation. Markdown hands its raw HTML to the HTML adapter for the same reason, and an
   MDX document's top-level `import`/`export` blocks to the JavaScript adapter, delimited by MDX's
   own rules, so a paragraph line that merely begins with the word `import` stays prose, and each
-  line is read by exactly one of the three.
+  line is read by exactly one of the three. One seam remains: in MDX an attribute written in
+  braces, `src={'/img/x.png'}`, is JavaScript, which the HTML reader would keep as part of the
+  path. The Markdown adapter reads such a value itself, from the unmasked text: one string literal
+  is that string, and anything else is declined with its reason, counted in the report, never
+  dropped.
 - **Mask before you match.** The Markdown adapter blanks fenced blocks, code spans and HTML
   comments with spaces *of identical length* before running any pattern, so a `![](old.png)` in a
   documentation example is invisible while every offset after it stays exact. Code spans are found

@@ -979,3 +979,36 @@ describe('a plain link and an embed are told apart', () => {
     ]);
   });
 });
+
+describe('an MDX attribute in braces is read as MDX reads it', () => {
+  const mdx = (text: string) => find(`# T\n\n${text}\n`, '/project/docs/page.mdx');
+
+  it.each([
+    ['a single-quoted string', "<img src={'/img/x.png'} />"],
+    ['a double-quoted string', '<img src={"/img/x.png"} alt="x" />'],
+    ['a template literal with no hole', '<img src={`/img/x.png`} />'],
+    ['spaces inside the braces', "<img src={ '/img/x.png' } />"],
+  ])('reads %s as the path it holds', (_name, element) => {
+    const [reference] = mdx(element);
+    const text = `# T\n\n${element}\n`;
+    expect(reference?.rawPath).toBe('/img/x.png');
+    expect(text.slice(reference?.start, reference?.end)).toBe('/img/x.png');
+    expect(reference?.declined).toBeUndefined();
+  });
+
+  it.each([
+    ['a name', '<img src={cover} />'],
+    ['a template with a hole', '<img src={`/img/${name}.png`} />'],
+    ['a call', "<img src={withBase('/img/x.png')} />"],
+  ])('counts %s as a declined value with its reason, never dropping it', (_name, element) => {
+    const [reference] = mdx(element);
+    expect(reference?.declined).toBe(true);
+    expect(reference?.note).toContain('does not evaluate');
+  });
+
+  it('leaves a quoted value alone, which MDX reads as the text it is', () => {
+    const [reference] = mdx('<img src="{x}.png" />');
+    expect(reference?.rawPath).toBe('{x}.png');
+    expect(reference?.declined).toBeUndefined();
+  });
+});
