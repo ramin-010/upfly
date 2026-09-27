@@ -2,7 +2,7 @@
  * The Markdown / MDX adapter.
  *
  * Finds `![alt](path)` images, ordinary `[text](path)` links, link reference definitions,
- * and any raw HTML the document contains. Its regular expressions run only over masked
+ * and any raw HTML the document contains. Its scanners run only over masked
  * text, where code fences, code spans and HTML comments are blanked to spaces of the same
  * length. Raw HTML goes to the HTML adapter, and an MDX document's top-level
  * `import`/`export` blocks to the JavaScript adapter (`readMdxEsm` finds where MDX starts
@@ -17,46 +17,36 @@ import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
 import {
+  TEMPLATE_HOLES,
   TEMPLATE_HOLE_PATTERN,
   holdsUndecodableMarkdownEscape,
+  isAsciiPunctuation,
   isExternalUrl,
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
 
 /**
- * A destination that is not angle-bracketed.
+ * Where a template hole starts, in any syntax in `TEMPLATE_HOLES`, tested at one position.
  *
- * Ordinarily it runs to the first space or paren, but a template hole, in any syntax in
- * `TEMPLATE_HOLES`, may contain both: `![Logo]({{ site.baseurl }}/logo.png)` is how
- * Jekyll, Hugo and Eleventy all write a path, and stopping at the first space would find
- * nothing at all there. Missing it entirely is the worse failure: the image then
- * looks unreferenced, and a later rewrite breaks the page with nothing reported.
- * A hole is only ever read whole. Were its characters also allowed one at a time, a
- * run of holes with no closing parenthesis would be retried in every split, which
- * takes seconds for two dozen `{{a}}` in a row.
+ * A hole is the one thing a bare destination may hold that would otherwise end it:
+ * `![Logo]({{ site.baseurl }}/logo.png)` is how Jekyll, Hugo and Eleventy all write a path,
+ * and stopping at its first space would find nothing at all. Missing it entirely is the
+ * worse failure: the image then looks unreferenced, and a later rewrite breaks the page with
+ * nothing reported. A hole is only ever read whole, so a run of holes stays linear.
  */
-const BARE_DESTINATION = String.raw`(?:${TEMPLATE_HOLE_PATTERN}|(?!${TEMPLATE_HOLE_PATTERN})[^\s()])+`;
+const HOLE_AT = new RegExp(TEMPLATE_HOLE_PATTERN, 'y');
 
-/**
- * An angle-bracketed destination, `<./my logo.png>`. One that is a whole template hole,
- * such as the EJS `<%= logo %>`, is the hole rather than brackets around `%= logo %`, and
- * is left to `BARE_DESTINATION`.
- */
-const ANGLE_DESTINATION = String.raw`(?!${TEMPLATE_HOLE_PATTERN})<([^>\n]*)>`;
-
-/**
- * `![alt](destination "title")`, and the same without the `!` for a plain link.
- *
- * A link to an image file is as real a reference as an embed (following it fetches
- * the file), and the resolver drops anything that is not a tracked asset anyway, so
- * capturing both costs nothing and misses less. The `d` flag gives exact capture
- * offsets, which is what makes this safe to rewrite.
- */
-const LINK = new RegExp(
-  String.raw`!?\[[^\]]*\]\(\s*(?:${ANGLE_DESTINATION}|(${BARE_DESTINATION}))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)`,
-  'gd',
+/** The first character of every hole's opener, so most positions skip the pattern test. */
+const HOLE_STARTS: ReadonlySet<string> = new Set(
+  TEMPLATE_HOLES.map((hole) => hole.opener.charAt(0)),
 );
+
+/**
+ * How deep parentheses may nest in a bare destination. CommonMark asks for at least three
+ * levels; past this many the text is no path, and the scan stops there.
+ */
+const MAX_PAREN_DEPTH = 32;
 
 /**
  * Does this document contain anything parse5 could find a reference in?
@@ -67,11 +57,8 @@ const LINK = new RegExp(
  */
 const MARKUP_OPENER = /<[a-zA-Z]/;
 
-/** `[label]: destination "title"`, a CommonMark link reference definition. */
-const DEFINITION = new RegExp(
-  String.raw`^ {0,3}\[[^\]]+\]:[ \t]*(?:${ANGLE_DESTINATION}|(${BARE_DESTINATION}))`,
-  'gdm',
-);
+/** `[label]:` at the start of a line, where a CommonMark link reference definition begins. */
+const DEFINITION_OPENER = /^ {0,3}\[[^\]]+\]:/gm;
 
 export const markdownAdapter: Adapter = defineAdapter({
   id: 'markdown',
@@ -92,8 +79,8 @@ export const markdownAdapter: Adapter = defineAdapter({
     // A use site and a definition are different shapes. In `![alt][label]` the path lives
     // in the `[label]: x.png` definition, reported once as `md.reference-definition`, so
     // the use site itself (`md.image.reference-style`) emits nothing.
-    collectMatches(LINK, masked, file, references, 'md.image');
-    collectMatches(DEFINITION, masked, file, references, 'md.reference-definition');
+    collectLinks(masked, file, references);
+    collectDefinitions(masked, file, references);
 
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
@@ -329,24 +316,208 @@ function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference 
   return { ...reference, shape: isMdx ? 'mdx.jsx' : 'md.raw-html' };
 }
 
-function collectMatches(
-  pattern: RegExp,
-  masked: string,
-  file: string,
-  references: RawReference[],
-  shape: ShapeId,
-): void {
-  pattern.lastIndex = 0;
+/** A destination's path, and where the text after it resumes. */
+interface Destination {
+  readonly start: number;
+  readonly end: number;
+  readonly next: number;
+}
 
-  for (const match of masked.matchAll(pattern)) {
-    // Group 1 is an angle-bracketed destination, group 2 a bare one; exactly one
-    // participates in any match.
-    const range = match.indices?.[1] ?? match.indices?.[2];
-    if (range === undefined) continue;
+/** An inline link or image whose text and destination both read as CommonMark reads them. */
+interface InlineLink {
+  readonly open: number;
+  readonly close: number;
+  readonly image: boolean;
+  readonly destination: Destination;
+}
 
-    const [start, end] = range;
-    addReference(masked.slice(start, end), start, file, references, shape);
+/**
+ * Every `![alt](destination "title")`, and the same without the `!` for a plain link, found
+ * as CommonMark finds them.
+ *
+ * A pattern nests parentheses only to a fixed depth, by repeating itself, and each level
+ * multiplies its backtracking, so the brackets are paired in one pass and each destination
+ * is read forward once. A link to an image file is as real a reference as an embed
+ * (following it fetches the file), and the resolver drops anything that is not a tracked
+ * asset, so both are read.
+ */
+function collectLinks(masked: string, file: string, references: RawReference[]): void {
+  const links: InlineLink[] = [];
+  for (const [open, close] of pairBrackets(masked)) {
+    if (masked.charAt(close + 1) !== '(') continue;
+    const destination = readDestination(masked, skipBlanks(masked, close + 2));
+    if (destination === null || !endsLink(masked, destination.next)) continue;
+    const image = masked.charAt(open - 1) === '!' && masked.charAt(open - 2) !== '\\';
+    links.push({ open, close, image, destination });
   }
+  links.sort((a, b) => a.open - b.open);
+
+  // A link cannot hold another link: the inner one wins and the outer is plain text. An
+  // image may sit inside a link, as a linked thumbnail does.
+  const plainOpens = links.filter((link) => !link.image).map((link) => link.open);
+  for (const link of links) {
+    if (!link.image && holdsBetween(plainOpens, link.open, link.close)) continue;
+    const { start, end } = link.destination;
+    addReference(masked.slice(start, end), start, file, references, 'md.image');
+  }
+}
+
+/** Every `[label]: destination`, a link reference definition. */
+function collectDefinitions(masked: string, file: string, references: RawReference[]): void {
+  DEFINITION_OPENER.lastIndex = 0;
+  for (const match of masked.matchAll(DEFINITION_OPENER)) {
+    // The destination may start on the next line. What follows it is not checked, so a
+    // definition with a malformed title is still read.
+    const at = skipBlanks(masked, (match.index ?? 0) + match[0].length);
+    const destination = readDestination(masked, at);
+    if (destination === null) continue;
+    const { start, end } = destination;
+    addReference(masked.slice(start, end), start, file, references, 'md.reference-definition');
+  }
+}
+
+/**
+ * Each `[` paired with the `]` that closes it: brackets nest, a backslash escapes one, and a
+ * blank line closes every bracket still open, as it ends the paragraph they sit in.
+ */
+function pairBrackets(text: string): Map<number, number> {
+  const pairs = new Map<number, number>();
+  const open: number[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (char === '\\' && isAsciiPunctuation(text.charAt(index + 1))) {
+      index++;
+    } else if (char === '[') {
+      open.push(index);
+    } else if (char === ']') {
+      const start = open.pop();
+      if (start !== undefined) pairs.set(start, index);
+    } else if (char === '\n' && isBlankLineAt(text, index + 1)) {
+      open.length = 0;
+    }
+  }
+  return pairs;
+}
+
+/** Whether a sorted list holds a value strictly between `from` and `to`. */
+function holdsBetween(sorted: readonly number[], from: number, to: number): boolean {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if ((sorted[middle] ?? to) <= from) low = middle + 1;
+    else high = middle;
+  }
+  return (sorted[low] ?? to) < to;
+}
+
+/**
+ * The destination starting at `at`: `<...>`, or a bare run ended by a space, a control
+ * character or a `)` that closes no `(`. `null` where CommonMark reads no destination. An EJS
+ * `<%= logo %>` is a template hole, not brackets.
+ */
+function readDestination(text: string, at: number): Destination | null {
+  if (text.charAt(at) === '<' && holeEndAt(text, at) === -1) return readBracketed(text, at);
+  return readBare(text, at);
+}
+
+/** `<...>`: anything but a line ending or an unescaped `<`, ended by the first unescaped `>`. */
+function readBracketed(text: string, at: number): Destination | null {
+  for (let index = at + 1; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (char === '\\' && isAsciiPunctuation(text.charAt(index + 1))) index++;
+    else if (char === '>') return { start: at + 1, end: index, next: index + 1 };
+    else if (char === '<' || char === '\n' || char === '\r') return null;
+  }
+  return null;
+}
+
+/**
+ * A bare destination: parentheses only in balanced pairs or escaped, and a template hole
+ * read whole, since one may hold spaces and parentheses of its own.
+ */
+function readBare(text: string, at: number): Destination | null {
+  let depth = 0;
+  let index = at;
+  while (index < text.length) {
+    const hole = holeEndAt(text, index);
+    if (hole !== -1) {
+      index = hole;
+      continue;
+    }
+    const char = text.charAt(index);
+    if (char === '\\' && isAsciiPunctuation(text.charAt(index + 1))) {
+      index += 2;
+      continue;
+    }
+    if (char === '(') {
+      depth++;
+      if (depth > MAX_PAREN_DEPTH) return null;
+    } else if (char === ')') {
+      if (depth === 0) break;
+      depth--;
+    } else if (char <= ' ' || char === '\u007f') {
+      break;
+    }
+    index++;
+  }
+  return depth === 0 ? { start: at, end: index, next: index } : null;
+}
+
+/** Where the template hole starting at `at` ends, or -1 when none starts there. */
+function holeEndAt(text: string, at: number): number {
+  if (!HOLE_STARTS.has(text.charAt(at))) return -1;
+  HOLE_AT.lastIndex = at;
+  return HOLE_AT.test(text) ? HOLE_AT.lastIndex : -1;
+}
+
+/** Whether a link ends at `at`: an optional title in any of its three forms, then `)`. */
+function endsLink(text: string, at: number): boolean {
+  let index = skipBlanks(text, at);
+  const opener = text.charAt(index);
+  if (index > at && (opener === '"' || opener === "'" || opener === '(')) {
+    index = readTitle(text, index + 1, opener === '(' ? ')' : opener);
+    if (index === -1) return false;
+    index = skipBlanks(text, index);
+  }
+  return text.charAt(index) === ')';
+}
+
+/**
+ * Past a title's closing character, or -1 if it never closes: a blank line ends it, and so
+ * does an unescaped `(` in a title opened by `(`.
+ */
+function readTitle(text: string, at: number, closer: string): number {
+  for (let index = at; index < text.length; index++) {
+    const char = text.charAt(index);
+    if (char === '\\' && isAsciiPunctuation(text.charAt(index + 1))) index++;
+    else if (char === closer) return index + 1;
+    else if (closer === ')' && char === '(') return -1;
+    else if (char === '\n' && isBlankLineAt(text, index + 1)) return -1;
+  }
+  return -1;
+}
+
+/** Past spaces and tabs, and at most one line ending with the spaces and tabs after it. */
+function skipBlanks(text: string, at: number): number {
+  const index = skipSpaces(text, at);
+  if (text.startsWith('\r\n', index)) return skipSpaces(text, index + 2);
+  if (text.charAt(index) === '\n' || text.charAt(index) === '\r')
+    return skipSpaces(text, index + 1);
+  return index;
+}
+
+function skipSpaces(text: string, at: number): number {
+  let index = at;
+  while (text.charAt(index) === ' ' || text.charAt(index) === '\t') index++;
+  return index;
+}
+
+/** Whether the line starting at `at` holds nothing but spaces and tabs. */
+function isBlankLineAt(text: string, at: number): boolean {
+  let index = skipSpaces(text, at);
+  if (text.charAt(index) === '\r') index++;
+  return index >= text.length || text.charAt(index) === '\n';
 }
 
 function addReference(

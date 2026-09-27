@@ -890,3 +890,52 @@ describe('indented code blocks are masked, and only they are', () => {
     expect(masked.split('\n')).toHaveLength(text.split('\n').length);
   });
 });
+
+describe('a destination is found where CommonMark finds it', () => {
+  const cases: ReadonlyArray<[name: string, source: string, expected: readonly string[]]> = [
+    ['balanced parentheses', '![A copy](/img/photo(1).png)', ['/img/photo(1).png']],
+    ['nested parentheses', '![a](/img/a(b(c)d)e.png)', ['/img/a(b(c)d)e.png']],
+    ['escaped parentheses', '![a](/img/photo\\(1\\).png)', ['/img/photo\\(1\\).png']],
+    ['one escaped parenthesis', '![a](/img/photo\\(1.png)', ['/img/photo\\(1.png']],
+    ['a space and parentheses in brackets', '![a](</img/my (1).png>)', ['/img/my (1).png']],
+    ['an escaped bracket in brackets', '![a](</img/a\\>b.png>)', ['/img/a\\>b.png']],
+    ['a double-quoted title', '![a](/img/x.png "The x")', ['/img/x.png']],
+    ['a single-quoted title', "![a](/img/x.png 'The x')", ['/img/x.png']],
+    ['a parenthesised title', '![a](/img/x.png (The x))', ['/img/x.png']],
+    ['a definition with parentheses', '[p]: /img/photo(1).png', ['/img/photo(1).png']],
+    ['a definition on the next line', '[p]:\n  /img/photo(1).png', ['/img/photo(1).png']],
+    ['a linked thumbnail', '[![Shot](/img/t.png)](/img/full.png)', ['/img/t.png', '/img/full.png']],
+    ['brackets in alt text', '![a [b] c](/img/x.png)', ['/img/x.png']],
+    ['an escaped bracket in alt text', '![a\\]b](/img/x.png)', ['/img/x.png']],
+    ['the spec, nested pairs', '[link](foo(and(bar)))', ['foo(and(bar))']],
+    ['the spec, escaped pairs', '[link](foo\\(and\\(bar\\))', ['foo\\(and\\(bar\\)']],
+    ['the spec, a parenthesis in brackets', '[a](<b)c>)', ['b)c']],
+  ];
+
+  it.each(cases)('%s', (_name, source, expected) => {
+    expect(paths(source)).toEqual([...expected]);
+    expect(slices(source)).toEqual([...expected]);
+  });
+
+  const none: ReadonlyArray<[name: string, source: string]> = [
+    ['an unbalanced parenthesis', '![a](/img/photo(1.png)'],
+    ['the spec, one pair left open', '[link](foo(and(bar))'],
+    ['the spec, an escaped closing bracket', '[link](<foo\\>)'],
+    ['a raw bracket inside brackets', '![a](</img/a>b.png>)'],
+    ['nesting deeper than 32', `![a](/img/${'('.repeat(33)}x${')'.repeat(33)}.png)`],
+  ];
+
+  it.each(none)('finds no link for %s', (_name, source) => {
+    expect(paths(source)).toEqual([]);
+  });
+
+  it('reads the inner of two nested links, as CommonMark does', () => {
+    expect(paths('[a [b](/img/x.png) c](/img/y.png)')).toEqual(['/img/x.png']);
+  });
+
+  it('gives up on ten thousand open parentheses in well under a second', () => {
+    const started = performance.now();
+    expect(paths(`![a](${'('.repeat(10_000)}`)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+});

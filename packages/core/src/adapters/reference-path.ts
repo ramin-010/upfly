@@ -449,7 +449,7 @@ function holdsBackslashEscape(text: string): boolean {
  * CommonMark's ASCII punctuation, the characters a backslash can escape: `!` to `/`, `:` to
  * `@`, `[` to the backtick, and `{` to `~`.
  */
-function isAsciiPunctuation(character: string): boolean {
+export function isAsciiPunctuation(character: string): boolean {
   const code = character.charCodeAt(0);
   return (
     (code >= 0x21 && code <= 0x2f) ||

@@ -685,7 +685,7 @@ produce exactly the silent corruption this design exists to prevent.
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, a link preview's image in `<meta content>`, an image in `<a href>`, `<style>`, `style=""` | `parse5` |
 | `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
-| `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | regex over masked text; delegates raw HTML to `html` and MDX's ESM to `javascript` |
+| `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | a one-pass scanner over masked text, reading destinations as CommonMark does; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 
 An attribute names a file in JSX exactly where it does in HTML, because both adapters read one
@@ -828,8 +828,10 @@ details')` is `'.png for details'`, which is not empty.
 Parentheses are allowed here and nowhere else. A phone screenshot downloaded twice,
 `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp`, is a common way an image enters a repository
 kept by non-developers. Inside a string literal a parenthesis is an ordinary character. In an
-unquoted CSS `url(…)` or a bare Markdown `![](…)` it closes the construct, so admitting it there
-would break the parse, and both have quoted or angle-bracket forms that already carry such a name.
+unquoted CSS `url(…)` it closes the construct, so admitting it there would break the parse, and the
+quoted form already carries such a name. A bare Markdown destination is read as CommonMark reads it:
+parentheses belong to the path in balanced pairs or escaped (`photo(1).png`, `photo\(1\).png`), up
+to 32 deep, and the angle-bracket form carries anything else.
 The end anchor keeps the widening to file names: `"url(hero one.png)"` ends on `)`, not on an
 extension, and is rejected. A string with no space, such as `"url(hero.png)"`, never reaches
 `SPACED_PATH`: it is emitted as a guess and discarded when nothing of that name exists.

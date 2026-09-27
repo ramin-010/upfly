@@ -703,6 +703,14 @@
       "height": 64
     },
     {
+      "path": "apps/docs/public/img/photo(1).png",
+      "bytes": 5928,
+      "sha256": "7131faa3a92c4b17",
+      "source": "migrant",
+      "width": 64,
+      "height": 64
+    },
+    {
       "path": "apps/docs/public/img/screenshot.png",
       "bytes": 754718,
       "sha256": "a402827b8f7303d6",
@@ -7306,6 +7314,71 @@
           "offset": 155,
           "line": 3,
           "column": 32
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/parens-balanced.md",
+      "entries": [
+        {
+          "raw": "/img/photo(1).png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "CommonMark lets a destination written without brackets hold parentheses in balanced pairs, so this one is /img/photo(1).png, which exists. Read up to the first parenthesis, the path is cut short, nothing is found, and the picture the page shows looks unused.",
+          "target": "apps/docs/public/img/photo(1).png",
+          "offset": 218,
+          "line": 6,
+          "column": 18
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/parens-escaped.md",
+      "entries": [
+        {
+          "raw": "/img/photo\\(1\\).png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "CommonMark removes a backslash before any ASCII punctuation character in a link destination, so /img/photo\\(1\\).png names photo(1).png, which exists. Read up to the first parenthesis, the path is cut short and nothing is found.",
+          "decoded": "/img/photo(1).png",
+          "target": "apps/docs/public/img/photo(1).png",
+          "offset": 211,
+          "line": 6,
+          "column": 18
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/parens-definition.md",
+      "entries": [
+        {
+          "raw": "/img/photo(1).png",
+          "occurrence": 1,
+          "shape": "md.reference-definition",
+          "expect": "resolved",
+          "why": "A link reference definition takes the same destination as an inline link, so balanced parentheses belong to the path here too: /img/photo(1).png, which exists. Cut at the first parenthesis, the definition names /img/photo, which is nothing.",
+          "target": "apps/docs/public/img/photo(1).png",
+          "offset": 219,
+          "line": 8,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/parens-bracketed.md",
+      "entries": [
+        {
+          "raw": "/img/photo(1).png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "Inside angle brackets a destination may hold parentheses and spaces, so this is /img/photo(1).png, which exists. Found before the parentheses were read without brackets: it keeps the bracketed branch measured when that code changes.",
+          "target": "apps/docs/public/img/photo(1).png",
+          "offset": 199,
+          "line": 6,
+          "column": 19
         }
       ]
     }

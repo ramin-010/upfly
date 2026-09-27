@@ -805,9 +805,9 @@ body`,
     /**
      * Parentheses. A browser appends ` (1)` to a duplicate download, so names such as
      * `WhatsApp Image 2026-03-11 at 1.29.35 PM (1).webp` are common. They are allowed only
-     * in a string literal, which is already quoted: in an unquoted CSS `url(…)` or a bare
-     * Markdown `![](…)` a parenthesis closes the construct. See "What counts as a
-     * path-shaped string" in ARCHITECTURE.md.
+     * in a string literal, which is already quoted: in an unquoted CSS `url(…)` a
+     * parenthesis closes the construct. See "What counts as a path-shaped string" in
+     * ARCHITECTURE.md.
      */
     it.each([
       [
