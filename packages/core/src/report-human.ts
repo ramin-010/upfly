@@ -122,8 +122,16 @@ function savingsLine(summary: Report['summary'], capped: number): string {
   if (!summary.probed) {
     return 'savings not measured — images were not decoded (--no-probe)';
   }
+  const failed = summary.unmeasuredAssets;
   if (capped > 0) {
-    return `${bytes(summary.potentialSavingBytes)} of savings found so far${atQuality(summary)} — ${capped} of ${count(summary.assets, 'image')} went unmeasured, so there may be more (--probe-all)`;
+    const more = failed === 0 ? '' : ` and ${failed} more could not be measured`;
+    return `${bytes(summary.potentialSavingBytes)} of savings found so far${atQuality(summary)} — ${capped} of ${count(summary.assets, 'image')} went unmeasured${more}, so there may be more (--probe-all)`;
+  }
+  if (failed > 0) {
+    const across = `measured across ${summary.assets - failed} of ${count(summary.assets, 'image')}; ${failed} could not be measured`;
+    return summary.potentialSavingBytes === 0
+      ? `no savings found, ${across}`
+      : `${bytes(summary.potentialSavingBytes)} of savings${atQuality(summary)}, ${across}`;
   }
   if (summary.potentialSavingBytes === 0) {
     return `no savings found, and every one of ${count(summary.assets, 'image')} was measured`;

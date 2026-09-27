@@ -77,6 +77,13 @@ export interface ReportSummary {
   readonly savingQuality: Readonly<Partial<Record<EncodeFormat, readonly EncodeSetting[]>>>;
   /** `false` when the run was `--no-probe`; oversized and opportunities are absent. */
   readonly probed: boolean;
+  /**
+   * Images with no measurement for a reason `skipped` lists: the header or the encode
+   * failed, or converting would lose an animation. The encode cap's images are counted by
+   * the `encode-capped` caveat instead, and an image that needed no measurement is not
+   * counted. Zero when the run did not probe.
+   */
+  readonly unmeasuredAssets: number;
 }
 
 /**
@@ -815,6 +822,12 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
     potentialSavingBytes: [...bestSaving.values()].reduce((total, bytes) => total + bytes, 0),
     savingQuality,
     probed: input.audit.probed,
+    unmeasuredAssets: (input.probes ?? []).filter((probe) =>
+      probe.skipped.some(
+        (skip) =>
+          skip.code !== 'beyond-encode-cap' && !DETERMINED_NOT_WORTH_MEASURING.has(skip.code),
+      ),
+    ).length,
   };
 }
 

@@ -131,6 +131,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "references": 7,
     "savingQuality": {},
     "sourceFiles": 5,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,
@@ -522,6 +523,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     "references": 12,
     "savingQuality": {},
     "sourceFiles": 5,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,
@@ -852,6 +854,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "references": 12,
     "savingQuality": {},
     "sourceFiles": 5,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,
@@ -1061,6 +1064,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "references": 11,
     "savingQuality": {},
     "sourceFiles": 8,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,
@@ -1270,6 +1274,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
       ],
     },
     "sourceFiles": 1,
+    "unmeasuredAssets": 1,
   },
   "unusedVectors": {
     "assets": null,
@@ -1419,6 +1424,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "references": 11,
     "savingQuality": {},
     "sourceFiles": 3,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,
@@ -1599,6 +1605,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "references": 12,
     "savingQuality": {},
     "sourceFiles": 5,
+    "unmeasuredAssets": 0,
   },
   "unusedVectors": {
     "assets": null,

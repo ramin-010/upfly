@@ -12,6 +12,7 @@ import { buildGraph } from './graph.js';
 import { MENTION_SURVIVES } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
+import type { AssetProbe } from './probe.js';
 import { renderReport } from './report-human.js';
 import {
   REPORT_SCHEMA_VERSION,
@@ -535,14 +536,26 @@ describe('buildReport', () => {
      */
     const ROOT = '/repo';
 
-    function headlineOf(over: {
+    /** A probe of `img<index>.png` that measured nothing, for the reason its code gives. */
+    function unmeasured(index: number, code: 'beyond-encode-cap' | 'encode-failed'): AssetProbe {
+      return {
+        relative: `img${index}.png`,
+        metadata: { width: 10, height: 10, format: 'png', pages: 1 },
+        encoded: [],
+        skipped: [{ measurement: 'webp', code, reason: code }],
+      };
+    }
+
+    function reportOf(over: {
       probed?: boolean;
       saving?: number;
       capped?: number;
+      failed?: number;
+      extraProbes?: readonly AssetProbe[];
       assets?: number;
       alsoAvif?: boolean;
       alsoLossless?: boolean;
-    }) {
+    }): Report {
       const assetCount = over.assets ?? 10;
       const assets = Array.from({ length: assetCount }, (_, index) => ({
         path: `${ROOT}/img${index}.png`,
@@ -550,18 +563,15 @@ describe('buildReport', () => {
         extension: '.png',
         bytes: 100,
       }));
-      const probes = Array.from({ length: over.capped ?? 0 }, (_, index) => ({
-        relative: `img${index}.png`,
-        metadata: { width: 10, height: 10, format: 'png' as const, pages: 1 },
-        encoded: [],
-        skipped: [
-          {
-            measurement: 'webp' as const,
-            code: 'beyond-encode-cap' as const,
-            reason: 'beyond the cap',
-          },
-        ],
-      }));
+      const capped = over.capped ?? 0;
+      // The capped images first, then those whose encode failed.
+      const probes: AssetProbe[] = [
+        ...Array.from({ length: capped }, (_, index) => unmeasured(index, 'beyond-encode-cap')),
+        ...Array.from({ length: over.failed ?? 0 }, (_, index) =>
+          unmeasured(capped + index, 'encode-failed'),
+        ),
+        ...(over.extraProbes ?? []),
+      ];
 
       const report = buildReport({
         graph: buildGraph({ root: ROOT, assets, references: [], unscannedFiles: [] }),
@@ -634,7 +644,11 @@ describe('buildReport', () => {
         ...(probes.length > 0 ? { probes } : {}),
       });
 
-      return renderReport(report).split(NEWLINE)[2] ?? '';
+      return report;
+    }
+
+    function headlineOf(over: Parameters<typeof reportOf>[0]): string {
+      return renderReport(reportOf(over)).split(NEWLINE)[2] ?? '';
     }
 
     it('leads with the savings, not with the file counts', () => {
@@ -669,6 +683,54 @@ describe('buildReport', () => {
       expect(line).toContain('so far');
       expect(line).toContain('3 of 10 images went unmeasured');
       expect(line).toContain('--probe-all');
+    });
+
+    it('says how many images could not be measured, rather than all of them', () => {
+      const line = headlineOf({ saving: 4_200_000, failed: 2, assets: 10 });
+
+      expect(line).toContain('measured across 8 of 10 images; 2 could not be measured');
+      expect(line).not.toContain('all');
+    });
+
+    it('says how many could not be measured when it found no savings', () => {
+      const line = headlineOf({ failed: 1, assets: 10 });
+
+      expect(line).toContain(
+        'no savings found, measured across 9 of 10 images; 1 could not be measured',
+      );
+      expect(line).not.toContain('every one');
+    });
+
+    it('counts the images that could not be measured apart from those past the cap', () => {
+      const line = headlineOf({ saving: 4_200_000, capped: 3, failed: 1, assets: 10 });
+
+      expect(line).toContain('3 of 10 images went unmeasured and 1 more could not be measured');
+      expect(line).toContain('--probe-all');
+    });
+
+    it('counts each image that could not be measured once, and neither the cap nor a vector', () => {
+      const probe = (relative: string, skipped: AssetProbe['skipped']): AssetProbe => ({
+        relative,
+        metadata: null,
+        encoded: [],
+        skipped,
+      });
+
+      const report = reportOf({
+        assets: 10,
+        extraProbes: [
+          probe('img0.png', [
+            { measurement: 'metadata', code: 'not-an-image', reason: 'not an image' },
+            { measurement: 'webp', code: 'not-an-image', reason: 'nothing to encode' },
+          ]),
+          probe('img1.png', [{ measurement: 'webp', code: 'encode-failed', reason: 'failed' }]),
+          probe('img2.png', [{ measurement: 'webp', code: 'drops-animation', reason: 'animated' }]),
+          probe('img3.png', [{ measurement: 'webp', code: 'vector', reason: 'a vector' }]),
+          probe('img4.png', [{ measurement: 'webp', code: 'beyond-encode-cap', reason: 'capped' }]),
+        ],
+      });
+
+      expect(report.summary.unmeasuredAssets).toBe(3);
     });
 
     it('says plainly that it measured everything when it did', () => {
