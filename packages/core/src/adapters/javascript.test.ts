@@ -1488,3 +1488,23 @@ describe('javaScriptParseOutcome', () => {
     expect(javaScriptParseOutcome('const a = 1;', '.coffee')).toBe('invalid');
   });
 });
+
+describe('the note on a pattern', () => {
+  // A pattern is globbed and every asset it matches is linked, so the note must not say the
+  // resolver looks for exactly one. All three kinds of pattern say the same thing.
+  it.each([
+    ['a JSX template literal', 'export const A = () => <img src={`/img/${name}.png`} />;'],
+    [
+      'a CSS-in-JS url()',
+      "import styled from 'styled-components';\nexport const B = styled.div`background: url(/img/theme-${(p) => p.mode}.png);`;",
+    ],
+    ['a + chain', "export const c = '/img/' + name + '.png';"],
+  ])('says the resolver decides which assets %s names', (_kind, source) => {
+    const notes = find(source).map((reference) => reference.note ?? '');
+
+    expect(notes).toContainEqual(
+      expect.stringContaining('the resolver decides which assets it names'),
+    );
+    expect(notes.join(' ')).not.toContain('exactly one asset');
+  });
+});

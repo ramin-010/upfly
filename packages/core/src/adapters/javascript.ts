@@ -1182,7 +1182,7 @@ function withInterpolationRestored(reference: RawReference, text: string): RawRe
     // template literal in the file.
     shape: 'js.template.pattern',
     ceiling: 'medium',
-    note: 'CSS-in-JS url() with a static prefix; the resolver decides whether it names exactly one asset',
+    note: 'CSS-in-JS url() with a static prefix; the resolver decides which assets it names',
   };
 }
 
@@ -1394,7 +1394,7 @@ function addTemplateReference(
     shape,
     ceiling: globbable ? 'medium' : hasExpressions ? 'unsafe' : 'high',
     note: globbable
-      ? `${description}: a template literal with a static prefix; the resolver decides whether it names exactly one asset`
+      ? `${description}: a template literal with a static prefix; the resolver decides which assets it names`
       : hasExpressions
         ? `${description}: ${NOT_GLOBBABLE_REASON}`
         : description,
