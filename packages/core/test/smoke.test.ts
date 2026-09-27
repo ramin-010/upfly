@@ -81,56 +81,68 @@ describe('the built package', () => {
     LOAD_TIMEOUT_MS,
   );
 
-  it('exports the adapter set, which is a value rather than a function', async () => {
-    const built = await loadBuiltPackage();
-    const adapters = built.defaultAdapters as readonly {
-      readonly id: string;
-      readonly extensions: readonly string[];
-      readonly findReferences: unknown;
-    }[];
+  it(
+    'exports the adapter set, which is a value rather than a function',
+    async () => {
+      const built = await loadBuiltPackage();
+      const adapters = built.defaultAdapters as readonly {
+        readonly id: string;
+        readonly extensions: readonly string[];
+        readonly findReferences: unknown;
+      }[];
 
-    // Separate from the functions above because it is the contribution surface: an
-    // adapter list that survived compilation empty, or whose entries lost a method,
-    // would leave every reference unscanned and every finding absent, which reads as
-    // a clean repository rather than as a broken build.
-    expect(Array.isArray(adapters)).toBe(true);
-    expect(adapters.length).toBeGreaterThan(0);
-    for (const adapter of adapters) {
-      expect(typeof adapter.id, 'an adapter lost its id').toBe('string');
-      expect(adapter.extensions.length, `${adapter.id} handles no extensions`).toBeGreaterThan(0);
-      expect(typeof adapter.findReferences, `${adapter.id} cannot scan`).toBe('function');
-    }
-  });
+      // Separate from the functions above because it is the contribution surface: an
+      // adapter list that survived compilation empty, or whose entries lost a method,
+      // would leave every reference unscanned and every finding absent, which reads as
+      // a clean repository rather than as a broken build.
+      expect(Array.isArray(adapters)).toBe(true);
+      expect(adapters.length).toBeGreaterThan(0);
+      for (const adapter of adapters) {
+        expect(typeof adapter.id, 'an adapter lost its id').toBe('string');
+        expect(adapter.extensions.length, `${adapter.id} handles no extensions`).toBeGreaterThan(0);
+        expect(typeof adapter.findReferences, `${adapter.id} cannot scan`).toBe('function');
+      }
+    },
+    LOAD_TIMEOUT_MS,
+  );
 
-  it('runs compiled code, not just resolves it', async () => {
-    const built = await loadBuiltPackage();
-    const isExternalUrl = built.isExternalUrl as (path: string) => boolean;
+  it(
+    'runs compiled code, not just resolves it',
+    async () => {
+      const built = await loadBuiltPackage();
+      const isExternalUrl = built.isExternalUrl as (path: string) => boolean;
 
-    // A pure function with no dependencies, so a failure here is the build being
-    // wrong rather than an environment being unusual.
-    expect(isExternalUrl('https://example.com/hero.png')).toBe(true);
-    expect(isExternalUrl('./hero.png')).toBe(false);
-  });
+      // A pure function with no dependencies, so a failure here is the build being
+      // wrong rather than an environment being unusual.
+      expect(isExternalUrl('https://example.com/hero.png')).toBe(true);
+      expect(isExternalUrl('./hero.png')).toBe(false);
+    },
+    LOAD_TIMEOUT_MS,
+  );
 
-  it('serialises a manifest through the built code, which is the format on disk', async () => {
-    const built = await loadBuiltPackage();
-    const serialise = built.serialiseManifest as (manifest: unknown) => string;
-    const parse = built.parseManifest as (text: string) => unknown;
-    const version = built.MANIFEST_SCHEMA_VERSION as number;
+  it(
+    'serialises a manifest through the built code, which is the format on disk',
+    async () => {
+      const built = await loadBuiltPackage();
+      const serialise = built.serialiseManifest as (manifest: unknown) => string;
+      const parse = built.parseManifest as (text: string) => unknown;
+      const version = built.MANIFEST_SCHEMA_VERSION as number;
 
-    // The manifest is a published format that outlives the run that wrote it, so a
-    // build whose emitted code round-trips it wrongly is a data-loss bug rather than
-    // a cosmetic one.
-    const manifest = {
-      schemaVersion: version,
-      hashAlgorithm: 'sha256',
-      runId: '20260912T000000-0000',
-      startedAt: '2026-09-12T00:00:00.000Z',
-      state: 'committed',
-      operations: [],
-      declined: [],
-    };
+      // The manifest is a published format that outlives the run that wrote it, so a
+      // build whose emitted code round-trips it wrongly is a data-loss bug rather than
+      // a cosmetic one.
+      const manifest = {
+        schemaVersion: version,
+        hashAlgorithm: 'sha256',
+        runId: '20260912T000000-0000',
+        startedAt: '2026-09-12T00:00:00.000Z',
+        state: 'committed',
+        operations: [],
+        declined: [],
+      };
 
-    expect(parse(serialise(manifest))).toEqual(manifest);
-  });
+      expect(parse(serialise(manifest))).toEqual(manifest);
+    },
+    LOAD_TIMEOUT_MS,
+  );
 });
