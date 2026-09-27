@@ -154,7 +154,26 @@ describe('discover', () => {
     // an asset went missing.
     expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
       ['legacy', "the ignore rule 'legacy/'"],
-      ['node_modules', "a build or version-control directory named 'node_modules'"],
+      ['node_modules', "a dependency directory named 'node_modules'"],
+    ]);
+  });
+
+  it('names what each directory pruned by name holds', async () => {
+    const root = await makeTree({
+      '.git/objects/a.png': '',
+      '.upfly/runs/a.png': '',
+      'coverage/lcov/a.png': '',
+      'dist/a.png': '',
+      'keep.png': '',
+    });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
+      ['.git', "a version-control directory named '.git'"],
+      ['.upfly', "Upfly's own directory named '.upfly'"],
+      ['coverage', "a test-coverage directory named 'coverage'"],
+      ['dist', "a build-output directory named 'dist'"],
     ]);
   });
 

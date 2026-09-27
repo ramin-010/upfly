@@ -26,7 +26,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "excludedRoots": [
       {
         "path": "node_modules",
-        "reason": "a build or version-control directory named 'node_modules'",
+        "reason": "a dependency directory named 'node_modules'",
       },
     ],
     "notExercised": [
@@ -193,7 +193,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     "excludedRoots": [
       {
         "path": "node_modules",
-        "reason": "a build or version-control directory named 'node_modules'",
+        "reason": "a dependency directory named 'node_modules'",
       },
     ],
     "notExercised": [
@@ -663,7 +663,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "excludedRoots": [
       {
         "path": "node_modules",
-        "reason": "a build or version-control directory named 'node_modules'",
+        "reason": "a dependency directory named 'node_modules'",
       },
     ],
     "notExercised": [
@@ -956,7 +956,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "excludedRoots": [
       {
         "path": "node_modules",
-        "reason": "a build or version-control directory named 'node_modules'",
+        "reason": "a dependency directory named 'node_modules'",
       },
     ],
     "notExercised": [
@@ -1489,7 +1489,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "excludedRoots": [
       {
         "path": "node_modules",
-        "reason": "a build or version-control directory named 'node_modules'",
+        "reason": "a dependency directory named 'node_modules'",
       },
     ],
     "notExercised": [

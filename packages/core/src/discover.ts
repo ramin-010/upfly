@@ -27,28 +27,36 @@ import type {
 } from './types.js';
 
 /**
+ * What each directory pruned by name holds, which is the reason a report gives for it. A
+ * `Map`, so a directory named `constructor` matches nothing.
+ */
+const PRUNED_DIRECTORIES: ReadonlyMap<string, string> = new Map([
+  ['.astro', 'a cache directory'],
+  ['.cache', 'a cache directory'],
+  ['.git', 'a version-control directory'],
+  ['.next', 'a build-output directory'],
+  ['.nuxt', 'a build-output directory'],
+  ['.output', 'a build-output directory'],
+  ['.parcel-cache', 'a cache directory'],
+  ['.svelte-kit', 'a build-output directory'],
+  ['.turbo', 'a cache directory'],
+  ['.upfly', "Upfly's own directory"],
+  ['build', 'a build-output directory'],
+  ['coverage', 'a test-coverage directory'],
+  ['dist', 'a build-output directory'],
+  ['node_modules', 'a dependency directory'],
+  ['out', 'a build-output directory'],
+]);
+
+/**
  * Directory names never descended into, matched by name at any depth.
  *
  * A name lookup rather than an ignore pattern, because it runs for every directory in the
- * repository. Only dependency, cache, build-output and version-control directories, and
- * Upfly's own `.upfly`: nothing a user keeps a source image in.
+ * repository. Only dependency, cache, build-output, test-coverage and version-control
+ * directories, and Upfly's own `.upfly`: nothing a user keeps a source image in.
  */
 export const DEFAULT_IGNORED_DIRECTORIES: readonly string[] = Object.freeze([
-  '.astro',
-  '.cache',
-  '.git',
-  '.next',
-  '.nuxt',
-  '.output',
-  '.parcel-cache',
-  '.svelte-kit',
-  '.turbo',
-  '.upfly',
-  'build',
-  'coverage',
-  'dist',
-  'node_modules',
-  'out',
+  ...PRUNED_DIRECTORIES.keys(),
 ]);
 
 const DEFAULT_IGNORED_DIRECTORY_SET = new Set(DEFAULT_IGNORED_DIRECTORIES);
@@ -286,9 +294,8 @@ async function loadIgnoreRules(
  * slash; testing 'build' returns false and we would descend into it.
  */
 function exclusionReasonFor(name: string, relative: string, rules: IgnoreRules): string | null {
-  if (DEFAULT_IGNORED_DIRECTORY_SET.has(name)) {
-    return `a build or version-control directory named '${name}'`;
-  }
+  const pruned = PRUNED_DIRECTORIES.get(name);
+  if (pruned !== undefined) return `${pruned} named '${name}'`;
   if (!rules.matcher.ignores(`${relative}/`)) return null;
 
   const pattern = excludingPattern(rules, `${relative}/`);
