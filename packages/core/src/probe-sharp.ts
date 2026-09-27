@@ -89,8 +89,10 @@ export async function createSharpProbe(
       const format = result.format ?? 'unknown';
 
       return {
-        width: result.width ?? 0,
-        height: result.height ?? 0,
+        // `autoOrient` holds the size once the EXIF orientation tag is applied, as a viewer
+        // shows it; `width` and `height` are the stored size.
+        width: result.autoOrient?.width ?? result.width ?? 0,
+        height: result.autoOrient?.height ?? result.height ?? 0,
         format,
         // Absent for a still image; present and greater than 1 for an animation. sharp
         // reads an animated PNG as its first frame and reports no pages, so a PNG's count

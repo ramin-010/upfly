@@ -156,6 +156,24 @@ describe('createSharpProbe', () => {
     });
   });
 
+  // A quarter turn swaps width and height, mirrored as with tag 5 or not; a half turn keeps
+  // them. The photo is stored 400 by 200.
+  it.each([
+    { orientation: 6, size: [200, 400] },
+    { orientation: 8, size: [200, 400] },
+    { orientation: 5, size: [200, 400] },
+    { orientation: 3, size: [400, 200] },
+  ] as const)(
+    'reports a photo tagged $orientation at the size a viewer shows',
+    async ({ orientation, size }) => {
+      const path = await taggedPhoto(`size-${orientation}.jpg`, orientation);
+
+      const { width, height } = await probe.metadata(path);
+
+      expect([width, height]).toEqual(size);
+    },
+  );
+
   it('measures an encode without writing anything', async () => {
     const path = await noisyJpeg('encode.jpg', 60, 40);
     const before = await readdir(temp);

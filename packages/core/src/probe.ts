@@ -17,9 +17,12 @@ export type EncodeFormat = 'webp' | 'avif';
 
 /** What a header read tells us. */
 export interface ImageMetadata {
-  /** Width in pixels, of a single frame. */
+  /**
+   * Width in pixels, of a single frame, as a viewer shows it: a quarter turn in the EXIF
+   * orientation tag swaps width and height.
+   */
   readonly width: number;
-  /** Height in pixels, of a single frame. */
+  /** Height in pixels, of a single frame, as a viewer shows it. */
   readonly height: number;
   /** Container format as decoded: `png`, `jpeg`, `webp`, `gif`, `svg`, … */
   readonly format: string;

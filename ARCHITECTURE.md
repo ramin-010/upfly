@@ -1395,7 +1395,8 @@ with the same code and its own reason.
 Phones store most photos as the sensor read them, and record the turn a viewer applies in the EXIF
 orientation tag. The encode drops metadata, that tag with it, so every encode, the measuring one and
 the written one alike, turns the pixels first (sharp's `autoOrient`). Without it the converted file
-shows sideways, and under `--replace` the original, which showed correctly, is deleted.
+shows sideways, and under `--replace` the original, which showed correctly, is deleted. `metadata()`
+reports the size as shown too, so `oversized` names the side that is too long as a viewer sees it.
 
 An embedded colour profile needs no code: sharp converts the pixels through it to sRGB before it
 drops the profile, so a Display P3 photo keeps the colours it shows. Colours outside sRGB's range are
