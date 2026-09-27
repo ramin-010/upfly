@@ -32,10 +32,11 @@ import {
 /**
  * The rule, asked with a path rather than a chunk array, because a table of
  * `['', '/b-', '.png']` is unreadable and an unreadable table is how a case gets
- * written wrong.
+ * written wrong. The path is split by the engine's own `interpolationChunks`, so every
+ * syntax the adapters glob is read here as they read it.
  */
 function globbable(path: string): boolean {
-  return assembledPathIsGlobbable(path.split(/\$\{[^}]*\}/));
+  return assembledPathIsGlobbable(interpolationChunks(path));
 }
 
 describe('assembledPathIsGlobbable', () => {
@@ -44,6 +45,8 @@ describe('assembledPathIsGlobbable', () => {
       ['a leading interpolation', '${base}/hero.png'],
       ['a leading interpolation with a fixed name', '${ASSET_BASE}/${name}.png'],
       ['nothing static at all', '${everything}'],
+      ['a leading SCSS interpolation', '#{$base}/hero.png'],
+      ['a leading Less interpolation', '@{base}/hero.png'],
     ])('%s is not globbable', (_name, path) => {
       expect(globbable(path)).toBe(false);
     });
@@ -59,6 +62,8 @@ describe('assembledPathIsGlobbable', () => {
       // `dynamic`: the directory is fixed but the name is not. `/icons/*-*.png` constrains
       // almost nothing, so claiming its matches would claim assets nobody referenced.
       expect(globbable('/icons/${theme}-${size}.png')).toBe(false);
+      expect(globbable('/icons/#{$theme}-#{$size}.png')).toBe(false);
+      expect(globbable('/icons/@{theme}-@{size}.png')).toBe(false);
     });
 
     it('refuses three, so the bound is a bound and not an off-by-one', () => {
