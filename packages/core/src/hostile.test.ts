@@ -250,7 +250,7 @@ describe('hostile inputs', () => {
     expect(report.skipped.some((item) => item.reason.includes('symlink'))).toBe(true);
   });
 
-  it('survives a path longer than 260 characters', async () => {
+  it('survives a path longer than 260 characters', async (ctx) => {
     const root = await makeRoot();
     // Nested rather than one long segment: every filesystem caps a single name, but the
     // 260-character limit on the whole path is the Windows-specific one.
@@ -271,11 +271,11 @@ describe('hostile inputs', () => {
 
     const { report } = await runEverything(root);
 
-    // If the OS refused the path there is nothing here to test, and a pass would claim
-    // a case that never ran. So it fails, rather than falling back to an assertion on a
-    // constant such as `report.version`, which cannot fail on any input.
+    // If the OS refused the path there is nothing here to test. A pass would claim a case
+    // that never ran and a failure would blame the engine for the machine, so the run
+    // counts it as skipped.
     if (!created) {
-      expect.fail('the OS refused a 375-character path, so this case did not run');
+      ctx.skip();
     }
 
     expect(report.summary.assets).toBe(1);

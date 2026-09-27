@@ -326,13 +326,14 @@ describe('discover', () => {
     ]);
   });
 
-  it('does not follow symlinks, and says so', async () => {
+  it('does not follow symlinks, and says so', async (ctx) => {
     const root = await makeTree({ 'real/hero.png': '' });
     try {
       await symlink(join(root, 'real'), join(root, 'link'), 'dir');
     } catch {
-      // Creating a symlink needs elevation or developer mode on Windows.
-      return;
+      // Creating a symlink needs elevation or developer mode on Windows. Without either
+      // this case cannot run, so the run counts it as skipped rather than passed.
+      ctx.skip();
     }
 
     const result = await discover({ root, adapters });
