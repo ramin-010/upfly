@@ -99,6 +99,21 @@ describe('verifyBroken asks every spelling', () => {
     expect(result.items[0]?.verdict).toBe('confirmed-genuine');
   });
 
+  it.each(['./img/a&#38;b.png', './img/a&#x26;b.png'])(
+    'reads %s whole, since its # belongs to a character reference',
+    async (path) => {
+      const result = await verifyFindings(root, brokenReport(path), ['']);
+
+      expect(result.items[0]?.verdict).toBe('confirmed-false');
+    },
+  );
+
+  it('still cuts the path at a real fragment', async () => {
+    const result = await verifyFindings(root, brokenReport('./img/nothing.png#frag'), ['']);
+
+    expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+
   it('reads a Markdown escape where the finding sits in Markdown, and nowhere else', async () => {
     // In a Markdown destination `my\_photo.png` names `my_photo.png`; in HTML the
     // backslash is part of the name. The kind comes from the file, not from the finding.

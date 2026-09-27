@@ -119,6 +119,19 @@ export async function verifyFindings(
 const MARKDOWN = new Set(['.md', '.mdx', '.markdown']);
 
 /**
+ * Where a path's query or fragment starts: the first `?` or `#` outside a character
+ * reference, since the `#` of `a&#38;b.png` is part of the name.
+ */
+function suffixStart(rawPath: string): number {
+  const masked = rawPath.replace(
+    /&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+    (reference) => 'x'.repeat(reference.length),
+  );
+  const index = masked.search(/[?#]/);
+  return index === -1 ? rawPath.length : index;
+}
+
+/**
  * The reference kind a file's type implies, which decides the spellings a path can have:
  * only in Markdown is a backslash before punctuation an escape. Read from the file rather
  * than from the finding, so the check stays independent of the engine it checks. Raw HTML
@@ -140,7 +153,7 @@ function verifyBroken(
   publicDirs: readonly string[],
 ): ItemVerdict {
   const subject = `${file} → ${rawPath}`;
-  const path = rawPath.split('?')[0]?.split('#')[0] ?? rawPath;
+  const path = rawPath.slice(0, suffixStart(rawPath));
 
   // Every spelling the path decodes to. `netguru%20(1).jpg` names a file called
   // `netguru (1).jpg`, and a check that compared the text as written would share the
