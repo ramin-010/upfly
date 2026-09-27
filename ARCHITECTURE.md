@@ -524,8 +524,10 @@ the nearest; and `include`, `files` and `references` are not read.
 `out-of-scope`. The two shapes differ by one character: `@/…` has an empty scope, which no registry
 permits. Nor does npm permit a `$` in a name, since it refuses any name `encodeURIComponent`
 changes, so SvelteKit's `$lib/…` is an alias, never a package.
-`unresolved-alias` means an alias-shaped path that no declared alias maps. It is a final
-outcome, not pending work.
+`unresolved-alias` means an alias-shaped path that no alias Upfly reads maps. It is a final
+outcome, not pending work. The project may still declare the alias where Upfly does not look, such
+as a webpack config, SvelteKit's `kit.alias` or Astro's `vite.resolve.alias`, so the reason says
+which configs Upfly reads and never that the project declares none.
 
 ### Non-asset extensions are the resolver's business
 

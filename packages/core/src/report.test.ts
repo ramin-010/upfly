@@ -1152,7 +1152,7 @@ describe('buildReport', () => {
       expect(text).toContain('none with a filename to check');
     });
 
-    it('says an alias-shaped path with no note matched no alias the project declares', () => {
+    it('says an alias-shaped path matched no alias Upfly reads, and which configs those are', () => {
       const report = reportOf([
         {
           ...dynamicReference('app.ts', '@/assets/logo.png', 0),
@@ -1160,8 +1160,10 @@ describe('buildReport', () => {
         },
       ]);
 
+      // Not "no alias the project declares": a webpack config or SvelteKit's `kit.alias`
+      // can declare one that Upfly never reads.
       expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
-        'alias-shaped, and no alias the project declares maps it',
+        "alias-shaped, and no alias Upfly reads maps it; it reads only tsconfig and jsconfig paths and a Vite config's resolve.alias",
       ]);
     });
 

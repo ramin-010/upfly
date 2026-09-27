@@ -151,6 +151,8 @@ describe('the report of a pipeline run', () => {
 
   const unreadIn = (config: string) =>
     `alias-shaped, and no alias Upfly could read maps it; ${config} has aliases Upfly could not read, listed under Skipped`;
+  const UNMAPPED =
+    "alias-shaped, and no alias Upfly reads maps it; it reads only tsconfig and jsconfig paths and a Vite config's resolve.alias";
 
   it('names the config Upfly could not read as the reason an alias it covers is unresolved', async () => {
     const root = project({
@@ -217,10 +219,41 @@ describe('the report of a pipeline run', () => {
     expect(await aliasReasons(root)).toEqual({
       'apps/web/src/app.ts @/assets/hero.png': unreadIn('configs/base.json'),
       'docs/guide.md ~/assets/logo.png': unreadIn('docs/tsconfig.json'),
-      'scripts/banner.ts @/assets/banner.png':
-        'alias-shaped, and no alias the project declares maps it',
+      'scripts/banner.ts @/assets/banner.png': UNMAPPED,
     });
   });
+
+  it.each([
+    [
+      'a webpack config',
+      'webpack.config.js',
+      [
+        "const path = require('node:path');",
+        "module.exports = { resolve: { alias: { '@': path.resolve(__dirname, 'src') } } };",
+      ],
+    ],
+    [
+      "Astro's vite.resolve.alias",
+      'astro.config.mjs',
+      [
+        "import { fileURLToPath } from 'node:url';",
+        "const src = fileURLToPath(new URL('./src', import.meta.url));",
+        "export default { vite: { resolve: { alias: { '@': src } } } };",
+      ],
+    ],
+  ])(
+    'says which configs it reads, and never that the project declares no alias, for %s',
+    async (_where, config, lines) => {
+      const root = project({
+        [config]: [...lines, ''].join(NL),
+        'src/app.js': `import hero from '@/assets/hero.png';${NL}export { hero };${NL}`,
+        'src/assets/hero.png': 'never decoded',
+      });
+
+      // The project does declare this alias, in a file Upfly does not read.
+      expect(await aliasReasons(root)).toEqual({ 'src/app.js @/assets/hero.png': UNMAPPED });
+    },
+  );
 });
 
 describe('runPipeline', () => {

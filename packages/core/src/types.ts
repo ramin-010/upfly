@@ -151,8 +151,10 @@ export type Resolution =
    */
   | 'discarded'
   /**
-   * Alias-shaped (`@/…`, `~/…`, `#…`, `$lib/…`), as a path or a pattern, and no alias the
-   * project declares maps it.
+   * Alias-shaped (`@/…`, `~/…`, `#…`, `$lib/…`), as a path or a pattern, and no alias Upfly
+   * reads maps it. Upfly reads tsconfig and jsconfig `paths` and a Vite config's
+   * `resolve.alias`, so the project may still declare the alias elsewhere, such as in a
+   * webpack config or SvelteKit's `kit.alias`.
    */
   | 'unresolved-alias';
 

@@ -212,9 +212,9 @@ export interface ReferenceEntry {
   readonly rawPath: string;
   readonly resolution: Resolution;
   /**
-   * The exclusion rule for `out-of-scope`; for `unresolved-alias`, why no alias maps it,
-   * naming any config covering the file whose aliases Upfly could not read; otherwise the
-   * adapter's note or a default.
+   * The exclusion rule for `out-of-scope`; for `unresolved-alias`, why no alias Upfly reads
+   * maps it, naming any config covering the file whose aliases Upfly could not read; otherwise
+   * the adapter's note or a default.
    */
   readonly reason: string;
   /**
@@ -966,8 +966,8 @@ function unlinkedReason(reference: Reference, aliases: AliasMap): string {
 }
 
 /**
- * Why no alias maps a reference. A config whose aliases Upfly could not read may hold the
- * alias, so each one that covers the file is named, the nearest first.
+ * Why no alias Upfly reads maps a reference. A config whose aliases Upfly could not read may
+ * hold the alias, so each one that covers the file is named, the nearest first.
  */
 function aliasReason(file: string, aliases: AliasMap): string {
   const from = toPosix(file);
@@ -982,7 +982,11 @@ function aliasReason(file: string, aliases: AliasMap): string {
   const [nearest, ...others] = [...depth]
     .sort(([a, aDepth], [b, bDepth]) => bDepth - aDepth || compareStrings(a, b))
     .map(([what]) => what);
-  if (nearest === undefined) return 'alias-shaped, and no alias the project declares maps it';
+  // What Upfly reads, not what the project declares: a webpack config or SvelteKit's
+  // `kit.alias` can declare an alias that no config Upfly reads holds.
+  if (nearest === undefined) {
+    return "alias-shaped, and no alias Upfly reads maps it; it reads only tsconfig and jsconfig paths and a Vite config's resolve.alias";
+  }
   const unread =
     others.length === 0 ? `${nearest} has` : `${nearest} and ${others.length} more have`;
   return `alias-shaped, and no alias Upfly could read maps it; ${unread} aliases Upfly could not read, listed under Skipped`;
