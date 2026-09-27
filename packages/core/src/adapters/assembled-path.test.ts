@@ -276,13 +276,13 @@ describe('TEMPLATE_HOLES', () => {
  */
 describe('spellingsOf', () => {
   it('always offers the literal spelling first', () => {
-    expect(spellingsOf('/gallery/hero.png')).toEqual([
+    expect(spellingsOf('/gallery/hero.png', 'attr')).toEqual([
       { spelling: 'literal', path: '/gallery/hero.png' },
     ]);
   });
 
   it('offers the percent-decoded spelling after the literal one', () => {
-    expect(spellingsOf('/gallery/hero%20image.png')).toEqual([
+    expect(spellingsOf('/gallery/hero%20image.png', 'attr')).toEqual([
       { spelling: 'literal', path: '/gallery/hero%20image.png' },
       { spelling: 'percent-encoded', path: '/gallery/hero image.png' },
     ]);
@@ -290,7 +290,7 @@ describe('spellingsOf', () => {
 
   it('decodes every character-reference form', () => {
     for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png', 'a&#X26;b.png']) {
-      expect(spellingsOf(written).map((candidate) => candidate.path)).toContain('a&b.png');
+      expect(spellingsOf(written, 'attr').map((candidate) => candidate.path)).toContain('a&b.png');
     }
   });
 
@@ -301,9 +301,9 @@ describe('spellingsOf', () => {
    * misspelled `&eacut;` stays unreadable rather than becoming a wrong answer.
    */
   it('offers nothing decoded when one reference is outside the bound', () => {
-    expect(spellingsOf('a&amp;caf&eacut;.png').map((candidate) => candidate.spelling)).toEqual([
-      'literal',
-    ]);
+    expect(
+      spellingsOf('a&amp;caf&eacut;.png', 'attr').map((candidate) => candidate.spelling),
+    ).toEqual(['literal']);
   });
 
   /**
@@ -319,7 +319,10 @@ describe('spellingsOf', () => {
     ['&Lt;&LT;&AMP;', String.fromCodePoint(0x226a, 0x3c, 0x26)],
     ['&#35;&#1234;&#X22;&#xcab;', String.fromCodePoint(0x23, 0x4d2, 0x22, 0xcab)],
   ])('decodes %s as CommonMark does', (written, decoded) => {
-    expect(spellingsOf(written)).toContainEqual({ spelling: 'html-entities', path: decoded });
+    expect(spellingsOf(written, 'attr')).toContainEqual({
+      spelling: 'html-entities',
+      path: decoded,
+    });
   });
 
   it.each([
@@ -335,17 +338,23 @@ describe('spellingsOf', () => {
     '&#abcdef0;',
     '&hi?;',
   ])('offers only the literal spelling of %s, which CommonMark does not decode', (written) => {
-    expect(spellingsOf(written).map((candidate) => candidate.spelling)).toEqual(['literal']);
+    expect(spellingsOf(written, 'attr').map((candidate) => candidate.spelling)).toEqual([
+      'literal',
+    ]);
   });
 
   it('offers nothing decoded when the percent-encoding is malformed', () => {
     // `decodeURIComponent` throws on these rather than returning anything.
-    expect(spellingsOf('100%.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
-    expect(spellingsOf('a%ZZb.png').map((candidate) => candidate.spelling)).toEqual(['literal']);
+    expect(spellingsOf('100%.png', 'attr').map((candidate) => candidate.spelling)).toEqual([
+      'literal',
+    ]);
+    expect(spellingsOf('a%ZZb.png', 'attr').map((candidate) => candidate.spelling)).toEqual([
+      'literal',
+    ]);
   });
 
   it('leaves a bare ampersand alone: `c&s.png` is a real filename in the corpus', () => {
-    expect(spellingsOf('/images/c&s.png').map((candidate) => candidate.spelling)).toEqual([
+    expect(spellingsOf('/images/c&s.png', 'attr').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);
   });
@@ -360,7 +369,7 @@ describe('spellingsOf', () => {
       { spelling: 'literal', path: '/img/my\\_photo.png' },
       { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
     ]);
-    for (const kind of [undefined, 'attr', 'import'] as const) {
+    for (const kind of ['attr', 'import', 'css-url'] as const) {
       expect(spellingsOf('/img/my\\_photo.png', kind), kind).toEqual([
         { spelling: 'literal', path: '/img/my\\_photo.png' },
       ]);
@@ -376,6 +385,11 @@ describe('spellingsOf', () => {
     expect(spellingsOf('C:\\site\\hero.png', 'md')).toEqual([
       { spelling: 'literal', path: 'C:\\site\\hero.png' },
     ]);
+  });
+
+  it('cannot be asked without a kind, since the kind decides the spellings', () => {
+    // @ts-expect-error: without the kind, a Markdown escape would be lost without a word.
+    expect(spellingsOf('/img/x.png')).toHaveLength(1);
   });
 });
 
@@ -492,10 +506,10 @@ describe('spell', () => {
 
   it('round-trips: every decoded spelling re-encodes to something that decodes back', () => {
     for (const written of ['/g/hero%20image.png', '/g/a&amp;b.png']) {
-      for (const { spelling, path } of spellingsOf(written)) {
+      for (const { spelling, path } of spellingsOf(written, 'attr')) {
         if (spelling === 'literal') continue;
         const respelled = spell(path, spelling);
-        expect(spellingsOf(respelled).map((c) => c.path)).toContain(path);
+        expect(spellingsOf(respelled, 'attr').map((c) => c.path)).toContain(path);
       }
     }
   });

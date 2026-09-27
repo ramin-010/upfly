@@ -14,7 +14,7 @@ import { appendFileSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
-import { IMAGE_EXTENSIONS, type Report, spell, spellingsOf } from 'upfly-core';
+import { IMAGE_EXTENSIONS, type ReferenceKind, type Report, spell, spellingsOf } from 'upfly-core';
 
 export type Verdict = 'confirmed-genuine' | 'confirmed-false' | 'ambiguous';
 
@@ -116,6 +116,18 @@ export async function verifyFindings(
   };
 }
 
+const MARKDOWN = new Set(['.md', '.mdx', '.markdown']);
+
+/**
+ * The reference kind a file's type implies, which decides the spellings a path can have:
+ * only in Markdown is a backslash before punctuation an escape. Read from the file rather
+ * than from the finding, so the check stays independent of the engine it checks. Raw HTML
+ * inside Markdown then gets the escape reading too, which can only find more files.
+ */
+function kindOfFile(file: string): ReferenceKind {
+  return MARKDOWN.has(posix.extname(file).toLowerCase()) ? 'md' : 'attr';
+}
+
 /**
  * Resolves a `broken` finding's path again, against the directory index. A relative path
  * is tried from the referencing file only; a root-relative one against the serving roots of
@@ -133,7 +145,7 @@ function verifyBroken(
   // Every spelling the path decodes to. `netguru%20(1).jpg` names a file called
   // `netguru (1).jpg`, and a check that compared the text as written would share the
   // engine's blind spot and confirm a false `broken` as genuine.
-  const spellings = spellingsOf(path).map((candidate) => candidate.path);
+  const spellings = spellingsOf(path, kindOfFile(file)).map((candidate) => candidate.path);
   const candidates = spellings.flatMap((spelling) => candidatePaths(file, spelling, publicDirs));
 
   const found = candidates.filter((candidate) => index.files.has(candidate));

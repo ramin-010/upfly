@@ -23,6 +23,7 @@ beforeAll(() => {
   // a directory rather than a list.
   writeFileSync(join(root, 'img', 'hero image.png'), 'x');
   writeFileSync(join(root, 'img', 'a&b.png'), 'x');
+  writeFileSync(join(root, 'img', 'my_photo.png'), 'x');
   // Mentioned only as `only%20encoded.jpg`: the same name under another extension, in a
   // spelling the token index cannot hold. The right verdict is `ambiguous`.
   writeFileSync(join(root, 'img', 'only encoded.png'), 'x');
@@ -34,12 +35,12 @@ beforeAll(() => {
   writeFileSync(join(root, 'empty.html'), '<p>nothing here</p>');
 });
 
-function brokenReport(rawPath: string): Report {
+function brokenReport(rawPath: string, file = 'page.html'): Report {
   const finding: BrokenFinding = {
     kind: 'broken',
-    file: 'page.html',
+    file,
     line: 1,
-    where: 'page.html:1',
+    where: `${file}:1`,
     rawPath,
   };
   // `verifyFindings` also checks `unusedVectors.assets`, so the stub carries it.
@@ -96,6 +97,17 @@ describe('verifyBroken asks every spelling', () => {
     const result = await verifyFindings(root, brokenReport('./img/caf&eacut;.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+
+  it('reads a Markdown escape where the finding sits in Markdown, and nowhere else', async () => {
+    // In a Markdown destination `my\_photo.png` names `my_photo.png`; in HTML the
+    // backslash is part of the name. The kind comes from the file, not from the finding.
+    const path = './img/my\\_photo.png';
+    const inMarkdown = await verifyFindings(root, brokenReport(path, 'guide.md'), ['']);
+    const inHtml = await verifyFindings(root, brokenReport(path), ['']);
+
+    expect(inMarkdown.items[0]?.verdict).toBe('confirmed-false');
+    expect(inHtml.items[0]?.verdict).toBe('confirmed-genuine');
   });
 });
 

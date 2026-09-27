@@ -266,11 +266,12 @@ function decodeNamedReference(name: string): string | null {
  *
  * @param kind The reference's kind. Only in a Markdown destination (`'md'`) is a backslash
  * before ASCII punctuation an escape, decoded with the character references in one pass,
- * as CommonMark reads it. Anywhere else a backslash is left as written.
+ * as CommonMark reads it. Anywhere else a backslash is left as written. Required, because
+ * a call that left it out would lose the Markdown spelling without a word.
  */
 export function spellingsOf(
   rawPath: string,
-  kind?: ReferenceKind,
+  kind: ReferenceKind,
 ): ReadonlyArray<{
   readonly spelling: PathSpelling;
   readonly path: string;

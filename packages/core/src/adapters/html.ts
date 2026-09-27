@@ -625,7 +625,7 @@ function addCharacterReferenceReference(
   context: Context,
   shape: ShapeId,
 ): void {
-  const decoded = spellingsOf(raw).find(({ spelling }) => spelling === 'html-entities');
+  const decoded = spellingsOf(raw, 'attr').find(({ spelling }) => spelling === 'html-entities');
   const decodable =
     decoded?.path === parserValue && !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
   if (!decodable) {
