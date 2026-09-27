@@ -605,9 +605,83 @@ export function maskInactiveRegions(
   // literal character, and left in place it can pair with one in the prose below and
   // blank a real reference between them.
   if (options.indentedCode === true) masked = maskIndentedCodeBlocks(masked, text, fenced);
-  masked = maskPattern(masked, /(`+)[\s\S]*?\1/g);
+  masked = maskCodeSpans(masked);
   masked = maskUnclosedRawText(masked);
   return masked;
+}
+
+/**
+ * Blank every code span as CommonMark reads it: a run of backticks opens one unless a
+ * backslash escapes its first backtick, the next run of exactly the same length in the same
+ * paragraph closes it, and a run with no such partner is plain text. Inside a span a
+ * backslash is itself, so it never stops a closing run from closing.
+ */
+function maskCodeSpans(text: string): string {
+  const runs = backtickRuns(text);
+  const startsByLength = new Map<number, number[]>();
+  for (const run of runs) {
+    const starts = startsByLength.get(run.length) ?? [];
+    starts.push(run.start);
+    startsByLength.set(run.length, starts);
+  }
+  const breaks = paragraphBreaks(text);
+
+  const spans: Line[] = [];
+  let cursor = 0;
+  for (const run of runs) {
+    if (run.start < cursor) continue;
+    const escaped = isEscaped(text, run.start);
+    const start = escaped ? run.start + 1 : run.start;
+    const length = escaped ? run.length - 1 : run.length;
+    if (length === 0) continue;
+    const close = firstAtOrAfter(startsByLength.get(length) ?? [], start + length);
+    if (close === undefined) continue;
+    const blankLine = firstAtOrAfter(breaks, start);
+    if (blankLine !== undefined && blankLine < close) continue;
+    spans.push({ start, end: close + length });
+    cursor = close + length;
+  }
+  return blankRanges(text, spans);
+}
+
+/** Every maximal run of backticks, in order. */
+function backtickRuns(text: string): { readonly start: number; readonly length: number }[] {
+  const runs: { start: number; length: number }[] = [];
+  for (let index = text.indexOf('`'); index !== -1; ) {
+    let end = index;
+    while (text.charAt(end) === '`') end++;
+    runs.push({ start: index, length: end - index });
+    index = text.indexOf('`', end);
+  }
+  return runs;
+}
+
+/** Where each blank line starts: the line ending before it. No inline span crosses one. */
+function paragraphBreaks(text: string): number[] {
+  const breaks: number[] = [];
+  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) {
+    if (isBlankLineAt(text, index + 1)) breaks.push(index);
+  }
+  return breaks;
+}
+
+/** Whether an odd run of backslashes stands right before `at`. */
+function isEscaped(text: string, at: number): boolean {
+  let count = 0;
+  while (text.charAt(at - count - 1) === '\\') count++;
+  return count % 2 === 1;
+}
+
+/** The first value in a sorted list that is at least `value`. */
+function firstAtOrAfter(sorted: readonly number[], value: number): number | undefined {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if ((sorted[middle] ?? value) < value) low = middle + 1;
+    else high = middle;
+  }
+  return sorted[low];
 }
 
 /** A list item's marker, wherever it sits: bullet or ordered, and what follows it. */

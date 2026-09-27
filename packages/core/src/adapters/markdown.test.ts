@@ -939,3 +939,30 @@ describe('a destination is found where CommonMark finds it', () => {
     expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
+
+describe('code spans follow CommonMark', () => {
+  const survives = (text: string, token: string) => maskInactiveRegions(text).includes(token);
+
+  it('opens none at an escaped backtick', () => {
+    const text = 'Write \\` here. ![T](/img/a.png) and `code`.';
+    expect(survives(text, '![T](/img/a.png)')).toBe(true);
+    expect(survives(text, '`code`')).toBe(false);
+  });
+
+  it('closes a run only at a run of the same length', () => {
+    const text = '`a ![T](/img/a.png) ``b``';
+    expect(survives(text, '![T](/img/a.png)')).toBe(true);
+    expect(survives(text, '``b``')).toBe(false);
+  });
+
+  it('leaves a run with no partner as text, and never pairs across a blank line', () => {
+    const text = 'Press ` to open it.\n\n![T](/img/a.png) and `code`.';
+    expect(survives(text, '![T](/img/a.png)')).toBe(true);
+    expect(survives(text, '`code`')).toBe(false);
+  });
+
+  it('reads a backslash inside a span as itself, so the span closes at the next run', () => {
+    const text = '`a\\` ![T](/img/a.png) `';
+    expect(survives(text, '![T](/img/a.png)')).toBe(true);
+  });
+});

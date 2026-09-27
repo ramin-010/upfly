@@ -764,7 +764,10 @@ Four things they share, and each was a bug before it was a rule:
   line is read by exactly one of the three.
 - **Mask before you match.** The Markdown adapter blanks fenced blocks, code spans and HTML
   comments with spaces *of identical length* before running any pattern, so a `![](old.png)` in a
-  documentation example is invisible while every offset after it stays exact. The JavaScript
+  documentation example is invisible while every offset after it stays exact. Code spans are found
+  as CommonMark finds them: a backslash-escaped backtick opens none, and a run of backticks closes
+  only at the next run of the same length in its paragraph, so a stray backtick in prose never
+  hides the image after it. The JavaScript
   adapter does the same to flatten a CSS-in-JS template, replacing each `${…}` with a CSS comment
   of matching length: a comment rather than a SCSS interpolation, because `styled.div` templates
   routinely open with `${baseStyles}` at statement level, where an interpolation fails to parse

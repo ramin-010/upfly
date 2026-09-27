@@ -7381,6 +7381,22 @@
           "column": 19
         }
       ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/escaped-backtick.md",
+      "entries": [
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "A backslash before a backtick makes it a plain character, so it opens no code span and the image after it is prose: /img/avatar.png, which exists. Paired with the next backtick instead, the text between them reads as code and the image is never seen.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 188,
+          "line": 7,
+          "column": 15
+        }
+      ]
     }
   ]
 }
