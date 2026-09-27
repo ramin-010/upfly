@@ -370,11 +370,19 @@ export function decodeCharacterReferencesWithMap(
 /** The entity pattern, sticky, so it can be anchored at a position rather than searched. */
 const ENTITY_ONCE = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/y;
 
+const REPLACEMENT_CHARACTER = String.fromCodePoint(0xfffd);
+
 /** One reference's body to its character, or `null` when it is outside the bound. */
 function decodeOneReference(body: string): string | null {
   if (body.startsWith('#')) {
     const isHex = body[1] === 'x' || body[1] === 'X';
-    const code = Number.parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+    const digits = isHex ? body.slice(2) : body.slice(1);
+    const code = Number.parseInt(digits, isHex ? 16 : 10);
+    // Zero, a surrogate and a number past the last code point read as U+FFFD in CommonMark
+    // and HTML alike (CommonMark 0.31.2, section 2.5). CommonMark reads at most 7 decimal or
+    // 6 hexadecimal digits as a reference, so a longer number is not given that reading.
+    const noCharacter = code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff;
+    if (noCharacter && digits.length <= (isHex ? 6 : 7)) return REPLACEMENT_CHARACTER;
     if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
     return String.fromCodePoint(code);
   }

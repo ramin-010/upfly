@@ -818,6 +818,30 @@ describe('resolveReferences', () => {
     });
   });
 
+  describe('a numeric reference to a number that is no character', () => {
+    // CommonMark and HTML both read these as U+FFFD, so the file's name holds that character.
+    const replaced = asset(`src/images/a${String.fromCodePoint(0xfffd)}b.png`);
+
+    it.each([
+      ['zero', './images/a&#0;b.png'],
+      ['a surrogate', './images/a&#xD800;b.png'],
+    ])('finds the file named with U+FFFD for a reference to %s', (_name, rawPath) => {
+      const [found] = resolveReferences(
+        [raw({ rawPath, kind: 'md', shape: 'md.image', ceiling: 'high' })],
+        {
+          root: ROOT,
+          assets: [...ASSETS, replaced],
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: NOTHING_EXISTS,
+        },
+      );
+      const reference = expectResolution(found, 'resolved');
+
+      expect(reference.resolvedPath).toBe(replaced.path);
+      expect(reference.spelling).toBe('html-entities');
+    });
+  });
+
   describe('rung 7: an asserted literal path that points at nothing is broken', () => {
     it('reports a missing relative path', () => {
       const reference = resolveOne({ rawPath: './assets/missing.png' });

@@ -260,9 +260,14 @@ describe('markdownAdapter', () => {
       expect(find(source)[0]?.ceiling).toBe('high');
     });
 
+    it('keeps a number past the last code point, which CommonMark reads as U+FFFD', () => {
+      const source = '![a](/img/caf&#x110000;.png)';
+      expect(slices(source)).toEqual(['/img/caf&#x110000;.png']);
+      expect(find(source)[0]?.ceiling).toBe('high');
+    });
+
     it.each([
       ['a misspelled name', '![a](/img/caf&eacut;.png)'],
-      ['a number past the last code point', '![a](/img/caf&#x110000;.png)'],
       ['a reference beside a percent-escape', '![a](/img/caf&eacute;%20x.png)'],
       ['a link reference definition', '[a]: /img/caf&eacut;.png'],
     ])('refuses %s rather than look up the text as written', (_name, source) => {

@@ -301,6 +301,18 @@ describe('htmlAdapter', () => {
       expect(find('<img src="a-b.png">')[0]?.ceiling).toBe('high');
     });
 
+    // The HTML parser reads these as U+FFFD. A decoded spelling that differed from its
+    // reading would have the attribute refused.
+    it.each([
+      ['zero', '<img src="/img/a&#0;b.png">'],
+      ['a surrogate', '<img src="/img/a&#xD800;b.png">'],
+      ['a number past the last code point', '<img src="/img/a&#x110000;b.png">'],
+    ])('decodes a numeric reference to %s as the HTML parser does', (_name, source) => {
+      const references = find(source);
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('high');
+    });
+
     /**
      * An escaped value matters only where the attribute is a reference position. Acted on
      * for every attribute, it would turn escaped `alt` text, other sites' links and

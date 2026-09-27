@@ -562,9 +562,11 @@ asserted reference means a `broken` finding. The decoder knows numeric reference
 `&#x26;`) and every named reference the HTML specification defines, taken from parse5's table:
 each name is decoded once inside an attribute value, where it counts only whole and with its
 semicolon. That is how CommonMark decodes a link destination, so `![](caf&eacute;.png)` names
-`café.png`, as `<img src="caf&eacute;.png">` does. Anything else written like a reference, such as
-the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`, and text it
-rejects, such as `100%`, is treated the same way.
+`café.png`, as `<img src="caf&eacute;.png">` does. A numeric reference of at most seven decimal or
+six hexadecimal digits to zero, a surrogate or a number past U+10FFFF reads as U+FFFD, as
+CommonMark (0.31.2, section 2.5) and HTML both read it. Anything else written like a reference,
+such as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`,
+and text it rejects, such as `100%`, is treated the same way.
 
 In a Markdown destination a backslash before an ASCII punctuation character is an escape, and
 CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names

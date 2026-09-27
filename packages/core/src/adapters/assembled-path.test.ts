@@ -330,6 +330,19 @@ describe('spellingsOf', () => {
     });
   });
 
+  // CommonMark and HTML both read these as U+FFFD, the replacement character.
+  it.each([
+    ['zero', '/img/a&#0;b.png'],
+    ['a surrogate', '/img/a&#xD800;b.png'],
+    ['a number past the last code point', '/img/a&#x110000;b.png'],
+    ['the same number in decimal', '/img/a&#1114112;b.png'],
+  ])('reads a numeric reference to %s as U+FFFD', (_name, written) => {
+    expect(spellingsOf(written, 'md')).toContainEqual({
+      spelling: 'html-entities',
+      path: `/img/a${String.fromCodePoint(0xfffd)}b.png`,
+    });
+  });
+
   it.each([
     'caf&eacut;.png',
     '&notit;',
@@ -435,7 +448,6 @@ describe('decodeMarkdownDestination', () => {
 describe('holdsUndecodableCharacterReference', () => {
   it('is true when something written as a reference does not decode', () => {
     expect(holdsUndecodableCharacterReference('caf&eacut;.png')).toBe(true);
-    expect(holdsUndecodableCharacterReference('caf&#x110000;.png')).toBe(true);
   });
 
   // The file is `caf` with an accent then ` x.png`, which no spelling the resolver tries
@@ -446,6 +458,8 @@ describe('holdsUndecodableCharacterReference', () => {
 
   it('is false for a path that decodes, or that holds no reference at all', () => {
     expect(holdsUndecodableCharacterReference('caf&eacute;.png')).toBe(false);
+    // A number past the last code point decodes, to U+FFFD.
+    expect(holdsUndecodableCharacterReference('caf&#x110000;.png')).toBe(false);
     expect(holdsUndecodableCharacterReference('c&s.png')).toBe(false);
     expect(holdsUndecodableCharacterReference('hero%20image.png')).toBe(false);
     expect(holdsUndecodableCharacterReference('hero.png')).toBe(false);

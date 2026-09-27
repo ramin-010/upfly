@@ -6861,6 +6861,21 @@
       ]
     },
     {
+      "path": "apps/docs/src/content/guide/past-last-code-point.md",
+      "entries": [
+        {
+          "raw": "/img/range&#x110000;.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "broken",
+          "why": "&#x110000; is one past the last code point, U+10FFFF. CommonMark reads a numeric character reference to a code point that does not exist as the replacement character, U+FFFD, so this names a file that is not there: a genuine broken reference, not an unknown one. No file in the tree is named with U+FFFD, the character tools write when they fail to decode a name.",
+          "offset": 148,
+          "line": 5,
+          "column": 17
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/styles/liquid-prefix.scss",
       "entries": [
         {
