@@ -299,16 +299,13 @@ export const SHAPES = [
       'astro.import.frontmatter',
       'mdx.import',
       'js.string.literal',
-      'path.bare-specifier',
     ],
     needsToSee: 'the tsconfig/vite paths table, which arrives long after the adapter has run',
     why:
       'An import through an alias the project maps in its `tsconfig` or Vite config, such as ' +
       '`~/img/hero.png`. A mapped and an unmapped alias look the same in source, and only the ' +
       'paths table, which the adapter cannot see, tells them apart, so the adapter emits the ' +
-      "construct's own shape and never names this row. An alias that starts with neither `~`, " +
-      "`@` nor `#`, such as SvelteKit's `$lib/assets/hero.png`, reads as a package name to the " +
-      'adapter, which names `path.bare-specifier`.',
+      "construct's own shape and never names this row.",
   },
   {
     id: 'js.import.alias.unmapped',

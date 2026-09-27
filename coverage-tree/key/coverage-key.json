@@ -49,7 +49,8 @@
     "@web/*": "apps/web/src/*",
     "unmapped": [
       "@missing/*",
-      "#internal/*"
+      "#internal/*",
+      "$missing/*"
     ]
   },
   "imageSizesNote": "The tree holds no image that WebP makes larger, because real photographs do not have that property: 4 sources at 14 sizes down to 8x8, 56 combinations, all came out smaller as WebP, lossless and lossy alike. The property belongs to synthetic placeholders, and fixtures/partial-pattern covers it as a conversion fixture. This tree measures reference detection. Every asset still records its real byte size and hash, so probe and encode coverage can be added later without rebuilding the tree.",
@@ -7859,6 +7860,21 @@
           "offset": 96,
           "line": 2,
           "column": 51
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/StoreBadge.tsx",
+      "entries": [
+        {
+          "raw": "$missing/store-badge.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.unmapped",
+          "expect": "unresolved-alias",
+          "why": "npm accepts no package name that starts with $, so this is an alias, as SvelteKit's $lib is, and nothing in this project maps $missing.",
+          "offset": 19,
+          "line": 1,
+          "column": 20
         }
       ]
     }

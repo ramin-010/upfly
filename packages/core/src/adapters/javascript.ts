@@ -1279,8 +1279,9 @@ function isBareSpecifier(value: string): boolean {
   if (value === '') return false;
   // Relative, root-relative or on a Windows drive: a reference to a file, not a package.
   if (value.startsWith('.') || value.startsWith('/') || isDrivePath(value)) return false;
-  // Alias-shaped: which alias it is depends on a table only the resolver has.
-  if (value.startsWith('~') || value.startsWith('@') || value.startsWith('#')) return false;
+  // Alias-shaped: which alias it is depends on a table only the resolver has. No npm package
+  // name starts with `$`, so SvelteKit's `$lib/…` is one.
+  if (['~', '@', '#', '$'].some((prefix) => value.startsWith(prefix))) return false;
   return true;
 }
 

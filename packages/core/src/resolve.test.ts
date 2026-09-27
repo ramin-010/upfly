@@ -552,6 +552,18 @@ describe('resolveReferences', () => {
       expect(reference?.resolution).toBe('unresolved-alias');
     });
 
+    it.each([
+      ['an import', 'js.import.static', '$lib/assets/logo.png'],
+      ['a require()', 'js.require', '$lib/icons/x.png'],
+    ] as const)(
+      'reads a specifier that starts with $ as an alias, since no npm package name can: %s',
+      (_name, shape, rawPath) => {
+        // npm refuses a name that `encodeURIComponent` changes, and it changes `$`, so
+        // SvelteKit's `$lib/…` names an alias, never a file inside a package.
+        expect(resolveOne({ rawPath, kind: 'import', shape })?.resolution).toBe('unresolved-alias');
+      },
+    );
+
     it('an ordinary package import never reaches this question at all', () => {
       // `import x from '@scope/pkg'` produces no reference: rung 3 drops an extensionless
       // path long before the package-or-alias question. So requiring a subpath cannot
@@ -1288,6 +1300,13 @@ describe('rung 2 through a declared alias', () => {
         asserted: false,
       })?.resolution,
     ).toBe('unresolved-alias');
+  });
+
+  it('calls a $ pattern no rule covers unresolved-alias, as it does a $ path', () => {
+    // Read from the fixed text: `$lib` is written there, while `${base}` is a hole.
+    expect(throughAlias({ rawPath: '$lib/img/alias-${n}.png' })?.resolution).toBe(
+      'unresolved-alias',
+    );
   });
 
   it('keeps a pattern dynamic when a rule covers its alias and the glob names nothing', () => {

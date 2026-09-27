@@ -431,13 +431,15 @@ function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
   // A bare specifier in an import position: `lodash/x.png`, never `./x.png`.
   if (kind !== 'import') return false;
   // An `@` path was decided above: one the pattern rejected is an alias, either `@/…` or a
-  // scope and name with no subpath.
+  // scope and name with no subpath. No npm package name starts with `$`, so `$lib/…` is an
+  // alias, as SvelteKit writes one.
   return (
     !path.startsWith('.') &&
     !path.startsWith('/') &&
     !path.startsWith('~') &&
     !path.startsWith('#') &&
-    !path.startsWith('@')
+    !path.startsWith('@') &&
+    !path.startsWith('$')
   );
 }
 

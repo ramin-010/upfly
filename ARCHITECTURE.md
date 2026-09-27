@@ -514,7 +514,9 @@ the nearest; and `include`, `files` and `references` are not read.
 **A package specifier is not an alias** (rung 6b). `@11ty/logo/img/logo.png` names a file inside
 `node_modules`, which the walk prunes, so no alias configuration will ever resolve it; it is
 `out-of-scope`. The two shapes differ by one character: `@/…` has an empty scope, which no registry
-permits. `unresolved-alias` means an alias-shaped path that no declared alias maps. It is a final
+permits. Nor does npm permit a `$` in a name, since it refuses any name `encodeURIComponent`
+changes, so SvelteKit's `$lib/…` is an alias, never a package.
+`unresolved-alias` means an alias-shaped path that no declared alias maps. It is a final
 outcome, not pending work.
 
 ### Non-asset extensions are the resolver's business

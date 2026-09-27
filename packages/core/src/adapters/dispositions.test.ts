@@ -75,6 +75,13 @@ describe('path.bare-specifier: the disposition beats the construct', () => {
       expect(only(js(source)).shape, prefix).toBe('js.import.static');
     }
   });
+
+  it('leaves a $ specifier to the resolver, as it does ~, @ and #', () => {
+    // No npm package name starts with `$`, so SvelteKit's `$lib/…` is an alias, and which
+    // one depends on the table the resolver has.
+    expect(only(js("import hero from '$lib/assets/hero.png';")).shape).toBe('js.import.static');
+    expect(only(js("const icon = require('$lib/icons/x.png');")).shape).toBe('js.require');
+  });
 });
 
 describe('path.charref: the spelling beats the construct', () => {

@@ -151,8 +151,8 @@ export type Resolution =
    */
   | 'discarded'
   /**
-   * Alias-shaped (`@/…`, `~/…`, `#…`), as a path or a pattern, and no alias the project
-   * declares maps it.
+   * Alias-shaped (`@/…`, `~/…`, `#…`, `$lib/…`), as a path or a pattern, and no alias the
+   * project declares maps it.
    */
   | 'unresolved-alias';
 
