@@ -517,7 +517,10 @@ tries each one: its extension filter passes a path if any spelling ends in a tra
 and its lookup tries the spellings in order, recording on the resolved reference the spelling
 that matched. Rung 5 asks about the same spellings in the same order, so an encoded path to a
 file an ignore rule excludes, or into a directory the walk pruned, is `out-of-scope` rather than
-`broken`: `unindexed%20photo.png` names the ignored `unindexed photo.png`. The audit's sweep reads
+`broken`: `unindexed%20photo.png` names the ignored `unindexed photo.png`. Rung 4b expands a
+declared alias for each spelling too, literal first, so `~/assets/img/team%20photo.png` names
+`team photo.png`; a move re-spells only what follows the alias, whose prefix is the project's own
+text. The audit's sweep reads
 a path that did not resolve in the same spellings, so an asset named only in an encoded spelling
 is `possibly-dead` rather than `dead` (see "`possibly-dead`, and why "zero references" is usually
 a lie").

@@ -10,6 +10,7 @@
 import { dirname, posix, resolve as resolvePath, win32 } from 'node:path';
 import {
   INTERPOLATIONS,
+  type PathSpelling,
   isDrivePath,
   spellingsOf,
   splitPathSuffix,
@@ -191,7 +192,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 4b. An alias the project declares. Tried after the literal lookup, so a real file
   //     at the written path always wins over a mapping that happens to match.
-  const viaAlias = resolveThroughAlias(path, raw, context);
+  const viaAlias = resolveThroughAlias(path, spellings, raw, context);
   if (viaAlias !== null) return viaAlias;
 
   // 5. Points at a real file we deliberately do not index, in any spelling.
@@ -314,30 +315,36 @@ function unlinked(
 }
 
 /**
- * Rung 4b: expand a declared alias and look the result up. Separate from `resolveOne`
- * because an alias can expand to several candidates, a loop the ladder's sequence of single
- * tests should not carry.
+ * Rung 4b: expand a declared alias and look the result up, in every spelling rung 4 asks
+ * about, literal first, recording the spelling that matched as rung 4 does. Separate from
+ * `resolveOne` because an alias can expand to several candidates, a loop the ladder's
+ * sequence of single tests should not carry. Whether the path is alias-shaped is read from
+ * the path as written: an alias is a prefix the project declares.
  */
 function resolveThroughAlias(
   path: string,
+  spellings: readonly { readonly spelling: PathSpelling; readonly path: string }[],
   raw: RawReference,
   context: ResolveContext,
 ): Reference | null {
   if (!isAliasShaped(path, raw.kind)) return null;
 
-  for (const candidate of expandAlias(context.aliases, path, raw.file)) {
-    const target = context.index.lookupExact(candidate);
-    if (target === null) continue;
-    return {
-      ...raw,
-      resolution: 'resolved',
-      confidence: raw.ceiling,
-      resolvedPath: target,
-      // An alias is a base the project configured, as strong as a serving root, so it
-      // reuses `serving-root` rather than adding a `resolvedVia` value every consumer
-      // would handle the same way.
-      resolvedVia: 'serving-root',
-    };
+  for (const { spelling, path: spelled } of spellings) {
+    for (const candidate of expandAlias(context.aliases, spelled, raw.file)) {
+      const target = context.index.lookupExact(candidate);
+      if (target === null) continue;
+      return {
+        ...raw,
+        resolution: 'resolved',
+        confidence: raw.ceiling,
+        resolvedPath: target,
+        // An alias is a base the project configured, as strong as a serving root, so it
+        // reuses `serving-root` rather than adding a `resolvedVia` value every consumer
+        // would handle the same way.
+        resolvedVia: 'serving-root',
+        ...(spelling === 'literal' ? {} : { spelling }),
+      };
+    }
   }
   return null;
 }

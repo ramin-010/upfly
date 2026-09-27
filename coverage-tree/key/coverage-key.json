@@ -1220,6 +1220,14 @@
       "source": "migrant",
       "width": 64,
       "height": 64
+    },
+    {
+      "path": "shared/assets/img/team photo.png",
+      "bytes": 7245,
+      "sha256": "4d64529396b3e484",
+      "source": "solvay",
+      "width": 80,
+      "height": 60
     }
   ],
   "unreferencedOccurrences": [],
@@ -7614,6 +7622,22 @@
           "offset": 107,
           "line": 11,
           "column": 11
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/aliased-encoded.md",
+      "entries": [
+        {
+          "raw": "~/assets/img/team%20photo.png",
+          "occurrence": 1,
+          "shape": "md.image",
+          "expect": "resolved",
+          "why": "The project maps `~/*` to shared/, and decoded, the path names this picture: a space written %20 through an alias, as Astro reads it.",
+          "target": "shared/assets/img/team photo.png",
+          "offset": 103,
+          "line": 5,
+          "column": 13
         }
       ]
     }

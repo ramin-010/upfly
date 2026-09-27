@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { AliasMap } from './aliases.js';
 import { toPosix } from './paths.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { CONVENTIONAL_SERVING_ROOTS, resolveReferences, servedFromAnyRoot } from './resolve.js';
@@ -1152,5 +1153,66 @@ describe('servedFromAnyRoot: the glob, from a serving root the run did not find'
   it('reads every interpolation syntax the resolver globs, and ignores case', () => {
     expect(servedFromAnyRoot('/img/tile-#{$n}.png')('src/img/tile-1.png')).toBe(true);
     expect(servedFromAnyRoot('/IMG/Tile-@{n}.PNG')('src/img/tile-1.png')).toBe(true);
+  });
+});
+
+describe('rung 4b: a declared alias, in every spelling the path could be read in', () => {
+  const aliases: AliasMap = {
+    rules: [
+      {
+        prefix: '~/',
+        targets: [join(ROOT, 'src')],
+        wildcard: true,
+        scope: toPosix(ROOT),
+        source: 'tsconfig.json',
+      },
+    ],
+    skipped: [],
+  };
+  const assets = [
+    asset('src/assets/logo.png'),
+    asset('src/assets/hero image.png'),
+    asset('src/assets/my_photo.png'),
+    asset('src/assets/enc%20name.png'),
+    asset('src/assets/enc name.png'),
+  ];
+
+  function throughAlias(rawPath: string, kind: RawReference['kind']): Reference | undefined {
+    return resolveReferences([raw({ rawPath, kind })], {
+      root: ROOT,
+      assets,
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      aliases,
+      exists: NOTHING_EXISTS,
+    })[0];
+  }
+
+  it('resolves the path as written', () => {
+    const found = throughAlias('~/assets/logo.png', 'import');
+    expect(found?.resolution).toBe('resolved');
+    expect(found && 'spelling' in found ? found.spelling : undefined).toBeUndefined();
+  });
+
+  it('resolves a percent-encoded name, and records the spelling that matched', () => {
+    const found = throughAlias('~/assets/hero%20image.png', 'css-url');
+    expect(found?.resolution).toBe('resolved');
+    expect(found && isLinked(found) ? linkedPaths(found) : []).toEqual([
+      join(ROOT, 'src/assets/hero image.png'),
+    ]);
+    expect(found && 'spelling' in found ? found.spelling : undefined).toBe('percent-encoded');
+  });
+
+  it('reads a Markdown escape through the alias, which only a Markdown kind allows', () => {
+    const found = throughAlias('~/assets/my\\_photo.png', 'md');
+    expect(found?.resolution).toBe('resolved');
+    expect(found && 'spelling' in found ? found.spelling : undefined).toBe('markdown-escapes');
+  });
+
+  it('prefers the file named as written over a decoded spelling', () => {
+    const found = throughAlias('~/assets/enc%20name.png', 'import');
+    expect(found && isLinked(found) ? linkedPaths(found) : []).toEqual([
+      join(ROOT, 'src/assets/enc%20name.png'),
+    ]);
+    expect(found && 'spelling' in found ? found.spelling : undefined).toBeUndefined();
   });
 });

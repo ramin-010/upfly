@@ -343,6 +343,41 @@ describe('relocate, and how a path is re-spelled', () => {
     ).toBe('~/img/houston.png');
   });
 
+  it('spells only what follows the alias when the path was written percent-encoded', () => {
+    // The prefix is the project's own text: `@/` encoded is `%40/`, which no alias matches.
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@/',
+          targets: ['/repo/src'],
+          wildcard: true,
+          scope: '/repo',
+          source: 'tsconfig.json',
+        },
+      ],
+      skipped: [],
+    };
+    const graph = graphFor({
+      assets: ['src/assets/hero image.png'],
+      references: [
+        {
+          file: 'src/App.astro',
+          rawPath: '@/assets/hero%20image.png',
+          target: 'src/assets/hero image.png',
+          spelling: 'percent-encoded',
+        },
+      ],
+    });
+
+    expect(
+      replacementFor(
+        graph,
+        { from: 'src/assets/hero image.png', to: 'src/img/new name.png' },
+        { aliases },
+      ).text,
+    ).toBe('@/img/new%20name.png');
+  });
+
   it('does not re-spell through an alias whose scope does not cover the file', () => {
     // An alias rule applies only to references from inside the directory its config
     // governs, which is what `expandAlias` enforces. A matcher here that looked only at

@@ -433,7 +433,10 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   const rule = aliasRuleFor(path, toPosix(reference.file), input.aliases);
   if (rule !== null) {
     const aliased = aliasTextFor(rule, move.to, input.graph.root);
-    return aliased === null ? null : `${asWritten(aliased)}${suffix}`;
+    if (aliased === null) return null;
+    // Only what follows the alias is spelled: the prefix is the project's own text, and
+    // `@/` encoded is `%40/`, which no alias matches.
+    return `${rule.prefix}${asWritten(aliased.slice(rule.prefix.length))}${suffix}`;
   }
 
   if (reference.resolution === 'resolved' && reference.resolvedVia === 'serving-root') {
