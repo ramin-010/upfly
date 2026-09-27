@@ -479,9 +479,21 @@ Two details that are easy to get wrong:
   "prefix"; a Vite string key is *always* a prefix replacement, so `{'@': './src'}` turns
   `@/x.png` into `./src/x.png`. Treating the Vite form as an exact match resolves nothing at all.
 
-Aliases are scoped to the directory of the config that declared them. `shadcn-ui` has roughly twenty
+A config's aliases are its `paths` after `extends`, merged as TypeScript merges them: each base in
+order, then the config's own settings, a `paths` later in the chain replacing an earlier one whole.
+Targets are read against the `baseUrl` in force, which is absolute against the config that declares
+it, else against the folder of the config that wrote `paths`, and `${configDir}` at the start of
+either is the folder of the config that uses them. So SvelteKit's `tsconfig.json`, which extends the
+config `svelte-kit sync` writes into `.svelte-kit/`, maps `$lib` to its own `src/lib`, and a Nuxt 3
+app maps `~` to its own folder.
+
+Aliases are scoped to the directory of the config that uses them. `shadcn-ui` has roughly twenty
 configs all defining `@/*`, and without scoping every one of them would offer a candidate for every
-reference in the workspace.
+reference in the workspace. A base that other configs extend, and that is not itself a
+`tsconfig.json` or `jsconfig.json`, serves files only through those configs. Three differences from
+TypeScript remain: every matching rule is tried, longest prefix and nearest config first, where
+TypeScript takes one pattern; a config in a parent folder is a fallback, where TypeScript uses only
+the nearest; and `include`, `files` and `references` are not read.
 
 **A package specifier is not an alias** (rung 6b). `@11ty/logo/img/logo.png` names a file inside
 `node_modules`, which the walk prunes, so no alias configuration will ever resolve it; it is

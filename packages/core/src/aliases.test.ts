@@ -24,9 +24,15 @@ function fs(files: Record<string, string>) {
   };
 }
 
-async function load(files: Record<string, string>): Promise<AliasMap> {
+/** `hidden` files can be read but were not discovered, as in a folder `discover` prunes. */
+async function load(
+  files: Record<string, string>,
+  hidden: readonly string[] = [],
+): Promise<AliasMap> {
   const { files: list, readFile, exists } = fs(files);
-  return loadAliases({ root: ROOT, files: list, readFile, exists });
+  const unseen = new Set(hidden.map((relative) => toPosix(resolve(ROOT, relative))));
+  const discovered = list.filter((file) => !unseen.has(file.path));
+  return loadAliases({ root: ROOT, files: discovered, readFile, exists });
 }
 
 const from = (relative: string) => toPosix(resolve(ROOT, relative));
@@ -93,8 +99,8 @@ describe('loadAliases: tsconfig', () => {
       'packages/ui/tsconfig.json': '{ "extends": "../../tsconfig.base.json" }',
     });
 
-    // The inherited rule is anchored at the base config's directory, as TypeScript does,
-    // so `~/x.png` from the package reaches the root's `shared/`.
+    // The rule serves the package, and its targets are read from the base that wrote them,
+    // as TypeScript reads them, so `~/x.png` from the package reaches the root's `shared/`.
     expect(expandAlias(map, '~/x.png', from('packages/ui/a.ts'))).toContain(from('shared/x.png'));
   });
 
@@ -116,6 +122,9 @@ describe('loadAliases: tsconfig', () => {
 
     expect(map.rules).toHaveLength(1);
     expect(map.rules[0]?.source).toContain('strict.json');
+    expect(expandAlias(map, '~/x.png', from('src/pages/a.astro'))).toEqual([
+      from('node_modules/astro/tsconfigs/src/x.png'),
+    ]);
   });
 
   it('reports an extends it cannot find instead of dropping it', async () => {
@@ -141,6 +150,116 @@ describe('loadAliases: tsconfig', () => {
 
     expect(map.rules).toEqual([]);
     expect(map.skipped[0]?.reason).toContain('could not be parsed');
+  });
+});
+
+/**
+ * TypeScript applies the `paths` a config inherits to the project that extends it. The
+ * targets are read against a `baseUrl` from any config in the chain, else against the
+ * folder of the config that wrote them, and a `paths` later in the chain replaces an earlier
+ * one whole.
+ */
+describe('loadAliases: an inherited paths', () => {
+  it('serves a SvelteKit app from the config svelte-kit sync generates', async () => {
+    const map = await load(
+      {
+        'sites/kit/tsconfig.json': '{ "extends": "./.svelte-kit/tsconfig.json" }',
+        'sites/kit/.svelte-kit/tsconfig.json':
+          '{ "compilerOptions": { "paths": { "$lib": ["../src/lib"], "$lib/*": ["../src/lib/*"] } } }',
+      },
+      ['sites/kit/.svelte-kit/tsconfig.json'],
+    );
+
+    expect(expandAlias(map, '$lib/assets/x.png', from('sites/kit/src/routes/+page.ts'))).toEqual([
+      from('sites/kit/src/lib/assets/x.png'),
+    ]);
+  });
+
+  it.each([
+    ['3.0', '{ "compilerOptions": { "baseUrl": "..", "paths": { "~": ["."], "~/*": ["./*"] } } }'],
+    ['3.13', '{ "compilerOptions": { "paths": { "~": [".."], "~/*": ["../*"] } } }'],
+  ])('serves a Nuxt %s app from the config Nuxt generates', async (_version, generated) => {
+    const map = await load(
+      {
+        'sites/nuxt/tsconfig.json': '{ "extends": "./.nuxt/tsconfig.json" }',
+        'sites/nuxt/.nuxt/tsconfig.json': generated,
+      },
+      ['sites/nuxt/.nuxt/tsconfig.json'],
+    );
+
+    expect(expandAlias(map, '~/assets/x.png', from('sites/nuxt/composables/useHero.ts'))).toEqual([
+      from('sites/nuxt/assets/x.png'),
+    ]);
+  });
+
+  it('reads configDir in a shared base as the folder of the config that extends it', async () => {
+    const map = await load(
+      {
+        'apps/web/tsconfig.json': '{ "extends": "@acme/tsconfig/base.json" }',
+        'node_modules/@acme/tsconfig/base.json':
+          '{ "compilerOptions": { "paths": { "@/*": ["${configDir}/src/*"] } } }',
+      },
+      ['node_modules/@acme/tsconfig/base.json'],
+    );
+
+    expect(expandAlias(map, '@/x.png', from('apps/web/a.tsx'))).toEqual([
+      from('apps/web/src/x.png'),
+    ]);
+  });
+
+  it('reads an inherited target against the baseUrl of the config that extends it', async () => {
+    const map = await load({
+      'configs/base.json': '{ "compilerOptions": { "paths": { "@/*": ["*"] } } }',
+      'apps/web/tsconfig.json':
+        '{ "extends": "../../configs/base.json", "compilerOptions": { "baseUrl": "./src" } }',
+    });
+
+    expect(expandAlias(map, '@/x.png', from('apps/web/a.tsx'))).toEqual([
+      from('apps/web/src/x.png'),
+    ]);
+  });
+
+  it('reads a baseUrl against the config that declares it, for the paths its extender writes', async () => {
+    const map = await load({
+      'configs/base.json': '{ "compilerOptions": { "baseUrl": "../shared" } }',
+      'apps/web/tsconfig.json':
+        '{ "extends": "../../configs/base.json", "compilerOptions": { "paths": { "@/*": ["./lib/*"] } } }',
+    });
+
+    expect(expandAlias(map, '@/x.png', from('apps/web/a.tsx'))).toEqual([from('shared/lib/x.png')]);
+  });
+
+  it('lets the paths a project writes replace the one it inherits, whole', async () => {
+    const map = await load({
+      'tsconfig.base.json': '{ "compilerOptions": { "paths": { "@/*": ["./inherited/*"] } } }',
+      'tsconfig.json':
+        '{ "extends": "./tsconfig.base.json", "compilerOptions": { "paths": { "@/*": ["./local/*"] } } }',
+    });
+
+    expect(expandAlias(map, '@/x.png', from('a.tsx'))).toEqual([from('local/x.png')]);
+  });
+
+  it('takes the last paths an extends list gives, and keeps it past a base with none', async () => {
+    const map = await load({
+      'bases/a.json': '{ "compilerOptions": { "paths": { "@/*": ["./a/*"] } } }',
+      'bases/b.json': '{ "compilerOptions": { "paths": { "@/*": ["./b/*"] } } }',
+      'bases/c.json': '{ "compilerOptions": { "strict": true } }',
+      'one/tsconfig.json': '{ "extends": ["../bases/a.json", "../bases/b.json"] }',
+      'two/tsconfig.json': '{ "extends": ["../bases/a.json", "../bases/c.json"] }',
+    });
+
+    expect(expandAlias(map, '@/x.png', from('one/main.ts'))).toEqual([from('bases/b/x.png')]);
+    expect(expandAlias(map, '@/x.png', from('two/main.ts'))).toEqual([from('bases/a/x.png')]);
+  });
+
+  it('lets a shared base serve only the projects that extend it', async () => {
+    const map = await load({
+      'tsconfig.base.json': '{ "compilerOptions": { "paths": { "~/*": ["./shared/*"] } } }',
+      'packages/ui/tsconfig.json': '{ "extends": "../../tsconfig.base.json" }',
+    });
+
+    expect(expandAlias(map, '~/x.png', from('packages/ui/a.ts'))).toEqual([from('shared/x.png')]);
+    expect(expandAlias(map, '~/x.png', from('apps/web/a.ts'))).toEqual([]);
   });
 });
 

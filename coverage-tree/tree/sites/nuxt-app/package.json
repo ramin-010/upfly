@@ -1,0 +1,6 @@
+{
+  "name": "nuxt-app",
+  "private": true,
+  "description": "A Nuxt 3 app as a checkout looks after nuxi prepare: .nuxt/ holds the tsconfig.json that Nuxt generates and this app's tsconfig.json extends.",
+  "type": "module"
+}

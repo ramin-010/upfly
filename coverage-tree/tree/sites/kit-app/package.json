@@ -1,0 +1,6 @@
+{
+  "name": "kit-app",
+  "private": true,
+  "description": "A SvelteKit app as a checkout looks after svelte-kit sync: .svelte-kit/ holds the tsconfig.json that sync generates and this app's tsconfig.json extends.",
+  "type": "module"
+}

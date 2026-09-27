@@ -12,7 +12,7 @@
  * object, so a `__proto__` key is an ordinary property.
  */
 
-import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
+import { basename, dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import { parseExpression } from '@babel/parser';
 import type * as t from '@babel/types';
 import { compareStrings, relativePath, toPosix } from './paths.js';
@@ -34,9 +34,12 @@ export interface AliasRule {
    * `*`, or any Vite key.
    */
   readonly wildcard: boolean;
-  /** Directory the config governs: only references from inside it may use this rule. */
+  /** Folder of the config that uses the rule: only references from inside it may use it. */
   readonly scope: string;
-  /** POSIX-relative config file this came from, so the report can cite it. */
+  /**
+   * POSIX-relative config file that writes the rule, so the report can cite it: for an
+   * inherited rule, the base it came from.
+   */
   readonly source: string;
 }
 
@@ -76,21 +79,43 @@ const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
   const rules: AliasRule[] = [];
   const skipped: AliasSkip[] = [];
+  const context: TsContext = {
+    options,
+    skipped,
+    parsed: new Map(),
+    bases: new Set(),
+    reported: new Set(),
+  };
 
+  const tsConfigs: string[] = [];
   for (const file of options.files) {
     const name = file.relative.slice(file.relative.lastIndexOf('/') + 1);
 
     if (TS_CONFIG.test(name)) {
-      await readTsConfig(file.path, options, rules, skipped, new Set());
+      tsConfigs.push(file.path);
     } else if (VITE_CONFIG.test(name)) {
       await readViteConfig(file.path, options, rules, skipped);
     }
   }
 
+  // Every chain is merged before any rule is made, because only then is it known which
+  // configs are bases that other configs extend.
+  const effective = new Map<string, EffectiveConfig>();
+  for (const path of tsConfigs) effective.set(path, await effectiveConfig(path, [], context));
+
+  for (const path of tsConfigs) {
+    // A base serves files only through the configs that extend it, as it does in
+    // TypeScript. A `tsconfig.json` is still the project config of its own folder.
+    const isProject = ['tsconfig.json', 'jsconfig.json'].includes(basename(path));
+    if (context.bases.has(toPosix(path)) && !isProject) continue;
+    const config = effective.get(path);
+    if (config !== undefined) rules.push(...rulesOf(config, dirname(path), context));
+  }
+
   // Longest prefix first so a more specific mapping wins, then by scope depth so a
   // nested package's config beats the workspace root's, then by source so the order is
   // the same on every run.
-  const sorted = [...rules].sort(
+  const sorted = unique(rules).sort(
     (a, b) =>
       b.prefix.length - a.prefix.length ||
       b.scope.length - a.scope.length ||
@@ -132,67 +157,155 @@ export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): r
 // tsconfig / jsconfig
 // ---------------------------------------------------------------------------
 
-async function readTsConfig(
+/** What reading every tsconfig shares: each file is parsed and reported once. */
+interface TsContext {
+  readonly options: LoadAliasesOptions;
+  readonly skipped: AliasSkip[];
+  readonly parsed: Map<string, Promise<ParsedConfig | null>>;
+  /** POSIX paths of every config another config extends. */
+  readonly bases: Set<string>;
+  /** Skips already recorded, so a base shared by several configs is reported once. */
+  readonly reported: Set<string>;
+}
+
+/** The settings of one tsconfig that aliases depend on, as the file writes them. */
+interface ParsedConfig {
+  readonly path: string;
+  readonly source: string;
+  /** The configs its `extends` names, found, in order. */
+  readonly extends: readonly string[];
+  readonly paths: t.ObjectExpression | null;
+  readonly baseUrl: string | null;
+}
+
+/** A config's aliases once `extends` is applied: the `paths` in force and the `baseUrl`. */
+interface EffectiveConfig {
+  readonly paths: { readonly map: t.ObjectExpression; readonly declaredIn: ParsedConfig } | null;
+  /** Absolute, or still starting with `${configDir}`, which only the using config can fill. */
+  readonly baseUrl: string | null;
+}
+
+const CONFIG_DIR = /^\$\{configDir\}/i;
+
+/**
+ * A config's `paths` and `baseUrl` after `extends`, merged as TypeScript merges them: each
+ * base in order, then the config's own settings, an option later in the chain replacing an
+ * earlier one whole. A config already on `stack` is skipped, which breaks a cycle.
+ */
+async function effectiveConfig(
   path: string,
-  options: LoadAliasesOptions,
-  rules: AliasRule[],
-  skipped: AliasSkip[],
-  seen: Set<string>,
-): Promise<void> {
-  const key = toPosix(path);
-  // `extends` can be cyclic, and a cycle here would hang the whole audit.
-  if (seen.has(key)) return;
-  seen.add(key);
+  stack: readonly string[],
+  context: TsContext,
+): Promise<EffectiveConfig> {
+  const config = await parsedConfig(path, context);
+  if (config === null) return { paths: null, baseUrl: null };
 
-  const source = relativePath(options.root, path);
-  const object = await parseObject(path, source, options, skipped);
-  if (object === null) return;
+  let paths: EffectiveConfig['paths'] = null;
+  let baseUrl: string | null = null;
+  const chain = [...stack, toPosix(path)];
 
-  const compilerOptions = objectValued(object, 'compilerOptions');
-  const paths = compilerOptions === null ? null : objectValued(compilerOptions, 'paths');
-  const baseUrl = compilerOptions === null ? null : stringProperty(compilerOptions, 'baseUrl');
-
-  // `extends` is read first, but the sort in `loadAliases` decides the order rules are
-  // tried in. At equal prefix and scope it falls back to the config's path, so an
-  // inherited rule can come before a local one, though in TypeScript a local `paths`
-  // replaces the inherited one.
-  const extendsValue = objectProperty(object, 'extends');
-  if (extendsValue !== null) {
-    for (const target of extendsTargets(extendsValue)) {
-      const resolved = resolveExtends(target, dirname(path), options);
-      if (resolved === null) {
-        skipped.push({
-          what: source,
-          reason: `extends "${target}", which could not be found — its aliases were not read`,
-        });
-        continue;
-      }
-      await readTsConfig(resolved, options, rules, skipped, seen);
-    }
+  for (const base of config.extends) {
+    if (chain.includes(toPosix(base))) continue;
+    context.bases.add(toPosix(base));
+    const inherited = await effectiveConfig(base, chain, context);
+    paths = inherited.paths ?? paths;
+    baseUrl = inherited.baseUrl ?? baseUrl;
   }
 
-  if (paths === null) return;
+  if (config.paths !== null) paths = { map: config.paths, declaredIn: config };
+  if (config.baseUrl !== null) {
+    // A `baseUrl` is read against the config that declares it, wherever it is inherited.
+    baseUrl = CONFIG_DIR.test(config.baseUrl)
+      ? config.baseUrl
+      : resolvePath(dirname(path), config.baseUrl);
+  }
+  return { paths, baseUrl };
+}
 
-  // `paths` is relative to `baseUrl`, which is itself relative to the config's own
-  // directory. Absent `baseUrl` means the config's directory, which is what TypeScript
-  // does for a `paths` map with no `baseUrl` under `moduleResolution: bundler`.
-  const base = resolvePath(dirname(path), baseUrl ?? '.');
+/** Read one config, once, with every `extends` it names found or reported. */
+function parsedConfig(path: string, context: TsContext): Promise<ParsedConfig | null> {
+  const key = toPosix(path);
+  let pending = context.parsed.get(key);
+  if (pending === undefined) {
+    pending = parseTsConfig(path, context);
+    context.parsed.set(key, pending);
+  }
+  return pending;
+}
 
-  for (const property of paths.properties) {
+async function parseTsConfig(path: string, context: TsContext): Promise<ParsedConfig | null> {
+  const { options, skipped } = context;
+  const source = relativePath(options.root, path);
+  const object = await parseObject(path, source, options, skipped);
+  if (object === null) return null;
+
+  const compilerOptions = objectValued(object, 'compilerOptions');
+  const bases: string[] = [];
+  const extendsValue = objectProperty(object, 'extends');
+  for (const target of extendsValue === null ? [] : extendsTargets(extendsValue)) {
+    const resolved = resolveExtends(target, dirname(path), options);
+    if (resolved === null) {
+      skipped.push({
+        what: source,
+        reason: `extends "${target}", which could not be found — its aliases were not read`,
+      });
+      continue;
+    }
+    bases.push(resolved);
+  }
+
+  return {
+    path,
+    source,
+    extends: bases,
+    paths: compilerOptions === null ? null : objectValued(compilerOptions, 'paths'),
+    baseUrl: compilerOptions === null ? null : stringProperty(compilerOptions, 'baseUrl'),
+  };
+}
+
+/**
+ * The rules one config uses, serving the files under its folder. Targets are read against
+ * the `baseUrl` in force, else against the folder of the config that wrote `paths`, and
+ * `${configDir}` at the start of either is the using config's folder.
+ */
+function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): AliasRule[] {
+  if (config.paths === null) return [];
+  const { map, declaredIn } = config.paths;
+  const fill = (value: string) => value.replace(CONFIG_DIR, () => toPosix(folder));
+  const base = config.baseUrl === null ? dirname(declaredIn.path) : fill(config.baseUrl);
+
+  const rules: AliasRule[] = [];
+  for (const property of map.properties) {
     const from = propertyKey(property);
     if (from === null || property.type !== 'ObjectProperty') continue;
 
     const targets = arrayOfStrings(property.value);
     if (targets === null) {
-      skipped.push({
-        what: source,
-        reason: `the alias "${from}" does not map to a list of string paths, so it was not read`,
-      });
+      const key = JSON.stringify([declaredIn.source, from]);
+      if (!context.reported.has(key)) {
+        context.reported.add(key);
+        context.skipped.push({
+          what: declaredIn.source,
+          reason: `the alias "${from}" does not map to a list of string paths, so it was not read`,
+        });
+      }
       continue;
     }
 
-    rules.push(makeRule(from, targets, base, dirname(path), source));
+    rules.push(makeRule(from, targets.map(fill), base, folder, declaredIn.source));
   }
+  return rules;
+}
+
+/** Rules that say exactly the same thing, such as one config and another extending it. */
+function unique(rules: readonly AliasRule[]): AliasRule[] {
+  const seen = new Set<string>();
+  return rules.filter((rule) => {
+    const key = JSON.stringify([rule.prefix, rule.wildcard, rule.scope, rule.source, rule.targets]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** `"extends": "a"` or `"extends": ["a", "b"]`: TypeScript 5 allows both. */

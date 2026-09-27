@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"paths": {
+			"$lib": [
+				"../src/lib"
+			],
+			"$lib/*": [
+				"../src/lib/*"
+			]
+		},
+		"rootDirs": [
+			"..",
+			"./types"
+		],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true
+	}
+}

@@ -43,7 +43,7 @@
     }
   ],
   "aliases": {
-    "_": "From tree/tsconfig.json. Anything else that is alias-shaped maps nowhere on purpose.",
+    "_": "From tree/tsconfig.json, and in sites/kit-app and sites/nuxt-app from their tsconfig.json, which extends the config the framework generates (.svelte-kit/, .nuxt/). Anything else that is alias-shaped maps nowhere on purpose.",
     "~/*": "shared/*",
     "@img/*": "shared/assets/img/*",
     "@web/*": "apps/web/src/*",
@@ -1231,6 +1231,22 @@
     },
     {
       "path": "shared/assets/archive/old-logo.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "sites/kit-app/src/lib/assets/kit-hero.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "sites/nuxt-app/assets/nuxt-hero.png",
       "bytes": 71744,
       "sha256": "8280482eb7711a62",
       "source": "bluemarble",
@@ -7661,6 +7677,38 @@
           "offset": 21,
           "line": 1,
           "column": 22
+        }
+      ]
+    },
+    {
+      "path": "sites/kit-app/src/routes/+page.ts",
+      "entries": [
+        {
+          "raw": "$lib/assets/kit-hero.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "SvelteKit's tsconfig.json extends the config svelte-kit sync generates, which maps $lib to src/lib, and TypeScript applies an inherited paths to the project that extends it.",
+          "target": "sites/kit-app/src/lib/assets/kit-hero.png",
+          "offset": 18,
+          "line": 1,
+          "column": 19
+        }
+      ]
+    },
+    {
+      "path": "sites/nuxt-app/composables/useHero.ts",
+      "entries": [
+        {
+          "raw": "~/assets/nuxt-hero.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved",
+          "why": "In a Nuxt 3 app ~ is the app's own folder, declared in the config Nuxt generates, which this tsconfig.json extends; the workspace's ~/* (shared/) holds no such file.",
+          "target": "sites/nuxt-app/assets/nuxt-hero.png",
+          "offset": 18,
+          "line": 1,
+          "column": 19
         }
       ]
     }
