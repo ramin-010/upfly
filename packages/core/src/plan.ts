@@ -272,7 +272,7 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
 
   // Before everything that asks which assets convert. A literal repointed at a
   // conversion that is withdrawn afterwards names a file that is never written, and a
-  // pattern reported as "N of them do not convert" would be counting the wrong N.
+  // pattern's decline would count the wrong targets as not converting.
   for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
 
   declinePartialPatterns(input, converting, relativeOf, declined);
@@ -555,11 +555,20 @@ function declinePartialPatterns(
     const unmeasured = targets.filter((target) => !converting.has(target));
     if (unmeasured.length === 0) continue;
 
-    const reason =
-      `a template reference matches ${targets.length} assets and ${unmeasured.length} of them ` +
-      `do not convert, so rewriting it would break the reference for all ${targets.length}`;
+    const counted = notConverting(unmeasured.length, targets.length);
+    const reason = `a template reference is assembled at runtime, so its text cannot be repointed, and ${counted}`;
     declined.push({ path: relativePath(input.graph.root, reference.file), line: null, reason });
   }
+}
+
+/** How many of a pattern's targets do not convert, worded to read right at any count. */
+function notConverting(missing: number, of: number): string {
+  if (missing < of) {
+    return `${missing} of the ${of} assets it matches ${missing === 1 ? 'does' : 'do'} not convert`;
+  }
+  return of === 1
+    ? 'the one asset it matches does not convert'
+    : `none of the ${of} assets it matches converts`;
 }
 
 interface RewriteContext {

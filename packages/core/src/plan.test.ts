@@ -464,16 +464,31 @@ describe('a template reference standing for many assets', () => {
     pattern('src/App.jsx', './a-${mode}.png', ['public/a-light.png', 'public/a-dark.png']),
   ];
 
-  // a-dark is measured larger than its source, so it does not convert. One target
-  // that does not convert is enough to make the single edit wrong for all of them.
+  // a-dark is measured larger than its source, so it does not convert.
   const probes = [probe('public/a-light.png', 4_000), probe('public/a-dark.png', 4_000)];
 
-  it('is never rewritten when one of its targets does not convert', () => {
+  it('says it stays as written, and how many of its targets do not convert', () => {
     const plan = planOptimization(input({ assets, references, probes }));
 
     expect(plan.rewrites).toEqual([]);
     expect(plan.declined.map((d) => d.reason)).toContainEqual(
-      expect.stringContaining('matches 2 assets and 1 of them do not convert'),
+      expect.stringContaining(
+        'its text cannot be repointed, and 1 of the 2 assets it matches does not convert',
+      ),
+    );
+  });
+
+  it('says so of its one target at a count of one', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('public/a-dark.png', 1_000)],
+        references: [pattern('src/App.jsx', './a-${mode}.png', ['public/a-dark.png'])],
+        probes: [probe('public/a-dark.png', 4_000)],
+      }),
+    );
+
+    expect(plan.declined.map((d) => d.reason)).toContainEqual(
+      expect.stringContaining('cannot be repointed, and the one asset it matches does not convert'),
     );
   });
 
@@ -483,7 +498,7 @@ describe('a template reference standing for many assets', () => {
     // The originals survive, so the template keeps resolving. Saying nothing here
     // would let a reader take "converted" to mean the reference now points at it.
     expect(plan.conversions.map((c) => c.asset)).toEqual(['public/a-light.png']);
-    expect(plan.declined.some((d) => d.reason.includes('would break the reference'))).toBe(true);
+    expect(plan.declined.some((d) => d.reason.includes('its text cannot be repointed'))).toBe(true);
   });
 
   it('converts none of them under replace, because no reference would move to a new file', () => {
@@ -499,13 +514,12 @@ describe('a template reference standing for many assets', () => {
   });
 
   it('says the reference stayed once, and truthfully, when only some targets convert', () => {
-    // One decline for the reference: "1 of them do not convert", and not also "assembled
-    // at runtime ... even though every asset it matches converted", which is false when
-    // one did not. Under `replace` neither target converts, and the one sentence counts
-    // both.
+    // One decline for the reference, "1 of the 2 assets it matches does not convert", and
+    // not also "... even though every asset it matches converted", which is false when one
+    // did not. Under `replace` neither target converts, and the one sentence says so.
     const expected = {
-      'keep-original': 'matches 2 assets and 1 of them',
-      replace: 'matches 2 assets and 2 of them',
+      'keep-original': '1 of the 2 assets it matches does not convert',
+      replace: 'none of the 2 assets it matches converts',
     } as const;
     for (const publicPolicy of ['keep-original', 'replace'] as const) {
       const plan = planOptimization(input({ assets, references, probes, publicPolicy }));
@@ -1245,12 +1259,13 @@ describe('two assets that would convert to one name', () => {
       }),
     );
 
-    // a-light collided with a-light.gif and was withdrawn, so the pattern no longer
-    // has every target converting and its single edit would break the reference for
-    // both. Rewriting it here is what would happen if the collision were detected
-    // after the pattern veto rather than before it.
+    // a-light collided with a-light.gif and was withdrawn. The collision is settled before
+    // the pattern's decline is written, so the decline counts a-light as not converting.
     expect(plan.conversions.map((c) => c.asset)).toEqual(['public/a-dark.png']);
     expect(plan.rewrites).toEqual([]);
+    expect(plan.declined.map((d) => d.reason)).toContainEqual(
+      expect.stringContaining('1 of the 2 assets it matches does not convert'),
+    );
   });
 });
 
