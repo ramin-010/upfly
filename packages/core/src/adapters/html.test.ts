@@ -613,6 +613,20 @@ describe('htmlAdapter', () => {
       expect(paths('<img src="hero.png">')).toEqual(['hero.png']);
     });
 
+    it('finds a value whose closing quote runs straight into the next attribute', () => {
+      // The specification reads the value up to its quote and starts the next attribute
+      // there. parse5 does too, but the range it records for such an attribute ends at the name.
+      const source =
+        '<img src="a.png"alt="x"><meta property="og:image" content="c.png"data-x>' +
+        "<img src='b.png'alt=''>";
+      expect(paths(source)).toEqual(['a.png', 'c.png', 'b.png']);
+      expect(slices(source)).toEqual(['a.png', 'c.png', 'b.png']);
+    });
+
+    it('leaves a valueless attribute valueless when another attribute follows it', () => {
+      expect(paths('<img src alt="hero.png"><img hidden src="a.png">')).toEqual(['a.png']);
+    });
+
     it('reports an unparseable style attribute instead of dropping it', () => {
       const references = find('<div style="background: url(hero.png"></div>');
       expect(references).toHaveLength(1);

@@ -476,7 +476,7 @@ function attributeValueRange(
 ): { start: number; end: number } | null {
   const attribute = text.slice(startOffset, endOffset);
   const equals = attribute.indexOf('=');
-  if (equals === -1) return null;
+  if (equals === -1) return quotedValueAfterName(text, endOffset);
 
   let index = equals + 1;
   while (index < attribute.length && /\s/.test(attribute.charAt(index))) index += 1;
@@ -486,6 +486,29 @@ function attributeValueRange(
     return { start: startOffset + index + 1, end: startOffset + attribute.length - 1 };
   }
   return { start: startOffset + index, end: endOffset };
+}
+
+/** Whitespace as the HTML tokenizer reads it, then `=`, then an opening quote. */
+const EQUALS_THEN_QUOTE = /[\t\n\f\r ]*=[\t\n\f\r ]*(["'])/y;
+
+/**
+ * The quoted value an attribute's range leaves out.
+ *
+ * When the next attribute follows the closing quote with no space, as in
+ * `<img src="a.png"alt="">`, the specification still ends the value at the quote and
+ * parse5 still reads it, but the range parse5 records for the attribute ends at its name.
+ * A valueless attribute such as `hidden` has no `=` after its name.
+ */
+function quotedValueAfterName(
+  text: string,
+  nameEnd: number,
+): { start: number; end: number } | null {
+  EQUALS_THEN_QUOTE.lastIndex = nameEnd;
+  const quote = EQUALS_THEN_QUOTE.exec(text)?.[1];
+  if (quote === undefined) return null;
+  const start = EQUALS_THEN_QUOTE.lastIndex;
+  const end = text.indexOf(quote, start);
+  return end === -1 ? null : { start, end };
 }
 
 /**

@@ -7535,6 +7535,44 @@
           "column": 15
         }
       ]
+    },
+    {
+      "path": "apps/web/joined-attributes.html",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.meta.content.image",
+          "expect": "resolved",
+          "why": "The preview image, with the next attribute written straight after the closing quote. A browser ends the value at the quote and starts the next attribute there, space or no space, so the page still names this image.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 138,
+          "line": 6,
+          "column": 40
+        },
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "No space between the closing quote and `alt`. The HTML specification calls that a parse error and reads the page anyway: the value ends at the quote, and the image is shown.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 228,
+          "line": 10,
+          "column": 15
+        },
+        {
+          "raw": "/media/thumb.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The same with single quotes, which end a value the same way.",
+          "target": "apps/web/public/media/thumb.jpg",
+          "offset": 298,
+          "line": 11,
+          "column": 15
+        }
+      ]
     }
   ]
 }
