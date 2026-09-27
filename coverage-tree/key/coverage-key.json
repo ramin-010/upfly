@@ -383,7 +383,7 @@
       "id": "js.concat.pattern",
       "label": "path assembled by concatenation, one unknown segment",
       "spec": "4c",
-      "motivation": "A + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Three instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), and inside a JSX attribute (IconBadge.tsx)."
+      "motivation": "A + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Four instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), inside a JSX attribute (IconBadge.tsx), and through a declared alias (crests.ts)."
     },
     {
       "id": "js.string.literal",
@@ -1255,6 +1255,38 @@
     },
     {
       "path": "sites/vue-app/src/assets/vue-logo.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/src/assets/badges/badge-1.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "apps/web/src/assets/badges/badge-2.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "shared/assets/crests/crest-sm.png",
+      "bytes": 71744,
+      "sha256": "8280482eb7711a62",
+      "source": "bluemarble",
+      "width": 200,
+      "height": 150
+    },
+    {
+      "path": "shared/assets/crests/crest-lg.png",
       "bytes": 71744,
       "sha256": "8280482eb7711a62",
       "source": "bluemarble",
@@ -7779,6 +7811,54 @@
           "offset": 18,
           "line": 1,
           "column": 19
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/badges.ts",
+      "entries": [
+        {
+          "raw": "@/assets/badges/badge-${level}.png",
+          "occurrence": 1,
+          "shape": "js.import.alias.mapped",
+          "expect": "resolved-pattern",
+          "why": "A dynamic import through the web app's Vite alias @, with one unknown in the file name. Vite replaces the alias and globs the rest, so the pattern names both badges, as the literal @/assets/chart.png resolves through the same alias.",
+          "target": [
+            "apps/web/src/assets/badges/badge-1.png",
+            "apps/web/src/assets/badges/badge-2.png"
+          ],
+          "offset": 58,
+          "line": 2,
+          "column": 18
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/crests.ts",
+      "entries": [
+        {
+          "raw": "~/assets/crests/crest-",
+          "occurrence": 1,
+          "shape": "js.concat.pattern",
+          "expect": "resolved-pattern",
+          "why": "A + chain through the workspace's ~/* alias (shared/): assembled, it is shared/assets/crests/crest-, one unknown and .png, so it names both crests, as its template twin would.",
+          "target": [
+            "shared/assets/crests/crest-lg.png",
+            "shared/assets/crests/crest-sm.png"
+          ],
+          "offset": 63,
+          "line": 2,
+          "column": 18
+        },
+        {
+          "raw": "'.png'",
+          "occurrence": 1,
+          "shape": "decoy.not-a-path",
+          "expect": "discarded",
+          "why": "The extension fragment of the chain above. Not a path on its own; the chain is the reference.",
+          "offset": 96,
+          "line": 2,
+          "column": 51
         }
       ]
     }

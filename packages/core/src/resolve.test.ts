@@ -1180,6 +1180,103 @@ describe('servedFromAnyRoot: the glob, from a serving root the run did not find'
   });
 });
 
+describe('rung 2 through a declared alias', () => {
+  const aliases: AliasMap = {
+    rules: [
+      {
+        prefix: '@/',
+        targets: [join(ROOT, 'src')],
+        wildcard: true,
+        scope: toPosix(ROOT),
+        source: 'vite.config.ts',
+      },
+    ],
+    skipped: [],
+  };
+  const assets = [
+    asset('src/img/alias-1.png'),
+    asset('src/img/alias-2.png'),
+    asset('src/icons/alias-1.png'),
+    asset('other/img/alias-3.png'),
+  ];
+
+  function throughAlias(
+    overrides: Partial<RawReference> & { rawPath: string },
+    options: { readonly extra?: readonly Asset[]; readonly map?: AliasMap } = {},
+  ): Reference | undefined {
+    return resolveReferences([raw({ ceiling: 'medium', ...overrides })], {
+      root: ROOT,
+      assets: [...assets, ...(options.extra ?? [])],
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      aliases: options.map ?? aliases,
+      exists: NOTHING_EXISTS,
+    })[0];
+  }
+
+  it('globs a pattern through a declared alias, as a literal path through it resolves', () => {
+    const found = expectResolution(
+      throughAlias({ rawPath: '@/img/alias-${n}.png' }),
+      'resolved-pattern',
+    );
+
+    // Anchored at the expansion: `src/icons/` fixes another directory, and `other/img/`
+    // ends in the same segments under another base.
+    expect(linkedPaths(found)).toEqual([
+      join(ROOT, 'src/img/alias-1.png'),
+      join(ROOT, 'src/img/alias-2.png'),
+    ]);
+    expect(found.resolvedVia).toBe('serving-root');
+    expect(found.confidence).toBe('medium');
+  });
+
+  it('globs the path a + chain proves through the alias', () => {
+    const found = throughAlias({
+      rawPath: "@/img/alias-' + n + '.png",
+      assembledPath: '@/img/alias-${}.png',
+      kind: 'string',
+      asserted: false,
+    });
+
+    expect(found && isLinked(found) ? linkedPaths(found) : []).toEqual([
+      join(ROOT, 'src/img/alias-1.png'),
+      join(ROOT, 'src/img/alias-2.png'),
+    ]);
+  });
+
+  it('prefers a file at the written path to the alias', () => {
+    // A folder named `@` beside the file is what the text names first, as rung 4 prefers
+    // a file at the written path to any mapping.
+    const found = expectResolution(
+      throughAlias(
+        { rawPath: '@/img/alias-${n}.png' },
+        { extra: [asset('src/@/img/alias-9.png')] },
+      ),
+      'resolved-pattern',
+    );
+
+    expect(linkedPaths(found)).toEqual([join(ROOT, 'src/@/img/alias-9.png')]);
+    expect(found.resolvedVia).toBe('file');
+  });
+
+  it('does not glob through an alias whose scope does not cover the file', () => {
+    const [rule] = aliases.rules;
+    if (rule === undefined) throw new Error('the alias map lost its rule');
+    const elsewhere: AliasMap = {
+      rules: [{ ...rule, scope: toPosix(join(ROOT, 'other')) }],
+      skipped: [],
+    };
+
+    expect(throughAlias({ rawPath: '@/img/alias-${n}.png' }, { map: elsewhere })?.resolution).toBe(
+      'dynamic',
+    );
+  });
+
+  it('leaves a pattern that starts with a hole to the ladder', () => {
+    // An alias prefix is fixed text, and the text a hole stands for is unknown.
+    expect(throughAlias({ rawPath: '${base}/img/alias-${n}.png' })?.resolution).toBe('dynamic');
+  });
+});
+
 describe('rung 4b: a declared alias, in every spelling the path could be read in', () => {
   const aliases: AliasMap = {
     rules: [

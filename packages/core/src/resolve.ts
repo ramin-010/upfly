@@ -148,7 +148,14 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    text proves (`provenPath`): the text of a `+` chain, or of a template with a
   //    same-file constant written in, is not the path it builds.
   if (raw.ceiling === 'medium') {
-    const { matches, via } = index.matchPattern(provenPath(raw), raw, root, publicDirs);
+    const pattern = provenPath(raw);
+    const written = index.matchPattern(pattern, raw, root, publicDirs);
+    // Then through a declared alias, as rung 4b reads a literal path, so a file at the
+    // written path still wins.
+    const { matches, via } =
+      written.matches.length > 0
+        ? written
+        : { matches: matchThroughAlias(pattern, raw, context), via: 'serving-root' as const };
     const [first, ...rest] = matches;
     if (first === undefined) {
       return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
@@ -357,6 +364,26 @@ function resolveThroughAlias(
 }
 
 /**
+ * Rung 2 through a declared alias: each expansion of the pattern, in the order rung 4b tries
+ * them, globbed as `matchPattern` globs a candidate, and the first that names an asset wins.
+ * The holes are marked before the alias is expanded, so a prefix has to lie wholly in the
+ * text the author fixed. A link through an alias is recorded as `serving-root`, as rung 4b
+ * records one.
+ */
+function matchThroughAlias(
+  pattern: string,
+  raw: RawReference,
+  context: ResolveContext,
+): readonly string[] {
+  if (!isAliasShaped(pattern, raw.kind)) return [];
+  for (const candidate of expandAlias(context.aliases, withHoles(pattern), raw.file)) {
+    const matches = context.index.matchGlob(candidate);
+    if (matches.length > 0) return matches;
+  }
+  return [];
+}
+
+/**
  * Whether an alias-shaped path is really a package specifier.
  *
  * The two look alike and mean different things. `@/assets/logo.png` is the Next and Vite
@@ -449,19 +476,25 @@ class AssetIndex {
     publicDirs: readonly string[],
   ): { matches: readonly string[]; via: ResolvedVia } {
     for (const candidate of candidatePaths(withHoles(rawPath), raw, root, publicDirs)) {
-      const matches: string[] = [];
-      const pattern = globRegex(candidate.path);
-      for (const assetPath of this.ordered) {
-        if (!pattern.test(assetPath)) continue;
-        const native = this.byPath.get(assetPath);
-        if (native !== undefined && !matches.includes(native)) matches.push(native);
-      }
+      const matches = this.matchGlob(candidate.path);
       // The provenance has to be the candidate that actually matched, so the
       // matches and the `via` cannot disagree about which base was used.
       if (matches.length > 0) return { matches, via: candidate.via };
     }
 
     return { matches: [], via: 'file' };
+  }
+
+  /** Every asset an absolute POSIX path with holes names, anchored at both ends. */
+  matchGlob(pathWithHoles: string): readonly string[] {
+    const matches: string[] = [];
+    const pattern = globRegex(pathWithHoles);
+    for (const assetPath of this.ordered) {
+      if (!pattern.test(assetPath)) continue;
+      const native = this.byPath.get(assetPath);
+      if (native !== undefined && !matches.includes(native)) matches.push(native);
+    }
+    return matches;
   }
 }
 

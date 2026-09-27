@@ -295,6 +295,7 @@ export const SHAPES = [
     emission: 'engine',
     adapterEmitsAs: [
       'js.import.static',
+      'js.import.dynamic',
       'astro.import.frontmatter',
       'mdx.import',
       'js.string.literal',

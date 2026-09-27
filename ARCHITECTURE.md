@@ -141,7 +141,7 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 |---|---|---|---|
 | 0 | declined by the adapter | `discarded` if it names an image, else *dropped* | `<img title="/img/team.jpg">` |
 | 1 | `ceiling === 'unsafe'` | `dynamic` | `url($hero)` |
-| 2 | `ceiling === 'medium'` | `resolved-pattern` / `dynamic` | `` `./img/${name}.png` `` |
+| 2 | `ceiling === 'medium'`, globbed as written, else through a declared alias | `resolved-pattern` / `dynamic` | `` `./img/${name}.png` ``, `` `@/img/${n}.png` `` |
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
@@ -176,7 +176,9 @@ resolves, carrying all of them; zero matches and it is `dynamic`, never `broken`
 the first would leave the rest looking unreferenced, which is a false `dead asset` finding
 wearing a different costume. Such a reference is never rewritten, since its text is a pattern
 rather than a path: the planner keeps every original it matches, and says so when only some of
-them convert.
+them convert. A pattern that names nothing at the written path is expanded through a declared
+alias, as rung 4b expands a literal one, and each expansion is globbed anchored, in the order
+rung 4b tries them, until one names a file.
 
 **Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
 nearest first, then the project root. A monorepo has one `public/` per app (shadcn-ui has twelve),

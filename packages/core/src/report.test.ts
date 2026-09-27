@@ -10,6 +10,7 @@ import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover.js';
 import { buildGraph } from './graph.js';
+import { toPosix } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
@@ -2208,6 +2209,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
     sources: Readonly<Record<string, string>>,
     assetPaths: readonly string[],
     servingRoots: ServingRoots = NO_SERVING_ROOT,
+    aliases: AliasMap = { rules: [], skipped: [] },
   ): Promise<Report> {
     const texts = new Map(
       Object.entries(sources).map(([relative, text]) => [join(ROOT, relative), text]),
@@ -2243,6 +2245,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
         root: ROOT,
         assets,
         servingRoots,
+        aliases,
         exists: () => false,
       }),
       unscannedFiles: scanned.unscanned,
@@ -2261,7 +2264,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
     });
 
     return buildReport({
-      aliases: { rules: [], skipped: [] },
+      aliases,
       graph,
       audit: auditResult,
       discovery: {
@@ -2455,6 +2458,41 @@ describe('what a path that did not resolve names, in a project held in memory', 
       "unresolved-reference src/app.js:1 /img/badge-' + n + '.png",
     ]);
     expect(verdictOf(served, 'src/img/badge-1.png')).toBeUndefined();
+  });
+
+  it('does not call an asset dead when a pattern through an alias names it', async () => {
+    // `@/` expands to `src`, so the import names both badges. The glob is anchored at the
+    // expansion, so a file of the same shape in another directory is still dead.
+    const sources = {
+      'src/index.html': page(),
+      'src/badges.js': 'export const badge = (n) => import(`@/img/badge-${n}.png`);',
+    };
+    const assets = [
+      ...SERVED,
+      'src/img/badge-1.png',
+      'src/img/badge-2.png',
+      'src/icons/badge-3.png',
+    ];
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@/',
+          targets: [join(ROOT, 'src')],
+          wildcard: true,
+          scope: toPosix(ROOT),
+          source: 'vite.config.ts',
+        },
+      ],
+      skipped: [],
+    };
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC, aliases);
+
+    expect(
+      ['src/img/badge-1.png', 'src/img/badge-2.png', 'src/icons/badge-3.png'].map((asset) =>
+        verdictOf(report, asset),
+      ),
+    ).toEqual([undefined, undefined, 'dead']);
   });
 });
 
