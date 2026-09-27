@@ -93,6 +93,15 @@ describe('loadAliases: tsconfig', () => {
     expect(expandAlias(map, '@/app/x.png', from('a.tsx'))[0]).toBe(from('real-app/x.png'));
   });
 
+  it('takes an exact key before a pattern of the same length, as TypeScript does', async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@*": ["./star/*"], "@": ["./exact"] } } }',
+    });
+
+    expect(expandAlias(map, '@', from('a.ts'))).toEqual([from('exact'), from('star')]);
+  });
+
   it('follows a relative extends chain', async () => {
     const map = await load({
       'tsconfig.base.json': '{ "compilerOptions": { "paths": { "~/*": ["./shared/*"] } } }',
@@ -406,6 +415,37 @@ describe('expandAlias: scope', () => {
     // The control. shadcn-ui has ~20 configs all defining `@/*`; without scoping,
     // every one of them would offer a candidate for every reference in the repo.
     expect(expandAlias(map, '@/x.png', from('apps/web/a.tsx'))).toEqual([]);
+  });
+
+  it("lets the nearest config answer before a parent config's longer key", async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@/components/*": ["./shared/components/*"] } } }',
+      'apps/web/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }',
+    });
+
+    // TypeScript reads only the nearest config, so the app's own `@/*` answers; the root's
+    // longer key stays behind it as a fallback.
+    expect(expandAlias(map, '@/components/x.png', from('apps/web/src/a.ts'))).toEqual([
+      from('apps/web/src/components/x.png'),
+      from('shared/components/x.png'),
+    ]);
+  });
+
+  it("lets an app's own Vite alias answer before a parent config's longer key", async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@/components/*": ["./shared/components/*"] } } }',
+      'apps/web/vite.config.ts': [
+        "import path from 'node:path';",
+        "export default { resolve: { alias: { '@': path.resolve(__dirname, './src') } } };",
+        '',
+      ].join('\n'),
+    });
+
+    expect(expandAlias(map, '@/components/x.png', from('apps/web/src/a.ts'))[0]).toBe(
+      from('apps/web/src/components/x.png'),
+    );
   });
 
   it('returns nothing when no rule matches, so the caller keeps unresolved-alias', async () => {

@@ -506,8 +506,11 @@ app maps `~` to its own folder.
 Aliases are scoped to the directory of the config that uses them. `shadcn-ui` has roughly twenty
 configs all defining `@/*`, and without scoping every one of them would offer a candidate for every
 reference in the workspace. A base that other configs extend, and that is not itself a
-`tsconfig.json` or `jsconfig.json`, serves files only through those configs. Three differences from
-TypeScript remain: every matching rule is tried, longest prefix and nearest config first, where
+`tsconfig.json` or `jsconfig.json`, serves files only through those configs. The rules are tried
+nearest config first and, within one config, in TypeScript's order: an exact key, then the longest
+prefix. So wherever the nearest config maps a path, the first candidate is the file TypeScript
+resolves, which `aliases.property.test.ts` checks against TypeScript's own resolver over configs
+drawn at random. Three differences from TypeScript remain: every matching rule is tried, where
 TypeScript takes one pattern; a config in a parent folder is a fallback, where TypeScript uses only
 the nearest; and `include`, `files` and `references` are not read.
 

@@ -52,7 +52,10 @@ export interface AliasSkip {
 }
 
 export interface AliasMap {
-  /** Longest prefix first, so `@/app/(create)/*` beats `@/*` on the same path. */
+  /**
+   * Nearest config first; within one config an exact key, then the longest prefix, so
+   * `@/app/(create)/*` beats `@/*` on the same path.
+   */
   readonly rules: readonly AliasRule[];
   readonly skipped: readonly AliasSkip[];
 }
@@ -116,13 +119,14 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
     if (config !== undefined) rules.push(...rulesOf(config, dirname(path), context));
   }
 
-  // Longest prefix first so a more specific mapping wins, then by scope depth so a
-  // nested package's config beats the workspace root's, then by source so the order is
-  // the same on every run.
+  // Nearest config first, as TypeScript reads only the nearest. Within one config, the order
+  // TypeScript takes: an exact key, then the longest prefix, so `@/app/(create)/*` beats
+  // `@/*`. Then by source, so the order is the same on every run.
   const sorted = unique(rules).sort(
     (a, b) =>
-      b.prefix.length - a.prefix.length ||
       b.scope.length - a.scope.length ||
+      Number(a.wildcard) - Number(b.wildcard) ||
+      b.prefix.length - a.prefix.length ||
       compareStrings(a.source, b.source),
   );
 
@@ -130,9 +134,9 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 }
 
 /**
- * Expand an alias-shaped path into candidate absolute POSIX paths, in rule order: longest
- * prefix first, then nearest scope. Returns `[]` when no rule applies, and the resolver then
- * reports the path as `unresolved-alias` rather than `broken`.
+ * Expand an alias-shaped path into candidate absolute POSIX paths, in rule order: the nearest
+ * config's rules first, then each parent folder's as a fallback. Returns `[]` when no rule
+ * applies, and the resolver then reports the path as `unresolved-alias` rather than `broken`.
  */
 export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): readonly string[] {
   const from = toPosix(fromFile);
