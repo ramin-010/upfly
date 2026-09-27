@@ -136,7 +136,9 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    disk, so it comes before the ceiling rungs: a declined template must not glob.
   if (raw.declined === true) return namesAnImage(raw) ? unlinked(raw, 'discarded') : null;
 
-  // 1. No static path at all.
+  // 1. No static path at all. A construct the adapter could not read is text rather than a
+  //    path, so what follows its last dot is no extension that could rule it out.
+  if (raw.unread === true) return unlinked(raw, 'dynamic');
   if (raw.ceiling === 'unsafe') {
     return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
   }

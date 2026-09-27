@@ -1139,6 +1139,7 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
       shape: 'js.cssinjs',
       ceiling: 'unsafe',
       asserted: false,
+      unread: true,
       note: 'CSS-in-JS template could not be parsed as CSS, so it was left alone',
     });
   }

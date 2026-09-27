@@ -162,6 +162,12 @@ references with no extension to test, and below the rungs that turn a miss into 
 reports every `url(inter.woff2)` as broken. There is a test for each failure mode, because the
 placement is invisible otherwise.
 
+Rung 1 drops an `unsafe` path whose text shows an extension that is not an image's, such as
+`{{ page.data }}.json`. A construct an adapter could not read (`RawReference.unread`: a style
+attribute or `<style>` block whose CSS does not parse, a CSS-in-JS template) is text rather than a
+path, so what follows its last dot is no extension: it is always `dynamic`, which is how its
+refusal reaches the report.
+
 Two outcomes deserve their own note.
 
 **`resolved-pattern` links every match, not one.** A `medium` template becomes a glob, each

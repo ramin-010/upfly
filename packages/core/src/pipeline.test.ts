@@ -77,3 +77,43 @@ describe('runPipeline', () => {
     expect(output.discovery.excludedRoots.map((excluded) => excluded.relative)).toEqual(['legacy']);
   });
 });
+
+describe('a construct Upfly could not read', () => {
+  it('reaches the references whatever its text holds, so the report can say why', async () => {
+    const root = site();
+    // Each text shows something after its last dot that is no image extension, which a
+    // test of a path would take as ruling the text out.
+    writeFileSync(
+      join(root, 'refused.html'),
+      '<div style="background: url(/logo.png) no-repeat; color red"></div>\n' +
+        '<div style="margin 0.5em"></div>\n' +
+        '<div style="margin 0.5em; font-family: &quot;Inter&quot;"></div>\n' +
+        '<style>{% if dark %}{% endif %}.a { margin: 0.5em }</style>\n',
+    );
+    writeFileSync(
+      join(root, 'box.ts'),
+      "import styled from 'styled-components';\nexport const Box = styled.div`margin: 0.5em; }`;\n",
+    );
+
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    const refused = output.references
+      .filter((reference) => reference.resolution === 'dynamic')
+      .map((reference) => reference.rawPath);
+    expect(refused).toHaveLength(5);
+    expect(refused).toEqual(
+      expect.arrayContaining([
+        'background: url(/logo.png) no-repeat; color red',
+        'margin 0.5em',
+        'margin 0.5em; font-family: &quot;Inter&quot;',
+        '{% if dark %}{% endif %}.a { margin: 0.5em }',
+        'margin: 0.5em; }',
+      ]),
+    );
+  });
+});

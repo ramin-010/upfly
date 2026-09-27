@@ -106,6 +106,13 @@ export interface RawReference {
    * references, by reason.
    */
   readonly declined?: true;
+  /**
+   * Set when the range is a whole construct the adapter could not read rather than a path,
+   * such as a style attribute or `<style>` block whose CSS does not parse, or a CSS-in-JS
+   * template; `rawPath` is the construct's text and `note` says why. No path is read from
+   * it, so it resolves `dynamic` whatever its text holds.
+   */
+  readonly unread?: true;
 }
 
 /**

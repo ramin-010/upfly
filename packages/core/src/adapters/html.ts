@@ -264,6 +264,7 @@ function collectFromStyleElement(element: ParsedElement, context: Context): void
         shape: 'html.style.element',
         ceiling: 'unsafe',
         asserted: false,
+        unread: true,
         note: `a <style> block built by a template, so its CSS is not final: ${templated}`,
       });
       continue;
@@ -348,6 +349,7 @@ function addStyleAttributeRefusal(
     shape: 'html.style.attribute',
     ceiling: 'unsafe',
     asserted: false,
+    unread: true,
     note: `the style attribute contains HTML character references, so its CSS cannot be handed to the parser with offsets that hold${describeUrlFunction(css)}`,
   });
 }
@@ -446,6 +448,7 @@ function collectFromStyleAttribute(css: string, baseOffset: number, context: Con
       shape: 'html.style.attribute',
       ceiling: 'unsafe',
       asserted: false,
+      unread: true,
       note: `could not parse the style attribute: ${
         error instanceof UpflyError ? error.message : String(error)
       }${describeUrlFunction(css)}`,
