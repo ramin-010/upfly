@@ -5,8 +5,8 @@
  * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and
  * every attribute position the HTML adapter reads (`url-attributes.ts`), and `url()` inside
  * CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside those
- * constructs become speculative candidates, except as the value of a JSX attribute that
- * names no file, such as `alt`.
+ * constructs become speculative candidates. One that a construct declines, such as the value
+ * of a JSX attribute that names no file, is returned marked `declined` with the reason.
  *
  * It parses with `@babel/parser`, never a regular expression: a regex would find
  * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
@@ -161,22 +161,20 @@ export function findJavaScriptReferences(input: {
       text,
       references: [],
       speculative: [],
-      handled: new Set(),
+      handled: new Map(),
       constantNamed: sameFileConstants((ast as File).program),
-      chainParts: new Set(),
+      chainParts: new Map(),
       attributeValues: [],
     };
     walk(ast, (node) => collectFromNode(node, context));
 
     // A guess whose range a construct already claimed is that construct's reference,
-    // not a second one. Filtering after the walk keeps this independent of visit order,
-    // which `walk` does not promise.
+    // not a second one. Filtering after the walk keeps this independent of visit order.
+    // A decline is read during the walk instead: the construct that declines a literal
+    // contains it, and `walk` visits a node before its children.
     const claimed = new Set(context.references.map((reference) => reference.start));
     const guesses = context.speculative.filter(
-      (reference) =>
-        !claimed.has(reference.start) &&
-        !claimed.has(reference.start + 1) &&
-        !context.handled.has(reference.start),
+      (reference) => !claimed.has(reference.start) && !claimed.has(reference.start + 1),
     );
 
     return [...context.references, ...guesses]
@@ -283,28 +281,44 @@ interface Context {
    */
   readonly speculative: RawReference[];
   /**
-   * Offsets of literals a construct has examined, whether it emitted a reference or
-   * declined. A decline is a decision, not an absence: `alt="/not.png"` is display text,
+   * Literals a construct has examined, by the offset after the opening quote or backtick,
+   * where a guess about the literal starts: `null` when the construct read the literal
+   * itself, as the CSS reader reads a `styled.div` template, and the `Decline` when it
+   * declined it. A decline is a decision, not an absence: `alt="/not.png"` is display text,
    * and the speculative rules must not overturn it.
-   *
-   * A string is recorded at the offset after its opening quote and a template literal at
-   * its own start, which is what the speculative rules compare against.
    */
-  readonly handled: Set<number>;
+  readonly handled: Map<number, Decline | null>;
   /**
    * The value of a same-file constant a path is assembled from, or `null`. See
    * `sameFileConstants` for the one condition under which a name is read through.
    */
   readonly constantNamed: (name: string) => string | null;
   /**
-   * The `+` nodes the chain rule must not read. A chain nests down its left side, so the
-   * walk meets each inner node after its outer one, and must not read it again as a
-   * second, shorter chain. A chain in an attribute that names no file is here whole.
+   * The `+` nodes the chain rule must not read as chains of their own, and the chains a
+   * construct declined. A chain nests down its left side, so the walk meets each inner node
+   * after its outer one, and must not read it again as a second, shorter chain (`null`). A
+   * chain in an attribute that names no file is here with its `Decline`.
    */
-  readonly chainParts: Set<BabelNode>;
+  readonly chainParts: Map<BabelNode, Decline | null>;
   /** Every JSX attribute value, so a path found inside one can take its shape. */
   readonly attributeValues: AttributeValue[];
 }
+
+/**
+ * Why a construct declined a value it examined. A path-shaped value it declines is still
+ * returned, marked `declined`, so the report can count it rather than lose it.
+ */
+interface Decline {
+  /** What the report says of it: one wording per construct and name, so counts stay few. */
+  readonly reason: string;
+  /** The shape it is reported under, when not the one it would have as a guess. */
+  readonly shape?: ShapeId;
+}
+
+/** The reason a path-shaped string written with escape sequences is declined. */
+const ESCAPED_STRING: Decline = {
+  reason: 'string written with escape sequences, whose text is not the path it spells',
+};
 
 /** Where one JSX attribute's value sits, and what it makes of a path found inside it. */
 interface AttributeValue {
@@ -398,27 +412,75 @@ function collectFromNode(node: BabelNode, context: Context): void {
  * and counted in the report. See "The six that exist" in ARCHITECTURE.md.
  */
 function collectSpeculativeString(node: StringLiteral, context: Context): void {
+  if (node.start === null || node.start === undefined) return;
+  const decline = context.handled.get(node.start + 1);
+  if (decline === null) return;
   const candidate = speculativeStringPath(node, context.text);
-  if (candidate === null) return;
+  if (candidate === null) {
+    collectEscapedString(node, context, decline);
+    return;
+  }
   const { start, path } = candidate;
 
-  context.speculative.push({
-    file: context.file,
-    start,
-    end: start + path.length,
-    rawPath: path,
-    kind: 'string',
-    // Not `path.bare-specifier`, even for a bare string. Inside `import` or `require()` a
-    // bare string is module-resolution syntax, but in an ordinary string
-    // `src/assets/hero.png` is a relative path written without `./`, and a prefix test
-    // would call `v2.0.0` and `bs.button` packages. Telling `some-ui-kit/dist/x.png` from
-    // `src/assets/x.png` needs to know what is installed, which an adapter cannot see, so
-    // `path.bare-specifier` lists this shape in `adapterEmitsAs`.
-    shape: 'js.string.literal',
-    ceiling: 'high',
-    asserted: false,
-    note: 'a path-shaped string literal, guessed rather than asserted',
-  });
+  context.speculative.push(
+    filed(
+      {
+        file: context.file,
+        start,
+        end: start + path.length,
+        rawPath: path,
+        kind: 'string',
+        // Not `path.bare-specifier`, even for a bare string. Inside `import` or `require()` a
+        // bare string is module-resolution syntax, but in an ordinary string
+        // `src/assets/hero.png` is a relative path written without `./`, and a prefix test
+        // would call `v2.0.0` and `bs.button` packages. Telling `some-ui-kit/dist/x.png` from
+        // `src/assets/x.png` needs to know what is installed, which an adapter cannot see, so
+        // `path.bare-specifier` lists this shape in `adapterEmitsAs`.
+        shape: 'js.string.literal',
+        ceiling: 'high',
+        asserted: false,
+        note: 'a path-shaped string literal, guessed rather than asserted',
+      },
+      decline,
+    ),
+  );
+}
+
+/**
+ * A path-shaped string written with escape sequences, returned declined. Its decoded value
+ * differs in length from its text, so no range would point at the path, and a guess is not
+ * worth a reference no rewrite could edit. The range covers the text, and the decoded path
+ * travels as `assembledPath`.
+ */
+function collectEscapedString(
+  node: StringLiteral,
+  context: Context,
+  decline: Decline | undefined,
+): void {
+  if (node.start === null || node.start === undefined) return;
+  if (node.end === null || node.end === undefined) return;
+  const start = node.start + 1;
+  const raw = context.text.slice(start, node.end - 1);
+  if (raw === node.value) return;
+  const path = stringCandidate(node.value);
+  if (path === null) return;
+
+  context.speculative.push(
+    filed(
+      {
+        file: context.file,
+        start,
+        end: node.end - 1,
+        rawPath: raw,
+        assembledPath: path,
+        kind: 'string',
+        shape: 'js.string.literal',
+        ceiling: 'unsafe',
+        asserted: false,
+      },
+      decline ?? ESCAPED_STRING,
+    ),
+  );
 }
 
 /**
@@ -436,16 +498,38 @@ function speculativeStringPath(
 
   const start = node.start + 1;
   const raw = text.slice(start, node.end - 1);
-  // An escaped string's decoded value differs in length from its text, so no range
-  // would point at the path. A guess is not worth an unrewritable reference.
+  // An escaped string has no range that spells its path; `collectEscapedString` reports it.
   if (raw !== node.value) return null;
 
-  const { path } = splitPathSuffix(raw);
-  // Anything with a file extension is a candidate, the same bound the JSON adapter uses.
-  // Which extensions are assets is decided in one place, the resolver.
-  if (path === '' || extensionOf(path) === '' || isExternalUrl(raw, 'string')) return null;
-  if (!plausiblePathShape(path)) return null;
-  return { start, path };
+  const path = stringCandidate(raw);
+  return path === null ? null : { start, path };
+}
+
+/**
+ * The path a string's value names, its query or fragment left off, when the value is a
+ * candidate at all, or `null`. Anything with a file extension is a candidate, the same bound
+ * the JSON adapter uses: which extensions are assets is decided in one place, the resolver.
+ */
+function stringCandidate(value: string): string | null {
+  const { path } = splitPathSuffix(value);
+  if (path === '' || extensionOf(path) === '' || isExternalUrl(value, 'string')) return null;
+  return plausiblePathShape(path) ? path : null;
+}
+
+/**
+ * A guess as it is filed: unchanged, or, when a construct declined the literal it was read
+ * from, marked `declined` under that construct's reason and shape. The `unsafe` ceiling
+ * means nothing could glob or rewrite it even past the resolver's first rung.
+ */
+function filed(reference: RawReference, decline: Decline | undefined): RawReference {
+  if (decline === undefined) return reference;
+  return {
+    ...reference,
+    shape: decline.shape ?? reference.shape,
+    ceiling: 'unsafe',
+    note: decline.reason,
+    declined: true,
+  };
 }
 
 /**
@@ -457,7 +541,8 @@ function speculativeStringPath(
  */
 function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): void {
   if (node.start === null || node.start === undefined) return;
-  if (context.handled.has(node.start)) return;
+  const decline = context.handled.get(node.start + 1);
+  if (decline === null) return;
   if (!pathShaped(templateChunks(node, context).chunks)) return;
 
   addTemplateReference(
@@ -467,6 +552,7 @@ function collectSpeculativeTemplate(node: TemplateLiteral, context: Context): vo
     templateShape(node, context),
     'a path-shaped template literal',
     false,
+    decline,
   );
 }
 
@@ -522,13 +608,15 @@ function templateChunks(
  *
  * Where one operand is already a complete path (`'/img/hero.jpg' + '?v=' + v`), that
  * literal stays the reference and the chain is not read, so a rewrite can still edit the
- * literal. A chain is a guess wherever it is read, a JSX `src` included. The range runs from
+ * literal. A chain is a guess wherever it is read, a JSX `src` included, and a chain a
+ * construct declined is returned declined. The range runs from
  * the first operand to the last without their outer quotes, so `rawPath` is source text,
  * and the assembled path travels as `assembledPath`. See "Assembled paths in JavaScript"
  * in ARCHITECTURE.md.
  */
 function collectFromChain(node: BinaryExpression, context: Context): void {
-  if (context.chainParts.has(node)) return;
+  const decline = context.chainParts.get(node);
+  if (decline === null) return;
   const operands = chainOperands(node, context.chainParts);
   if (operands.some((operand) => standsAlone(operand, context))) return;
 
@@ -568,6 +656,7 @@ function collectFromChain(node: BinaryExpression, context: Context): void {
       : `a path assembled with +: ${NOT_GLOBBABLE_REASON}`,
     skipPathChecks: true,
     asserted: false,
+    decline,
   });
 }
 
@@ -584,11 +673,11 @@ const HOLE = '${}';
  * `+` is one operand, not more of the chain: in `'/img/' + (i + 1) + '.png'` the brackets
  * may be adding numbers.
  */
-function chainOperands(node: BinaryExpression, parts: Set<BabelNode>): BabelNode[] {
+function chainOperands(node: BinaryExpression, parts: Map<BabelNode, Decline | null>): BabelNode[] {
   const operands: BabelNode[] = [node.right];
   let left: BabelNode = node.left;
   while (left.type === 'BinaryExpression' && left.operator === '+' && !isParenthesized(left)) {
-    parts.add(left);
+    parts.set(left, null);
     operands.unshift(left.right);
     left = left.left;
   }
@@ -824,7 +913,10 @@ function collectFromJsxElement(node: JSXOpeningElement, context: Context): void 
       // judged by the claim after the walk, as a call's argument is.
       if (askedForText && jsxValueText(attribute.value, context) === null) continue;
       const value = attribute.value;
-      declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context);
+      declineValue(value?.type === 'JSXExpressionContainer' ? value.expression : value, context, {
+        reason: `JSX attribute ${jsxAttributeName(attribute)}, which Upfly does not read as a file path on this element`,
+        shape: 'js.jsx.attribute.other',
+      });
       continue;
     }
 
@@ -868,6 +960,8 @@ function noteAttributeValue(
  * path found, so a document inside one keeps the shape it was found with.
  */
 function withPositionShape(reference: RawReference, context: Context): RawReference {
+  // A declined value keeps the shape of the construct that declined it.
+  if (reference.declined === true) return reference;
   let innermost: AttributeValue | undefined;
   for (const value of context.attributeValues) {
     const inside = value.start <= reference.start && reference.end <= value.end;
@@ -956,32 +1050,35 @@ function jsxAttributeName(attribute: JSXAttribute): string {
 }
 
 /**
- * Record a value's string and template literals as examined and its `+` chains as read,
- * through any choice between values. A function, call, object or array ends the search:
- * a component can pass it on as data, as `images={['/img/a.png']}` does.
+ * Record a value's string and template literals and its `+` chains as declined, through any
+ * choice between values, so the speculative rules return each path-shaped one declined
+ * rather than as a guess. A function, call, object or array ends the search: a component
+ * can pass it on as data, as `images={['/img/a.png']}` does.
  */
-function declineValue(node: BabelNode | null | undefined, context: Context): void {
+function declineValue(
+  node: BabelNode | null | undefined,
+  context: Context,
+  decline: Decline,
+): void {
   if (node === null || node === undefined || typeof node.start !== 'number') return;
   switch (node.type) {
     case 'StringLiteral':
-      context.handled.add(node.start + 1);
-      return;
     case 'TemplateLiteral':
-      context.handled.add(node.start);
+      context.handled.set(node.start + 1, decline);
       return;
     case 'BinaryExpression':
       if (node.operator !== '+') return;
-      context.chainParts.add(node);
-      declineValue(node.left, context);
-      declineValue(node.right, context);
+      context.chainParts.set(node, decline);
+      declineValue(node.left, context, decline);
+      declineValue(node.right, context, decline);
       return;
     case 'ConditionalExpression':
-      declineValue(node.consequent, context);
-      declineValue(node.alternate, context);
+      declineValue(node.consequent, context, decline);
+      declineValue(node.alternate, context, decline);
       return;
     case 'LogicalExpression':
-      declineValue(node.left, context);
-      declineValue(node.right, context);
+      declineValue(node.left, context, decline);
+      declineValue(node.right, context, decline);
       return;
     default:
   }
@@ -1006,9 +1103,13 @@ function collectFromModuleSource(
 }
 
 function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Context): void {
-  // Claimed whatever the tag, CSS or not: the body is the tag's input, not a path.
-  if (typeof node.quasi.start === 'number') context.handled.add(node.quasi.start);
-  if (!CSS_IN_JS_TAGS.has(rootIdentifierName(node.tag) ?? '')) return;
+  // The body is the tag's input, not a path, whatever the tag. A CSS tag's body is read
+  // below; any other tag's is declined, and returned declined if it is path-shaped.
+  const css = CSS_IN_JS_TAGS.has(rootIdentifierName(node.tag) ?? '');
+  if (typeof node.quasi.start === 'number') {
+    context.handled.set(node.quasi.start + 1, css ? null : taggedTemplateDecline(node, context));
+  }
+  if (!css) return;
 
   const flattened = flattenTemplate(node.quasi, context.text);
   if (flattened === null) return;
@@ -1041,6 +1142,20 @@ function collectFromTaggedTemplate(node: TaggedTemplateExpression, context: Cont
       note: 'CSS-in-JS template could not be parsed as CSS, so it was left alone',
     });
   }
+}
+
+/** Why a template given to a tag other than a CSS one is declined, naming the tag as written. */
+function taggedTemplateDecline(node: TaggedTemplateExpression, context: Context): Decline {
+  const { start, end } = node.tag;
+  const written =
+    typeof start === 'number' && typeof end === 'number' ? context.text.slice(start, end) : '';
+  // A plain or dotted name, such as `t` or `String.raw`; anything longer is not quoted.
+  return /^[\w$]+(?:\.[\w$]+)*$/.test(written)
+    ? { reason: `template literal tagged ${written}, whose text Upfly leaves to that function` }
+    : {
+        reason:
+          'template literal given to a tag function, whose text Upfly leaves to that function',
+      };
 }
 
 /**
@@ -1253,6 +1368,7 @@ function addTemplateReference(
   shape: ShapeId,
   description: string,
   asserted = true,
+  decline?: Decline,
 ): void {
   const flattened = flattenTemplate(template, context.text);
   if (flattened === null) return;
@@ -1283,6 +1399,7 @@ function addTemplateReference(
         : description,
     skipPathChecks: hasExpressions,
     asserted,
+    decline,
   });
 }
 
@@ -1305,6 +1422,8 @@ function addReference(input: {
   skipPathChecks?: boolean;
   /** `false` for a path-shaped guess, which can never become a `broken` finding. */
   asserted?: boolean;
+  /** Set when a construct declined the literal this guess is read from. */
+  decline?: Decline | undefined;
 }): void {
   const {
     context,
@@ -1317,6 +1436,7 @@ function addReference(input: {
     note,
     skipPathChecks = false,
     asserted = true,
+    decline,
   } = input;
   if (rawPath === '') return;
   const into = asserted ? context.references : context.speculative;
@@ -1333,35 +1453,45 @@ function addReference(input: {
   if (provablyNotAFile(provenPath) !== null) return;
 
   if (skipPathChecks) {
-    into.push({
-      file: context.file,
-      start,
-      end: input.end,
-      rawPath,
-      ...(assembledPath === undefined ? {} : { assembledPath }),
-      kind,
-      shape,
-      ceiling,
-      asserted,
-      note,
-    });
+    into.push(
+      filed(
+        {
+          file: context.file,
+          start,
+          end: input.end,
+          rawPath,
+          ...(assembledPath === undefined ? {} : { assembledPath }),
+          kind,
+          shape,
+          ceiling,
+          asserted,
+          note,
+        },
+        decline,
+      ),
+    );
     return;
   }
 
   const { path, suffix } = splitPathSuffix(rawPath);
   if (path === '') return;
 
-  into.push({
-    file: context.file,
-    start,
-    // The range covers the path alone, so a rewrite preserves any `?raw` or `?v=2`
-    // suffix, which in a Vite project changes what the import returns.
-    end: start + path.length,
-    rawPath: path,
-    kind,
-    shape,
-    ceiling,
-    asserted,
-    note: suffix === '' ? note : `${note}; query or fragment preserved: ${suffix}`,
-  });
+  into.push(
+    filed(
+      {
+        file: context.file,
+        start,
+        // The range covers the path alone, so a rewrite preserves any `?raw` or `?v=2`
+        // suffix, which in a Vite project changes what the import returns.
+        end: start + path.length,
+        rawPath: path,
+        kind,
+        shape,
+        ceiling,
+        asserted,
+        note: suffix === '' ? note : `${note}; query or fragment preserved: ${suffix}`,
+      },
+      decline,
+    ),
+  );
 }

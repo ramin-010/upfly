@@ -88,7 +88,8 @@ export interface ResolveOptions {
  * References to files the engine does not track, such as a `.woff2` font or a `.css`
  * import, are left out of the result rather than reported. They were never candidate
  * assets, so this is not a silent skip, and counting every font in a stylesheet would be
- * noise.
+ * noise. A value an adapter declined (`RawReference.declined`) is never looked up: it is
+ * `discarded` when it names an image and left out on the same terms otherwise.
  */
 export function resolveReferences(
   rawReferences: readonly RawReference[],
@@ -122,15 +123,19 @@ interface ResolveContext {
 }
 
 /**
- * The resolution ladder, whose order is load-bearing. The ceiling tests come first because
- * without a static path no later question means anything, and the extension filter comes
- * straight after them. Above them it would drop `url($hero)` and `` `/img/${file}` ``, which
+ * The resolution ladder, whose order is load-bearing. A declined value is settled before
+ * anything is looked up. The ceiling tests come next because without a static path no later
+ * question means anything, and the extension filter comes straight after them. Above them it would drop `url($hero)` and `` `/img/${file}` ``, which
  * have no extension to test; below the rungs that turn a miss into a finding it would let
  * every `url(inter.woff2)` be reported. See "The resolver's seven outcomes" in
  * ARCHITECTURE.md.
  */
 function resolveOne(raw: RawReference, context: ResolveContext): Reference | null {
   const { index, root, publicDirs } = context;
+  // 0. A value an adapter declined to read as a path. Never looked up, whatever exists on
+  //    disk, so it comes before the ceiling rungs: a declined template must not glob.
+  if (raw.declined === true) return namesAnImage(raw) ? unlinked(raw, 'discarded') : null;
+
   // 1. No static path at all.
   if (raw.ceiling === 'unsafe') {
     return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
@@ -285,6 +290,18 @@ function provablyNotAnAsset(raw: RawReference): boolean {
   // in the path it assembles, not in the quote-and-plus text of the chain.
   const extension = staticExtensionOf(provenPath(raw));
   return extension !== '' && !isImageExtension(extension);
+}
+
+/**
+ * Whether a spelling of the path a reference's text proves shows an image extension: rung 3's
+ * test, asked of a value that is never looked up. A declined `/files/report.pdf` is dropped as
+ * `url(inter.woff2)` is, while one naming an image is counted.
+ */
+function namesAnImage(raw: RawReference): boolean {
+  const { path } = splitPathSuffix(provenPath(raw));
+  return spellingsOf(path, raw.kind).some(({ path: spelled }) =>
+    isImageExtension(staticExtensionOf(spelled)),
+  );
 }
 
 function unlinked(

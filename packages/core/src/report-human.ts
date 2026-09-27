@@ -178,10 +178,15 @@ const STAGE_LABEL: Record<SkipStage, string> = {
  */
 function skippedSection(report: Report): string[] {
   const { skipped, references } = report;
-  // The discarded count is part of this guard: a repository with no skips and no unsafe
-  // references often still has a `package.json` full of path-shaped strings, and the
-  // count line for those is at the end of this section.
-  if (skipped.length === 0 && references.unsafe.length === 0 && references.discardedCount === 0) {
+  // The discarded and declined counts are part of this guard: a repository with no skips and
+  // no unsafe references often still has a `package.json` full of path-shaped strings, and
+  // the count lines for those are at the end of this section.
+  if (
+    skipped.length === 0 &&
+    references.unsafe.length === 0 &&
+    references.discardedCount === 0 &&
+    references.declinedValues.count === 0
+  ) {
     return ['Nothing was skipped.', ''];
   }
 
@@ -312,6 +317,30 @@ function skippedSection(report: Report): string[] {
     if (references.discarded !== null) lines.push('');
   }
 
+  lines.push(...declinedValueLines(report));
+  return lines;
+}
+
+/**
+ * The values an adapter declined, one line per reason. A reason names the construct, such as
+ * the attribute, so a reader who knows that a prop holds a file path can see which prop.
+ */
+function declinedValueLines(report: Report): string[] {
+  const { count: total, byReason, values } = report.references.declinedValues;
+  if (total === 0) return [];
+
+  const hint = values === null ? ' (use --include-discarded to list them)' : '';
+  const lines = [
+    `${count(total, 'value')} with an image extension linked nothing, written where Upfly reads no file path${hint}`,
+    '',
+  ];
+  for (const entry of byReason) {
+    lines.push(`  ${count(entry.count, 'value')}: ${entry.reason}`);
+    for (const value of values ?? []) {
+      if (value.reason === entry.reason) lines.push(`    ${value.file}  ${value.rawPath}`);
+    }
+  }
+  lines.push('');
   return lines;
 }
 

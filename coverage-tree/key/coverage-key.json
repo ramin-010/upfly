@@ -410,6 +410,12 @@
       "motivation": "The same link, written in a component. Its own row for the reason the meta tag has one: the JSX reader is a second reader of the shared list."
     },
     {
+      "id": "js.jsx.attribute.other",
+      "label": "a path in a JSX attribute read as text",
+      "spec": "4c",
+      "motivation": "A path written where an attribute is display text or a component's own prop. The JSX reader declines it however it is spelled, and a declined value must never become a link, so the row reads backwards: an outcome other than discarded is the failure."
+    },
+    {
       "id": "js.cssinjs",
       "label": "CSS-in-JS carrying a url()",
       "spec": "4c",
@@ -5324,7 +5330,7 @@
         {
           "raw": "/img/team.jpg",
           "occurrence": 1,
-          "shape": "decoy.not-a-path",
+          "shape": "js.jsx.attribute.other",
           "expect": "discarded",
           "why": "A tooltip is display text. A template with no holes is only a string written with backticks, and the same text in quotes is declined as display text. Taken as a guess, this spelling links the team photo, and a rewrite would change what the tooltip says.",
           "offset": 196,
@@ -5334,7 +5340,7 @@
         {
           "raw": "/srcset/${name}.jpg",
           "occurrence": 1,
-          "shape": "decoy.not-a-path",
+          "shape": "js.jsx.attribute.other",
           "expect": "discarded",
           "why": "Alt text is display text too, and a hole does not make it a path. Taken as a guess, this template is a pattern standing for all five jpg files in apps/web/public/srcset, a link that no code makes.",
           "offset": 218,
@@ -7285,6 +7291,21 @@
           "offset": 182,
           "line": 4,
           "column": 24
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/PhotoTitle.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute.other",
+          "expect": "discarded",
+          "why": "A tooltip naming the banner in quotes, the plain spelling of TeamThumb.tsx's backtick title. Upfly reads no path from a title, so the value is declined whatever exists on disk: never linked, never rewritten, and counted in the report under the attribute's name.",
+          "offset": 155,
+          "line": 3,
+          "column": 32
         }
       ]
     }

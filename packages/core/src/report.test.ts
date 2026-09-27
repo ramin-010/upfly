@@ -1283,6 +1283,140 @@ describe('buildReport', () => {
     });
   });
 
+  describe('values an adapter declined', () => {
+    // No fixture tree holds one, so the graph is built by hand: two titles and a prop that
+    // name images, beside one resolved reference and one guess that named nothing.
+    const ROOT = '/repo';
+    const TITLE = 'JSX attribute title, which Upfly does not read as a file path on this element';
+    const PROP = 'JSX attribute image, which Upfly does not read as a file path on this element';
+
+    function unlinked(
+      rawPath: string,
+      extra: { readonly declined?: true; readonly note?: string } = {},
+    ): Reference {
+      return {
+        file: `${ROOT}/src/Card.jsx`,
+        start: 10,
+        end: 10 + rawPath.length,
+        rawPath,
+        kind: 'string',
+        shape: extra.declined === true ? 'js.jsx.attribute.other' : 'js.string.literal',
+        ceiling: 'unsafe',
+        asserted: false,
+        ...extra,
+        resolution: 'discarded',
+        confidence: 'unsafe',
+        resolvedPath: null,
+      };
+    }
+
+    function reportOf(includeDiscarded: boolean): Report {
+      const resolved: Reference = {
+        file: `${ROOT}/src/Card.jsx`,
+        start: 2,
+        end: 11,
+        rawPath: '/hero.png',
+        kind: 'attr',
+        shape: 'js.jsx.attribute',
+        ceiling: 'high',
+        asserted: true,
+        resolution: 'resolved',
+        confidence: 'high',
+        resolvedPath: `${ROOT}/public/hero.png`,
+        resolvedVia: 'serving-root',
+      };
+      const references = [
+        resolved,
+        unlinked('assets/nothing.png'),
+        unlinked('/img/a.png', { declined: true, note: TITLE }),
+        unlinked('/img/b.png', { declined: true, note: PROP }),
+        unlinked('/img/c.png', { declined: true, note: TITLE }),
+      ];
+      const assets = [
+        {
+          path: `${ROOT}/public/hero.png`,
+          relative: 'public/hero.png',
+          extension: '.png',
+          bytes: 5,
+        },
+      ];
+      return buildReport({
+        graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
+        audit: {
+          findings: [],
+          publicDirDeadCount: 0,
+          conventionLinked: [],
+          unreadableSources: [],
+          probed: false,
+          duplicatesChecked: false,
+        },
+        discovery: {
+          root: ROOT,
+          assets,
+          sourceFiles: [],
+          directories: [],
+          ignoredCount: 0,
+          skipped: [],
+          excludedRoots: [],
+          unscannedFiles: [],
+        },
+        sweep: { mentions: new Map(), skipped: [] },
+        servingRoots: { dirs: ['public'], declared: true },
+        includeDiscarded,
+      });
+    }
+
+    it('counts them by reason, most common first, and not as references', () => {
+      const { references, summary } = reportOf(false);
+
+      expect(references.declinedValues).toEqual({
+        count: 3,
+        byReason: [
+          { reason: TITLE, count: 2 },
+          { reason: PROP, count: 1 },
+        ],
+        values: null,
+      });
+      // The counts that were already there keep their meaning: a declined value is not a
+      // reference, so only the guess that named nothing is discarded.
+      expect(summary.references).toBe(2);
+      expect(references.byResolution.discarded).toBe(1);
+      expect(references.discardedCount).toBe(1);
+      expect(references.byConfidence.unsafe).toBe(1);
+      expect(references.byClassification['not-a-claim']).toBe(1);
+    });
+
+    it('lists each one with its reason when asked, apart from the discarded guesses', () => {
+      const { references } = reportOf(true);
+
+      expect(references.declinedValues.values).toEqual([
+        { file: 'src/Card.jsx', rawPath: '/img/a.png', reason: TITLE },
+        { file: 'src/Card.jsx', rawPath: '/img/b.png', reason: PROP },
+        { file: 'src/Card.jsx', rawPath: '/img/c.png', reason: TITLE },
+      ]);
+      expect(references.discarded?.map((entry) => entry.rawPath)).toEqual(['assets/nothing.png']);
+    });
+
+    it('prints the count and a line for each reason, and names the flag that lists them', () => {
+      const text = renderReport(reportOf(false));
+
+      expect(text).toContain(
+        '3 values with an image extension linked nothing, written where Upfly reads no file path (use --include-discarded to list them)',
+      );
+      expect(text).toContain(`  2 values: ${TITLE}\n  1 value: ${PROP}\n`);
+      expect(text).toContain('1 path-shaped string did not resolve to an asset');
+    });
+
+    it('prints each value under its reason when the flag was given', () => {
+      const text = renderReport(reportOf(true));
+
+      expect(text).toContain(
+        `  2 values: ${TITLE}\n    src/Card.jsx  /img/a.png\n    src/Card.jsx  /img/c.png\n`,
+      );
+      expect(text).not.toContain('use --include-discarded');
+    });
+  });
+
   describe('the human rendering', () => {
     it('prints what was skipped before what was found', async () => {
       // A limitation printed after eighty findings is a limitation nobody reads.
@@ -2038,6 +2172,30 @@ describe('what a path that did not resolve names, in a project held in memory', 
     // The control: served from `src`, the resolver links both.
     expect(verdictOf(served, 'src/img/pattern-1.png')).toBeUndefined();
     expect(verdictOf(served, 'src/img/pattern-2.png')).toBeUndefined();
+  });
+
+  it('hedges an asset a declined value names, in any spelling, and never links it', async () => {
+    // Upfly reads no path from a tooltip or alt text, so neither image is linked or rewritten
+    // through one. Each is hedged by the value that names it, and the percent-encoded name
+    // holds no filename token that a search of the text could match.
+    const sources = {
+      'src/index.html': page(),
+      'src/Thumb.jsx':
+        'export const Thumb = () => <img src={src} title="/img/my%20photo.png" alt="/img/team.jpg" />;\n',
+    };
+    const assets = [...SERVED, 'src/img/my photo.png', 'src/img/team.jpg'];
+
+    const report = await reportForFiles(sources, assets, SERVED_FROM_SRC);
+
+    expect(verdictOf(report, 'src/img/my photo.png')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/my photo.png')).toEqual([
+      'unresolved-reference src/Thumb.jsx:1 /img/my%20photo.png',
+    ]);
+    expect(verdictOf(report, 'src/img/team.jpg')).toBe('possibly-dead');
+    expect(evidenceOf(report, 'src/img/team.jpg')).toEqual([
+      'unresolved-reference src/Thumb.jsx:1 /img/team.jpg',
+    ]);
+    expect(report.references.declinedValues.count).toBe(2);
   });
 
   it('hedges an asset a root-relative + chain could name, reading the path the chain proves', async () => {

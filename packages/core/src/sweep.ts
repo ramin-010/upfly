@@ -26,8 +26,9 @@ export type MentionSource =
   /** In a file no adapter could read: an unclaimed extension, or a parse failure. */
   | 'unscanned-file'
   /**
-   * In a path we read but could not resolve: `dynamic`, alias-shaped, speculative, or
-   * root-relative in a run that could not find its serving root.
+   * In a path we read but could not resolve: `dynamic`, alias-shaped, speculative, a value
+   * an adapter declined to read as a path, or root-relative in a run that could not find
+   * its serving root.
    */
   | 'unresolved-reference'
   /**
@@ -297,8 +298,9 @@ function namesIn(reference: Reference): ReadonlySet<string> {
  * `./wrong-dir/hero.png: broken` beside `hero.png: dead` tells a reader more than a hedge
  * would. The exception is a root-relative one that a run with no serving root withholds:
  * it has no finding of its own, and its target is unknown rather than missing.
- * `out-of-scope` is known not to be an indexed asset. A new resolution outcome belongs
- * here only if its target is unknown.
+ * `out-of-scope` is known not to be an indexed asset. `discarded` includes the values an
+ * adapter declined, which are never looked up. A new resolution outcome belongs here only if
+ * its target is unknown.
  */
 function unknownTargetReferences(graph: Graph): readonly Reference[] {
   return [

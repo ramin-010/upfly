@@ -377,6 +377,17 @@ export const SHAPES = [
       'same list. A template value keeps this shape, as for the link-preview image, and so ' +
       'does an image path found inside another value, the claim asked of that path.',
   },
+  {
+    id: 'js.jsx.attribute.other',
+    label: 'a path in a JSX attribute read as text',
+    emission: 'declined',
+    why:
+      "A path in a JSX attribute that names no file on its element, such as a tooltip's " +
+      "`title`, an `alt` or a component's own prop. The attribute decides, however the value " +
+      'is written, so it is never linked or rewritten. The JSX reader returns it as a ' +
+      'declined value, which the resolver discards and the report counts under the ' +
+      "attribute's name.",
+  },
   { id: 'js.cssinjs', label: 'CSS-in-JS carrying a url()', emission: 'engine' },
 
   // ---- Markdown ----------------------------------------------------------------
@@ -585,6 +596,13 @@ export const SHAPES = [
     id: 'decoy.windows-path',
     label: 'a backslash-separated path',
     emission: 'declined',
+    adapterEmitsAs: ['js.string.literal'],
+    needsToSee: 'which escapes separate a path, since it declines every string written with them',
+    why:
+      'A path separated by backslashes, which nothing in the tree is addressed by. In ' +
+      'JavaScript a backslash can only be written as an escape, and the adapter returns a ' +
+      'path-shaped string written with escapes as a declined `js.string.literal`, whatever ' +
+      'it spells, for the resolver to discard.',
   },
   {
     id: 'decoy.query-or-hash',

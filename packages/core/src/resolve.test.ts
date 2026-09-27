@@ -83,6 +83,51 @@ function resolveOne(overrides: Partial<RawReference> & { rawPath: string }): Ref
 }
 
 describe('resolveReferences', () => {
+  describe('rung 0: a value an adapter declined is never looked up', () => {
+    const declined = {
+      kind: 'string',
+      asserted: false,
+      declined: true,
+      note: 'JSX attribute title, which Upfly does not read as a file path on this element',
+    } as const;
+
+    it('is discarded with its reason when it names an image, even one that exists', () => {
+      const reference = resolveOne({ ...declined, rawPath: './assets/logo.png', ceiling: 'high' });
+      expect(reference?.resolution).toBe('discarded');
+      expect(reference?.note).toBe(declined.note);
+      expect(reference?.confidence).toBe('unsafe');
+    });
+
+    it('is never globbed, whatever its ceiling, so a pattern it spells links nothing', () => {
+      // Above the ceiling rungs: a declined template globbed would link every file it
+      // matches, a link no code makes.
+      const reference = resolveOne({
+        ...declined,
+        rawPath: './images/${n}.png',
+        ceiling: 'medium',
+      });
+      expect(reference?.resolution).toBe('discarded');
+    });
+
+    it('reads the path its text proves, in every spelling, for the image extension', () => {
+      expect(
+        resolveOne({
+          ...declined,
+          rawPath: "./images/' + n + '.png",
+          assembledPath: './images/${}.png',
+          ceiling: 'unsafe',
+        })?.resolution,
+      ).toBe('discarded');
+      expect(
+        resolveOne({ ...declined, rawPath: './hero%2Epng', ceiling: 'high' })?.resolution,
+      ).toBe('discarded');
+    });
+
+    it('is dropped, as rung 3 drops a font, when no spelling shows an image extension', () => {
+      expect(resolveOne({ ...declined, rawPath: '/files/a.pdf', ceiling: 'high' })).toBeUndefined();
+    });
+  });
+
   describe('rung 1: an unsafe ceiling is dynamic, never broken', () => {
     it.each([
       ['a preprocessor variable', '$hero'],

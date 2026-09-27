@@ -51,6 +51,7 @@ export interface ReportSummary {
   readonly assets: number;
   readonly assetBytes: number;
   readonly sourceFiles: number;
+  /** Every reference, leaving out the values an adapter declined (`references.declinedValues`). */
   readonly references: number;
   /** References linked to an asset, pattern references included. */
   readonly linkedReferences: number;
@@ -275,6 +276,40 @@ export interface ReferenceReport {
    * what.
    */
   readonly discarded: readonly ReferenceEntry[] | null;
+  /**
+   * Path-shaped values with an image extension that an adapter declined to read as a path,
+   * such as a tooltip or a component's own prop naming an image. None is linked or rewritten.
+   * They are not references, so every count above leaves them out.
+   */
+  readonly declinedValues: DeclinedValueReport;
+}
+
+/** The values an adapter declined, counted by reason. */
+export interface DeclinedValueReport {
+  readonly count: number;
+  /** One entry per reason, the most common first, then by reason. */
+  readonly byReason: readonly DeclinedValueCount[];
+  /**
+   * Each value, when `includeDiscarded` asked for them, otherwise `null`, since an empty
+   * array would read as "there were none".
+   */
+  readonly values: readonly DeclinedValueEntry[] | null;
+}
+
+/** How many declined values share one reason. */
+export interface DeclinedValueCount {
+  /** The adapter's reason, one wording per construct and name. */
+  readonly reason: string;
+  readonly count: number;
+}
+
+/** One value an adapter declined to read as a path. */
+export interface DeclinedValueEntry {
+  /** POSIX-relative source file. */
+  readonly file: string;
+  /** The value's text as written. */
+  readonly rawPath: string;
+  readonly reason: string;
 }
 
 /** What the engine did not read, and what it refused to enter. */
@@ -745,7 +780,7 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
     assets: input.graph.assets.length,
     assetBytes: input.graph.assets.reduce((total, node) => total + node.asset.bytes, 0),
     sourceFiles: input.discovery.sourceFiles.length,
-    references: input.graph.references.length,
+    references: liveReferences(input.graph).length,
     linkedReferences:
       input.graph.byResolution.resolved.length +
       input.graph.byResolution['resolved-pattern'].length,
@@ -757,19 +792,32 @@ function summarise(input: ReportInput, findings: readonly Finding[]): ReportSumm
   };
 }
 
+/**
+ * The graph's references, less the values an adapter declined. A declined value reaches the
+ * graph as `discarded`, so the sweep can read what it names, but it is not a reference, and
+ * the report counts it apart (`declinedValues`).
+ */
+function liveReferences(graph: Graph): readonly Reference[] {
+  return graph.references.filter((reference) => reference.declined !== true);
+}
+
 function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceReport {
+  const references = liveReferences(graph);
+  const discardedReferences = references.filter(
+    (reference) => reference.resolution === 'discarded',
+  );
   const byResolution: Record<Resolution, number> = {
     resolved: graph.byResolution.resolved.length,
     'resolved-pattern': graph.byResolution['resolved-pattern'].length,
     'out-of-scope': graph.byResolution['out-of-scope'].length,
     dynamic: graph.byResolution.dynamic.length,
     broken: graph.byResolution.broken.length,
-    discarded: graph.byResolution.discarded.length,
+    discarded: discardedReferences.length,
     'unresolved-alias': graph.byResolution['unresolved-alias'].length,
   };
 
   const byConfidence: Record<Confidence, number> = { certain: 0, high: 0, medium: 0, unsafe: 0 };
-  for (const reference of graph.references) byConfidence[reference.confidence] += 1;
+  for (const reference of references) byConfidence[reference.confidence] += 1;
 
   // Only a linked reference has a `resolvedVia`.
   const byResolvedVia: Record<ResolvedVia, number> = {
@@ -788,10 +836,10 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
     'correctly-refused': 0,
     'not-a-claim': 0,
   };
-  for (const reference of graph.references) byClassification[classifyReference(reference)] += 1;
+  for (const reference of references) byClassification[classifyReference(reference)] += 1;
 
   const boundCounts = new Map<string, number>();
-  for (const reference of graph.references) {
+  for (const reference of references) {
     const id = refusalReasonId(reference);
     if (id !== null) boundCounts.set(id, (boundCounts.get(id) ?? 0) + 1);
   }
@@ -810,7 +858,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   }
 
   const unsafe: ReferenceEntry[] = [];
-  for (const reference of graph.references) {
+  for (const reference of references) {
     if (
       reference.resolution !== 'dynamic' &&
       reference.resolution !== 'unresolved-alias' &&
@@ -832,7 +880,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   }
 
   const discarded = includeDiscarded
-    ? graph.byResolution.discarded.map((reference) => ({
+    ? discardedReferences.map((reference) => ({
         file: relativePath(graph.root, reference.file),
         rawPath: reference.rawPath,
         resolution: reference.resolution,
@@ -852,6 +900,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
     unsafe,
     discardedCount: byResolution.discarded,
     discarded,
+    declinedValues: declinedValueReport(graph, includeDiscarded),
   };
 }
 
@@ -859,6 +908,36 @@ function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {
   return resolution === 'dynamic'
     ? 'no static path to resolve'
     : 'alias-shaped, and no alias the project declares maps it';
+}
+
+/**
+ * The values an adapter declined, counted by reason. The resolver keeps only those that name
+ * an image, so each one here is a path a reader could mistake for a link.
+ */
+function declinedValueReport(graph: Graph, includeDiscarded: boolean): DeclinedValueReport {
+  const declined = graph.byResolution.discarded.filter((reference) => reference.declined === true);
+  const reasonOf = (reference: Reference): string =>
+    reference.note ?? 'a value an adapter does not read as a file path';
+
+  const counts = new Map<string, number>();
+  for (const reference of declined) {
+    counts.set(reasonOf(reference), (counts.get(reasonOf(reference)) ?? 0) + 1);
+  }
+  const byReason = [...counts]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || compareStrings(a.reason, b.reason));
+
+  return {
+    count: declined.length,
+    byReason,
+    values: includeDiscarded
+      ? declined.map((reference) => ({
+          file: relativePath(graph.root, reference.file),
+          rawPath: reference.rawPath,
+          reason: reasonOf(reference),
+        }))
+      : null,
+  };
 }
 
 /**

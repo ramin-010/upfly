@@ -36,7 +36,7 @@ Options:
   --max-encodes <n>      Measure the n largest images by encoding them (default 100)
   --probe-all            Measure every image, however many
   --no-probe             Read no image at all; sizes and savings are then not measured
-  --include-discarded    Also list the path-like strings that named no image
+  --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted
   --json                 Print one JSON object per line: progress, then the report
   --no-color             Plain text; also when NO_COLOR is set
@@ -66,7 +66,7 @@ Options:
   --allow-dirty          With --apply: write even with uncommitted changes, or outside a
                          git repository. upfly undo still puts the files back
   --include-declined     Also list each image left unconverted, with the reason
-  --include-discarded    Also list the path-like strings that named no image
+  --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted
   --json                 Print one JSON object per line: progress, then the result
   --no-color             Plain text; also when NO_COLOR is set

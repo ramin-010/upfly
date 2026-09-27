@@ -26,7 +26,7 @@ export interface ScopeOptions {
 }
 
 export interface ReportOptions {
-  /** `--include-discarded`: list the path-like strings that named no image. */
+  /** `--include-discarded`: list the path-like strings that linked nothing. */
   readonly includeDiscarded: boolean;
   /** `--include-unused-svg`: list the unused SVG files the report otherwise only counts. */
   readonly includeUnusedSvg: boolean;

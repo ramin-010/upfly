@@ -98,6 +98,14 @@ export interface RawReference {
   readonly asserted: boolean;
   /** Why this ceiling was assigned. Surfaced verbatim in the report. */
   readonly note?: string;
+  /**
+   * Set on a path-shaped value an adapter examined and declined to read as a path, such as
+   * a tooltip that names an image; `note` then says why. The resolver never looks one up, so
+   * it never links or rewrites anything: it is `discarded` when a spelling of its path shows
+   * an image extension, and dropped otherwise. The report counts such values apart from the
+   * references, by reason.
+   */
+  readonly declined?: true;
 }
 
 /**
@@ -130,7 +138,10 @@ export type Resolution =
   | 'out-of-scope'
   /** An asserted, literal path that points at nothing: a finding. */
   | 'broken'
-  /** A path-shaped guess that did not resolve. Counted, never a finding. */
+  /**
+   * A path-shaped guess that did not resolve, or a value an adapter declined to read as a
+   * path (`RawReference.declined`), which is never looked up. Counted, never a finding.
+   */
   | 'discarded'
   /** Alias-shaped (`@/…`, `~/…`, `#…`), and no alias the project declares maps it. */
   | 'unresolved-alias';

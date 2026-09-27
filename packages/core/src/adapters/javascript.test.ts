@@ -20,6 +20,25 @@ function slices(text: string, file?: string): string[] {
   return find(text, file).map((reference) => text.slice(reference.start, reference.end));
 }
 
+/** The paths the adapter reads, leaving out the values it declines. */
+function read(text: string, file?: string): string[] {
+  return find(text, file)
+    .filter((reference) => reference.declined !== true)
+    .map((reference) => reference.rawPath);
+}
+
+/** Each value the adapter declines, as its path and the reason the report counts it under. */
+function declined(text: string, file?: string): [string, string | undefined][] {
+  return find(text, file)
+    .filter((reference) => reference.declined === true)
+    .map((reference) => [reference.rawPath, reference.note]);
+}
+
+/** The reason a value is declined under in a JSX attribute that names no file. */
+function attributeReason(name: string): string {
+  return `JSX attribute ${name}, which Upfly does not read as a file path on this element`;
+}
+
 describe('javascriptAdapter', () => {
   it('claims the javascript and typescript extensions', () => {
     expect(javascriptAdapter.id).toBe('javascript');
@@ -164,11 +183,11 @@ describe('javascriptAdapter', () => {
     ];
 
     it.each(cases)('%s', (_name, source, expected) => {
-      expect(paths(source)).toEqual([...expected]);
+      expect(read(source)).toEqual([...expected]);
     });
 
     // Display text in every spelling. Taken as a guess, each could link an image the text
-    // only names, and a rewrite could then edit the text.
+    // only names, and a rewrite could then edit the text. Each is reported as declined.
     const displayText: ReadonlyArray<[spelling: string, source: string]> = [
       ['a template with no holes', '<img src="/yes.png" title={`/img/team.jpg`} />'],
       ['a template with a hole', '<img src="/yes.png" alt={`/img/${n}.png`} />'],
@@ -182,9 +201,12 @@ describe('javascriptAdapter', () => {
     ];
 
     it.each(displayText)(
-      'reads nothing from an attribute that names no file, written as %s',
+      'reads nothing from an attribute that names no file, written as %s, and declines it',
       (_spelling, source) => {
-        expect(paths(source)).toEqual(['/yes.png']);
+        expect(read(source)).toEqual(['/yes.png']);
+        const values = declined(source);
+        expect(values).toHaveLength(1);
+        expect([attributeReason('alt'), attributeReason('title')]).toContain(values[0]?.[1]);
       },
     );
 
@@ -244,12 +266,15 @@ describe('javascriptAdapter', () => {
       expect(find('<svg><image href="/a/hero.png" /></svg>')[0]?.shape).toBe('js.jsx.svg');
     });
 
-    it('declines a link whose rel claims no image, whatever its value names', () => {
+    it.each([
+      '<link rel="stylesheet" href="/img/sprite.png" />',
+      '<link rel="preload" as="font" href="/img/glyphs.png" />',
+      '<link href="/img/mystery.png" />',
+      '<link rel={kind} href={`/img/${name}.png`} />',
+    ])('declines a link whose rel claims no image, whatever its value names: %s', (source) => {
       // The claim decides, not the extension: guessed, each of these would link an image.
-      expect(find('<link rel="stylesheet" href="/img/sprite.png" />')).toEqual([]);
-      expect(find('<link rel="preload" as="font" href="/img/glyphs.png" />')).toEqual([]);
-      expect(find('<link href="/img/mystery.png" />')).toEqual([]);
-      expect(find('<link rel={kind} href={`/img/${name}.png`} />')).toEqual([]);
+      expect(read(source)).toEqual([]);
+      expect(declined(source).map(([, reason]) => reason)).toEqual([attributeReason('href')]);
     });
 
     it('finds the import and the JSX attribute independently', () => {
@@ -559,8 +584,9 @@ describe('javascriptAdapter', () => {
   });
 
   describe('values that are not literal paths', () => {
-    it('ignores a namespaced JSX attribute', () => {
-      expect(paths('<img ns:src="/a.png" />')).toEqual([]);
+    it('reads no namespaced JSX attribute, and declines its value', () => {
+      expect(read('<img ns:src="/a.png" />')).toEqual([]);
+      expect(declined('<img ns:src="/a.png" />')).toEqual([['/a.png', attributeReason('ns:src')]]);
     });
 
     it('ignores a valueless JSX attribute', () => {
@@ -842,8 +868,12 @@ body`,
 
     it('reads an href by the tag it sits on, and a link only when it names an image', () => {
       // An `<image>` href is always a file. A link's is an image only when its value spells an
-      // image extension, so a link to a document or a page yields nothing.
-      expect(find('<a href="/a/report.pdf">x</a>')).toEqual([]);
+      // image extension, so a link to a document or a page is not read. The document comes
+      // back declined, and the resolver drops it as no image.
+      expect(read('<a href="/a/report.pdf">x</a>')).toEqual([]);
+      expect(declined('<a href="/a/report.pdf">x</a>')).toEqual([
+        ['/a/report.pdf', attributeReason('href')],
+      ]);
       expect(find('<a href="/about">x</a>')).toEqual([]);
       expect(paths('<a href="/a/hero.png">x</a>')).toEqual(['/a/hero.png']);
       expect(paths('<a href={`/a/hero.png`}>x</a>')).toEqual(['/a/hero.png']);
@@ -893,8 +923,13 @@ body`,
     });
 
     it('reads no meta tag that names no preview image, whatever its content spells', () => {
-      expect(find('<meta name="description" content="/img/logo.png" />')).toEqual([]);
-      expect(find('<meta content="/img/logo.png" />')).toEqual([]);
+      for (const source of [
+        '<meta name="description" content="/img/logo.png" />',
+        '<meta content="/img/logo.png" />',
+      ]) {
+        expect(read(source)).toEqual([]);
+        expect(declined(source)).toEqual([['/img/logo.png', attributeReason('content')]]);
+      }
     });
 
     it('reads a link to an image under the link shape, a template included', () => {
@@ -982,10 +1017,18 @@ body`,
 
     it('still declines a choice where the claim refuses for a reason other than the text', () => {
       // A stylesheet link names no image whatever its value spells, and a tooltip is text.
-      expect(
-        find(`<link rel="stylesheet" href={dark ? '/img/dark.png' : '/img/light.png'} />`),
-      ).toEqual([]);
-      expect(find(`<img title={big ? '/img/a.png' : '/img/b.png'} />`)).toEqual([]);
+      const link = `<link rel="stylesheet" href={dark ? '/img/dark.png' : '/img/light.png'} />`;
+      const tooltip = `<img title={big ? '/img/a.png' : '/img/b.png'} />`;
+      expect(read(link)).toEqual([]);
+      expect(declined(link).map(([, reason]) => reason)).toEqual([
+        attributeReason('href'),
+        attributeReason('href'),
+      ]);
+      expect(read(tooltip)).toEqual([]);
+      expect(declined(tooltip).map(([, reason]) => reason)).toEqual([
+        attributeReason('title'),
+        attributeReason('title'),
+      ]);
     });
 
     it.each([
@@ -1031,6 +1074,84 @@ body`,
         `<meta property="og:image" content={render(<img src="/img/logo.png" />)} />`,
       );
       expect(found.map((reference) => reference.shape)).toEqual(['js.jsx.attribute']);
+    });
+  });
+
+  /**
+   * A path-shaped value that a construct examined and declined to read as a path comes back
+   * marked `declined`, with the reason the report counts it under, so it is never dropped
+   * unreported and never read. See "The six that exist" in ARCHITECTURE.md.
+   */
+  describe('values the adapter declines', () => {
+    it('reports each value in an attribute that names no file, and reads only the src', () => {
+      const source =
+        '<img src="/yes.png" alt="/img/a.png" title={`/img/t.jpg`} ' +
+        "data-k={'/img/' + n + '.png'} />";
+
+      expect(read(source)).toEqual(['/yes.png']);
+      expect(declined(source)).toEqual([
+        ['/img/a.png', attributeReason('alt')],
+        ['/img/t.jpg', attributeReason('title')],
+        [`/img/' + n + '.png`, attributeReason('data-k')],
+      ]);
+      expect(slices(source)).toEqual(paths(source));
+      const values = find(source).filter((reference) => reference.declined === true);
+      expect(values.map((reference) => reference.shape)).toEqual([
+        'js.jsx.attribute.other',
+        'js.jsx.attribute.other',
+        'js.jsx.attribute.other',
+      ]);
+      expect(values.every((reference) => !reference.asserted)).toBe(true);
+    });
+
+    it('reports a component prop that names an image, in every branch, and reads none', () => {
+      expect(read('<Card image="/img/hero.jpg" />')).toEqual([]);
+      expect(declined('<Card image="/img/hero.jpg" />')).toEqual([
+        ['/img/hero.jpg', attributeReason('image')],
+      ]);
+      expect(declined(`<Card largeImage={big ? '/img/a.png' : '/img/b.png'} />`)).toEqual([
+        ['/img/a.png', attributeReason('largeImage')],
+        ['/img/b.png', attributeReason('largeImage')],
+      ]);
+    });
+
+    it('reports a path given to a tag function other than a CSS one', () => {
+      expect(declined('const x = t`/img/x.png`;')).toEqual([
+        ['/img/x.png', 'template literal tagged t, whose text Upfly leaves to that function'],
+      ]);
+      expect(declined('const x = String.raw`/img/x.png`;')).toEqual([
+        [
+          '/img/x.png',
+          'template literal tagged String.raw, whose text Upfly leaves to that function',
+        ],
+      ]);
+      expect(read('const x = t`/img/x.png`;')).toEqual([]);
+    });
+
+    it('reports a path-shaped string written with escape sequences, which no range spells', () => {
+      const escaped = `/img/${String.fromCharCode(92)}u0061.png`;
+      const source = `const x = '${escaped}';`;
+      const [value] = find(source);
+
+      expect(declined(source)).toEqual([
+        [escaped, 'string written with escape sequences, whose text is not the path it spells'],
+      ]);
+      expect(value?.assembledPath).toBe('/img/a.png');
+      expect(source.slice(value?.start, value?.end)).toBe(escaped);
+    });
+
+    it('reports a value under the reason of the attribute that declined it first', () => {
+      const escaped = `/img/${String.fromCharCode(92)}u0061.png`;
+      expect(declined(`<img alt={'${escaped}'} />`)).toEqual([[escaped, attributeReason('alt')]]);
+    });
+
+    it('declines nothing that is not a candidate, or that another rule reads', () => {
+      expect(find('<img alt="Our team" title="/about" />')).toEqual([]);
+      expect(declined("<Gallery images={['/img/a.png']} />")).toEqual([]);
+      expect(declined('const H = styled.div`background: url(/a.png);`;')).toEqual([]);
+      const escapedImport = `import logo from './a${String.fromCharCode(92)}u002Db.png';`;
+      expect(declined(escapedImport)).toEqual([]);
+      expect(find(escapedImport)).toHaveLength(1);
     });
   });
 

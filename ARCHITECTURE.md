@@ -110,6 +110,10 @@ lockfiles and i18n bundles. They are still *counted* in the report, and listable
 JSON output, because a silent skip is a bug: if the JSON adapter ever eats a real reference, the
 user needs a way to find it.
 
+A third standing sits beside these: a path-shaped value an adapter examined and **declined** to
+read, such as a tooltip that names an image. It travels as a guess does, marked `declined` with the
+reason in its `note`, is never looked up (rung 0 below), and is counted in the report by reason.
+
 ### The resolver's seven outcomes
 
 "Resolved or broken" is not enough, and every extra outcome below exists because some real
@@ -135,6 +139,7 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 
 | # | Test | Outcome | Example |
 |---|---|---|---|
+| 0 | declined by the adapter | `discarded` if it names an image, else *dropped* | `<img title="/img/team.jpg">` |
 | 1 | `ceiling === 'unsafe'` | `dynamic` | `url($hero)` |
 | 2 | `ceiling === 'medium'` | `resolved-pattern` / `dynamic` | `` `./img/${name}.png` `` |
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
@@ -146,8 +151,12 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 7 | asserted | `broken` | `./missing.png`, a real finding |
 | 8 | otherwise | `discarded` | a path-shaped string in `package.json` |
 
-The ceiling tests come first because if there is no static path, every later question is
-meaningless. **Rung 3's position is the subtle one**, and moving it is wrong in both directions:
+Rung 0 settles a value an adapter examined and declined to read as a path (`RawReference.declined`,
+see "The six that exist"). It is never looked up, whatever exists on disk, so it sits above the
+ceiling tests: a declined template must not glob. It is `discarded` when a spelling of its path
+shows an image extension, rung 3's test, and dropped otherwise. The ceiling tests come next because
+if there is no static path, every later question is meaningless. **Rung 3's position is the subtle
+one**, and moving it is wrong in both directions:
 above the ceiling tests it silently swallows `url($hero)` and `` `/img/${file}` ``, real dynamic
 references with no extension to test, and below the rungs that turn a miss into a finding it
 reports every `url(inter.woff2)` as broken. There is a test for each failure mode, because the
@@ -482,6 +491,8 @@ sixth contributor, and so that adding video later flows through automatically.
 
 These are dropped without a report line. That is not a silent skip: a `.woff2` was never a
 candidate asset, so declining it is not declining to do work, and counting fonts would be noise.
+A value an adapter declined is judged the same way at rung 0: a tooltip naming `/files/report.pdf`
+is dropped, and one naming an image is counted.
 
 **A silent skip is a bug.** If the engine declines to do something, the report says so.
 
@@ -582,7 +593,9 @@ string").
 
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
 `unresolved-alias`, `discarded`, and the root-relative `broken` references that a run with no
-serving root withholds (see "When the serving root cannot be found at all"). A reference whose
+serving root withholds (see "When the serving root cannot be found at all"). `discarded` holds the
+values an adapter declined, which are never looked up, so an image named only in a tooltip or a
+component's prop is hedged by that value rather than called dead. A reference whose
 target is known is no evidence of use. Any other `broken` reference points at nothing and is
 already its own finding, and `hero.png: dead` beside `./wrong-dir/hero.png: broken` tells a reader
 more than a hedge would. A withheld one has no finding of its own, and `/img/hero.png` may be served
@@ -716,12 +729,23 @@ a string in a JSON file gets. The asymmetry was indefensible once stated: `{ "fi
 a *confidently dead* asset on a real repository. A candidate that resolves becomes a real link,
 which beats a hedge because the rewrite can act on it; one that does not is discarded, **counted in
 the report, and listable with `--include-discarded`**, because a candidate the JSON adapter ate in
-error is invisible unless the count says something is wrong and the list says what. It leaves
-alone any value a construct examined and declined: `alt="/not.png"` is display text, and
-overturning that decision would rewrite it. The attribute decides, not the spelling of its value:
-a template with holes or none, a `+` chain, or a choice between them in `alt` is declined too. A
-function, call, object or array there is still searched, because a component can pass it on as
-data.
+error is invisible unless the count says something is wrong and the list says what. It never
+overturns a construct that examined a value and declined it: `alt="/not.png"` is display text, and
+guessing at it would link an image the text only names and let a rewrite edit the text. The
+attribute decides, not the spelling of its value: a template with holes or none, a `+` chain, or a
+choice between them in `alt` is declined too. A function, call, object or array there is still
+searched, because a component can pass it on as data.
+
+A declined value is not dropped. Each path-shaped one comes back marked `declined`, with the
+construct's reason in its `note`: a JSX attribute that names no file on its element, under the
+shape `js.jsx.attribute.other` and one reason per attribute name (`JSX attribute largeImage, …`);
+a template given to a tag other than a CSS one (`` t`/img/x.png` ``, `String.raw`); and a string
+written with escape sequences, whose decoded path travels as `assembledPath` because no range of
+the text spells it. The resolver never looks one up (rung 0), the report counts them by reason in
+`references.declinedValues`, and `--include-discarded` lists them. A component prop that holds a
+file path, such as scratch-www's `largeImage`, is counted this way rather than read: whether a
+prop names a file is the component's business, and the count is what shows which props a reader
+may want read.
 
 Four things they share, and each was a bug before it was a rule:
 
@@ -998,6 +1022,9 @@ differ, because the distinction needs a fact only the resolver has:
 - `json.webmanifest.other`: telling a screenshot from an icon needs the array the entry sits in,
   which the JSON adapter does not parse.
 - `pattern.partial`: whether a pattern matches every file it names depends on which files exist.
+- `decoy.windows-path` in JavaScript, for another reason: a backslash can only be written there
+  as an escape, and the adapter returns every path-shaped string written with escapes as a
+  declined `js.string.literal`, whatever it spells, for the resolver to discard.
 
 For these, the adapter emits a broader shape, the shape declares it in `adapterEmitsAs`, and
 `needsToSee` names the fact the adapter lacks. When the engine's shape and the key's disagree, the
@@ -1840,6 +1867,12 @@ Two calls about references are worth knowing:
 - `discarded` is **counted, not listed**. A real repository produces thousands of them from lockfiles
   and i18n bundles, and listing them buries everything else. The count is still there, because it is
   what tells a user the JSON adapter has started eating something real.
+- A value an adapter declined is **counted by reason, apart from the references**
+  (`references.declinedValues`). It is not a reference, so `summary.references`, `byResolution` and
+  the accuracy classes leave it out, though the graph carries it as `discarded` so the sweep can
+  read what it names. One reason per construct and name, such as one per JSX attribute, keeps the
+  lines few: 120 values on scratch-www come to 13 lines. `--include-discarded` lists each value
+  under its reason.
 
 ### `findings` holds what there is something to do about
 
@@ -1925,7 +1958,8 @@ an accuracy figure never travels without its known error, and a reader can tell 
 has gone stale.
 
 Path-shaped strings nobody asserted (the `discarded` references) are `not-a-claim` and stay out of
-both figures: scoring the engine on them would measure it against work that was never its job.
+both figures: scoring the engine on them would measure it against work that was never its job. A
+value an adapter declined is no reference at all, and the report puts it in no class.
 
 The engine decides the class once, as a field. If the CLI, an editor or `bench/` derived it, each
 would hold its own copy of the rule, and the copies would drift.
