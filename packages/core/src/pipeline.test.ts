@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { toPosix } from './paths.js';
 import { type PipelineProgress, runPipeline, servingRootsFor } from './pipeline.js';
 import { buildReport } from './report.js';
 
@@ -71,7 +72,11 @@ describe('runPipeline reads an extends the way TypeScript does', () => {
     const { aliases } = await run(root);
 
     expect(aliases.skipped).toEqual([
-      { what: 'web/tsconfig.json', reason: expect.stringContaining('could not be found') },
+      {
+        what: 'web/tsconfig.json',
+        reason: expect.stringContaining('could not be found'),
+        scopes: [toPosix(join(root, 'web'))],
+      },
     ]);
   });
 });
@@ -117,6 +122,104 @@ describe('the report of a pipeline run', () => {
       },
     ]);
     expect(JSON.stringify(report.skipped)).not.toContain(root.slice(0, 12));
+  });
+
+  const NL = String.fromCharCode(10);
+
+  /** The reason the report gives each unresolved alias, by its file and path. */
+  async function aliasReasons(root: string): Promise<Record<string, string>> {
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    const report = buildReport({
+      graph: output.graph,
+      audit: output.audit,
+      discovery: output.discovery,
+      sweep: output.sweep,
+      servingRoots: output.servingRoots,
+      aliases: output.aliases,
+    });
+    return Object.fromEntries(
+      report.references.unsafe
+        .filter((entry) => entry.resolution === 'unresolved-alias')
+        .map((entry) => [`${entry.file} ${entry.rawPath}`, entry.reason]),
+    );
+  }
+
+  const unreadIn = (config: string) =>
+    `alias-shaped, and no alias Upfly could read maps it; ${config} has aliases Upfly could not read, listed under Skipped`;
+
+  it('names the config Upfly could not read as the reason an alias it covers is unresolved', async () => {
+    const root = project({
+      'tsconfig.json': '{ "extends": "@acme/tsconfig/base.json" }',
+      'src/app.ts': [
+        "import hero from '@/assets/hero.png';",
+        'export const icon = (n: number) => import(`@/img/icon-${n}.png`);',
+        'export { hero };',
+        '',
+      ].join(NL),
+      'src/content/post.md': `![Hero](~/assets/hero.png)${NL}`,
+      'src/assets/hero.png': 'never decoded',
+    });
+
+    // Not the construct's note ("static import"), which says nothing about the alias.
+    expect(await aliasReasons(root)).toEqual({
+      'src/app.ts @/assets/hero.png': unreadIn('tsconfig.json'),
+      'src/app.ts @/img/icon-${n}.png': unreadIn('tsconfig.json'),
+      'src/content/post.md ~/assets/hero.png': unreadIn('tsconfig.json'),
+    });
+  });
+
+  it('names the config of a SvelteKit clone that has not generated its base yet', async () => {
+    const root = project({
+      'tsconfig.json': '{ "extends": "./.svelte-kit/tsconfig.json" }',
+      'src/routes/+page.ts': `import hero from '$lib/assets/kit-hero.png';${NL}export { hero };${NL}`,
+      'src/lib/assets/kit-hero.png': 'never decoded',
+    });
+
+    expect(await aliasReasons(root)).toEqual({
+      'src/routes/+page.ts $lib/assets/kit-hero.png': unreadIn('tsconfig.json'),
+    });
+  });
+
+  it('names a Vite config whose alias it could not read', async () => {
+    const root = project({
+      'vite.config.ts': [
+        "import path from 'node:path';",
+        'export default {',
+        "  resolve: { alias: { '@': path.resolve(process.cwd(), 'src') } },",
+        '};',
+      ].join(NL),
+      'src/app.ts': `import hero from '@/assets/hero.png';${NL}export { hero };${NL}`,
+      'src/assets/hero.png': 'never decoded',
+    });
+
+    expect(await aliasReasons(root)).toEqual({
+      'src/app.ts @/assets/hero.png': unreadIn('vite.config.ts'),
+    });
+  });
+
+  it('names no config that does not cover the file', async () => {
+    const root = project({
+      'configs/base.json': '{ "compilerOptions": { not json',
+      'apps/web/tsconfig.json': '{ "extends": "../../configs/base.json" }',
+      'apps/web/src/app.ts': `import hero from '@/assets/hero.png';${NL}export { hero };${NL}`,
+      'docs/tsconfig.json': '{ "extends": "@acme/docs-config" }',
+      'docs/guide.md': `![Logo](~/assets/logo.png)${NL}`,
+      'scripts/banner.ts': `import banner from '@/assets/banner.png';${NL}export { banner };${NL}`,
+    });
+
+    // The base's own folder holds none of these files: it reaches `apps/web` through
+    // `extends`. Nothing covers `scripts/`, so its reason names no config.
+    expect(await aliasReasons(root)).toEqual({
+      'apps/web/src/app.ts @/assets/hero.png': unreadIn('configs/base.json'),
+      'docs/guide.md ~/assets/logo.png': unreadIn('docs/tsconfig.json'),
+      'scripts/banner.ts @/assets/banner.png':
+        'alias-shaped, and no alias the project declares maps it',
+    });
   });
 });
 

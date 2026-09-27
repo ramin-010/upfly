@@ -49,6 +49,23 @@ export interface AliasSkip {
   /** POSIX-relative config file. */
   readonly what: string;
   readonly reason: string;
+  /**
+   * Absolute POSIX folders whose files lose what could not be read, as `AliasRule.scope` is:
+   * the folder of each config that uses the setting, itself or through `extends`, or a Vite
+   * config's own folder.
+   */
+  readonly scopes: readonly string[];
+}
+
+/**
+ * A skip while the configs are read. `config` is set when the folders are those of every
+ * config whose chain reads that file, known only once every chain is.
+ */
+interface PendingSkip {
+  readonly what: string;
+  readonly reason: string;
+  readonly scopes: Set<string>;
+  readonly config: string | null;
 }
 
 export interface AliasMap {
@@ -85,13 +102,13 @@ const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
  */
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
   const rules: AliasRule[] = [];
-  const skipped: AliasSkip[] = [];
+  const skipped: PendingSkip[] = [];
   const context: TsContext = {
     options,
     skipped,
     parsed: new Map(),
     bases: new Set(),
-    reported: new Set(),
+    reported: new Map(),
   };
 
   const tsConfigs: string[] = [];
@@ -116,7 +133,14 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
     const isProject = ['tsconfig.json', 'jsconfig.json'].includes(basename(path));
     if (context.bases.has(toPosix(path)) && !isProject) continue;
     const config = effective.get(path);
-    if (config !== undefined) rules.push(...rulesOf(config, dirname(path), context));
+    if (config === undefined) continue;
+    rules.push(...rulesOf(config, dirname(path), context));
+    // What a config in this chain could not read, this config's files lose.
+    for (const skip of skipped) {
+      if (skip.config !== null && config.visited.has(skip.config)) {
+        skip.scopes.add(toPosix(dirname(path)));
+      }
+    }
   }
 
   // Nearest config first, as TypeScript reads only the nearest. Within one config, the order
@@ -130,7 +154,16 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
       compareStrings(a.source, b.source),
   );
 
-  return { rules: sorted, skipped: skipped.sort((a, b) => compareStrings(a.what, b.what)) };
+  return {
+    rules: sorted,
+    skipped: skipped
+      .map(({ what, reason, scopes }) => ({
+        what,
+        reason,
+        scopes: [...scopes].sort(compareStrings),
+      }))
+      .sort((a, b) => compareStrings(a.what, b.what)),
+  };
 }
 
 /**
@@ -168,12 +201,12 @@ export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): r
 /** What reading every tsconfig shares: each file is parsed and reported once. */
 interface TsContext {
   readonly options: LoadAliasesOptions;
-  readonly skipped: AliasSkip[];
+  readonly skipped: PendingSkip[];
   readonly parsed: Map<string, Promise<ParsedConfig | null>>;
   /** POSIX paths of every config another config extends. */
   readonly bases: Set<string>;
   /** Skips already recorded, so a base shared by several configs is reported once. */
-  readonly reported: Set<string>;
+  readonly reported: Map<string, PendingSkip>;
 }
 
 /** The settings of one tsconfig that aliases depend on, as the file writes them. */
@@ -191,6 +224,8 @@ interface EffectiveConfig {
   readonly paths: { readonly map: t.ObjectExpression; readonly declaredIn: ParsedConfig } | null;
   /** Absolute, or still starting with `${configDir}`, which only the using config can fill. */
   readonly baseUrl: string | null;
+  /** POSIX paths of every config the chain holds, itself included, read or not. */
+  readonly visited: ReadonlySet<string>;
 }
 
 const CONFIG_DIR = /^\$\{configDir\}/i;
@@ -205,8 +240,9 @@ async function effectiveConfig(
   stack: readonly string[],
   context: TsContext,
 ): Promise<EffectiveConfig> {
+  const visited = new Set([toPosix(path)]);
   const config = await parsedConfig(path, context);
-  if (config === null) return { paths: null, baseUrl: null };
+  if (config === null) return { paths: null, baseUrl: null, visited };
 
   let paths: EffectiveConfig['paths'] = null;
   let baseUrl: string | null = null;
@@ -218,6 +254,7 @@ async function effectiveConfig(
     const inherited = await effectiveConfig(base, chain, context);
     paths = inherited.paths ?? paths;
     baseUrl = inherited.baseUrl ?? baseUrl;
+    for (const file of inherited.visited) visited.add(file);
   }
 
   if (config.paths !== null) paths = { map: config.paths, declaredIn: config };
@@ -227,7 +264,7 @@ async function effectiveConfig(
       ? config.baseUrl
       : resolvePath(dirname(path), config.baseUrl);
   }
-  return { paths, baseUrl };
+  return { paths, baseUrl, visited };
 }
 
 /** Read one config, once, with every `extends` it names found or reported. */
@@ -244,7 +281,9 @@ function parsedConfig(path: string, context: TsContext): Promise<ParsedConfig | 
 async function parseTsConfig(path: string, context: TsContext): Promise<ParsedConfig | null> {
   const { options, skipped } = context;
   const source = relativePath(options.root, path);
-  const object = await parseObject(path, source, options, skipped);
+  const skip = (reason: string) =>
+    skipped.push({ what: source, reason, scopes: new Set(), config: toPosix(path) });
+  const object = await parseObject(path, options, skip);
   if (object === null) return null;
 
   const compilerOptions = objectValued(object, 'compilerOptions');
@@ -253,10 +292,7 @@ async function parseTsConfig(path: string, context: TsContext): Promise<ParsedCo
   for (const target of extendsValue === null ? [] : extendsTargets(extendsValue)) {
     const resolved = await resolveExtends(target, dirname(path), options);
     if (resolved === null) {
-      skipped.push({
-        what: source,
-        reason: `extends "${target}", which could not be found, so its aliases were not read`,
-      });
+      skip(`extends "${target}", which could not be found, so its aliases were not read`);
       continue;
     }
     bases.push(resolved);
@@ -290,13 +326,20 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
     const targets = arrayOfStrings(property.value);
     if (targets === null) {
       const key = JSON.stringify([declaredIn.source, from]);
-      if (!context.reported.has(key)) {
-        context.reported.add(key);
-        context.skipped.push({
+      let skip = context.reported.get(key);
+      if (skip === undefined) {
+        skip = {
           what: declaredIn.source,
           reason: `the alias "${from}" does not map to a list of string paths, so it was not read`,
-        });
+          scopes: new Set(),
+          config: null,
+        };
+        context.reported.set(key, skip);
+        context.skipped.push(skip);
       }
+      // Only the configs whose `paths` holds the alias lose it, not every config whose
+      // chain passes through the file that writes it.
+      skip.scopes.add(toPosix(folder));
       continue;
     }
 
@@ -414,10 +457,13 @@ async function readViteConfig(
   path: string,
   options: LoadAliasesOptions,
   rules: AliasRule[],
-  skipped: AliasSkip[],
+  skipped: PendingSkip[],
 ): Promise<void> {
   const source = relativePath(options.root, path);
-  const text = await readOrSkip(path, source, options, skipped);
+  // Nothing extends a Vite config: what it could not read, its own folder loses.
+  const skip = (reason: string) =>
+    skipped.push({ what: source, reason, scopes: new Set([toPosix(dirname(path))]), config: null });
+  const text = await readOrSkip(path, options, skip);
   if (text === null) return;
 
   const { entries, unread } = readViteAliases(text, path);
@@ -425,7 +471,7 @@ async function readViteConfig(
     rules.push(makeRule(find, [target], dirname(path), dirname(path), source));
     rules.push(makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source));
   }
-  for (const item of unread) skipped.push({ what: source, reason: item.reason });
+  for (const item of unread) skip(item.reason);
 }
 
 // ---------------------------------------------------------------------------
@@ -456,11 +502,10 @@ function makeRule(
 
 async function parseObject(
   path: string,
-  source: string,
   options: LoadAliasesOptions,
-  skipped: AliasSkip[],
+  skip: (reason: string) => void,
 ): Promise<t.ObjectExpression | null> {
-  const text = await readOrSkip(path, source, options, skipped);
+  const text = await readOrSkip(path, options, skip);
   if (text === null) return null;
 
   try {
@@ -470,26 +515,22 @@ async function parseObject(
     return ast.type === 'ObjectExpression' ? ast : null;
   } catch {
     // The parser's own words change between versions and are no report's business.
-    skipped.push({ what: source, reason: 'could not be parsed, so its aliases were not read' });
+    skip('could not be parsed, so its aliases were not read');
     return null;
   }
 }
 
 async function readOrSkip(
   path: string,
-  source: string,
   options: LoadAliasesOptions,
-  skipped: AliasSkip[],
+  skip: (reason: string) => void,
 ): Promise<string | null> {
   try {
     return await options.readFile(path);
   } catch (error) {
     // The error code alone: the message names the absolute path, which no report carries.
     const code = error instanceof Error && 'code' in error ? String(error.code) : null;
-    skipped.push({
-      what: source,
-      reason: `could not be read${code === null ? '' : ` (${code})`}, so its aliases were not read`,
-    });
+    skip(`could not be read${code === null ? '' : ` (${code})`}, so its aliases were not read`);
     return null;
   }
 }

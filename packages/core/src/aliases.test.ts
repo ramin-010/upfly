@@ -140,7 +140,11 @@ describe('loadAliases: tsconfig', () => {
     const map = await load({ 'tsconfig.json': '{ "extends": "./nowhere.json" }' });
 
     expect(map.skipped).toEqual([
-      { what: 'tsconfig.json', reason: expect.stringContaining('could not be found') },
+      {
+        what: 'tsconfig.json',
+        reason: expect.stringContaining('could not be found'),
+        scopes: [toPosix(ROOT)],
+      },
     ]);
   });
 
@@ -159,7 +163,11 @@ describe('loadAliases: tsconfig', () => {
 
     expect(map.rules).toEqual([]);
     expect(map.skipped).toEqual([
-      { what: 'tsconfig.json', reason: 'could not be parsed, so its aliases were not read' },
+      {
+        what: 'tsconfig.json',
+        reason: 'could not be parsed, so its aliases were not read',
+        scopes: [toPosix(ROOT)],
+      },
     ]);
   });
 
@@ -180,7 +188,11 @@ describe('loadAliases: tsconfig', () => {
     });
 
     expect(map.skipped).toEqual([
-      { what: 'tsconfig.json', reason: 'could not be read (EACCES), so its aliases were not read' },
+      {
+        what: 'tsconfig.json',
+        reason: 'could not be read (EACCES), so its aliases were not read',
+        scopes: [toPosix(ROOT)],
+      },
     ]);
   });
 });
@@ -338,7 +350,11 @@ describe('loadAliases: finding an extends', () => {
 
     expect(map.rules).toEqual([]);
     expect(map.skipped).toEqual([
-      { what: 'tsconfig.json', reason: expect.stringContaining('could not be found') },
+      {
+        what: 'tsconfig.json',
+        reason: expect.stringContaining('could not be found'),
+        scopes: [toPosix(ROOT)],
+      },
     ]);
   });
 });
@@ -398,6 +414,48 @@ describe('loadAliases: Vite', () => {
       {
         what: 'vite.config.ts',
         reason: 'the alias "@" at line 5 depends on the folder Vite runs in, so it was not read',
+        scopes: [toPosix(ROOT)],
+      },
+    ]);
+  });
+});
+
+describe('loadAliases: the folders a skip covers', () => {
+  it('records the folders a skipped setting leaves without their aliases', async () => {
+    const map = await load({
+      'configs/base.json': '{ "compilerOptions": { not json',
+      'apps/web/tsconfig.json': '{ "extends": "../../configs/base.json" }',
+      'apps/docs/tsconfig.json': '{ "extends": "../../configs/base.json" }',
+      'configs/paths.json': '{ "compilerOptions": { "paths": { "@/*": "./src/*" } } }',
+      'packages/ui/tsconfig.json': '{ "extends": "../../configs/paths.json" }',
+      'packages/app/tsconfig.json': '{ "extends": "../../configs/paths.json" }',
+      'packages/kit/tsconfig.json':
+        '{ "extends": "../../configs/paths.json", "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }',
+      'tools/vite.config.ts': [
+        "import path from 'node:path';",
+        "export default { resolve: { alias: { '@': path.resolve(process.cwd(), 'src') } } };",
+        '',
+      ].join('\n'),
+    });
+
+    // The base reaches `apps/web` and `apps/docs` through `extends`, and its own folder
+    // holds neither. `packages/kit` replaces the `paths` that holds the unread alias, so it
+    // loses nothing. A Vite config covers its own folder.
+    expect(map.skipped).toEqual([
+      {
+        what: 'configs/base.json',
+        reason: 'could not be parsed, so its aliases were not read',
+        scopes: [from('apps/docs'), from('apps/web')],
+      },
+      {
+        what: 'configs/paths.json',
+        reason: 'the alias "@/*" does not map to a list of string paths, so it was not read',
+        scopes: [from('packages/app'), from('packages/ui')],
+      },
+      {
+        what: 'tools/vite.config.ts',
+        reason: expect.stringContaining('depends on the folder Vite runs in'),
+        scopes: [from('tools')],
       },
     ]);
   });

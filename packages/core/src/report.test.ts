@@ -749,8 +749,8 @@ describe('buildReport', () => {
         aliases: {
           rules: [],
           skipped: [
-            { what: 'vite.config.ts', reason: cwd },
-            { what: 'apps/web/tsconfig.json', reason: unread },
+            { what: 'vite.config.ts', reason: cwd, scopes: [ROOT] },
+            { what: 'apps/web/tsconfig.json', reason: unread, scopes: [`${ROOT}/apps/web`] },
           ],
         },
       });
@@ -1090,9 +1090,12 @@ describe('buildReport', () => {
       expect(text).toContain('  none with a filename to check — each builds its path at runtime\n');
     });
 
-    function reportOf(references: readonly Reference[]) {
+    function reportOf(
+      references: readonly Reference[],
+      aliases: AliasMap = { rules: [], skipped: [] },
+    ) {
       return buildReport({
-        aliases: { rules: [], skipped: [] },
+        aliases,
         graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
         audit: {
           findings: [],
@@ -1159,6 +1162,36 @@ describe('buildReport', () => {
 
       expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
         'alias-shaped, and no alias the project declares maps it',
+      ]);
+    });
+
+    it('names the nearest config it could not read first, once, and counts the others', () => {
+      const unread = (what: string, scope: string, reason = 'could not be parsed') => ({
+        what,
+        reason,
+        scopes: [scope],
+      });
+      const report = reportOf(
+        [
+          {
+            ...dynamicReference('web/src/a.ts', '@/assets/logo.png', 0),
+            resolution: 'unresolved-alias',
+          },
+        ],
+        {
+          rules: [],
+          skipped: [
+            unread('tsconfig.json', ROOT),
+            unread('web/vite.config.ts', `${ROOT}/web`),
+            unread('web/vite.config.ts', `${ROOT}/web`, 'a second alias'),
+            unread('docs/tsconfig.json', `${ROOT}/docs`),
+          ],
+        },
+      );
+
+      // The nested config sorts after `tsconfig.json` by name, so only nearness puts it first.
+      expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
+        'alias-shaped, and no alias Upfly could read maps it; web/vite.config.ts and 1 more have aliases Upfly could not read, listed under Skipped',
       ]);
     });
   });

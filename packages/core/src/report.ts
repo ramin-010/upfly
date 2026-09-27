@@ -23,6 +23,7 @@ import {
   isImageExtension,
   isVectorExtension,
   relativePath,
+  toPosix,
 } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './probe.js';
@@ -210,7 +211,11 @@ export interface ReferenceEntry {
   readonly file: string;
   readonly rawPath: string;
   readonly resolution: Resolution;
-  /** The exclusion rule for `out-of-scope`, otherwise the adapter's note or a default. */
+  /**
+   * The exclusion rule for `out-of-scope`; for `unresolved-alias`, why no alias maps it,
+   * naming any config covering the file whose aliases Upfly could not read; otherwise the
+   * adapter's note or a default.
+   */
   readonly reason: string;
   /**
    * The reference's accuracy class. The engine decides it once, so consumers do not each
@@ -626,7 +631,7 @@ export function buildReport(input: ReportInput): Report {
     staleConversions: vectors.staleConversions,
     declined: declinedReport(input),
     declinedReferences: declinedReferencesReport(input),
-    references: referenceReport(input.graph, input.includeDiscarded ?? false),
+    references: referenceReport(input.graph, input.aliases, input.includeDiscarded ?? false),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
     diagnosticsFile: input.diagnosticsFile ?? null,
@@ -846,7 +851,11 @@ function liveReferences(graph: Graph): readonly Reference[] {
   return graph.references.filter((reference) => reference.declined !== true);
 }
 
-function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceReport {
+function referenceReport(
+  graph: Graph,
+  aliases: AliasMap,
+  includeDiscarded: boolean,
+): ReferenceReport {
   const references = liveReferences(graph);
   const discardedReferences = references.filter(
     (reference) => reference.resolution === 'discarded',
@@ -915,10 +924,7 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
       file: relativePath(graph.root, reference.file),
       rawPath: reference.rawPath,
       resolution: reference.resolution,
-      reason:
-        reference.resolution === 'out-of-scope'
-          ? reference.exclusionReason
-          : (reference.note ?? defaultReason(reference.resolution)),
+      reason: unlinkedReason(reference, aliases),
       classification: classifyReference(reference),
       refusalReason: refusalReasonId(reference),
     });
@@ -949,10 +955,37 @@ function referenceReport(graph: Graph, includeDiscarded: boolean): ReferenceRepo
   };
 }
 
-function defaultReason(resolution: 'dynamic' | 'unresolved-alias'): string {
-  return resolution === 'dynamic'
-    ? 'no static path to resolve'
-    : 'alias-shaped, and no alias the project declares maps it';
+/**
+ * Why an unlinked reference is listed. An adapter's note describes the construct, such as
+ * "static import", which says nothing about why an alias went unmapped.
+ */
+function unlinkedReason(reference: Reference, aliases: AliasMap): string {
+  if (reference.resolution === 'out-of-scope') return reference.exclusionReason;
+  if (reference.resolution === 'unresolved-alias') return aliasReason(reference.file, aliases);
+  return reference.note ?? 'no static path to resolve';
+}
+
+/**
+ * Why no alias maps a reference. A config whose aliases Upfly could not read may hold the
+ * alias, so each one that covers the file is named, the nearest first.
+ */
+function aliasReason(file: string, aliases: AliasMap): string {
+  const from = toPosix(file);
+  const depth = new Map<string, number>();
+  for (const skip of aliases.skipped) {
+    for (const scope of skip.scopes) {
+      if (!from.startsWith(`${scope}/`)) continue;
+      depth.set(skip.what, Math.max(depth.get(skip.what) ?? 0, scope.length));
+    }
+  }
+
+  const [nearest, ...others] = [...depth]
+    .sort(([a, aDepth], [b, bDepth]) => bDepth - aDepth || compareStrings(a, b))
+    .map(([what]) => what);
+  if (nearest === undefined) return 'alias-shaped, and no alias the project declares maps it';
+  const unread =
+    others.length === 0 ? `${nearest} has` : `${nearest} and ${others.length} more have`;
+  return `alias-shaped, and no alias Upfly could read maps it; ${unread} aliases Upfly could not read, listed under Skipped`;
 }
 
 /**

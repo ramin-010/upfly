@@ -483,6 +483,11 @@ absolute part are reported with their line: Vite reads the first from each impor
 second is a package, and the others depend on the folder Vite runs in. Each alias Upfly could not
 read, and each config it could not read or parse or whose `extends` it could not find, reaches the
 report's `skipped` list under the stage `aliases`, with no path and none of a library's own words.
+Each skip also records the folders that lose what it could not read: the folder of every config
+that uses the setting, itself or through `extends`, or a Vite config's own folder. An
+`unresolved-alias` reference in one of them names those configs as its reason, the nearest first,
+since the alias may be in one of them; the adapter's note on the construct ("static import") is
+never the reason.
 
 Two details that are easy to get wrong:
 
