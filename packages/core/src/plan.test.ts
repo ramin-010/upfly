@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildGraph } from './graph.js';
+import { compareStrings } from './paths.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
 import type { AssetProbe } from './probe.js';
 import { SHAPES, whyFormatKept } from './shapes.js';
@@ -1458,5 +1459,57 @@ describe('which assets are served, when the run decided several roots or none', 
     expect(plan.keptOriginals.map((kept) => kept.reason)).toEqual([
       expect.stringContaining('it is outside a directory this project serves'),
     ]);
+  });
+});
+
+describe('the order of a plan', () => {
+  // `a`, `B`, `z` and a-umlaut sort one way under English rules, another under Swedish, and
+  // a third way by code unit, the one order every machine agrees on.
+  const names = ['a', 'B', 'z', String.fromCodePoint(0xe4)];
+  const planInput = () =>
+    input({
+      assets: names.flatMap((name) => [asset(`public/${name}.png`), asset(`src/${name}.png`)]),
+      references: names.map((name) =>
+        resolved(`src/${name}.jsx`, `../public/${name}.png`, `public/${name}.png`),
+      ),
+    });
+
+  /** The plan, with every text comparison the runtime makes decided by `collator`. */
+  function planUnder(collator: Intl.Collator) {
+    const spy = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (
+      this: unknown,
+      that: string,
+    ) {
+      return collator.compare(String(this), that);
+    });
+    try {
+      return planOptimization(planInput());
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  const english = new Intl.Collator('en');
+  const swedish = new Intl.Collator('sv', { caseFirst: 'upper' });
+
+  it('rests on two locales that order these names differently', () => {
+    expect([...names].sort(english.compare)).not.toEqual([...names].sort(swedish.compare));
+  });
+
+  it('is the same whichever locale the machine sorts text in', () => {
+    expect(JSON.stringify(planUnder(english))).toBe(JSON.stringify(planUnder(swedish)));
+  });
+
+  it('orders every list by code unit', () => {
+    const plan = planOptimization(planInput());
+    const lists = [
+      plan.conversions.map((conversion) => conversion.asset),
+      plan.rewrites.map((rewrite) => rewrite.file),
+      plan.declined.filter((entry) => entry.path.startsWith('src/')).map((entry) => entry.path),
+    ];
+    for (const list of lists) {
+      expect(list).toHaveLength(4);
+      expect(list).toEqual([...list].sort(compareStrings));
+    }
   });
 });

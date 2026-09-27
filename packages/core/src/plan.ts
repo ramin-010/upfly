@@ -304,12 +304,12 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   );
 
   return {
-    conversions: conversions.sort((a, b) => a.asset.localeCompare(b.asset)),
+    conversions: conversions.sort((a, b) => compareStrings(a.asset, b.asset)),
     rewrites: [...edits.entries()]
       .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
-      .sort((a, b) => a.file.localeCompare(b.file)),
+      .sort((a, b) => compareStrings(a.file, b.file)),
     declined: declined.sort(
-      (a, b) => a.path.localeCompare(b.path) || a.reason.localeCompare(b.reason),
+      (a, b) => compareStrings(a.path, b.path) || compareStrings(a.reason, b.reason),
     ),
     // Derived from the surviving conversions rather than collected as decisions were
     // made, so an asset `vetoCollisions` withdrew cannot claim a kept original for a file
