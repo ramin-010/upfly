@@ -1739,8 +1739,10 @@ concatenation), and a file nobody handed the search, such as one in an excluded 
 as a move to its converted file. At that point the old path still appears in the references the plan
 is about to rewrite, so a match inside a planned edit's range is discounted by its offset. An asset
 whose path survives elsewhere is not converted, its decline names where the mention is, and the
-report adds one caveat for the run stating the search's bound. What that leaves uncovered is under
-"The transaction".
+report adds one caveat for the run stating the search's bound. A gap in the search is treated the
+same way: when a file could not be opened, or the walk could not list a directory, a mention inside
+it cannot be ruled out, so no original is deleted, and each decline names the first thing that could
+not be read. What that leaves uncovered is under "The transaction".
 
 ## Performance budget
 

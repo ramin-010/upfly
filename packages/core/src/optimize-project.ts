@@ -83,6 +83,11 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     // Every file the walk found, not only those the graph holds a reference in: the search
     // for leftover mentions of a deleted original is for references the graph missed.
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
+    // A directory the walk could not list reached no search, so a mention inside it cannot
+    // be ruled out.
+    unread: discovery.skipped
+      .filter((entry) => entry.reason === 'unreadable-directory')
+      .map((entry) => ({ file: entry.relative, reason: entry.detail })),
     servingRoots: pipeline.servingRoots,
     format: input.format,
     publicPolicy: input.publicPolicy,

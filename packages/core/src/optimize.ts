@@ -14,7 +14,13 @@ import { UpflyError } from './errors.js';
 import type { Graph } from './graph.js';
 import { acquireLock } from './lock.js';
 import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
-import { type Survivor, findSurvivingPaths, spellingsFor } from './old-path-search.js';
+import {
+  type Survivor,
+  type Unsearchable,
+  findSurvivingPaths,
+  spellingsFor,
+} from './old-path-search.js';
+import { compareStrings } from './paths.js';
 import {
   type OptimizationPlan,
   type PlanRefusal,
@@ -63,6 +69,13 @@ export interface OptimizeInput {
    * and a confident delete.
    */
   readonly files: readonly string[];
+  /**
+   * What the walk could not read, so the search never saw it: a directory it could not
+   * list. Any entry keeps every original the plan would delete, as a file the search
+   * cannot open does, since a mention inside it cannot be ruled out. Required for the
+   * reason `files` is: a caller that forgot it would delete over the gap.
+   */
+  readonly unread: readonly Unsearchable[];
   readonly servingRoots: ServingRoots;
   readonly format: EncodeFormat;
   readonly publicPolicy: PublicPolicy;
@@ -117,6 +130,15 @@ export interface OptimizeResult {
   readonly refusal: PlanRefusal | null;
 }
 
+/** What stops a delete: a mention the plan would not rewrite, or a gap in the search. */
+interface Blocked {
+  /** Each asset a surviving mention names, mapped to where it is (`file:line`). */
+  readonly assets: ReadonlyMap<string, string>;
+  /** Each asset the plan would delete, mapped to what could not be read. */
+  readonly unread: ReadonlyMap<string, string>;
+  readonly occurrences: readonly Survivor[];
+}
+
 /**
  * Which assets have a literal mention of their path that this plan would not rewrite.
  *
@@ -131,9 +153,9 @@ export interface OptimizeResult {
 async function mentionsThatWouldSurvive(
   plan: OptimizationPlan,
   input: OptimizeInput,
-): Promise<{ assets: ReadonlyMap<string, string>; occurrences: readonly Survivor[] }> {
+): Promise<Blocked> {
   const deleting = plan.conversions.filter((conversion) => conversion.replacesOriginal);
-  if (deleting.length === 0) return { assets: new Map(), occurrences: [] };
+  if (deleting.length === 0) return { assets: new Map(), unread: new Map(), occurrences: [] };
 
   // Every range this plan will rewrite, so an occurrence inside one can be discounted.
   const planned = new Map<string, [number, number][]>();
@@ -172,7 +194,19 @@ async function mentionsThatWouldSurvive(
     assets.set(conversion.asset, `${first.file}:${first.line}${more}`);
   }
 
-  return { assets, occurrences };
+  // A file the search could not open, or a directory the walk could not list, may hold the
+  // mention that matters, so every original the plan would delete stays.
+  const gaps = [...input.unread, ...found.unsearchable].sort((a, b) =>
+    compareStrings(a.file, b.file),
+  );
+  const unread = new Map<string, string>();
+  const gap = gaps[0];
+  if (gap !== undefined) {
+    const more = gaps.length === 1 ? '' : ` (and ${gaps.length - 1} more)`;
+    for (const conversion of deleting) unread.set(conversion.asset, `${gap.file}${more}`);
+  }
+
+  return { assets, unread, occurrences };
 }
 
 /**
@@ -228,7 +262,7 @@ export function alwaysMeasureFor(graph: Graph): readonly Asset[] {
 export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   const runDir = `.upfly/runs/${input.runId}`;
 
-  const planWith = (blockedByMention?: ReadonlyMap<string, string>) =>
+  const planWith = (blocked?: Blocked) =>
     planOptimization({
       graph: input.graph,
       probes: input.probes,
@@ -236,7 +270,9 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
       publicPolicy: input.publicPolicy,
       hedged: hedgedAssets(input.audit),
       servingRoots: input.servingRoots,
-      ...(blockedByMention === undefined ? {} : { blockedByMention }),
+      ...(blocked === undefined
+        ? {}
+        : { blockedByMention: blocked.assets, blockedByUnread: blocked.unread }),
       ...(input.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: input.rootLinkPolicy }),
     });
 
@@ -247,7 +283,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   // rewrites it caused, which share files with other assets' rewrites, and the planner is
   // pure and cheap.
   const blocked = await mentionsThatWouldSurvive(first, input);
-  const plan = blocked.assets.size === 0 ? first : planWith(blocked.assets);
+  const plan = blocked.assets.size === 0 && blocked.unread.size === 0 ? first : planWith(blocked);
 
   if (plan.refusal !== null) {
     return { plan, runId: input.runId, runDir, manifest: null, refusal: plan.refusal };

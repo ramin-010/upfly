@@ -79,6 +79,12 @@ export interface PlanInput {
    */
   readonly blockedByMention?: ReadonlyMap<string, string>;
   /**
+   * Assets not to convert because converting would delete the original while something
+   * the search could not read may still name it, each mapped to what that is (a path, and
+   * a count of any others). Filled by `optimize`, under `replace` only.
+   */
+  readonly blockedByUnread?: ReadonlyMap<string, string>;
+  /**
    * The serving roots the resolver used, carrying whether the project declared them.
    *
    * The same value the resolver was given, not a boolean derived beside it, so the
@@ -416,6 +422,14 @@ function convertDecision(
       // Names where the mention is, so the user does not have to search the repository
       // for a path the search already found.
       reason: `converting it would delete the original, and ${surviving} ${MENTION_SURVIVES}`,
+    };
+  }
+
+  const unread = input.blockedByUnread?.get(relative);
+  if (unread !== undefined) {
+    return {
+      convert: false,
+      reason: `converting it would delete the original, and ${unread} could not be read to rule out a mention of it`,
     };
   }
 

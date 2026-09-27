@@ -161,6 +161,7 @@ function inputFor(
     // The files the old-path search reads. Defaults to the one file these fixtures hold
     // a reference in; a test that cares passes its own.
     files: ['src/App.jsx'],
+    unread: [],
     servingRoots: { dirs: ['public'], declared: true },
     format: 'webp',
     publicPolicy: 'keep-original',
@@ -613,6 +614,42 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     expect(referencedFiles.has(`${ROOT}/deploy.yml`)).toBe(false);
 
     expect((await optimize(input)).plan.conversions).toEqual([]);
+  });
+
+  it('refuses the conversion when a file it had to search could not be read', async () => {
+    // `locked.html` is listed but cannot be opened, so it may hold the one mention that
+    // matters. Deleting over a gap in the search is a guess.
+    const { input } = servedProject(
+      { 'index.html': '<img src="/logo.png">', 'public/logo.png': 'PNG' },
+      ['index.html', 'locked.html'],
+    );
+
+    const result = await optimize(input);
+
+    expect(result.plan.conversions).toEqual([]);
+    const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    expect(declined?.reason).toContain('locked.html');
+    expect(declined?.reason).toContain('could not be read');
+  });
+
+  it('refuses it too when the walk could not list a directory, and not under keep-original', async () => {
+    // A directory the walk could not open is the same gap one level up: none of its files
+    // reached the search. Under keep-original nothing is deleted, so the gap costs nothing.
+    const { input } = servedProject(
+      { 'index.html': '<img src="/logo.png">', 'public/logo.png': 'PNG' },
+      ['index.html'],
+    );
+    const withGap = { ...input, unread: [{ file: 'private', reason: 'EACCES' }] };
+
+    const replaced = await optimize(withGap);
+    const kept = await optimize({ ...withGap, publicPolicy: 'keep-original' });
+
+    expect(replaced.plan.conversions).toEqual([]);
+    const declined = replaced.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    expect(declined?.reason).toContain('private');
+    expect(kept.plan.conversions.map((conversion) => conversion.asset)).toEqual([
+      'public/logo.png',
+    ]);
   });
 });
 
