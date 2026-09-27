@@ -47,6 +47,16 @@ function srcsetShape(tagName: string, descriptor: string, candidateCount: number
   return descriptor.endsWith('w') ? 'html.img.srcset.w' : 'html.img.srcset.x';
 }
 
+/**
+ * Text with its line endings as the HTML parser reads them. The specification's input stream
+ * preprocessing turns each CR LF pair and each lone CR into one LF before tokenising, so no
+ * value parse5 returns holds a CR.
+ * https://html.spec.whatwg.org/multipage/parsing.html#preprocessing-the-input-stream
+ */
+function asTheParserReads(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 /** Whether the path carries percent-encoding. */
 function isPercentEncoded(raw: string): boolean {
   return /%[0-9A-Fa-f]{2}/.test(raw);
@@ -130,9 +140,10 @@ function collectFromElement(element: ParsedElement, context: Context): void {
     // source and 7 of value, and no range into the source spells the decoded path. Only a
     // reference position may decide what that means, so the flag travels with the
     // attribute: deciding here would report every escaped `alt`, or `<meta content>` that
-    // names no image, as a reference the engine could not handle.
+    // names no image, as a reference the engine could not handle. Line endings are compared
+    // as the parser reads them, since a CR the parser dropped is not a character reference.
     // See "Character references in HTML attributes" in ARCHITECTURE.md.
-    const entityEscaped = raw !== attribute.value;
+    const entityEscaped = asTheParserReads(raw) !== attribute.value;
 
     collectFromAttribute({
       element,
@@ -160,7 +171,7 @@ function collectFromAttribute(input: {
   raw: string;
   start: number;
   end: number;
-  /** parse5's decoded value differs from the source text, so no range locates the path. */
+  /** parse5's value differs from the source text by more than its line endings. */
   entityEscaped: boolean;
   /** That decoded value, for the style branch, the one that can map offsets back. */
   decodedValue: string;
@@ -234,7 +245,9 @@ function collectFromAttribute(input: {
     return;
   }
 
-  if (entityEscaped) {
+  // A single URL's range is its whole value, so the value must be its source text exactly:
+  // one that spans lines in a CRLF file holds a CR that parse5 dropped, and no range spells it.
+  if (raw !== decodedValue) {
     escaped(position.html);
     return;
   }
@@ -434,8 +447,9 @@ function collectFromEscapedStyleAttribute(
 ): boolean {
   const decoded = decodeCharacterReferencesWithMap(raw);
   if (decoded === null) return false;
-  // Guard 2: agree with parse5, which also decodes legacy names without their semicolon.
-  if (decoded.text !== parserValue) return false;
+  // Guard 2: agree with parse5, which also decodes legacy names without their semicolon. Its
+  // value holds no CR, so line endings are compared as it reads them.
+  if (asTheParserReads(decoded.text) !== parserValue) return false;
 
   let found: RawReference[];
   try {

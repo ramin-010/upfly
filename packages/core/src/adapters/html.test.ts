@@ -586,6 +586,60 @@ describe('htmlAdapter', () => {
     );
   });
 
+  describe('a value that spans lines in a file whose lines end with CR LF', () => {
+    // The HTML parser reads each CR LF pair, and each lone CR, as one LF before tokenising, so
+    // parse5's value lacks the CRs its source text holds.
+    it('reads each candidate of a srcset over two lines', () => {
+      const source = '<img alt="" srcset="/img/a.png 1x,\r\n     /img/b.png 2x">';
+      const references = find(source);
+
+      expect(references.map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/a.png', 'high'],
+        ['/img/b.png', 'high'],
+      ]);
+      expect(slices(source)).toEqual(['/img/a.png', '/img/b.png']);
+    });
+
+    it('reads a srcset whose lines end with a lone CR, which the parser reads as LF too', () => {
+      const source = '<img alt="" srcset="/img/a.png 1x,\r     /img/b.png 2x">';
+
+      expect(paths(source)).toEqual(['/img/a.png', '/img/b.png']);
+      expect(slices(source)).toEqual(['/img/a.png', '/img/b.png']);
+    });
+
+    it('reads the url() of a style attribute over three lines', () => {
+      const source = '<div style="\r\n  background-image: url(/img/c.png);\r\n  color: red"></div>';
+      const references = find(source);
+
+      expect(references.map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/c.png', 'high'],
+      ]);
+      expect(slices(source)).toEqual(['/img/c.png']);
+    });
+
+    it('reads a style attribute over three lines that also holds character references', () => {
+      // Its decoded CSS keeps the CRs, so it too is compared with parse5's value as the parser
+      // reads line endings.
+      const source =
+        '<div style="\r\n  background-image: url(&quot;/img/c.png&quot;);\r\n  color: red"></div>';
+      const references = find(source);
+
+      expect(references.map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/c.png', 'high'],
+      ]);
+      expect(slices(source)).toEqual(['/img/c.png']);
+    });
+
+    it('keeps a single URL that spans lines unsafe, since no range spells the value parse5 read', () => {
+      // A single URL's range is its whole value, and parse5 dropped the CR inside it.
+      const references = find('<img src="./img/logo.png\r\n">');
+
+      expect(references.map((reference) => [reference.shape, reference.ceiling])).toEqual([
+        ['path.charref', 'unsafe'],
+      ]);
+    });
+  });
+
   describe('query strings', () => {
     it('reports the path alone so a rewrite preserves the suffix', () => {
       const source = '<img src="hero.png?v=2">';

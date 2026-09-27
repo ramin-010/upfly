@@ -985,6 +985,14 @@ value. A reference's range has to cover source text, and no range into the sourc
 decoded path. The HTML adapter therefore compares each attribute's source text with parse5's value
 and carries the result as a flag, `entityEscaped`.
 
+The comparison reads line endings as the parser does. The specification's input stream
+preprocessing turns each CR LF pair and each lone CR into one LF before tokenising, so in a file
+saved with CR LF line endings a value that spans lines differs from its source text without
+holding a character reference. A `srcset` or a `style` attribute is read path by path, and a line
+break between paths is only whitespace, so such a value is read as it is in a file with LF line
+endings. A single URL's range is its whole value, and one holding a CR that parse5 dropped has no
+range that spells it, so it stays `unsafe`.
+
 The flag is acted on only inside a reference position, once the attribute has been judged to hold a
 reference. Acting on it earlier, for every attribute of every element, would turn escaped `alt`
 text, other sites' links and `<meta content>` values that name no image into references the engine
@@ -1017,10 +1025,10 @@ attribute as unread:
 
 1. The decoder finishes. A name the HTML specification does not define, such as `&eacut;`, stops
    it.
-2. Its decoded text equals parse5's. parse5 also decodes some legacy names written without their
-   semicolon, such as `&eacute` before a `.`, which our decoder leaves alone, so where the two
-   disagree the offsets would describe text the browser never saw. This comparison is what makes
-   a bounded decoder safe to use.
+2. Its decoded text equals parse5's, line endings read as the parser reads them. parse5 also
+   decodes some legacy names written without their semicolon, such as `&eacute` before a `.`,
+   which our decoder leaves alone, so where the two disagree the offsets would describe text the
+   browser never saw. This comparison is what makes a bounded decoder safe to use.
 3. Each mapped range starts within the attribute, runs forwards, and is no shorter than the path
    the CSS adapter found. `rawPath` is sliced from the source, so it always matches its range.
 

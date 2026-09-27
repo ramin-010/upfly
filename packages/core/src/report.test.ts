@@ -2521,6 +2521,32 @@ describe('what a path that did not resolve names, in a project held in memory', 
     ]);
   });
 
+  it('links the images a CRLF page names in a srcset and a style attribute that span lines', async () => {
+    const gallery = [
+      '<!doctype html>',
+      '<img alt="" srcset="/img/wide.png 1x,',
+      '     /img/wide@2x.png 2x">',
+      '<div style="',
+      '  background-image: url(/img/banner.png);',
+      '  color: red"></div>',
+      '',
+    ].join('\r\n');
+    const images = ['src/img/wide.png', 'src/img/wide@2x.png', 'src/img/banner.png'];
+
+    const report = await reportForFiles(
+      { 'src/index.html': page(), 'src/gallery.html': gallery },
+      [...SERVED, ...images],
+      SERVED_FROM_SRC,
+    );
+
+    expect(images.map((asset) => verdictOf(report, asset))).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(report.references.unsafe.map((entry) => entry.rawPath)).toEqual([]);
+  });
+
   it('cites the line of a style block that names the asset, and quotes that line alone', async () => {
     // The block's CSS does not parse, so the adapter refuses it whole, as one reference that
     // starts on the line of its `<style>` tag, two lines above the name.

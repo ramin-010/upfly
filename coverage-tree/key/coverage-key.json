@@ -7877,6 +7877,44 @@
           "column": 20
         }
       ]
+    },
+    {
+      "path": "apps/web/crlf-attributes.html",
+      "entries": [
+        {
+          "raw": "/srcset/tile.png",
+          "occurrence": 1,
+          "shape": "html.img.srcset.x",
+          "expect": "resolved",
+          "why": "The page ends its lines with CR LF, and this srcset spans two of them. The HTML parser reads each CR LF as one LF before it reads any markup, so the value parse5 returns lacks the CR its source text holds. Taken for a sign of character references, that difference refuses the whole list, and both images with it.",
+          "target": "apps/web/public/srcset/tile.png",
+          "offset": 387,
+          "line": 14,
+          "column": 25
+        },
+        {
+          "raw": "/srcset/tile@2x.png",
+          "occurrence": 1,
+          "shape": "html.img.srcset.x",
+          "expect": "resolved",
+          "why": "The second candidate of the same srcset, on its second line.",
+          "target": "apps/web/public/srcset/tile@2x.png",
+          "offset": 418,
+          "line": 15,
+          "column": 10
+        },
+        {
+          "raw": "/img/texture.png",
+          "occurrence": 1,
+          "shape": "html.style.attribute",
+          "expect": "resolved",
+          "why": "A style attribute over three lines of the same page. Its CSS is valid and holds no character reference; compared with its source text CR by CR, it would be refused whole as holding some, and the url() lost.",
+          "target": "apps/web/public/img/texture.png",
+          "offset": 505,
+          "line": 18,
+          "column": 29
+        }
+      ]
     }
   ]
 }
