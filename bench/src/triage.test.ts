@@ -55,6 +55,15 @@ describe('triage of the hits the graph did not link', () => {
       ).toContain('commented out');
     });
 
+    it.each([
+      ['app.js', "// import hero from './hero.png'"],
+      ['Hero.ts', ' * @see hero.png'],
+      ['guide.md', '<!-- ![old](hero.png) -->'],
+      ['site.css', '/* url(hero.png) */'],
+    ])('explains a comment in %s, written as that type of file writes one', (file, text) => {
+      expect(explanationFor(hit(file, text, 'hero.png'))).toContain('commented out');
+    });
+
     it('explains a line that names a different file with the same basename', () => {
       // `src/_data/mascots.js:11` writes `/img/mascots/possum.jpg`; the sweep matched
       // it to `src/img/possum.jpg`. Same basename, different file: renaming this
@@ -151,6 +160,16 @@ describe('triage of the hits the graph did not link', () => {
           hit('src/data/logos.ts', "gitbook: { file: 'gitbook.svg' },", 'public/logos/gitbook.svg'),
         ),
       ).toBeNull();
+    });
+
+    it.each([
+      ['guide.md', '* ![hero](hero.png)', 'hero.png'],
+      ['notes.md', '// ![hero](hero.png)', 'hero.png'],
+      ['README.md', '# <img src="logo.png" width="32"> Upfly', 'logo.png'],
+      ['site.css', '#banner { background: url(banner.png); }', 'banner.png'],
+      ['Hero.ts', "  #icon = '/img/icon.png';", 'img/icon.png'],
+    ])('does not take a line of %s for a comment in another language', (file, text, asset) => {
+      expect(explanationFor(hit(file, text, asset))).toBeNull();
     });
 
     it.each([

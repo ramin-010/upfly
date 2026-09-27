@@ -59,8 +59,11 @@ function explain(
     return 'part of an absolute URL, which was never a candidate reference';
   }
 
-  // A line the compiler never sees cannot break when the file is renamed.
-  if (/^\s*(?:\/\/|\/\*|\*|#|<!--)/.test(hit.text)) {
+  // A line the compiler never sees cannot break when the file is renamed. The comment is
+  // read by the file type's own syntax: no type an adapter reads comments with `#`, and in
+  // Markdown `*` starts a list item and only `<!--` opens a comment.
+  const comment = MARKDOWN.has(extension) ? /^\s*<!--/ : /^\s*(?:\/\/|\/\*|\*|<!--)/;
+  if (comment.test(hit.text)) {
     return 'commented out, so nothing resolves it';
   }
 
@@ -84,8 +87,8 @@ function explain(
     return 'a filename inside a sentence, not a reference';
   }
 
-  // A documentation example being shown to a reader rather than run.
-  if (MARKDOWN.has(extension) && /^\s*(?:import\b|<|\||\$|npm\b|npx\b|pnpm\b|#)/.test(hit.text)) {
+  // A documentation example being shown to a reader rather than run. A heading is not one.
+  if (MARKDOWN.has(extension) && /^\s*(?:import\b|<|\||\$|npm\b|npx\b|pnpm\b)/.test(hit.text)) {
     return 'inside a documentation example, not a live reference';
   }
 
