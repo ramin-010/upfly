@@ -625,11 +625,12 @@ describe('a trailing interpolation is a pattern, not a dead end', () => {
     // case above and break `url("/img/sprite.svg#icon")`.
     const [reference] = cssAdapter.findReferences({
       file: '/project/s.scss',
-      text: '.a { background: url("/img/hero.png?v=2"); }',
+      text: '.a { background: url("/img/sprite.svg#icon"); }',
     });
 
-    expect(reference?.rawPath).toBe('/img/hero.png');
+    expect(reference?.rawPath).toBe('/img/sprite.svg');
     expect(reference?.note).toContain('query or fragment preserved');
+    expect(reference?.note).toContain('#icon');
   });
 });
 
