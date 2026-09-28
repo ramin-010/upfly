@@ -311,6 +311,55 @@ describe('spellingsOf', () => {
     expect(decoded('md')).toBe('/img/\u0080uro.png');
   });
 
+  it('reads a number of any length in HTML, and in Markdown only up to the CommonMark limit', () => {
+    // CommonMark reads at most 7 decimal or 6 hexadecimal digits as a reference, and a longer
+    // number is text. HTML reads any length, and a number that names no character as U+FFFD.
+    const decoded = (written: string, kind: 'attr' | 'md') =>
+      spellingsOf(written, kind).find(({ spelling }) => spelling === 'html-entities')?.path;
+    const replacement = String.fromCodePoint(0xfffd);
+
+    expect(decoded('/img/&#00000065;.png', 'attr')).toBe('/img/A.png');
+    expect(decoded('/img/&#x0000041;.png', 'attr')).toBe('/img/A.png');
+    expect(decoded('/img/&#12345678;.png', 'attr')).toBe(`/img/${replacement}.png`);
+    expect(decoded('/img/&#00000000;.png', 'attr')).toBe(`/img/${replacement}.png`);
+    const tooLong = ['&#00000065;', '&#x0000041;', '&#12345678;', '&#00000000;'];
+    for (const written of tooLong.map((reference) => `/img/${reference}.png`)) {
+      expect(spellingsOf(written, 'md'), written).toEqual([{ spelling: 'literal', path: written }]);
+    }
+    expect(decoded('/img/&#0000065;.png', 'md')).toBe('/img/A.png');
+    expect(decoded('/img/&#0000000;.png', 'md')).toBe(`/img/${replacement}.png`);
+  });
+
+  it('decodes character references only where a reader decodes them', () => {
+    const decoded = (read: Parameters<typeof spellingsOf>[1]) =>
+      spellingsOf('/img/caf&eacute;.png', read).map(({ path }) => path);
+    // An HTML parser decodes an attribute and the CSS in a style attribute; CommonMark, a
+    // Markdown destination.
+    const decoding = [
+      'attr',
+      'md',
+      { kind: 'css-url', shape: 'html.style.attribute' },
+      { kind: 'css-url', shape: 'md.style-attribute' },
+    ] as const;
+    for (const read of decoding) {
+      expect(decoded(read), JSON.stringify(read)).toContain(
+        `/img/caf${String.fromCodePoint(0xe9)}.png`,
+      );
+    }
+    // A stylesheet, a `<style>` body, a `new URL` name, JavaScript and JSON take it as written.
+    const asWritten = [
+      'css-url',
+      { kind: 'css-url', shape: 'html.style.element' },
+      { kind: 'attr', shape: 'js.new-url' },
+      'import',
+      'string',
+      'json',
+    ] as const;
+    for (const read of asWritten) {
+      expect(decoded(read), JSON.stringify(read)).toEqual(['/img/caf&eacute;.png']);
+    }
+  });
+
   it('decodes every character-reference form', () => {
     for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png', 'a&#X26;b.png']) {
       expect(spellingsOf(written, 'attr').map((candidate) => candidate.path)).toContain('a&b.png');
@@ -374,6 +423,9 @@ describe('spellingsOf', () => {
     '&#abcdef0;',
     '&hi?;',
   ])('offers only the literal spelling of %s, which CommonMark does not decode', (written) => {
+    expect(spellingsOf(written, 'md').map((candidate) => candidate.spelling)).toEqual(['literal']);
+    // HTML leaves each as written too, but for the number, which it reads as U+FFFD.
+    if (written === '&#87654321;') return;
     expect(spellingsOf(written, 'attr').map((candidate) => candidate.spelling)).toEqual([
       'literal',
     ]);
@@ -448,7 +500,7 @@ describe('spellingsOf', () => {
 
   it('cannot be asked without a kind, since the kind decides the spellings', () => {
     // @ts-expect-error: without the kind, a Markdown escape would be lost without a word.
-    expect(spellingsOf('/img/x.png')).toHaveLength(1);
+    expect(() => spellingsOf('/img/x.png')).toThrow(TypeError);
   });
 });
 

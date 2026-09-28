@@ -10,6 +10,7 @@
  */
 
 import {
+  type ReadingPosition,
   TEMPLATE_HOLES,
   TEMPLATE_HOLE_PATTERN,
   interpolationChunks,
@@ -24,7 +25,7 @@ import { provenPath } from '../resolve/reference.js';
 import { globFromAnyRoot, servedFromAnyRoot } from '../resolve/resolve.js';
 import { citationAt, lineOf, withSourceTexts } from '../scan/citation.js';
 import type { ReadFilePort, ScannedMention } from '../scan/scan.js';
-import type { Reference, ReferenceKind } from '../types.js';
+import type { Reference } from '../types.js';
 import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
 
 /** Where an asset's name turned up. */
@@ -329,7 +330,7 @@ function nameSite(
 
   const name = asset.slice(asset.lastIndexOf('/') + 1).toLowerCase();
   const lines = written.split('\n');
-  const naming = lines.findIndex((line) => namesInText(line, reference.kind).has(name));
+  const naming = lines.findIndex((line) => namesInText(line, reference).has(name));
   const firstText = lines.findIndex((line) => line.trim() !== '');
   const cited = naming === -1 ? Math.max(0, firstText) : naming;
   const offset = lines.slice(0, cited).reduce((sum, line) => sum + line.length + 1, 0);
@@ -457,16 +458,16 @@ function afterAliasToken(pattern: string): string {
  * searched for tokens, since a dynamic path can hold a name anywhere.
  */
 function namesIn(reference: Reference): ReadonlySet<string> {
-  const names = namesInText(reference.rawPath, reference.kind);
+  const names = namesInText(reference.rawPath, reference);
   addNames(names, provenPath(reference));
   return names;
 }
 
-/** The file names a text could stand for, in every spelling a reference of `kind` is read in. */
-function namesInText(text: string, kind: ReferenceKind): Set<string> {
+/** The file names a text could stand for, in every spelling the reference's position reads. */
+function namesInText(text: string, read: ReadingPosition): Set<string> {
   const { path } = splitPathSuffix(text);
   const names = new Set<string>();
-  for (const spelled of [text, ...spellingsOf(path, kind).map((spelling) => spelling.path)]) {
+  for (const spelled of [text, ...spellingsOf(path, read).map((spelling) => spelling.path)]) {
     addNames(names, spelled);
   }
   return names;

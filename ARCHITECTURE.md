@@ -639,14 +639,19 @@ neither what the author wrote nor the file's name, and looking it up would miss,
 asserted reference means a `broken` finding. The decoder knows numeric references (`&#38;`,
 `&#x26;`) and every named reference the HTML specification defines, taken from parse5's table:
 each name is decoded once inside an attribute value, where it counts only whole and with its
-semicolon. That is how CommonMark decodes a link destination, so `![](caf&eacute;.png)` names
-`café.png`, as `<img src="caf&eacute;.png">` does. A numeric reference of at most seven decimal or
-six hexadecimal digits to zero, a surrogate or a number past U+10FFFF reads as U+FFFD, as
-CommonMark (0.31.2, section 2.5) and HTML both read it. HTML alone reads a number from 128 to 159
-through the Windows-1252 table, as parse5 does with the table of its `entities` dependency, so
-`&#128;uro.png` names `€uro.png`, not a C1 control; every reading but a Markdown destination's takes
-the table, and CommonMark's keeps the number's own code point. Anything else written like a reference,
-such as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`,
+semicolon. What reads a path decides which references it holds, so there is one decoder per
+reading context (`characterReferencesReadIn`). An HTML parser decodes an attribute, the CSS inside
+a style attribute and a JSX attribute's string, and CommonMark decodes a link destination's names
+the same way, so `![](caf&eacute;.png)` names `café.png`, as `<img src="caf&eacute;.png">` does. A
+`.css` file, a `<style>` body, a `new URL` name, JavaScript and JSON decode none: in a stylesheet
+`url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. (Inside Markdown a `<style>`
+element's CSS takes the style attribute's shape, so it is decoded as one.) The two decoders read a
+number differently. HTML reads any number of digits, so `&#00000065;` is `A`, and a number from
+128 to 159 through the Windows-1252 table, as parse5 does with the table of its `entities`
+dependency, so `&#128;uro.png` names `€uro.png`, not a C1 control. CommonMark (0.31.2, section
+2.5) reads at most seven decimal or six hexadecimal digits, so a longer number is text, and keeps
+a number's own code point. Both read zero, a surrogate or a number past U+10FFFF as U+FFFD.
+Anything else written like a reference, such as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`,
 and text it rejects, such as `100%`, is treated the same way.
 
 In a Markdown destination a backslash before an ASCII punctuation character is an escape, and

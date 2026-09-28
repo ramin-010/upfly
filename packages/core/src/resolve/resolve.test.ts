@@ -1702,6 +1702,50 @@ describe('rung 5 through a declared alias', () => {
   });
 });
 
+describe('a character reference, decoded only where a reader decodes it', () => {
+  const cafe = `src/img/caf${String.fromCodePoint(0xe9)}.png`;
+  const resolveBesideCafe = (overrides: Partial<RawReference> & { rawPath: string }) =>
+    resolveReferences([raw(overrides)], {
+      root: ROOT,
+      assets: [asset(cafe)],
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      exists: NOTHING_EXISTS,
+    })[0];
+
+  it.each([
+    ['a .css file', 'css-url', 'css.url.bare', 'site.css'],
+    ['a <style> body', 'css-url', 'html.style.element', 'index.html'],
+    ['a JavaScript import', 'import', 'js.import.static', 'main.js'],
+    ['a new URL name', 'attr', 'js.new-url', 'main.js'],
+  ] as const)(
+    'takes the name in %s as written, as the browser asks for it',
+    (_name, kind, shape, file) => {
+      const reference = resolveBesideCafe({
+        rawPath: './img/caf&eacute;.png',
+        kind,
+        shape,
+        ceiling: 'high',
+        file: join(ROOT, 'src', file),
+      });
+      expect(reference?.resolution).not.toBe('resolved');
+    },
+  );
+
+  it.each([
+    ['an HTML attribute', 'attr', 'html.img.src'],
+    ['CSS in a style attribute', 'css-url', 'html.style.attribute'],
+  ] as const)('decodes the name in %s, as an HTML parser does', (_name, kind, shape) => {
+    const reference = resolveBesideCafe({
+      rawPath: './img/caf&eacute;.png',
+      kind,
+      shape,
+      ceiling: 'high',
+      file: join(ROOT, 'src', 'index.html'),
+    });
+    expect(expectResolution(reference, 'resolved').resolvedPath).toBe(join(ROOT, cafe));
+  });
+});
+
 describe('a backslash in an HTML or Markdown URL', () => {
   // The URL parser reads it as a slash, so a page loads the same file on every platform:
   // `\banner.png` is served from the root, never looked for at the root of this disk.

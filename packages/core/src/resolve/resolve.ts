@@ -203,7 +203,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   const { path } = splitPathSuffix(raw.rawPath);
   // Rungs 3, 4 and 5 ask about the same spellings. Without the kind, `spellingsOf` would not
   // read a Markdown destination's backslash escapes.
-  const spellings = spellingsOf(path, raw.kind);
+  const spellings = spellingsOf(path, raw);
 
   // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
   //    not only the written one: `hero%2Epng` shows its extension only once decoded.
@@ -377,7 +377,7 @@ function provablyNotAnAsset(raw: RawReference): boolean {
  */
 function namesAnImage(raw: RawReference): boolean {
   const { path } = splitPathSuffix(provenPath(raw));
-  return spellingsOf(path, raw.kind).some(({ path: spelled }) =>
+  return spellingsOf(path, raw).some(({ path: spelled }) =>
     isImageExtension(staticExtensionOf(spelled)),
   );
 }

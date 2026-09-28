@@ -7,7 +7,7 @@
 
 import { parseFragment } from 'parse5';
 import { extensionOf, isImageExtension } from '../paths.js';
-import type { ReferenceKind } from '../types.js';
+import type { RawReference, ReferenceKind } from '../types.js';
 
 /**
  * A URL scheme: a letter, then letters, digits, `+`, `-` or `.`, then a colon. A relative
@@ -268,6 +268,29 @@ export const NOT_GLOBBABLE_REASON =
  */
 export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities' | 'markdown-escapes';
 
+/** What a reference's text is read in, when its kind alone cannot say: the kind and shape. */
+export type ReadingPosition = Pick<RawReference, 'kind' | 'shape'>;
+
+/** Whose character references a reader decodes: HTML's rules, or CommonMark's. */
+type CharacterReferenceReading = 'html' | 'commonmark';
+
+/**
+ * Which character references the reader of a reference's text decodes, or `null` for none.
+ * An HTML parser decodes an attribute, the CSS inside a style attribute and, as JSX does, a
+ * JSX attribute's string; CommonMark decodes a Markdown destination. A stylesheet, a
+ * `<style>` body, a `new URL` name, JavaScript and JSON decode none, so `caf&eacute;.png`
+ * there is the name a browser asks for.
+ */
+function characterReferencesReadIn(
+  read: ReferenceKind | ReadingPosition,
+): CharacterReferenceReading | null {
+  const { kind, shape } = typeof read === 'string' ? { kind: read, shape: null } : read;
+  if (kind === 'md') return 'commonmark';
+  if (kind === 'attr') return shape === 'js.new-url' ? null : 'html';
+  if (kind !== 'css-url') return null;
+  return shape === 'html.style.attribute' || shape === 'md.style-attribute' ? 'html' : null;
+}
+
 const ENTITY = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /**
@@ -302,15 +325,16 @@ function decodeNamedReference(name: string): string | null {
  * Returns only the literal spelling when nothing is encoded, and never a partly decoded
  * path: text the decoder cannot finish contributes no candidate.
  *
- * @param kind The reference's kind. Only in a Markdown destination (`'md'`) is a backslash
- * before ASCII punctuation an escape, decoded with the character references in one pass,
- * as CommonMark reads it. A backslash left after that is a slash in an HTML or Markdown URL
- * (`readAsUrl`), and is kept as written anywhere else. Required, because a call that left it
- * out would lose the Markdown spelling without a word.
+ * @param read The reference, or its kind alone, which reads an attribute as HTML's and a
+ * `css-url` as a stylesheet's. It picks the decoder (`characterReferencesReadIn`). Only in a
+ * Markdown destination (`'md'`) is a backslash before ASCII punctuation an escape, decoded with
+ * the character references in one pass, as CommonMark reads it. A backslash left after that is
+ * a slash in an HTML or Markdown URL (`readAsUrl`), and is kept as written anywhere else.
+ * Required, because a call that left it out would lose a spelling without a word.
  */
 export function spellingsOf(
   rawPath: string,
-  kind: ReferenceKind,
+  read: ReferenceKind | ReadingPosition,
 ): ReadonlyArray<{
   readonly spelling: PathSpelling;
   readonly path: string;
@@ -319,10 +343,14 @@ export function spellingsOf(
     { spelling: 'literal', path: rawPath },
   ];
 
+  const kind = typeof read === 'string' ? read : read.kind;
+  const reading = characterReferencesReadIn(read);
   const escaped = kind === 'md' && holdsBackslashEscape(rawPath);
   const decoded = escaped
     ? decodeMarkdownDestination(rawPath)
-    : decodeCharacterReferences(rawPath, kind !== 'md');
+    : reading === null
+      ? rawPath
+      : decodeCharacterReferences(rawPath, reading);
   if (decoded !== null && decoded !== rawPath) {
     candidates.push({ spelling: escaped ? 'markdown-escapes' : 'html-entities', path: decoded });
   }
@@ -334,12 +362,12 @@ export function spellingsOf(
 
   // Read last, so a Markdown escape is decoded before its backslash could become a slash. A
   // spelling that then reads as an earlier one adds nothing to try.
-  const read: { spelling: PathSpelling; path: string }[] = [];
+  const urls: { spelling: PathSpelling; path: string }[] = [];
   for (const { spelling, path } of candidates) {
     const url = readAsUrl(path, kind);
-    if (!read.some((earlier) => earlier.path === url)) read.push({ spelling, path: url });
+    if (!urls.some((earlier) => earlier.path === url)) urls.push({ spelling, path: url });
   }
-  return read;
+  return urls;
 }
 
 /**
@@ -402,7 +430,7 @@ export function decodeCharacterReferencesWithMap(
       continue;
     }
 
-    const character = decodeOneReference(match[1] ?? '', true);
+    const character = decodeOneReference(match[1] ?? '', 'html');
     if (character === null) return null;
     // Every code unit of the character maps to the reference's start. A character above
     // U+FFFF, such as an emoji, is two code units, which `for...of` would visit as one.
@@ -431,29 +459,31 @@ const WINDOWS_1252_C1: readonly number[] = [
 ];
 
 /**
- * One reference's body to its character, or `null` when it is outside the bound.
+ * One reference's body to its text, or `null` when it names nothing the table defines.
  *
- * @param windows1252 Whether 128 to 159 read through `WINDOWS_1252_C1`, as HTML reads them;
- *   CommonMark reads each as its own code point.
+ * @param reading HTML's rules or CommonMark's, which read a number differently; see
+ *   `decodeNumericReference`.
  */
-function decodeOneReference(body: string, windows1252: boolean): string | null {
-  return body.startsWith('#')
-    ? decodeNumericReference(body, windows1252)
-    : decodeNamedReference(body);
+function decodeOneReference(body: string, reading: CharacterReferenceReading): string | null {
+  return body.startsWith('#') ? decodeNumericReference(body, reading) : decodeNamedReference(body);
 }
 
-/** `#38` or `#x26` to its character, or `null` when it is outside the bound. */
-function decodeNumericReference(body: string, windows1252: boolean): string | null {
+/**
+ * `#38` or `#x26` to its text. Zero, a surrogate and a number past the last code point read
+ * as U+FFFD under both rules. HTML reads any number of digits, and 128 to 159 through
+ * `WINDOWS_1252_C1`; CommonMark (0.31.2, section 2.5) reads at most 7 decimal or 6
+ * hexadecimal digits, so a longer number stays text, and 128 to 159 as their own code points.
+ */
+function decodeNumericReference(body: string, reading: CharacterReferenceReading): string {
   const isHex = body[1] === 'x' || body[1] === 'X';
   const digits = isHex ? body.slice(2) : body.slice(1);
+  if (reading === 'commonmark' && digits.length > (isHex ? 6 : 7)) return `&${body};`;
   const code = Number.parseInt(digits, isHex ? 16 : 10);
-  // Zero, a surrogate and a number past the last code point read as U+FFFD in CommonMark
-  // and HTML alike (CommonMark 0.31.2, section 2.5). CommonMark reads at most 7 decimal or
-  // 6 hexadecimal digits as a reference, so a longer number is not given that reading.
-  const noCharacter = code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff;
-  if (noCharacter && digits.length <= (isHex ? 6 : 7)) return REPLACEMENT_CHARACTER;
-  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
-  const remapped = windows1252 && code >= 128 && code <= 159 ? WINDOWS_1252_C1[code - 128] : 0;
+  if (!(code > 0 && code <= 0x10ffff) || (code >= 0xd800 && code <= 0xdfff)) {
+    return REPLACEMENT_CHARACTER;
+  }
+  const remapped =
+    reading === 'html' && code >= 128 && code <= 159 ? WINDOWS_1252_C1[code - 128] : 0;
   return String.fromCodePoint(remapped || code);
 }
 
@@ -461,14 +491,17 @@ function decodeNumericReference(body: string, windows1252: boolean): string | nu
  * The text with every character reference resolved, or `null` when one is outside the
  * bound. A partly decoded path would be neither what the author wrote nor the file's name.
  *
- * @param windows1252 See `decodeOneReference`.
+ * @param reading HTML's rules or CommonMark's; see `decodeNumericReference`.
  */
-function decodeCharacterReferences(text: string, windows1252 = true): string | null {
+function decodeCharacterReferences(
+  text: string,
+  reading: CharacterReferenceReading = 'html',
+): string | null {
   if (!text.includes('&')) return text;
 
   let decodable = true;
   const decoded = text.replace(ENTITY, (match, body: string) => {
-    const character = decodeOneReference(body, windows1252);
+    const character = decodeOneReference(body, reading);
     if (character === null) decodable = false;
     return character ?? match;
   });
@@ -510,7 +543,7 @@ export function decodeMarkdownDestination(text: string, keepUndecodable = false)
       continue;
     }
 
-    const value = decodeOneReference(match[1] ?? '', false);
+    const value = decodeOneReference(match[1] ?? '', 'commonmark');
     if (value === null && !keepUndecodable) return null;
     decoded.push(value ?? match[0]);
     index += match[0].length;
