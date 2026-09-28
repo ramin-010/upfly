@@ -1,5 +1,5 @@
-import { UpflyError } from './errors.js';
-import type { Edit } from './types.js';
+import { UpflyError } from '../errors.js';
+import type { Edit } from '../types.js';
 
 /**
  * Apply range replacements to a string. The edits may come in any order, and every

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { UpflyError } from '../errors.js';
+import type { Edit } from '../types.js';
 import { applyEdits, invertEdits, validateEdits } from './edits.js';
-import { UpflyError } from './errors.js';
-import type { Edit } from './types.js';
 
 const edit = (start: number, end: number, replacement: string): Edit => ({
   start,

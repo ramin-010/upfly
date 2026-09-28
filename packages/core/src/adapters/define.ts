@@ -8,8 +8,8 @@
  * cannot serve it.
  */
 
-import { applyEdits } from '../edits.js';
 import type { Adapter, Edit } from '../types.js';
+import { applyEdits } from '../write/edits.js';
 
 /**
  * The default rewrite: pure, range-based, and strict about anything ambiguous.

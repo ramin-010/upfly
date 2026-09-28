@@ -9,8 +9,11 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AuditResult } from './audit/audit.js';
-import { buildGraph } from './graph/graph.js';
+import type { AuditResult } from '../audit/audit.js';
+import { buildGraph } from '../graph/graph.js';
+import type { AssetProbe, ImageProbe } from '../probe/probe.js';
+import type { ScannedText } from '../scan/scan.js';
+import type { Asset, RawReference, Reference } from '../types.js';
 import { LOCK_PATH } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';
 import {
@@ -20,10 +23,7 @@ import {
   newRunId,
   optimize,
 } from './optimize.js';
-import type { AssetProbe, ImageProbe } from './probe/probe.js';
-import type { ScannedText } from './scan/scan.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
-import type { Asset, RawReference, Reference } from './types.js';
 
 // Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
 // Windows `path.resolve` gives a bare '/repo' the current drive, which no asset here would have.

@@ -43,7 +43,7 @@ export {
   discover,
 } from './discover/discover.js';
 export type { DiscoverOptions } from './discover/discover.js';
-export { applyEdits, invertEdits, validateEdits } from './edits.js';
+export { applyEdits, invertEdits, validateEdits } from './write/edits.js';
 export {
   MANIFEST_PATH,
   MANIFEST_SCHEMA_VERSION,
@@ -53,7 +53,7 @@ export {
   pathsTouched,
   serialiseManifest,
   withoutVolatileFields,
-} from './manifest.js';
+} from './write/manifest.js';
 export type {
   CreateOperation,
   Declined,
@@ -64,7 +64,7 @@ export type {
   ManifestVolatileField,
   MoveOperation,
   Operation,
-} from './manifest.js';
+} from './write/manifest.js';
 export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './shapes.js';
 export type { ShapeDeclaration, ShapeEmission } from './shapes.js';
 export { findDuplicates, hashCandidates } from './audit/duplicates.js';
@@ -93,8 +93,8 @@ export type {
   Survivor,
   Unsearchable,
 } from './plan/old-path-search.js';
-export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
-export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './optimize.js';
+export { alwaysMeasureFor, newRunId, optimize } from './write/optimize.js';
+export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './write/optimize.js';
 export { optimizeProject } from './optimize-project.js';
 export type { OptimizeProjectInput, OptimizeProjectResult } from './optimize-project.js';
 export type {
@@ -106,7 +106,7 @@ export type {
   PublicPolicy,
   RootLinkPolicy,
 } from './plan/plan.js';
-export { commit, inspect, prepare, readManifest, revert } from './transaction.js';
+export { commit, inspect, prepare, readManifest, revert } from './write/transaction.js';
 export type {
   FileStore,
   LockPorts,
@@ -115,13 +115,13 @@ export type {
   PlannedEdit,
   PlannedOperation,
   RunContext,
-} from './transaction.js';
+} from './write/transaction.js';
 // `LOCK_PATH` so a host can say which file to delete if it ever has to, and
 // `processIsAlive` so a caller supplying its own liveness check can fall back to the real
 // one rather than reimplementing it slightly differently.
-export { LOCK_PATH, processIsAlive, readLockHolder } from './lock.js';
-export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
-export { createNodeFileStore } from './file-store-node.js';
+export { LOCK_PATH, processIsAlive, readLockHolder } from './write/lock.js';
+export type { LockHandle, LockHolder, ProcessLiveness } from './write/lock.js';
+export { createNodeFileStore } from './write/file-store-node.js';
 export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './resolve/reference.js';
 export { buildGraph, unreferencedAssets } from './graph/graph.js';

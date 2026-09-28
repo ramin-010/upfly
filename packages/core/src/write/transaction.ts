@@ -8,8 +8,10 @@
  * See "The transaction" in ARCHITECTURE.md.
  */
 
+import { UpflyError } from '../errors.js';
+import { hashText } from '../scan/text-hash.js';
+import type { Edit } from '../types.js';
 import { applyEdits, invertEdits, validateEdits } from './edits.js';
-import { UpflyError } from './errors.js';
 import { type ProcessLiveness, acquireLock } from './lock.js';
 import {
   type CreateOperation,
@@ -23,8 +25,6 @@ import {
   parseManifest,
   serialiseManifest,
 } from './manifest.js';
-import { hashText } from './scan/text-hash.js';
-import type { Edit } from './types.js';
 
 /**
  * The two facts about the outside world the lock needs, injectable only for tests. Both

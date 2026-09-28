@@ -8,19 +8,16 @@
  * planner, so that each rule has one implementation.
  */
 
-import type { AuditResult } from './audit/audit.js';
-import { applyEdits } from './edits.js';
-import { UpflyError } from './errors.js';
-import type { Graph } from './graph/graph.js';
-import { acquireLock } from './lock.js';
-import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
-import { compareStrings } from './paths.js';
+import type { AuditResult } from '../audit/audit.js';
+import { UpflyError } from '../errors.js';
+import type { Graph } from '../graph/graph.js';
+import { compareStrings } from '../paths.js';
 import {
   type Survivor,
   type Unsearchable,
   findSurvivingPaths,
   spellingsFor,
-} from './plan/old-path-search.js';
+} from '../plan/old-path-search.js';
 import {
   type OptimizationPlan,
   type PlanRefusal,
@@ -29,11 +26,15 @@ import {
   type RootLinkPolicy,
   patternTargets,
   planOptimization,
-} from './plan/plan.js';
-import type { AssetProbe, EncodeFormat, ImageProbe } from './probe/probe.js';
-import type { AliasMap } from './resolve/aliases.js';
-import type { ServingRoots } from './resolve/resolve.js';
-import { hashText } from './scan/text-hash.js';
+} from '../plan/plan.js';
+import type { AssetProbe, EncodeFormat, ImageProbe } from '../probe/probe.js';
+import type { AliasMap } from '../resolve/aliases.js';
+import type { ServingRoots } from '../resolve/resolve.js';
+import { hashText } from '../scan/text-hash.js';
+import type { Asset } from '../types.js';
+import { applyEdits } from './edits.js';
+import { acquireLock } from './lock.js';
+import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
 import {
   type FileStore,
   type LockPorts,
@@ -42,7 +43,6 @@ import {
   commit,
   prepare,
 } from './transaction.js';
-import type { Asset } from './types.js';
 
 export interface OptimizeInput {
   /**

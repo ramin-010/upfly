@@ -7,7 +7,7 @@
  * See "One writer at a time" in ARCHITECTURE.md.
  */
 
-import { UpflyError } from './errors.js';
+import { UpflyError } from '../errors.js';
 import type { FileStore } from './transaction.js';
 
 /** Where the lock lives. One per project, beside the manifest it protects. */

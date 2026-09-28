@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { UpflyError } from './errors.js';
+import { UpflyError } from '../errors.js';
 import { createNodeFileStore } from './file-store-node.js';
 import {
   MANIFEST_PATH,

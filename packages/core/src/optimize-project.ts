@@ -6,14 +6,6 @@
 
 import { readdirSync } from 'node:fs';
 import { listExcludedFiles } from './discover/discover.js';
-import { createNodeFileStore } from './file-store-node.js';
-import {
-  type OptimizeInput,
-  type OptimizeProgress,
-  type OptimizeResult,
-  newRunId,
-  optimize,
-} from './optimize.js';
 import {
   type PipelineOutput,
   type PipelineProgress,
@@ -24,7 +16,15 @@ import type { PublicPolicy } from './plan/plan.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import type { EncodeFormat } from './probe/probe.js';
 import type { ServingRoots } from './resolve/resolve.js';
-import type { LockPorts } from './transaction.js';
+import { createNodeFileStore } from './write/file-store-node.js';
+import {
+  type OptimizeInput,
+  type OptimizeProgress,
+  type OptimizeResult,
+  newRunId,
+  optimize,
+} from './write/optimize.js';
+import type { LockPorts } from './write/transaction.js';
 
 export interface OptimizeProjectInput {
   /** The project directory. */

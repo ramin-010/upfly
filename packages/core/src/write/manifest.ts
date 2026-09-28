@@ -5,8 +5,8 @@
  * the first file is touched rather than after the last.
  */
 
-import { compareStrings } from './paths.js';
-import type { Edit } from './types.js';
+import { compareStrings } from '../paths.js';
+import type { Edit } from '../types.js';
 
 /** Bumped on any change a reader could trip over. Snapshot-tested as public API. */
 export const MANIFEST_SCHEMA_VERSION = 1;

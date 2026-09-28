@@ -4,9 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { animatedPng, gradientFrames } from '../test/animated-png.js';
-import { MANIFEST_PATH } from './manifest.js';
 import { optimizeProject } from './optimize-project.js';
-import type { OptimizeProgress } from './optimize.js';
 import { relativePath } from './paths.js';
 import {
   type PipelineOutput,
@@ -14,6 +12,8 @@ import {
   runPipeline,
   servingRootsFor,
 } from './pipeline.js';
+import { MANIFEST_PATH } from './write/manifest.js';
+import type { OptimizeProgress } from './write/optimize.js';
 
 /** The plain HTML fixture: real images, relative references, no build step. */
 const PLAIN_HTML = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/plain-html');

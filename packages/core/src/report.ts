@@ -17,7 +17,6 @@ import { excludedByRule } from './discover/discover.js';
 import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph/graph.js';
 import { countExtensions, groupUnscanned } from './graph/unscanned.js';
-import type { Declined } from './manifest.js';
 import {
   compareStrings,
   extensionOf,
@@ -39,6 +38,7 @@ import type {
   ResolvedVia,
   UnscannedExtension,
 } from './types.js';
+import type { Declined } from './write/manifest.js';
 
 /**
  * The report's schema version, carried in `Report.version`.

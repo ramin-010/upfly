@@ -14,12 +14,12 @@
 
 import { spell } from '../adapters/reference-path.js';
 import type { Graph } from '../graph/graph.js';
-import type { Declined } from '../manifest.js';
 import { compareStrings, relativePath, toPosix } from '../paths.js';
 import type { AliasMap, AliasRule } from '../resolve/aliases.js';
 import { isLinked, linkedPaths } from '../resolve/reference.js';
 import type { ServingRoots } from '../resolve/resolve.js';
 import type { Reference } from '../types.js';
+import type { Declined } from '../write/manifest.js';
 import { servingRootOf } from './plan.js';
 import {
   type EditsInFile,
