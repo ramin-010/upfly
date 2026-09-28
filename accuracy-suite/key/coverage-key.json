@@ -58,611 +58,510 @@
     {
       "id": "html.img.src",
       "label": "img@src",
-      "spec": "4a",
       "motivation": "The position everything else is compared against."
     },
     {
       "id": "html.rawtext.swallowed",
       "label": "markup swallowed by an unclosed raw-text element",
-      "spec": "4a",
       "motivation": "In markdown an unclosed raw-text tag mid-sentence is masked, because CommonMark requires a raw-text block to begin a line. In a .html file there is no prose: an unclosed <style> opens a raw-text element, and a browser renders nothing after it either. These four exist to read zero; a non-zero count means the engine disagrees with the browser about what the page shows."
     },
     {
       "id": "html.img.srcset.single",
       "label": "img@srcset, one candidate",
-      "spec": "4a",
       "motivation": "A srcset with no descriptor list at all, which parses differently from a list of one."
     },
     {
       "id": "html.img.srcset.x",
       "label": "img@srcset, x descriptors",
-      "spec": "4a",
       "motivation": "A srcset row must distinguish 8 of 9 from 9 of 9."
     },
     {
       "id": "html.img.srcset.w",
       "label": "img@srcset, w descriptors",
-      "spec": "4a",
       "motivation": "The same shape with width descriptors and a sizes attribute beside it."
     },
     {
       "id": "html.source.srcset",
       "label": "source@srcset",
-      "spec": "4a",
       "motivation": "picture/source, where the candidate list is the only content."
     },
     {
       "id": "html.source.src",
       "label": "source@src",
-      "spec": "4a",
       "motivation": "Inside video and audio, where source carries src rather than srcset."
     },
     {
       "id": "html.video.src",
       "label": "video@src",
-      "spec": "4a",
       "motivation": "Points at a real file the engine does not index — the out-of-scope case that is not a URL."
     },
     {
       "id": "html.video.poster",
       "label": "video@poster",
-      "spec": "4a",
       "motivation": "An image position on a non-image element, beside video@src so the two cannot be confused."
     },
     {
       "id": "html.audio.src",
       "label": "audio@src",
-      "spec": "4a",
       "motivation": "As video@src, in an element that is easy to forget."
     },
     {
       "id": "html.embed.src",
       "label": "embed@src",
-      "spec": "4a",
       "motivation": "Carries both a PDF and an image, so the outcome depends on the target rather than the tag."
     },
     {
       "id": "html.input.src",
       "label": "input@src",
-      "spec": "4a",
       "motivation": "type=\"image\" is the only input that takes a src, and it is routinely missed."
     },
     {
       "id": "html.track.src",
       "label": "track@src",
-      "spec": "4a",
       "motivation": "A caption file: a real file, never an asset."
     },
     {
       "id": "html.link.href.icon",
       "label": "link@href asserted as an icon",
-      "spec": "4a",
       "motivation": "The icon branch of `linkImageClaim`: any rel token containing \"icon\", which covers icon, shortcut icon, apple-touch-icon and mask-icon."
     },
     {
       "id": "html.link.href.preload",
       "label": "link@href asserted as a preloaded image",
-      "spec": "4a",
       "motivation": "The preload branch of `linkImageClaim`, rel=preload with as=image: a separate return from the icon branch, so it fails separately.",
       "singleReason": "One instance, not padded. Two more rel=preload links added only so the row reads three would shape the tree by what makes a row readable rather than by what real pages contain. Real pages will supply more: rel=preload as=image is how a modern page preloads its LCP hero, so like `new URL(..., import.meta.url)` it is not exotic, just untested."
     },
     {
       "id": "html.link.href.other",
       "label": "link@href the predicate refuses",
-      "spec": "4a",
       "motivation": "A stylesheet link and a manifest link sit in the same attribute as an icon and must not be treated alike. This row is what `linkImageClaim` refuses, so it is homogeneous and a zero is the correct reading; a non-zero count would be the failure."
     },
     {
       "id": "html.meta.content.image",
       "label": "meta@content naming a link-preview image",
-      "spec": "4a",
       "motivation": "A page names the picture its link preview shows in a meta tag (og:image, twitter:image, msapplication-TileImage), and often nowhere else, so an engine that skips the tag reports a used image dead. The meta tag's property or name is the claim. Linked and never rewritten: the sites that fetch previews read the file named here, and may not decode a converted format."
     },
     {
       "id": "html.a.href.image",
       "label": "a@href naming an image",
-      "spec": "4a",
       "motivation": "A link that hands over an image file: a download link, or a caption that opens the full picture. The value's extension is the claim, so a link to a page or a PDF stays out. Linked and never rewritten: a person following the link expects the format it names."
     },
     {
       "id": "html.object.data",
       "label": "object@data",
-      "spec": "4a",
       "motivation": "An object element is an asset position in real documents: object@data is the same position as embed@src, in a different element."
     },
     {
       "id": "html.iframe.src",
       "label": "iframe@src",
-      "spec": "4a",
       "motivation": "A path-shaped attribute that must never become a finding: precision, not recall."
     },
     {
       "id": "html.svg.image.href",
       "label": "SVG image@href",
-      "spec": "4a",
       "motivation": "The modern spelling."
     },
     {
       "id": "html.svg.image.xlink",
       "label": "SVG image@xlink:href",
-      "spec": "4a",
       "motivation": "The legacy spelling, which is still most of what is in the wild."
     },
     {
       "id": "html.svg.feimage",
       "label": "SVG feImage",
-      "spec": "4a",
       "motivation": "A filter primitive that loads an image, in both spellings."
     },
     {
       "id": "html.style.element",
       "label": "<style> element carrying CSS",
-      "spec": "4a",
       "motivation": "CSS reached through HTML, which is a different path into the CSS parser."
     },
     {
       "id": "html.style.attribute",
       "label": "style=\"\" attribute carrying CSS",
-      "spec": "4a",
       "motivation": "The same again, one element at a time."
     },
     {
       "id": "path.charref",
       "label": "a path spelled with HTML character references",
-      "spec": "4a,4g",
       "motivation": "/gallery/a&amp;b.png is 20 source characters and 16 decoded, and getting that wrong corrupts a file on rewrite. A character reference is how the path is spelled, so it takes precedence over the construct the path sits in, exactly as an absolute URL does."
     },
     {
       "id": "html.percent-encoded",
       "label": "a percent-encoded path",
-      "spec": "4a,4h",
       "motivation": "Two references that look alike and resolve oppositely: one decodes to a file that exists, the other is the name of a file that exists as written."
     },
     {
       "id": "css.url.bare",
       "label": "url() unquoted",
-      "spec": "4b",
       "motivation": "Three spellings of one thing; a parser that handles two is a parser that fails on the third."
     },
     {
       "id": "css.url.single",
       "label": "url() single-quoted",
-      "spec": "4b",
       "motivation": "As above."
     },
     {
       "id": "css.url.double",
       "label": "url() double-quoted",
-      "spec": "4b",
       "motivation": "As above, and the only spelling that can carry a filename with spaces."
     },
     {
       "id": "css.url.nested",
       "label": "url() inside another function",
-      "spec": "4b",
       "motivation": "cross-fade and var()'s fallback: the walker has to recurse to reach the url. A url that is merely not the whole value, as after a gradient, is not what this shape names, and image-set has its own row."
     },
     {
       "id": "css.image-set",
       "label": "image-set()",
-      "spec": "4b",
       "motivation": "Standard spelling, with and without url()."
     },
     {
       "id": "css.image-set.webkit",
       "label": "-webkit-image-set()",
-      "spec": "4b",
       "motivation": "The prefixed spelling, which is still what ships."
     },
     {
       "id": "css.url.in-comment",
       "label": "url() inside a comment",
-      "spec": "4b",
       "motivation": "Must be discarded. Rewriting one edits a file for no reason."
     },
     {
       "id": "css.url.in-selector",
       "label": "url() inside a selector",
-      "spec": "4b",
       "motivation": "Must be discarded. An attribute selector whose value contains url(...) is text, not a reference."
     },
     {
       "id": "css.var",
       "label": "url() behind a custom property",
-      "spec": "4b",
       "motivation": "The declaration holds the url; the use site holds a var()."
     },
     {
       "id": "css.font-face",
       "label": "@font-face src",
-      "spec": "4b",
       "motivation": "A real file the engine does not index, reached through CSS rather than HTML."
     },
     {
       "id": "css.fragment",
       "label": "url(#fragment)",
-      "spec": "4b,4g",
       "motivation": "A same-document reference. Never a path."
     },
     {
       "id": "scss.url",
       "label": "url() in .scss",
-      "spec": "4b",
       "motivation": "The CSS adapter has to cover all three extensions, not only `.css`."
     },
     {
       "id": "scss.variable",
       "label": "url($variable)",
-      "spec": "4b,4c",
       "motivation": "Not knowable until the preprocessor runs. Nobody typed a wrong path."
     },
     {
       "id": "scss.interpolation.trailing",
       "label": "url() with trailing #{} interpolation",
-      "spec": "4b",
       "motivation": "The partial-pattern shape: one reference standing for three files that all exist."
     },
     {
       "id": "scss.interpolation.leading",
       "label": "url() with leading #{} interpolation",
-      "spec": "4b",
       "motivation": "Harder than a trailing one: the prefix that would anchor a glob is the unknown part."
     },
     {
       "id": "less.url",
       "label": "url() in .less",
-      "spec": "4b",
       "motivation": "The third dialect."
     },
     {
       "id": "less.variable",
       "label": "url(@variable)",
-      "spec": "4b",
       "motivation": "As scss.variable, in Less syntax."
     },
     {
       "id": "less.interpolation",
       "label": "url() with @{} interpolation",
-      "spec": "4b",
       "motivation": "As scss.interpolation, in Less syntax."
     },
     {
       "id": "js.import.static",
       "label": "static ESM import of an image",
-      "spec": "4c",
       "motivation": "The reference the bundler resolves, so breaking one breaks the build."
     },
     {
       "id": "js.import.alias.mapped",
       "label": "import through a tsconfig paths alias",
-      "spec": "4c",
       "motivation": "Turns the unresolved-alias bucket into real links."
     },
     {
       "id": "js.import.alias.unmapped",
       "label": "import through an alias that maps nowhere",
-      "spec": "4c",
       "motivation": "Its own bucket. Not broken, not dynamic — unmapped."
     },
     {
       "id": "path.bare-specifier",
       "label": "a bare package specifier",
-      "spec": "4c,4g",
       "motivation": "Out-of-scope rather than unresolved-alias: the file exists, it is just not ours. The row holds an import, a require() and a plain string constant, so it is named for what the path is rather than for `import`."
     },
     {
       "id": "js.require",
       "label": "require() of an image",
-      "spec": "4c",
       "motivation": "A repository built over ten years has both module systems."
     },
     {
       "id": "js.new-url",
       "label": "new URL('./x.png', import.meta.url)",
-      "spec": "4c",
       "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module and never a package."
     },
     {
       "id": "js.template.pattern",
       "label": "template literal, one unknown segment",
-      "spec": "4c",
       "motivation": "partial-pattern. Standing for N files that all exist."
     },
     {
       "id": "pattern.partial",
       "label": "a pattern matching only some of the files it names",
-      "spec": "4c,4b",
       "motivation": "A pattern row that only ever saw three-of-three would not notice a two-of-three. No adapter can name this row: the distinction is which of the files the pattern names actually exist, which only the resolver can see, so the adapters emit js.template.pattern or scss.interpolation.trailing and the key draws the line."
     },
     {
       "id": "js.template.dynamic",
       "label": "template literal, nothing static left",
-      "spec": "4c",
       "motivation": "A base and a name, both variables. Not knowable."
     },
     {
       "id": "js.concat.dynamic",
       "label": "path assembled by concatenation",
-      "spec": "4c",
       "motivation": "The same thing without a template literal, which is easy to miss."
     },
     {
       "id": "js.concat.pattern",
       "label": "path assembled by concatenation, one unknown segment",
-      "spec": "4c",
       "motivation": "A + chain in which no literal is itself a complete path is read exactly as its template twin is, so a fixed directory and one unknown in the name is a pattern here too. Four instances, deliberately varied: through a literal prefix (paths.ts:40), through a same-file const (paths.ts:26), inside a JSX attribute (IconBadge.tsx), and through a declared alias (crests.ts)."
     },
     {
       "id": "js.string.literal",
       "label": "a path-shaped string literal",
-      "spec": "4c",
       "motivation": "A guess, not an assertion: an unresolved one is dropped rather than reported."
     },
     {
       "id": "js.jsx.attribute",
       "label": "a literal path in a JSX attribute",
-      "spec": "4c",
       "motivation": "Asserted, unlike a bare string, because the attribute says what it is."
     },
     {
       "id": "js.jsx.meta.content.image",
       "label": "a JSX meta@content naming a link-preview image",
-      "spec": "4c",
       "motivation": "The same meta tag, written by a layout component. The JSX reader takes the position from the list the HTML adapter reads, so it can break without the HTML row, and the other way round."
     },
     {
       "id": "js.jsx.a.href.image",
       "label": "a JSX a@href naming an image",
-      "spec": "4c",
       "motivation": "The same link, written in a component. Its own row for the reason the meta tag has one: the JSX reader is a second reader of the shared list."
     },
     {
       "id": "js.jsx.attribute.other",
       "label": "a path in a JSX attribute read as text",
-      "spec": "4c",
       "motivation": "A path written where an attribute is display text or a component's own prop. The JSX reader declines it however it is spelled, and a declined value must never become a link, so the row reads backwards: an outcome other than discarded is the failure."
     },
     {
       "id": "js.cssinjs",
       "label": "CSS-in-JS carrying a url()",
-      "spec": "4c",
       "motivation": "CSS the CSS adapter never sees, because it is inside a template literal."
     },
     {
       "id": "md.image",
       "label": "![alt](path)",
-      "spec": "4d",
       "motivation": "The ordinary markdown image."
     },
     {
       "id": "md.link",
       "label": "[text](path)",
-      "spec": "4d",
       "motivation": "A plain link to an image, which hands over the file itself: linked, and never rewritten."
     },
     {
       "id": "md.image.reference-style",
       "label": "![alt][label]",
-      "spec": "4d",
       "motivation": "The path is not at the use site; it is in a definition further down.",
       "absent": "Three are present in the tree and none can be keyed, because the use site carries no path at all: `![The screenshot][shot]` names a label. The paths live in the definitions at the foot of the file and are keyed as md.reference-definition. A row here would count label lookups, not references. Deliberately empty; the coverage it stands for is md.reference-definition's."
     },
     {
       "id": "md.reference-definition",
       "label": "[label]: path",
-      "spec": "4d",
       "motivation": "Where a reference-style link actually keeps its path."
     },
     {
       "id": "md.raw-html",
       "label": "raw HTML inside markdown",
-      "spec": "4d",
       "motivation": "Markdown hands it through untouched, so it is still HTML and still a reference."
     },
     {
       "id": "md.style-attribute",
       "label": "a style attribute inside markdown",
-      "spec": "4d",
       "motivation": "CSS inside HTML inside markdown — three parsers deep."
     },
     {
       "id": "md.prose-mention",
       "label": "a path named in prose",
-      "spec": "4d",
       "motivation": "Reported, never rewritten. Rewriting prose corrupts a sentence."
     },
     {
       "id": "md.code-fence",
       "label": "a path inside a fenced code block",
-      "spec": "4d",
       "motivation": "An example, not a reference."
     },
     {
       "id": "md.indented-code",
       "label": "a path inside an indented code block",
-      "spec": "4d",
       "motivation": "The older fence syntax, which a fence-aware masker can still miss."
     },
     {
       "id": "md.inline-code",
       "label": "a path inside inline code",
-      "spec": "4d",
       "motivation": "Backticks mid-sentence, which is neither prose nor a fence."
     },
     {
       "id": "md.frontmatter.scalar",
       "label": "an image path in YAML frontmatter",
-      "spec": "4d",
       "motivation": "No adapter reads frontmatter yet, so these record a known gap rather than a success. Measured scope: 4 instances across the real corpus, all in eleventy-docs."
     },
     {
       "id": "md.frontmatter.nested",
       "label": "an image path nested inside frontmatter",
-      "spec": "4d",
       "motivation": "The same gap, nested. A different key at a different depth is what makes it a class rather than three files."
     },
     {
       "id": "mdx.import",
       "label": "an ESM import in MDX",
-      "spec": "4d",
       "motivation": "MDX is markdown that can import."
     },
     {
       "id": "mdx.jsx",
       "label": "a JSX attribute in MDX",
-      "spec": "4d",
       "motivation": "And markdown that can hold JSX."
     },
     {
       "id": "json.webmanifest.icon",
       "label": "a webmanifest icon entry",
-      "spec": "4e",
       "motivation": "Asserted by the manifest schema, unlike an arbitrary JSON string."
     },
     {
       "id": "json.webmanifest.other",
       "label": "a webmanifest screenshot or shortcut icon",
-      "spec": "4e",
       "motivation": "The same file, two more keys, both routinely missed."
     },
     {
       "id": "json.config.value",
       "label": "an image path in an ordinary JSON config",
-      "spec": "4e",
       "motivation": "A guess. Every package.json in the world would otherwise produce findings."
     },
     {
       "id": "json.config.glob",
       "label": "a glob in a JSON config",
-      "spec": "4e",
       "motivation": "`**/*.png` is not a path, and must not become one."
     },
     {
       "id": "astro.import.frontmatter",
       "label": "an ESM import in the frontmatter fence",
-      "spec": "4f",
       "motivation": "The fence is JavaScript; the body is not."
     },
     {
       "id": "astro.template.literal",
       "label": "a literal path in the template body",
-      "spec": "4f",
       "motivation": "The body is HTML, and the adapter has to switch."
     },
     {
       "id": "astro.template.expression",
       "label": "a path from an expression in the template body",
-      "spec": "4f",
       "motivation": "Declared in the fence, used in the body.",
       "absent": "Present in the tree and keyed under a different row. `<img src={heroPath} />` carries no path: the path is the string constant in the fence, which is keyed as js.string.literal. Counting the use site as well would double-count one reference, which the coverage matrix must not do."
     },
     {
       "id": "decoy.regex",
       "label": "an extension inside a regular expression",
-      "spec": "4k.4",
       "motivation": "Source code about images is not a reference to one.",
       "absent": "Present in the tree at apps/web/src/lib/decoys.ts (`/\\.(png|jpe?g|svg)$/i`) and invisible to the text scan, because a regex escapes the dot: the bytes read `\\.(png`, and `.png` never occurs. So the checker cannot demand a key entry for it, and none is given. This row measures nothing, and an engine that did extract a path from a regex would not be caught here."
     },
     {
       "id": "astro.style.element",
       "label": "a <style> element in an .astro file",
-      "spec": "4f",
       "motivation": "Scoped CSS, reached through a third parser."
     },
     {
       "id": "unread.vue",
       "label": "a reference inside .vue",
-      "spec": "4j",
       "motivation": "A reference in a file type nothing reads can break while every instrument reports success."
     },
     {
       "id": "unread.svelte",
       "label": "a reference inside .svelte",
-      "spec": "4j",
       "motivation": "As above."
     },
     {
       "id": "unread.njk",
       "label": "a reference inside .njk",
-      "spec": "4j",
       "motivation": "As above. eleventy-docs is full of these."
     },
     {
       "id": "unread.liquid",
       "label": "a reference inside .liquid",
-      "spec": "4j",
       "motivation": "As above."
     },
     {
       "id": "unread.erb",
       "label": "a reference inside .erb",
-      "spec": "4j",
       "motivation": "As above. railsgirls-com is an ERB site."
     },
     {
       "id": "unread.php",
       "label": "a reference inside .php",
-      "spec": "4j",
       "motivation": "As above."
     },
     {
       "id": "decoy.comment",
       "label": "a filename inside a code comment",
-      "spec": "4k.4",
       "motivation": "Precision has no meaning without these: a tree of only real references cannot produce a false positive."
     },
     {
       "id": "decoy.log-message",
       "label": "a path inside a log message",
-      "spec": "4k.4",
       "motivation": "Indistinguishable from a reference by syntax alone, and it points at nothing."
     },
     {
       "id": "decoy.typo",
       "label": "a name one character from a real file",
-      "spec": "4k.4",
       "motivation": "The difference between a broken reference and a string that was never one."
     },
     {
       "id": "decoy.not-a-path",
       "label": "extension-shaped text that is not a path",
-      "spec": "4k.4",
       "motivation": "A media type, a class name, a flag, a name with an extra extension."
     },
     {
       "id": "decoy.glob",
       "label": "a glob rather than a path",
-      "spec": "4k.4",
       "motivation": "Matches files without naming one."
     },
     {
       "id": "decoy.windows-path",
       "label": "a backslash-separated path",
-      "spec": "4k.4",
       "motivation": "Nothing in this tree is addressed this way."
     },
     {
       "id": "decoy.query-or-hash",
       "label": "a real file with a query string or fragment",
-      "spec": "4k.4,4g",
       "motivation": "Not a decoy in the end — these resolve. Kept in the row because they look like one and are the case an over-eager stripper gets wrong in the other direction."
     },
     {
       "id": "path.data-uri",
       "label": "a data: URI",
-      "spec": "4g",
       "motivation": "Never a path. Rewriting one is a corruption."
     },
     {
       "id": "path.absolute-url",
       "label": "an absolute URL",
-      "spec": "4g",
       "motivation": "Out-of-scope: real, reachable, not ours."
     },
     {
       "id": "path.protocol-relative",
       "label": "a protocol-relative URL",
-      "spec": "4g",
       "motivation": "Starts with // and is not a path, which is exactly what it looks like."
     }
   ],

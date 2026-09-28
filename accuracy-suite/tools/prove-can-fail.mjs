@@ -151,7 +151,6 @@ const cases = [
         key.shapes.push({
           id: 'html.invented.position',
           label: 'invented',
-          spec: '-',
           motivation: '-',
         });
       }),
