@@ -176,32 +176,16 @@ describe('a partial-failure state, built by hand because no real repository has 
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['src/App.jsx']);
     });
 
-    it('converts every convertible sibling under keep-original, which replace declines', async () => {
-      // The same tree, the same measurements, the opposite policy. Under `keep-original`
-      // two files are what the user asked for, so the siblings convert and only the
-      // rewrite is declined. Under `replace` only what a moved reference uses converts.
+    it('converts under keep-original only what replace converts: what a moved reference uses', async () => {
+      // The same tree, the same measurements, the other policy. The siblings only the
+      // template reaches are declined under either, since the template still asks for the
+      // originals and a converted copy would be loaded by nobody.
       const { plan } = await planFor('keep-original');
       const replaced = (await planFor('replace')).plan;
 
-      expect(replaced.conversions.map((conversion) => conversion.asset)).toEqual([
-        'public/banner.png',
-        'public/screenshot.png',
-        'src/inline-logo.jpg',
-      ]);
-
-      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
-        'public/banner.png',
-        // webp 80 makes this screenshot larger, and lossless shrinks it. Unlike
-        // `theme-dark` its saving clears `minSavingBytes`, so it also reaches the report's
-        // `savingQuality`.
-        'public/screenshot.png',
-        // Converts losslessly, where webp 80 would grow it. `theme-not-an-image` is absent
-        // because it is not an image and never enters the plan.
-        'public/theme-dark.png',
-        'public/theme-light.png',
-        'public/theme-sepia.png',
-        'src/inline-logo.jpg',
-      ]);
+      const converted = ['public/banner.png', 'public/screenshot.png', 'src/inline-logo.jpg'];
+      expect(replaced.conversions.map((conversion) => conversion.asset)).toEqual(converted);
+      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual(converted);
       expect(plan.declined.some((entry) => entry.reason.includes('shares a pattern'))).toBe(false);
     });
   });

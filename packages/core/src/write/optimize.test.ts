@@ -985,13 +985,13 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
         "`src/icon.js` reaches it only through `/icon-' + size + '.png`",
       ),
       'public/mark.png': expect.stringContaining('which has no extension to change'),
-      'public/orphan.png': expect.stringContaining('nothing Upfly can see links to it'),
+      'public/orphan.png': expect.stringContaining('nothing links to it'),
       'public/theme-dark.png': expect.stringContaining(
         '`src/theme.js` reaches it only through `/theme-${mode}.png`',
       ),
     });
     for (const asset of UNUSED) {
-      expect(reasons[asset]).toContain('used by nobody');
+      expect(reasons[asset]).toMatch(/used by nobody|nothing links to it/);
       expect(recorded.has(asset), `${asset} is missing from the manifest's declined`).toBe(true);
     }
   });
@@ -1013,11 +1013,11 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
     expect(deletes).toEqual(['public/logo.png']);
   });
 
-  it('converts every row under keep-original and deletes nothing, because that policy is unchanged', async () => {
-    // The rule's scope, at the seam. Its users chose two files.
+  it('creates the same two files under keep-original, and deletes nothing', async () => {
+    // A new file only where a reference moves to it holds under either policy.
     const { creates, deletes } = await runEverything('keep-original');
 
-    expect(creates).toEqual(PUBLIC.map((path) => path.replace(/\.png$/, '.webp')).sort());
+    expect(creates).toEqual(['public/logo.webp', 'public/theme-light.webp']);
     expect(deletes).toEqual([]);
   });
 });

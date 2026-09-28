@@ -1635,8 +1635,10 @@ that links to it. So under `replace` an asset ends one of three ways:
 | no reference would move: nothing links to it, or only references the plan cannot move | not converted, and `declined` names what holds it |
 
 What `replace` never produces is a converted copy nothing asks for beside an original that has to
-stay, which is the pair of files the policy exists to avoid. `keep-original` is untouched by the
-first half, because two files are what its users asked for.
+stay, which is the pair of files the policy exists to avoid. The conversion half holds under
+`keep-original` too: a converted copy no reference moves to is loaded by no visitor, so its size is
+no saving, and the report's savings count only what a visitor downloads less of. Only the first and
+second rows differ there, since `keep-original` never deletes an original.
 
 The report counts the plan's declines in two places: images under `declined`, with their sizes,
 and the references a plan left as written under `declinedReferences`, so a pattern that stays as

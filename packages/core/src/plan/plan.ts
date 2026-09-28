@@ -735,12 +735,10 @@ function convertDecision(
 
   const inPublic = servingRootOf(relative, input.servingRoots) !== null;
 
-  // An asset nothing links to gets no reference repointed, only a new file. Inside a
-  // served directory that is still worth it under `keep-original`: something outside the
-  // repository may load the asset, and can be pointed at the smaller file later. Outside
-  // one it gains only bytes, which do not justify touching a file nothing is known to use.
-  // Under `replace` the next check declines the served case too.
-  if (node.references.length === 0 && !inPublic) {
+  // A new file has to be one some reference moves to, under either policy: otherwise no
+  // visitor downloads fewer bytes, and a saving counted for it would be a saving nobody gets.
+  // An asset nothing links to is the plainest case, with its own sentences.
+  if (node.references.length === 0) {
     const why = input.hedged.has(relative)
       ? 'nothing links to it and something we could not read mentions it, so converting would change a file whose references we cannot see'
       : noServingRootFound(input.servingRoots)
@@ -749,13 +747,10 @@ function convertDecision(
     return { convert: false, reason: why };
   }
 
-  // Under `replace` a new file has to be one some reference moves to; otherwise it sits
-  // unused beside an original that must stay. Decided here, before collisions and before
-  // any reference is repointed. See "The transaction" in ARCHITECTURE.md.
-  if (input.publicPolicy === 'replace') {
-    const unused = unusedUnderReplace(node, input);
-    if (unused !== null) return { convert: false, reason: unused };
-  }
+  // Decided here, before collisions and before any reference is repointed. See "The
+  // transaction" in ARCHITECTURE.md.
+  const unused = usedByNoMove(node, input);
+  if (unused !== null) return { convert: false, reason: unused };
 
   // A literal mention of the path would outlive the rewrite. `optimize` fills this set only
   // with assets its first plan converted, so none of the checks above declines them here.
@@ -1049,20 +1044,20 @@ function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | nu
 export const NOT_UTF8 =
   'the file is not valid UTF-8 or holds U+FFFD, and writing it back as UTF-8 could change bytes this edit does not touch';
 
-/** The end of every sentence `unusedUnderReplace` writes: the rule, and the way round it. */
-const REPLACE_CONVERTS_ONLY_WHAT_MOVES =
-  '`--replace` converts an image only when a reference moves to the new file; without `--replace` it can be converted with the original kept';
+/** The end of every sentence `usedByNoMove` writes: the rule. */
+const CONVERTS_ONLY_WHAT_MOVES =
+  'Upfly converts an image only when a reference moves to the new file';
 
 /**
- * Under `replace`, why converting this asset would give it a new file nobody uses, or
- * null when at least one reference moves to it.
+ * Why converting this asset would give it a new file nobody uses, or null when at least one
+ * reference moves to it.
  *
  * The conversion half of the rule whose deletion half is `originalsStillNeeded`. The
  * sentence names the first reference holding the asset and counts the rest, in the form
  * the kept-original sentences use, so a reader can find the line to change.
  * See "The transaction" in ARCHITECTURE.md.
  */
-function unusedUnderReplace(node: AssetNode, input: PlanInput): string | null {
+function usedByNoMove(node: AssetNode, input: PlanInput): string | null {
   const blocked: { reference: LinkedReference; obstacle: Obstacle }[] = [];
   for (const reference of node.references) {
     if (!isLinked(reference)) continue;
@@ -1076,7 +1071,7 @@ function unusedUnderReplace(node: AssetNode, input: PlanInput): string | null {
     const held = input.hedged.has(node.asset.relative)
       ? 'nothing Upfly can see links to it, and something it could not read mentions it by its current name'
       : 'nothing Upfly can see links to it';
-    return `${held}, so a new file would be used by nobody. ${REPLACE_CONVERTS_ONLY_WHAT_MOVES}`;
+    return `${held}, so a new file would be used by nobody. ${CONVERTS_ONLY_WHAT_MOVES}`;
   }
 
   const where = `\`${relativePath(input.graph.root, first.reference.file)}\``;
@@ -1088,7 +1083,7 @@ function unusedUnderReplace(node: AssetNode, input: PlanInput): string | null {
       : first.obstacle.kind === 'refused'
         ? `${where} names it as ${text}, and this run does not rewrite that reference: ${first.obstacle.why}`
         : `${where} names it as ${text}, which has no extension to change`;
-  return `${held}. No reference would move to a new file, so it would be used by nobody. ${REPLACE_CONVERTS_ONLY_WHAT_MOVES}`;
+  return `${held}. No reference would move to a new file, so it would be used by nobody. ${CONVERTS_ONLY_WHAT_MOVES}`;
 }
 
 /**
@@ -1126,8 +1121,8 @@ function rewriteRefusal(reference: LinkedReference, input: PlanInput): string | 
  * rewrites every reference that does. Stated as a property rather than as cases, it covers
  * a pattern (a template or a `+` chain), a literal whose rewrite is refused (the old-path
  * search misses one with an encoded spelling), a path with no extension to change, and an
- * asset nothing links to. `unusedUnderReplace` declines that last case before it gets
- * here, and it is kept so this rule never depends on the conversion rule.
+ * asset nothing links to. The conversion rule declines that last case before it gets
+ * here, and it is kept so this rule never depends on that one.
  * See "The transaction" in ARCHITECTURE.md.
  */
 function originalsStillNeeded(
@@ -1150,7 +1145,7 @@ function whyStillNeeded(
   rewritten: ReadonlyMap<Reference, Repointing>,
   root: string,
 ): string | null {
-  // Unreachable while `unusedUnderReplace` declines every unlinked asset first. Kept so
+  // Unreachable while the conversion rule declines every unlinked asset first. Kept so
   // this rule never depends on that one: see `originalsStillNeeded`.
   if (references.length === 0) {
     return (
