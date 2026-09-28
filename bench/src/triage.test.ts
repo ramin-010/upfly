@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Hit, fencedLines, triage } from './triage.js';
+import { type Hit, fencedLines, hitsIn, triage } from './triage.js';
 
 /**
  * Every rule in `triage.ts` removes an item from human review, so the direction that
@@ -233,6 +233,50 @@ describe('triage of the hits the graph did not link', () => {
       expect(
         explanationFor(hit('app.ts', 'const src = "hero.png"; // the banner', 'hero.png')),
       ).toBeNull();
+    });
+  });
+
+  describe('the hits the sweep finds in a file', () => {
+    /** A lookup that knows only these assets, as the sweep's does, by lowercased basename. */
+    function named(...assets: string[]): (name: string) => readonly string[] {
+      return (name) =>
+        assets.filter((asset) => asset.slice(asset.lastIndexOf('/') + 1).toLowerCase() === name);
+    }
+
+    function found(text: string, ...assets: string[]): string[] {
+      return hitsIn('page.html', text, named(...assets)).map((hit) => hit.asset);
+    }
+
+    it('finds a name holding a space, as the engine spells names', () => {
+      expect(found('<img src="/img/team photo.png">', 'img/team photo.png')).toEqual([
+        'img/team photo.png',
+      ]);
+    });
+
+    it('finds a name holding parentheses, as a browser names a second download', () => {
+      expect(found('<img src="/img/photo(1).png">', 'img/photo(1).png')).toEqual([
+        'img/photo(1).png',
+      ]);
+      expect(found('<img src="/img/hero (1).png">', 'img/hero (1).png')).toEqual([
+        'img/hero (1).png',
+      ]);
+    });
+
+    it('finds a plain name once for each asset that shares it, ignoring case', () => {
+      expect(found('<img src="/img/HERO.png">', 'a/hero.png', 'b/hero.png')).toEqual([
+        'a/hero.png',
+        'b/hero.png',
+      ]);
+    });
+
+    it('gives each hit its line, the text of the line and whether a fence holds it', () => {
+      const text = ['Intro', '```html', '<img src="hero.png">', '```', '<img src="hero.png">'];
+      const hits = hitsIn('guide.md', text.join('\n'), named('hero.png'));
+
+      expect(hits.map((hit) => [hit.line, hit.text, hit.fenced])).toEqual([
+        [3, '<img src="hero.png">', true],
+        [5, '<img src="hero.png">', false],
+      ]);
     });
   });
 

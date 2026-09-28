@@ -36,7 +36,7 @@ import {
 } from 'upfly-core';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
-import { type Triaged, fencedLines, triage } from './triage.js';
+import { type Triaged, hitsIn, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
@@ -486,10 +486,6 @@ async function falseNegativeSweep(
 
   const claimed = new Set(ADAPTERS.flatMap((adapter) => [...adapter.extensions]));
   const unaccounted: Triaged[] = [];
-  const pattern = new RegExp(
-    `[\\w@.\\-]+\\.(?:${IMAGE_EXTENSIONS.map((extension) => extension.slice(1)).join('|')})\\b`,
-    'gi',
-  );
 
   for await (const file of walk(root)) {
     const extension = file.slice(file.lastIndexOf('.')).toLowerCase();
@@ -503,33 +499,16 @@ async function falseNegativeSweep(
     }
     if (text.length > 2_000_000) continue;
 
-    pattern.lastIndex = 0;
-    // Read once a file has a hit, since most have none.
-    let fenced: ReadonlySet<number> | undefined;
-    let match = pattern.exec(text);
-    while (match !== null) {
-      const token = match[0].toLowerCase();
-      for (const asset of assetsByBasename.get(token) ?? []) {
+    // The assets a name could be, less those the graph already links from this file.
+    const unlinked = (name: string): readonly string[] =>
+      (assetsByBasename.get(name) ?? []).filter((asset) => {
         const absolute = join(root, asset.replaceAll('/', '\\'));
-        if (linked.has(`${absolute}\u0000${absolute}`)) continue;
-        if (linked.has(`${file}\u0000${absolute}`)) continue;
-
-        const line = lineOf(text, match.index);
-        fenced ??= fencedLines(text);
-        unaccounted.push(
-          triage(
-            {
-              asset,
-              file: relative(root, file).replaceAll('\\', '/'),
-              line,
-              text: lineText(text, match.index),
-              fenced: fenced.has(line),
-            },
-            claimed,
-          ),
+        return (
+          !linked.has(`${absolute}\u0000${absolute}`) && !linked.has(`${file}\u0000${absolute}`)
         );
-      }
-      match = pattern.exec(text);
+      });
+    for (const hit of hitsIn(relative(root, file).replaceAll('\\', '/'), text, unlinked)) {
+      unaccounted.push(triage(hit, claimed));
     }
   }
 
@@ -554,23 +533,6 @@ async function* walk(directory: string): AsyncGenerator<string> {
       yield path;
     }
   }
-}
-
-function lineOf(text: string, offset: number): number {
-  let line = 1;
-  for (let index = 0; index < offset && index < text.length; index++) {
-    if (text[index] === '\n') line += 1;
-  }
-  return line;
-}
-
-function lineText(text: string, offset: number): string {
-  const start = text.lastIndexOf('\n', offset) + 1;
-  const end = text.indexOf('\n', offset);
-  return text
-    .slice(start, end === -1 ? undefined : end)
-    .trim()
-    .slice(0, 160);
 }
 
 /** Per-repository artefacts: the report, and the worksheet a person reviews it with. */

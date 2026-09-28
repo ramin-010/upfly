@@ -11,6 +11,7 @@
  */
 
 import { posix } from 'node:path';
+import { imageFilenameCandidates } from 'upfly-core';
 
 /** A grep hit the graph did not link, as the sweep produced it. */
 export interface Hit {
@@ -33,6 +34,54 @@ export interface Triaged extends Hit {
 }
 
 const MARKDOWN = new Set(['.md', '.mdx', '.markdown']);
+
+/**
+ * The hits in one file: every place its text names an asset by filename, matched on the
+ * basename and ignoring case, each with its line and whether a fenced code block holds it.
+ *
+ * The names are the engine's own candidates (`imageFilenameCandidates`), so every name the
+ * scan and the mention sweep can spell, one holding spaces or parentheses included, is
+ * searched for here too. A pattern of its own would make this pass blind to exactly the
+ * names those passes were fixed to read.
+ *
+ * @param file POSIX-relative, as a hit reports it.
+ * @param assetsNamed The assets a lowercased filename could be. The sweep leaves out those
+ *   the graph already links from this file.
+ */
+export function hitsIn(
+  file: string,
+  text: string,
+  assetsNamed: (name: string) => readonly string[],
+): Hit[] {
+  const hits: Hit[] = [];
+  // Read once a file has a hit, since most have none.
+  let fenced: ReadonlySet<number> | undefined;
+  for (const [name, offset] of imageFilenameCandidates(text)) {
+    for (const asset of assetsNamed(name.toLowerCase())) {
+      const line = lineOf(text, offset);
+      fenced ??= fencedLines(text);
+      hits.push({ asset, file, line, text: lineText(text, offset), fenced: fenced.has(line) });
+    }
+  }
+  return hits;
+}
+
+function lineOf(text: string, offset: number): number {
+  let line = 1;
+  for (let index = 0; index < offset && index < text.length; index++) {
+    if (text[index] === '\n') line += 1;
+  }
+  return line;
+}
+
+function lineText(text: string, offset: number): string {
+  const start = text.lastIndexOf('\n', offset) + 1;
+  const end = text.indexOf('\n', offset);
+  return text
+    .slice(start, end === -1 ? undefined : end)
+    .trim()
+    .slice(0, 160);
+}
 
 export function triage(hit: Hit, claimed: ReadonlySet<string>): Triaged {
   const extension = hit.file.slice(hit.file.lastIndexOf('.')).toLowerCase();

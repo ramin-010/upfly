@@ -187,6 +187,7 @@ export {
   IMAGE_EXTENSIONS,
   compareStrings,
   extensionOf,
+  imageFilenameCandidates,
   isImageExtension,
   relativePath,
   toPosix,

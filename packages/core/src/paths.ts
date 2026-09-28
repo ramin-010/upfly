@@ -145,8 +145,14 @@ const FILENAME_CHARACTER = /[\w@.\-]/;
  * must still match an asset named `workspace.png`. The names holding parentheses follow,
  * from a second pass (`namesHoldingParentheses`).
  *
- * It lives here because `scan.ts` and `sweep.ts` do the same lookup, and a hole in only one
- * of two identical lookups is easy to miss.
+ * It lives here, and is exported, because every pass that looks for a name (`scan.ts`,
+ * `sweep.ts`, a search for the names they missed) must ask the same question.
+ *
+ * @param text The text to search, whole.
+ * @returns Each candidate name with the offset it starts at in `text`.
+ * @example
+ * [...imageFilenameCandidates('src="/img/team photo.png"')].map(([name]) => name);
+ * // ['photo.png', 'team photo.png']
  */
 export function* imageFilenameCandidates(text: string): Generator<[token: string, offset: number]> {
   const pattern = imageFilenamePattern();
