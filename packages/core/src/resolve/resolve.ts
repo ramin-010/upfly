@@ -199,6 +199,13 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
     return null;
   }
 
+  // 4a. A name given to `new URL(name, import.meta.url)` goes through the nearest Vite
+  //     config's aliases before anything else, as Vite's asset plugin reads it.
+  if (raw.shape === 'js.new-url') {
+    const viaVite = throughViteAlias(spellings, raw, context);
+    if (viaVite !== null) return viaVite;
+  }
+
   // 4. Points at an asset we found. Every spelling, literal first: `enc%20name.png` can be a
   //    file with a percent sign in its name, while `hero%20image.png` can name
   //    `hero image.png`. Only literal-then-decoded gets both right, and the accuracy suite
@@ -217,13 +224,22 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   }
 
   // 4b. An alias the project declares. Tried after the literal lookup, so a real file
-  //     at the written path always wins over a mapping that happens to match.
-  const viaAlias = resolveThroughAlias(spellings, raw, context);
+  //     at the written path always wins over a mapping that happens to match. Whether the
+  //     path is alias-shaped is asked of every spelling, since an encoding or an escape can
+  //     hide an alias's first character.
+  const viaAlias = aliasShapedIn(spellings, raw.kind)
+    ? resolveThroughAlias(spellings, raw, context)
+    : null;
   if (viaAlias !== null) return viaAlias;
 
   // 5. Points at a real file we deliberately do not index, in any spelling.
   const excluded = outOfScope(path, spellings, raw, context);
   if (excluded !== null) return excluded;
+
+  // 5b. A `new URL` name that missed beside the module is looked for as a package next, as
+  //     Vite looks: out of scope where one holds it, and otherwise on to rung 7.
+  const packaged = raw.shape === 'js.new-url' ? inPackage(path, raw, context) : null;
+  if (packaged !== null) return packaged;
 
   // 6. Alias-shaped and no declared alias matched. `unresolved-alias` is a final outcome,
   //    not pending work: it means no rule maps this path.
@@ -236,7 +252,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
         resolution: 'out-of-scope',
         confidence: 'unsafe',
         resolvedPath: path,
-        exclusionReason: 'names a file inside an npm package, which is not an indexed asset',
+        exclusionReason: PACKAGE_FILE,
       };
     }
     // 6c. A bare name with no path after it, which no alias maps, could only name a package
@@ -291,6 +307,15 @@ function outOfScope(
       ? spellings.flatMap(({ path: spelled }) => throughDeclared(spelled, raw, context))
       : []),
   ];
+  return firstOutOfScope(candidates, raw, context);
+}
+
+/** The first candidate under a directory the walk pruned, or on disk though not indexed. */
+function firstOutOfScope(
+  candidates: readonly string[],
+  raw: RawReference,
+  context: ResolveContext,
+): Reference | null {
   for (const candidate of candidates) {
     for (const excluded of context.excludedRoots) {
       const prefix = `${toPosix(excluded.path)}/`;
@@ -353,19 +378,16 @@ function unlinked(
 }
 
 /**
- * Rung 4b: expand a declared alias and look the result up, in every spelling rung 4 asks
- * about, literal first, recording the spelling that matched as rung 4 does. Separate from
- * `resolveOne` because an alias can expand to several candidates, a loop the ladder's
- * sequence of single tests should not carry. Whether the path is alias-shaped is asked of
- * every spelling, since an encoding or an escape can hide an alias's first character.
+ * Rung 4b: expand a declared alias and look the result up, in every spelling given, literal
+ * first, recording the spelling that matched as rung 4 does. Separate from `resolveOne`
+ * because an alias can expand to several candidates, a loop the ladder's sequence of single
+ * tests should not carry.
  */
 function resolveThroughAlias(
   spellings: readonly { readonly spelling: PathSpelling; readonly path: string }[],
   raw: RawReference,
   context: ResolveContext,
 ): Reference | null {
-  if (!aliasShapedIn(spellings, raw.kind)) return null;
-
   for (const { spelling, path: spelled } of spellings) {
     for (const candidate of throughDeclared(spelled, raw, context)) {
       const target = context.index.lookupExact(candidate);
@@ -385,6 +407,54 @@ function resolveThroughAlias(
   }
   return null;
 }
+
+/**
+ * Rung 4a: the spellings of a `new URL` name that the nearest Vite config's aliases map,
+ * looked up through them. Vite's asset plugin resolves the name with Vite's own alias and
+ * resolve plugins only, so a tsconfig key does not apply, and an alias that matches is its
+ * only answer: a miss through it is out of scope when the file is on disk, else unresolved.
+ */
+function throughViteAlias(
+  spellings: readonly { readonly spelling: PathSpelling; readonly path: string }[],
+  raw: RawReference,
+  context: ResolveContext,
+): Reference | null {
+  const mapped = spellings.filter(
+    ({ path }) => matchingRule(context.aliases, path, raw.file)?.tool === 'vite',
+  );
+  if (mapped.length === 0) return null;
+  const expanded = mapped.flatMap(({ path }) => expandAlias(context.aliases, path, raw.file));
+  return (
+    resolveThroughAlias(mapped, raw, context) ??
+    firstOutOfScope(expanded, raw, context) ??
+    unlinked(raw, 'unresolved-alias')
+  );
+}
+
+/**
+ * Rung 5b: a `new URL` name found in a package, as Vite's asset plugin looks for one once the
+ * module's folder misses it: a name that starts with a letter, digit, `_` or `@`, under the
+ * `node_modules` of the module's folder or of any folder above it. The file is looked for
+ * where it would sit; a package's `exports` map is not read.
+ */
+function inPackage(path: string, raw: RawReference, context: ResolveContext): Reference | null {
+  if (!/^[A-Za-z0-9_@]/.test(path) || isDrivePath(path) || path.includes('://')) return null;
+  for (let folder = dirname(raw.file); ; folder = dirname(folder)) {
+    const candidate = toPosix(resolvePath(folder, 'node_modules', path));
+    if (context.exists(candidate)) {
+      return {
+        ...raw,
+        resolution: 'out-of-scope',
+        confidence: 'unsafe',
+        resolvedPath: candidate,
+        exclusionReason: PACKAGE_FILE,
+      };
+    }
+    if (dirname(folder) === folder) return null;
+  }
+}
+
+const PACKAGE_FILE = 'names a file inside an npm package, which is not an indexed asset';
 
 /**
  * Rung 2 through a declared alias: each expansion of the pattern, in the order rung 4b tries

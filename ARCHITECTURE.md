@@ -143,9 +143,11 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 1 | `ceiling === 'unsafe'` | `dynamic` | `url($hero)` |
 | 2 | `ceiling === 'medium'`, globbed as written, else through a declared alias | `resolved-pattern` / `dynamic` / `unresolved-alias` | `` `./img/${name}.png` ``, `` `@/img/${n}.png` `` |
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
+| 4a | a `new URL` name the nearest Vite config's aliases map | `resolved` / `out-of-scope` / `unresolved-alias` | `new URL('assets/x.png', import.meta.url)` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
 | 4b | alias-shaped, and a declared alias, or for an import the tsconfig's `baseUrl`, finds it | `resolved` | `~/assets/logo.png` |
 | 5 | under an excluded root, exists on disk, or a drive path outside the project, as written or through a declared alias | `out-of-scope` | `../legacy/old.png` |
+| 5b | a `new URL` name a package holds in a `node_modules` at or above the module | `out-of-scope` | `new URL('some-pkg/flag.png', import.meta.url)` |
 | 6 | alias-shaped, nothing matched | `unresolved-alias` | `@/assets/logo.png` |
 | 6b | a package specifier | `out-of-scope` | `@11ty/logo/img/logo.png` |
 | 6c | a bare module name with no path after it, which no alias maps | on to rung 7 | `import x from 'missing.png'` |
@@ -556,12 +558,19 @@ An import's module name is never looked for beside the importing file, as no mod
 looks there: `import logo from 'logo.png'` does not load the `logo.png` beside the module. A bare
 name with no path after it names a package itself, not a file inside one, so when no alias and no
 `baseUrl` finds it, it is `broken` (rung 6c) rather than out of scope.
-Nor is the first argument of `new URL(name, import.meta.url)` a package specifier. The URL
+The first argument of `new URL(name, import.meta.url)` is not a module specifier. The URL
 constructor resolves it against the module's own URL, so the JavaScript adapter gives it an
-attribute's kind rather than an import's: a bare `hero.png` is the file beside the module, and
-`broken` when there is none, and a leading `#` is a fragment. `import.meta.resolve(name)` is
-different, since it follows module resolution; the adapter does not read it as a construct, and
-its argument is guessed at like any path-shaped string.
+attribute's kind rather than an import's: a bare `hero.png` is the file beside the module, and a
+leading `#` is a fragment. A bundler reads the name before the browser does, and Upfly reads it
+as Vite's asset plugin (`assetImportMetaUrlPlugin`) does. A name that does not start with `.`
+goes through the nearest Vite config's aliases before anything else, and an alias that matches
+is its only answer (rung 4a); the plugin runs only Vite's own alias and resolve plugins, so a
+tsconfig key does not apply there. Then the file beside the module. Then a name that starts with
+a letter, digit, `_` or `@` is looked for as a package, in the `node_modules` of the module's
+folder or of any folder above it, and is `out-of-scope` where one holds it (rung 5b). A name found
+nowhere is `broken`: Vite leaves it for the browser, which asks for it beside the module.
+`import.meta.resolve(name)` is different, since it follows module resolution; the adapter does
+not read it as a construct, and its argument is guessed at like any path-shaped string.
 `unresolved-alias` means an alias-shaped path that no alias Upfly reads maps. It is a final
 outcome, not pending work. The project may still declare the alias where Upfly does not look, such
 as a webpack config, SvelteKit's `kit.alias` or Astro's `vite.resolve.alias`, so the reason says

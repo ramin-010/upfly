@@ -381,9 +381,8 @@ function collectFromNode(node: BabelNode, context: Context): void {
     case 'NewExpression':
       if (isBundlerUrlConstruction(node)) {
         // A URL, not a module specifier: the URL constructor resolves it against the module's
-        // own URL, so a bare `hero.png` is the file beside the module and never a package. It
-        // takes an attribute's kind, which the resolver reads the same way.
-        // `import.meta.resolve(x)` differs: it follows module resolution.
+        // own URL, so a bare `hero.png` is the file beside the module. It takes an attribute's
+        // kind, and the resolver adds what Vite reads first. `import.meta.resolve(x)` differs.
         collectFromModuleSource(
           node.arguments[0],
           context,

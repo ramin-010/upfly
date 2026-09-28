@@ -1514,6 +1514,65 @@ describe('a bare module name, read as module resolution reads it', () => {
   });
 });
 
+describe('a name given to new URL(name, import.meta.url), read as Vite reads it', () => {
+  const MODULE = join(ROOT, 'src', 'main.ts');
+  const vite: AliasMap = {
+    rules: [
+      {
+        prefix: 'assets/',
+        targets: [join(ROOT, 'lib', 'assets')],
+        wildcard: true,
+        scope: toPosix(ROOT),
+        source: 'vite.config.ts',
+        tool: 'vite',
+      },
+    ],
+    skipped: [],
+  };
+
+  function url(
+    rawPath: string,
+    options: {
+      readonly aliases?: AliasMap;
+      readonly extra?: readonly Asset[];
+      readonly exists?: (path: string) => boolean;
+    } = {},
+  ): Reference | undefined {
+    return resolveReferences([raw({ rawPath, kind: 'attr', shape: 'js.new-url', file: MODULE })], {
+      root: ROOT,
+      assets: [...ASSETS, ...(options.extra ?? [])],
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      ...(options.aliases === undefined ? {} : { aliases: options.aliases }),
+      exists: options.exists ?? NOTHING_EXISTS,
+    })[0];
+  }
+
+  it('calls a bare name that misses beside the module out of scope when a package holds it', () => {
+    // In the `node_modules` of the module's folder or of any folder above it.
+    const installed = toPosix(join(ROOT, 'node_modules/some-pkg/flag.png'));
+    const found = expectResolution(
+      url('some-pkg/flag.png', { exists: (path) => toPosix(path) === installed }),
+      'out-of-scope',
+    );
+
+    expect(found.exclusionReason).toBe(
+      'names a file inside an npm package, which is not an indexed asset',
+    );
+    expect(url('some-pkg/flag.png')?.resolution).toBe('broken');
+  });
+
+  it("reads a name through Vite's aliases before looking beside the module", () => {
+    const found = expectResolution(
+      url('assets/logo.png', { aliases: vite, extra: [asset('lib/assets/logo.png')] }),
+      'resolved',
+    );
+
+    expect(found.resolvedPath).toBe(join(ROOT, 'lib/assets/logo.png'));
+    // An alias that matches is Vite's only answer, so the hero.jpg beside the module is not it.
+    expect(url('assets/hero.jpg', { aliases: vite })?.resolution).toBe('unresolved-alias');
+  });
+});
+
 describe('rung 4b: a declared alias, in every spelling the path could be read in', () => {
   const aliases: AliasMap = {
     rules: [

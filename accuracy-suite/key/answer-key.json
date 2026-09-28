@@ -309,7 +309,7 @@
     {
       "id": "js.new-url",
       "label": "new URL('./x.png', import.meta.url)",
-      "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module and never a package."
+      "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module. Vite reads it first, through its aliases before the module's folder and then as a package, so a name a package holds is out-of-scope and one found nowhere is broken."
     },
     {
       "id": "js.template.pattern",

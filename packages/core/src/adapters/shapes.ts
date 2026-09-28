@@ -328,7 +328,9 @@ export const SHAPES = [
     why:
       '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
       'document, emitted by the JavaScript adapter. Its path is a URL resolved against the ' +
-      "module's own URL, so a bare name is a file beside the module and never a package.",
+      "module's own URL, so a bare name is a file beside the module. Vite reads it first: " +
+      'through its aliases before the module folder, then as a package, so a name a package ' +
+      'holds is `out-of-scope` and one found nowhere is `broken`.',
   },
   {
     id: 'js.template.pattern',
