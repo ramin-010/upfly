@@ -14,10 +14,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { type AuditResult, audit } from './audit.js';
-import { detectConventionRoots } from './conventions.js';
+import { type AuditResult, audit } from './audit/audit.js';
+import { detectConventionRoots } from './audit/conventions.js';
+import { hashCandidates } from './audit/duplicates.js';
+import { type SweepResult, sweepForMentions } from './audit/sweep.js';
 import { discover } from './discover/discover.js';
-import { hashCandidates } from './duplicates.js';
 import { type Graph, buildGraph } from './graph/graph.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import {
@@ -30,7 +31,6 @@ import { type AliasMap, loadAliases } from './resolve/aliases.js';
 import { type ServingRoots, resolveReferences } from './resolve/resolve.js';
 import { decideServingRoots } from './resolve/serving-root-decision.js';
 import { type ScanDiagnostic, scanSources } from './scan/scan.js';
-import { type SweepResult, sweepForMentions } from './sweep.js';
 import type { Adapter, Asset, DiscoveryResult, Reference } from './types.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;

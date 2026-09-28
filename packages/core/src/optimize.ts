@@ -8,7 +8,7 @@
  * planner, so that each rule has one implementation.
  */
 
-import type { AuditResult } from './audit.js';
+import type { AuditResult } from './audit/audit.js';
 import { applyEdits } from './edits.js';
 import { UpflyError } from './errors.js';
 import type { Graph } from './graph/graph.js';

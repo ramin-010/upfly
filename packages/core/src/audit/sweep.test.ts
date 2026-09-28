@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { javascriptAdapter } from './adapters/javascript.js';
-import { buildGraph } from './graph/graph.js';
-import { scanSources } from './scan/scan.js';
-import type { ReadFilePort } from './scan/scan.js';
+import { javascriptAdapter } from '../adapters/javascript.js';
+import { buildGraph } from '../graph/graph.js';
+import { scanSources } from '../scan/scan.js';
+import type { ReadFilePort } from '../scan/scan.js';
+import type { Asset, RawReference, Reference, UnscannedFile } from '../types.js';
 import { sweepForMentions } from './sweep.js';
-import type { Asset, RawReference, Reference, UnscannedFile } from './types.js';
 
 /**
  * The sweep decides `dead` against `possibly-dead`, so every test here is really

@@ -12,11 +12,11 @@
 
 import { isAbsolute, join } from 'node:path';
 import { splitPathSuffix } from './adapters/reference-path.js';
+import { resolutionHealth } from './audit/resolution-health.js';
 import type { AssetNode, Graph } from './graph/graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe/probe.js';
-import { resolutionHealth } from './resolution-health.js';
 import type { AliasMap } from './resolve/aliases.js';
 import { isLinked, linkedPaths } from './resolve/reference.js';
 import { type ServingRoots, resolveReferences } from './resolve/resolve.js';

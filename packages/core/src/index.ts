@@ -1,4 +1,4 @@
-export { audit } from './audit.js';
+export { audit } from './audit/audit.js';
 export type {
   AuditOptions,
   AuditResult,
@@ -12,7 +12,7 @@ export type {
   PossiblyDeadFinding,
   ServingRootUnknownFinding,
   SuppressedBroken,
-} from './audit.js';
+} from './audit/audit.js';
 export { citeReferences, lineOf } from './scan/citation.js';
 export type {
   Citation,
@@ -67,8 +67,8 @@ export type {
 } from './manifest.js';
 export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './shapes.js';
 export type { ShapeDeclaration, ShapeEmission } from './shapes.js';
-export { findDuplicates, hashCandidates } from './duplicates.js';
-export type { DuplicateSet } from './duplicates.js';
+export { findDuplicates, hashCandidates } from './audit/duplicates.js';
+export type { DuplicateSet } from './audit/duplicates.js';
 export { isUnderPublicDir, patternTargets, planOptimization } from './plan.js';
 export { moveOperationsFor, planRelocation } from './relocate.js';
 export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } from './relocate.js';
@@ -180,7 +180,7 @@ export {
   RESOLUTION_FLOOR,
   type ResolutionHealth,
   resolutionHealth,
-} from './resolution-health.js';
+} from './audit/resolution-health.js';
 export type { ResolveOptions, ServingRoots } from './resolve/resolve.js';
 export { scanSources } from './scan/scan.js';
 export type {
@@ -190,10 +190,16 @@ export type {
   ScanResult,
   ScannedText,
 } from './scan/scan.js';
-export { conventionLinkFor, detectConventionRoots } from './conventions.js';
-export type { ConventionLink, ConventionRoot } from './conventions.js';
-export { sweepForMentions } from './sweep.js';
-export type { Mention, MentionSource, SweepOptions, SweepResult, SweepSkip } from './sweep.js';
+export { conventionLinkFor, detectConventionRoots } from './audit/conventions.js';
+export type { ConventionLink, ConventionRoot } from './audit/conventions.js';
+export { sweepForMentions } from './audit/sweep.js';
+export type {
+  Mention,
+  MentionSource,
+  SweepOptions,
+  SweepResult,
+  SweepSkip,
+} from './audit/sweep.js';
 export type { UpflyErrorCode } from './errors.js';
 export {
   IMAGE_EXTENSIONS,

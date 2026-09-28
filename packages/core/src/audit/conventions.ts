@@ -10,7 +10,7 @@
  * Pure: it reads the file list `discover` produced and never touches a disk.
  */
 
-import { compareStrings } from './paths.js';
+import { compareStrings } from '../paths.js';
 
 /** A directory whose framework reads certain filenames without being told to. */
 export interface ConventionRoot {

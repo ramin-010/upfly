@@ -7,8 +7,8 @@
  * keep, since that depends on intent the engine cannot see.
  */
 
-import { compareStrings } from './paths.js';
-import type { Asset } from './types.js';
+import { compareStrings } from '../paths.js';
+import type { Asset } from '../types.js';
 
 /** One set of byte-identical assets. Never fewer than two. */
 export interface DuplicateSet {

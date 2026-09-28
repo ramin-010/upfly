@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph } from './graph/graph.js';
+import { buildGraph } from '../graph/graph.js';
+import type { Asset, RawReference, Reference } from '../types.js';
 import { MINIMUM_ROOT_RELATIVE, RESOLUTION_FLOOR, resolutionHealth } from './resolution-health.js';
-import type { Asset, RawReference, Reference } from './types.js';
 
 const ROOT = '/repo';
 

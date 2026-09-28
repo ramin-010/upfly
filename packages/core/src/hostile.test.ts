@@ -13,7 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { audit } from './audit.js';
+import { audit } from './audit/audit.js';
+import { sweepForMentions } from './audit/sweep.js';
 import { discover } from './discover/discover.js';
 import { buildGraph } from './graph/graph.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
@@ -22,7 +23,6 @@ import { renderReport } from './report-human.js';
 import { buildReport } from './report.js';
 import { resolveReferences } from './resolve/resolve.js';
 import { scanSources } from './scan/scan.js';
-import { sweepForMentions } from './sweep.js';
 import type { Adapter } from './types.js';
 
 /**

@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AuditResult } from './audit.js';
+import type { AuditResult } from './audit/audit.js';
 import { buildGraph } from './graph/graph.js';
 import { LOCK_PATH } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';

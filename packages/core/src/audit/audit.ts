@@ -12,20 +12,20 @@
  * a line.
  */
 
+import type { Graph } from '../graph/graph.js';
+import { unreferencedAssets } from '../graph/graph.js';
+import { compareStrings } from '../paths.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting } from '../probe/probe.js';
+import { citeReferences } from '../scan/citation.js';
+import type { ReadFilePort } from '../scan/scan.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
 import { conventionLinkFor } from './conventions.js';
 import { findDuplicates } from './duplicates.js';
-import type { Graph } from './graph/graph.js';
-import { unreferencedAssets } from './graph/graph.js';
-import { compareStrings } from './paths.js';
-import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe/probe.js';
 import {
   type ResolutionHealth,
   dependsOnServingRoot,
   resolutionHealth,
 } from './resolution-health.js';
-import { citeReferences } from './scan/citation.js';
-import type { ReadFilePort } from './scan/scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
 /** An asset nothing references, whose filename the sweep found nowhere else either. */

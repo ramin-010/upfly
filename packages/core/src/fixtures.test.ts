@@ -4,18 +4,18 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { audit } from './audit.js';
+import { audit } from './audit/audit.js';
+import { MINIMUM_ROOT_RELATIVE, resolutionHealth } from './audit/resolution-health.js';
+import { sweepForMentions } from './audit/sweep.js';
 import { discover } from './discover/discover.js';
 import { buildGraph, unreferencedAssets } from './graph/graph.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import { probeAssets } from './probe/probe.js';
-import { MINIMUM_ROOT_RELATIVE, resolutionHealth } from './resolution-health.js';
 import { isLinked } from './resolve/reference.js';
 import { resolveReferences } from './resolve/resolve.js';
 import { detectServingRoots } from './resolve/serving-roots.js';
 import { scanSources } from './scan/scan.js';
 import type { ReadFilePort } from './scan/scan.js';
-import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 
 /** The framework fixtures, run through the real pipeline from `discover` to `audit`. */

@@ -11,7 +11,8 @@
 
 import { NO_REFERENCE_TO_FIND } from './adapters/html.js';
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
-import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
+import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit/audit.js';
+import type { Mention, SweepResult } from './audit/sweep.js';
 import { excludedByRule } from './discover/discover.js';
 import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph/graph.js';
@@ -30,7 +31,6 @@ import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './p
 import type { AliasMap } from './resolve/aliases.js';
 import { isLinked, provenPath } from './resolve/reference.js';
 import type { ServingRoots } from './resolve/resolve.js';
-import type { Mention, SweepResult } from './sweep.js';
 import type {
   Confidence,
   DiscoveryResult,

@@ -15,17 +15,17 @@ import {
   interpolationChunks,
   spellingsOf,
   splitPathSuffix,
-} from './adapters/reference-path.js';
-import { formatBytes } from './format.js';
-import type { Graph } from './graph/graph.js';
-import { unreferencedAssets } from './graph/graph.js';
-import { compareStrings, imageFilenameCandidates } from './paths.js';
+} from '../adapters/reference-path.js';
+import { formatBytes } from '../format.js';
+import type { Graph } from '../graph/graph.js';
+import { unreferencedAssets } from '../graph/graph.js';
+import { compareStrings, imageFilenameCandidates } from '../paths.js';
+import { provenPath } from '../resolve/reference.js';
+import { servedFromAnyRoot } from '../resolve/resolve.js';
+import { citationAt, lineOf, withSourceTexts } from '../scan/citation.js';
+import type { ReadFilePort, ScannedMention } from '../scan/scan.js';
+import type { Reference, ReferenceKind } from '../types.js';
 import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
-import { provenPath } from './resolve/reference.js';
-import { servedFromAnyRoot } from './resolve/resolve.js';
-import { citationAt, lineOf, withSourceTexts } from './scan/citation.js';
-import type { ReadFilePort, ScannedMention } from './scan/scan.js';
-import type { Reference, ReferenceKind } from './types.js';
 
 /** Where an asset's name turned up. */
 export type MentionSource =

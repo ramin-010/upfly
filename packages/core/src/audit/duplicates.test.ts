@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultAdapters } from './adapters/default-adapters.js';
+import { defaultAdapters } from '../adapters/default-adapters.js';
+import { discover } from '../discover/discover.js';
+import { buildGraph } from '../graph/graph.js';
+import type { Asset } from '../types.js';
 import { audit } from './audit.js';
-import { discover } from './discover/discover.js';
 import { findDuplicates, hashCandidates } from './duplicates.js';
-import { buildGraph } from './graph/graph.js';
-import type { Asset } from './types.js';
 
 /**
  * The `duplicate` finding: assets that ship the same bytes more than once. Sets are
@@ -16,7 +16,7 @@ import type { Asset } from './types.js';
  * that share a name can hold different images.
  */
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures');
 
 function asset(relative: string, bytes: number): Asset {
   return {
