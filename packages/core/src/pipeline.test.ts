@@ -572,6 +572,40 @@ describe('a relative pattern a script builds for the page that loads it', () => 
   });
 });
 
+describe("a template hole of another language in a component's path", () => {
+  it('is dynamic, not broken, and hedges the images it could name', async () => {
+    const root = project({
+      'package.json': '{ "name": "template", "private": true }\n',
+      'src/App.jsx': 'export const A = () => <img src="./img/{{ name }}.png" />;\n',
+      'src/img/logo.png': 'a logo, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ resolution }) => resolution)).toEqual(['dynamic']);
+    expect(output.audit.findings.map((finding) => finding.kind)).toEqual(['possibly-dead']);
+  });
+
+  it('still looks up a quoted `${`, which JavaScript never fills in', async () => {
+    const root = project({
+      'package.json': '{ "name": "app", "private": true }\n',
+      'src/App.jsx': "export const A = () => <img src='./img/${name}.png' />;\n",
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ resolution }) => resolution)).toEqual(['broken']);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

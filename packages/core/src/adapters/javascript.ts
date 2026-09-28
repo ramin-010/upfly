@@ -38,6 +38,7 @@ import {
   NOT_GLOBBABLE_REASON,
   URL_LINE_BREAK_REASON,
   assembledPathIsGlobbable,
+  foreignTemplateExpressionReason,
   interpolationChunks,
   isDrivePath,
   isExternalUrl,
@@ -1453,6 +1454,26 @@ function addLiteralReference(
     return;
   }
 
+  // A hole another language's template fills in, such as a project generator's
+  // `{{ cookiecutter.logo }}`, names no file until that tool runs, so the path is refused as
+  // every other adapter refuses one, never looked up as a file.
+  const templated = foreignTemplateExpressionReason(raw);
+  if (templated !== null) {
+    const url = kind === 'attr' ? urlWithin(raw, start) : { text: raw, start, end };
+    addReference({
+      context,
+      start: url.start,
+      end: url.end,
+      rawPath: url.text,
+      kind,
+      shape,
+      ceiling: 'unsafe',
+      note: `${description}: ${templated}`,
+      skipPathChecks: true,
+    });
+    return;
+  }
+
   if (isSrcSet) {
     for (const candidate of parseSrcset(raw)) {
       addReference({
@@ -1551,6 +1572,25 @@ function addTemplateReference(
       shape,
       ceiling: 'unsafe',
       note: `${description}: ${URL_LINE_BREAK_REASON}`,
+      skipPathChecks: true,
+      asserted,
+      decline,
+    });
+    return;
+  }
+  // As for a string: a hole of another language's template is not globbed as if it were text.
+  const templated = asserted ? foreignTemplateExpressionReason(raw) : null;
+  if (templated !== null) {
+    addReference({
+      context,
+      start: url.start,
+      end: url.end,
+      rawPath: raw,
+      ...proven,
+      kind,
+      shape,
+      ceiling: 'unsafe',
+      note: `${description}: ${templated}`,
       skipPathChecks: true,
       asserted,
       decline,

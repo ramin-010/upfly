@@ -1037,6 +1037,14 @@ assembled with `+`, such as `'/srcset/' + 'card-' + String(width) + '.jpg'`. Gue
 discarded and counted, and a template or chain that matches nothing is `dynamic`, like any other
 template.
 
+A path in an asserting position that holds a hole of another language's template, `{{ }}`,
+`{% %}` or `<% %>`, as a project generator such as cookiecutter or yeoman leaves them
+(`<img src="./img/{{ cookiecutter.logo }}.png" />`), is `unsafe` with the reason the HTML, CSS and
+Markdown readers give such a path, and ends `dynamic`, never looked up as a file
+(`foreignTemplateExpressionReason`). A `${` in a quoted string is text rather than an
+interpolation, so `'./img/${name}.png'` is looked up as written, and a missing file is a real
+finding.
+
 The static text of a guessed template or chain must look like a path, and its extension must be
 written in that static text. In `report.${type}` the hole is the extension. Guessing there admits
 version strings (`v1.2.0-beta.${n}`), translation keys, IP address formats and source files such

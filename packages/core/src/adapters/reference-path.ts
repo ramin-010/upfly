@@ -614,7 +614,24 @@ function opensTemplateHole(text: string): boolean {
  * and the resolver reports it as `dynamic`.
  */
 export function templateExpressionReason(rawPath: string): string | null {
-  for (const { opener, name } of TEMPLATE_HOLES) {
+  return holeReason(rawPath, TEMPLATE_HOLES);
+}
+
+/**
+ * `templateExpressionReason` for a JavaScript string, which asks only about the holes of
+ * another language's template: `{{ }}`, `{% %}` and `<% %>`, as a project generator leaves
+ * them. A `${` in a quoted string is text rather than an interpolation, so a path holding one
+ * is looked up as written, and a missing one is a real finding.
+ */
+export function foreignTemplateExpressionReason(rawPath: string): string | null {
+  return holeReason(
+    rawPath,
+    TEMPLATE_HOLES.filter((hole) => !hole.globbed),
+  );
+}
+
+function holeReason(rawPath: string, holes: readonly TemplateHole[]): string | null {
+  for (const { opener, name } of holes) {
     if (rawPath.includes(opener)) {
       return `contains ${name}: the path is not known statically`;
     }

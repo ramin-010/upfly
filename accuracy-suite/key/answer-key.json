@@ -7925,6 +7925,51 @@
       ]
     },
     {
+      "path": "apps/web/src/components/TemplatedLogo.jsx",
+      "entries": [
+        {
+          "raw": "./img/{% if dark %}banner-dark{% else %}banner{% endif %}.png",
+          "occurrence": 1,
+          "shape": "js.import.static",
+          "expect": "dynamic",
+          "why": "A Liquid or Jinja tag, as a project generator such as cookiecutter leaves in its templates, picks the name when the project is generated, so the path is not known statically and is dynamic, as the HTML, CSS and Markdown readers call such a path. Looked up as written it would be a false broken.",
+          "offset": 106,
+          "line": 2,
+          "column": 21
+        },
+        {
+          "raw": "./img/{{ cookiecutter.logo }}.png",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute",
+          "expect": "dynamic",
+          "why": "A Jinja expression the generator fills in: dynamic, not a file named with braces.",
+          "offset": 207,
+          "line": 4,
+          "column": 37
+        },
+        {
+          "raw": "./img/<%= name %>.png",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute",
+          "expect": "dynamic",
+          "why": "An EJS expression, as a yeoman generator writes one: dynamic, as it is in a page.",
+          "offset": 289,
+          "line": 5,
+          "column": 37
+        },
+        {
+          "raw": "./img/{{ mark }}.svg",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "dynamic",
+          "why": "The same hole in the URL given to `new URL`, which a bundler would otherwise resolve beside the module: dynamic.",
+          "offset": 355,
+          "line": 6,
+          "column": 33
+        }
+      ]
+    },
+    {
       "path": "apps/web/src/components/StoreBadge.tsx",
       "entries": [
         {
