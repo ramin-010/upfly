@@ -456,7 +456,9 @@ So two things happen below a floor:
    the pattern against.
 
 **The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
-Only those depend on a serving root. A repository whose *relative* imports are genuinely broken
+Only those depend on a serving root. Root-relative is read from the path a reference's text proves
+(`provenPath`), in the measure, the withheld list, the audit's split and the pattern list alike, so
+`'/img' + '/x.png'` counts though its text starts with a quote. A repository whose *relative* imports are genuinely broken
 scores normally and keeps every one of its findings, which makes the diagnosis correct by
 construction rather than merely the likeliest explanation. Dynamic, discarded, alias-shaped and
 out-of-scope references are excluded too: a discarded path-shaped string out of a lockfile is no

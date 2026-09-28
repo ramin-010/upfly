@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildGraph } from '../graph/graph.js';
 import type { Asset, RawReference, Reference } from '../types.js';
-import { MINIMUM_ROOT_RELATIVE, RESOLUTION_FLOOR, resolutionHealth } from './resolution-health.js';
+import {
+  MINIMUM_ROOT_RELATIVE,
+  RESOLUTION_FLOOR,
+  resolutionHealth,
+  withheldReferences,
+} from './resolution-health.js';
 
 const ROOT = '/repo';
 
@@ -146,5 +151,35 @@ describe('resolutionHealth', () => {
     // if somebody moved it to the edge of one.
     expect(RESOLUTION_FLOOR).toBeGreaterThan(0);
     expect(RESOLUTION_FLOOR).toBeLessThan(0.896);
+  });
+});
+
+describe('root-relativeness, read from the path the text proves', () => {
+  // `'/assets' + '/x.png'` starts with a quote, yet the path it assembles is root-relative.
+  const assembled = (text: string, path: string): Reference =>
+    reference(text, {
+      kind: 'string',
+      assembledPath: path,
+      resolution: 'broken',
+      confidence: 'unsafe',
+      resolvedPath: null,
+    });
+
+  it('counts an assembled root-relative path among those a serving root decides', () => {
+    expect(health([assembled("'/assets' + '/x.png'", '/assets/x.png')]).checkable).toBe(1);
+    expect(health([assembled("'assets' + '/x.png'", 'assets/x.png')]).checkable).toBe(0);
+  });
+
+  it('withholds such a broken reference when the serving root is unknown', () => {
+    const { refs, assets } = mix(MINIMUM_ROOT_RELATIVE, 0);
+    const withheld = assembled("'/assets' + '/x.png'", '/assets/x.png');
+    const graph = buildGraph({
+      root: ROOT,
+      assets,
+      references: [...refs, withheld],
+      unscannedFiles: [],
+    });
+
+    expect(withheldReferences(graph)).toContain(withheld);
   });
 });

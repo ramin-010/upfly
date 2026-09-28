@@ -61,7 +61,7 @@ export function resolutionHealth(graph: Graph): ResolutionHealth {
   for (const reference of graph.references) {
     // The only references a serving root can decide. A file-relative path resolves
     // the same way whatever the serving root is.
-    if (!dependsOnServingRoot(reference.rawPath)) continue;
+    if (!dependsOnServingRoot(provenPath(reference))) continue;
 
     if (isLinked(reference)) {
       linked += 1;
@@ -88,7 +88,9 @@ export function resolutionHealth(graph: Graph): ResolutionHealth {
  */
 export function withheldReferences(graph: Graph): readonly Reference[] {
   if (!resolutionHealth(graph).servingRootUnknown) return [];
-  return graph.byResolution.broken.filter((reference) => dependsOnServingRoot(reference.rawPath));
+  return graph.byResolution.broken.filter((reference) =>
+    dependsOnServingRoot(provenPath(reference)),
+  );
 }
 
 /**
@@ -104,7 +106,11 @@ export function patternsWithoutServingRoot(graph: Graph): readonly Reference[] {
   );
 }
 
-/** Whether a serving root decides where this path points: whether it is root-relative. */
-export function dependsOnServingRoot(rawPath: string): boolean {
-  return rawPath.startsWith('/');
+/**
+ * Whether a serving root decides where this path points: whether it is root-relative. Asked
+ * of the path a reference's text proves (`provenPath`), so `'/img' + '/x.png'` counts though
+ * its text starts with a quote.
+ */
+export function dependsOnServingRoot(path: string): boolean {
+  return path.startsWith('/');
 }

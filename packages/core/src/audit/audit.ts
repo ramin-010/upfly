@@ -16,6 +16,7 @@ import type { Graph } from '../graph/graph.js';
 import { unreferencedAssets } from '../graph/graph.js';
 import { compareStrings } from '../paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from '../probe/probe.js';
+import { provenPath } from '../resolve/reference.js';
 import { citeReferences } from '../scan/citation.js';
 import type { ReadFilePort } from '../scan/scan.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
@@ -272,14 +273,14 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
   const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
   const publicPrefixes = normalisePublicDirs(options.publicDirs);
 
-  const { findings: broken, unreadableSources } = await brokenFindings(options);
+  const { findings: broken, rootRelative, unreadableSources } = await brokenFindings(options);
   // One diagnosis instead of N symptoms. See `resolutionHealth`: below the floor the
   // engine has not established where root-relative paths are served from, and a
   // `broken` finding produced in that state is a statement about the serving roots it
   // used rather than about the user's code.
   const health = resolutionHealth(options.graph);
   const reported: (BrokenFinding | ServingRootUnknownFinding)[] = health.servingRootUnknown
-    ? diagnoseServingRoot(broken, health)
+    ? diagnoseServingRoot(broken, rootRelative, health)
     : broken;
   const { findings: dead, conventionLinked } = deadFindings(options, publicPrefixes);
   // `AssetProbe` measures pixels and `discover` measured bytes. They are joined here, the
@@ -323,12 +324,13 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
  */
 function diagnoseServingRoot(
   broken: readonly BrokenFinding[],
+  rootRelative: ReadonlySet<BrokenFinding>,
   health: ResolutionHealth,
 ): (BrokenFinding | ServingRootUnknownFinding)[] {
   // The same test `withheldReferences` applies, so the sweep treats exactly these
   // references as evidence that the asset they name may be in use.
-  const explained = broken.filter((finding) => dependsOnServingRoot(finding.rawPath));
-  const unexplained = broken.filter((finding) => !dependsOnServingRoot(finding.rawPath));
+  const explained = broken.filter((finding) => rootRelative.has(finding));
+  const unexplained = broken.filter((finding) => !rootRelative.has(finding));
 
   return [
     {
@@ -392,12 +394,19 @@ function deadFindings(
   return { findings, conventionLinked };
 }
 
-/** Every asserted path pointing at nothing, cited so a reviewer can open it. */
-async function brokenFindings(
-  options: AuditOptions,
-): Promise<{ findings: BrokenFinding[]; unreadableSources: AuditResult['unreadableSources'] }> {
+/**
+ * Every asserted path pointing at nothing, cited so a reviewer can open it, and those whose
+ * proven path is root-relative, which a serving root decides (`dependsOnServingRoot`).
+ */
+async function brokenFindings(options: AuditOptions): Promise<{
+  findings: BrokenFinding[];
+  rootRelative: ReadonlySet<BrokenFinding>;
+  unreadableSources: AuditResult['unreadableSources'];
+}> {
   const references = options.graph.byResolution.broken;
-  if (references.length === 0) return { findings: [], unreadableSources: [] };
+  if (references.length === 0) {
+    return { findings: [], rootRelative: new Set(), unreadableSources: [] };
+  }
 
   const { citations, unreadable } = await citeReferences({
     references,
@@ -405,18 +414,21 @@ async function brokenFindings(
     readFile: options.readFile,
   });
 
+  const rootRelative = new Set<BrokenFinding>();
   const findings = references.map((reference): BrokenFinding => {
     const citation = citations.get(reference);
-    return {
+    const finding: BrokenFinding = {
       kind: 'broken',
       file: citation?.file ?? reference.file,
       line: citation?.line ?? null,
       where: citation?.where ?? reference.file,
       rawPath: reference.rawPath,
     };
+    if (dependsOnServingRoot(provenPath(reference))) rootRelative.add(finding);
+    return finding;
   });
 
-  return { findings, unreadableSources: unreadable };
+  return { findings, rootRelative, unreadableSources: unreadable };
 }
 
 /** `oversized` and `format-opportunity`, the two that need pixels. */

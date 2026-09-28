@@ -800,6 +800,34 @@ describe('a run that could not find the serving root', () => {
     expect(result.findings[1]).toMatchObject({ rawPath: './genuinely-gone.png' });
   });
 
+  it('reads a root-relative path from the path its text proves, not the text', async () => {
+    // `'/img' + '/gone.png'` starts with a quote, yet assembles to a root-relative path, which
+    // the diagnosis explains as it explains the rest; the assembled `img/gone.png` it does not.
+    const { assets, references } = rootRelative(20, 1);
+    const assembled = (text: string, path: string, start: number): Reference => ({
+      ...broken('main.js', text, start),
+      kind: 'string',
+      assembledPath: path,
+    });
+
+    const result = await audit({
+      graph: graphOf({
+        assets,
+        references: [
+          ...references,
+          assembled("'/img' + '/gone.png'", '/img/gone.png', 9_000),
+          assembled("'img' + '/gone.png'", 'img/gone.png', 9_100),
+        ],
+      }),
+      sweep: NO_SWEEP,
+      readFile: files(),
+    });
+
+    expect(kinds(result.findings)).toEqual(['serving-root-unknown', 'broken']);
+    expect(result.findings[0]).toMatchObject({ suppressedBroken: 20 });
+    expect(result.findings[1]).toMatchObject({ rawPath: "'img' + '/gone.png'" });
+  });
+
   it('names every reference it withholds, cited as its broken finding would be', async () => {
     // A count with a reason still leaves the reader unable to see which references were
     // set aside. Each reference starts its own 40-character line, so `index` is on line
