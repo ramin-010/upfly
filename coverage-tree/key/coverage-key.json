@@ -357,6 +357,12 @@
       "motivation": "A repository built over ten years has both module systems."
     },
     {
+      "id": "js.new-url",
+      "label": "new URL('./x.png', import.meta.url)",
+      "spec": "4c",
+      "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module and never a package."
+    },
+    {
       "id": "js.template.pattern",
       "label": "template literal, one unknown segment",
       "spec": "4c",
@@ -7961,6 +7967,64 @@
           "offset": 493,
           "line": 15,
           "column": 18
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/logo-url.ts",
+      "entries": [
+        {
+          "raw": "logo.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "resolved",
+          "why": "A bare name given to new URL with import.meta.url as its base. The URL constructor resolves it against the module's own URL, so it names the logo beside this module.",
+          "target": "apps/web/src/components/logo.png",
+          "offset": 201,
+          "line": 3,
+          "column": 33
+        },
+        {
+          "raw": "logo-dark.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "broken",
+          "why": "A bare name given to new URL with import.meta.url as its base, and no such file sits beside the module. The URL constructor resolves it against the module's own URL, so it is a broken reference. Read as a package specifier, it passes as a file inside an npm package, and the broken reference goes unreported.",
+          "offset": 271,
+          "line": 4,
+          "column": 37
+        },
+        {
+          "raw": "../assets/chart.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "resolved",
+          "why": "The documented relative form, climbing out of the module's folder.",
+          "target": "apps/web/src/assets/chart.png",
+          "offset": 343,
+          "line": 5,
+          "column": 34
+        },
+        {
+          "raw": "deep/gallery/thumbs/strip.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "resolved",
+          "why": "A bare path through three folders below the module, resolved against the module's own URL. As an import specifier it would name a file inside a package called deep.",
+          "target": "apps/web/src/components/deep/gallery/thumbs/strip.png",
+          "offset": 421,
+          "line": 6,
+          "column": 34
+        },
+        {
+          "raw": "icons/logo-light.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "broken",
+          "why": "A bare path with a folder, and no such file below the module. Resolved against the module's own URL it is a broken reference. As an import specifier it would name a file inside a package called icons, and pass as out of scope.",
+          "offset": 513,
+          "line": 7,
+          "column": 38
         }
       ]
     }

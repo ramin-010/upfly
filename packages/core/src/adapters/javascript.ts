@@ -372,17 +372,23 @@ function collectFromNode(node: BabelNode, context: Context): void {
           'certain',
           moduleSourceShape(node.arguments[0], 'js.require'),
           'require()',
+          'import',
         );
       }
       return;
     case 'NewExpression':
       if (isBundlerUrlConstruction(node)) {
+        // A URL, not a module specifier: the URL constructor resolves it against the module's
+        // own URL, so a bare `hero.png` is the file beside the module and never a package. It
+        // takes an attribute's kind, which the resolver reads the same way.
+        // `import.meta.resolve(x)` differs: it follows module resolution.
         collectFromModuleSource(
           node.arguments[0],
           context,
           'high',
           'js.new-url',
           'new URL(…, import.meta.url)',
+          'attr',
         );
       }
       return;
@@ -829,6 +835,7 @@ function collectFromImportDeclaration(node: ImportDeclaration, context: Context)
     'certain',
     moduleSourceShape(node.source, 'js.import.static'),
     'static import',
+    'import',
   );
 }
 
@@ -839,6 +846,7 @@ function collectFromImportExpression(node: ImportExpression, context: Context): 
     'certain',
     moduleSourceShape(node.source, 'js.import.dynamic'),
     'dynamic import()',
+    'import',
   );
 }
 
@@ -1084,21 +1092,27 @@ function declineValue(
   }
 }
 
-/** Handle an import/require/URL argument, which may be a string or a template. */
+/**
+ * Handle an import/require/URL argument, which may be a string or a template.
+ *
+ * @param kind `import` for a module specifier, `attr` for a URL. Required, because the two
+ *   read a bare name and a leading `#` differently.
+ */
 function collectFromModuleSource(
   source: BabelNode | null | undefined,
   context: Context,
   ceiling: Confidence,
   shape: ShapeId,
   description: string,
+  kind: ReferenceKind,
 ): void {
   if (source === null || source === undefined) return;
   if (source.type === 'StringLiteral') {
-    addLiteralReference(source, context, ceiling, 'import', shape, description);
+    addLiteralReference(source, context, ceiling, kind, shape, description);
     return;
   }
   if (source.type === 'TemplateLiteral') {
-    addTemplateReference(source, context, 'import', shape, description);
+    addTemplateReference(source, context, kind, shape, description);
   }
 }
 

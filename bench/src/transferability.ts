@@ -157,7 +157,7 @@ stdout.write(
   '🔴 READ THIS BEFORE THE NUMBERS ABOVE: THE FRACTION IS NEAR-VACUOUS BY CONSTRUCTION, and\n' +
     '   saying so is the finding. A reference can only carry a shape an ADAPTER EMITS, and the\n' +
     "   vocabulary is held identical to the tree's by a red test (R76, R82). So the remainder can\n" +
-    '   only ever contain the handful of shapes already known to have no tree instance — four on\n' +
+    '   only ever contain the handful of shapes already known to have no tree instance — three on\n' +
     '   UNTESTED_SHAPE_IDS, three the key declares unkeyable with a reason. A shape NOBODY\n' +
     '   IMAGINED has no id at all, so it cannot appear here: it appears as nothing, which is\n' +
     "   R76's own objection reproduced inside the measurement built to escape it.\n" +

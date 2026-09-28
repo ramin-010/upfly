@@ -321,6 +321,15 @@ export const SHAPES = [
   },
   { id: 'js.require', label: 'require() of an image', emission: 'engine' },
   {
+    id: 'js.new-url',
+    label: "new URL('./x.png', import.meta.url)",
+    emission: 'engine',
+    why:
+      '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
+      'document, emitted by the JavaScript adapter. Its path is a URL resolved against the ' +
+      "module's own URL, so a bare name is a file beside the module and never a package.",
+  },
+  {
     id: 'js.template.pattern',
     label: 'template literal, one unknown segment',
     emission: 'engine',
@@ -728,15 +737,6 @@ export const SHAPES = [
       'coverage tree has no instance of it, so nothing measures it.',
   },
   {
-    id: 'js.new-url',
-    label: "new URL('./x.png', import.meta.url)",
-    emission: 'engine',
-    why:
-      '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
-      'document, emitted by the JavaScript adapter. The coverage tree has no instance of it, ' +
-      'so nothing measures it.',
-  },
-  {
     id: 'js.jsx.srcset',
     label: 'a JSX srcSet candidate list',
     emission: 'engine',
@@ -774,7 +774,6 @@ export const SHAPE_IDS: ReadonlySet<string> = new Set(SHAPES.map((shape) => shap
  */
 export const UNTESTED_SHAPE_IDS: readonly string[] = [
   'js.import.dynamic',
-  'js.new-url',
   'js.jsx.srcset',
   'js.jsx.svg',
 ];

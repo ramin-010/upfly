@@ -532,6 +532,12 @@ the nearest; and `include`, `files` and `references` are not read.
 `out-of-scope`. The two shapes differ by one character: `@/…` has an empty scope, which no registry
 permits. Nor does npm permit a `$` in a name, since it refuses any name `encodeURIComponent`
 changes, so SvelteKit's `$lib/…` is an alias, never a package.
+Nor is the first argument of `new URL(name, import.meta.url)` a package specifier. The URL
+constructor resolves it against the module's own URL, so the JavaScript adapter gives it an
+attribute's kind rather than an import's: a bare `hero.png` is the file beside the module, and
+`broken` when there is none, and a leading `#` is a fragment. `import.meta.resolve(name)` is
+different, since it follows module resolution; the adapter does not read it as a construct, and
+its argument is guessed at like any path-shaped string.
 `unresolved-alias` means an alias-shaped path that no alias Upfly reads maps. It is a final
 outcome, not pending work. The project may still declare the alias where Upfly does not look, such
 as a webpack config, SvelteKit's `kit.alias` or Astro's `vite.resolve.alias`, so the reason says

@@ -1,5 +1,7 @@
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve.js';
 import type { RawReference } from '../types.js';
 import { javaScriptParseOutcome, javascriptAdapter } from './javascript.js';
 
@@ -129,6 +131,54 @@ describe('javascriptAdapter', () => {
 
     it('still drops a fragment in CSS-in-JS', () => {
       expect(paths('const H = styled.div`fill: url(#gradient);`;')).toEqual([]);
+    });
+
+    it('drops a fragment in new URL, whose path is a URL rather than a specifier', () => {
+      // The URL constructor reads `#assets/a.png` as a fragment of the module's own URL.
+      expect(paths("const u = new URL('#assets/a.png', import.meta.url);")).toEqual([]);
+    });
+  });
+
+  describe('new URL resolves its path against the module', () => {
+    // The URL constructor reads its first argument as a URL relative to the module's own URL,
+    // so a bare name is a file below the module. Only module resolution, which an import
+    // follows, reads a bare name as a package.
+    const root = resolve('/project');
+
+    function outcomes(source: string, assets: readonly string[] = []): string[][] {
+      const references = find(source, join(root, 'src/logo-url.js'));
+      return resolveReferences(references, {
+        root,
+        assets: assets.map((relative) => ({
+          path: join(root, relative),
+          relative,
+          extension: '.png',
+          bytes: 100,
+        })),
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        exists: () => false,
+      }).map((reference) => [reference.rawPath, reference.resolution]);
+    }
+
+    it('reports a bare name with no file beside the module as broken, not as a package file', () => {
+      expect(outcomes("new URL('missing.png', import.meta.url);")).toEqual([
+        ['missing.png', 'broken'],
+      ]);
+    });
+
+    it('reports a bare path with a folder as broken too, where an import names a package', () => {
+      expect(outcomes("new URL('icons/missing.png', import.meta.url);")).toEqual([
+        ['icons/missing.png', 'broken'],
+      ]);
+      expect(outcomes("import icon from 'icons/missing.png';")).toEqual([
+        ['icons/missing.png', 'out-of-scope'],
+      ]);
+    });
+
+    it('links a bare name to the file beside the module', () => {
+      expect(outcomes("new URL('logo.png', import.meta.url);", ['src/logo.png'])).toEqual([
+        ['logo.png', 'resolved'],
+      ]);
     });
   });
 
