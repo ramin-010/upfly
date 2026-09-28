@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Asset } from '../types.js';
 import {
   DEFAULT_ENCODE_QUALITY,
   type EncodeFormat,
@@ -6,7 +7,6 @@ import {
   type ProbeDiagnostic,
   probeAssets,
 } from './probe.js';
-import type { Asset } from './types.js';
 
 /**
  * `probeAssets` is pure over an injected port, so these run against a fake. The

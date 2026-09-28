@@ -7,8 +7,8 @@ import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover } from './discover/discover.js';
 import { buildGraph } from './graph/graph.js';
 import { type PublicPolicy, patternTargets, planOptimization } from './plan.js';
-import { createSharpProbe } from './probe-sharp.js';
-import { probeAssets } from './probe.js';
+import { createSharpProbe } from './probe/probe-sharp.js';
+import { probeAssets } from './probe/probe.js';
 import { resolveReferences } from './resolve/resolve.js';
 import { scanSources } from './scan/scan.js';
 

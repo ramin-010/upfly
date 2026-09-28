@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { animatedPng, gradientFrames } from '../test/animated-png.js';
+import { animatedPng, gradientFrames } from '../../test/animated-png.js';
+import type { Asset } from '../types.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import type { ImageProbe } from './probe.js';
-import type { Asset } from './types.js';
 
 /**
  * The sharp-backed probe, against real bytes.
@@ -16,7 +16,7 @@ import type { Asset } from './types.js';
  * libvips does with an animation, a truncated file and a vector.
  */
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures');
 
 let probe: ImageProbe;
 let temp: string;

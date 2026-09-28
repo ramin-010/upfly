@@ -20,7 +20,7 @@ import {
   newRunId,
   optimize,
 } from './optimize.js';
-import type { AssetProbe, ImageProbe } from './probe.js';
+import type { AssetProbe, ImageProbe } from './probe/probe.js';
 import type { ScannedText } from './scan/scan.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 import type { Asset, RawReference, Reference } from './types.js';

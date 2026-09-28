@@ -120,8 +120,8 @@ export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './resolve/reference.js';
 export { buildGraph, unreferencedAssets } from './graph/graph.js';
 export type { AssetNode, BuildGraphInput, Graph } from './graph/graph.js';
-export { createSharpProbe } from './probe-sharp.js';
-export { DEFAULT_ENCODE_QUALITY, probeAssets } from './probe.js';
+export { createSharpProbe } from './probe/probe-sharp.js';
+export { DEFAULT_ENCODE_QUALITY, probeAssets } from './probe/probe.js';
 export type {
   AssetProbe,
   EncodeFormat,
@@ -132,7 +132,7 @@ export type {
   ProbeDiagnostic,
   ProbeSkip,
   ProbeSkipCode,
-} from './probe.js';
+} from './probe/probe.js';
 export { formatBytes } from './format.js';
 export { renderReport } from './report-human.js';
 export { REPORT_SCHEMA_VERSION, buildReport } from './report.js';

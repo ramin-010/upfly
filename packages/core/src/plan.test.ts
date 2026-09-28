@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildGraph } from './graph/graph.js';
 import { compareStrings, toPosix } from './paths.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
-import type { AssetProbe } from './probe.js';
+import type { AssetProbe } from './probe/probe.js';
 import type { AliasMap } from './resolve/aliases.js';
 import { SHAPES, whyFormatKept } from './shapes.js';
 import type { Asset, RawReference, Reference } from './types.js';

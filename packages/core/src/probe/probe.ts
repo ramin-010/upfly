@@ -9,8 +9,8 @@
  * ARCHITECTURE.md.
  */
 
-import { compareStrings, extensionOf, isVectorExtension } from './paths.js';
-import type { Asset } from './types.js';
+import { compareStrings, extensionOf, isVectorExtension } from '../paths.js';
+import type { Asset } from '../types.js';
 
 /** A format we can measure an asset against. */
 export type EncodeFormat = 'webp' | 'avif';

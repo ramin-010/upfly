@@ -11,9 +11,9 @@ import { discover } from './discover/discover.js';
 import { buildGraph } from './graph/graph.js';
 import { toPosix } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
-import { createSharpProbe } from './probe-sharp.js';
-import { probeAssets } from './probe.js';
-import type { AssetProbe } from './probe.js';
+import { createSharpProbe } from './probe/probe-sharp.js';
+import { probeAssets } from './probe/probe.js';
+import type { AssetProbe } from './probe/probe.js';
 import { renderReport } from './report-human.js';
 import {
   REPORT_SCHEMA_VERSION,

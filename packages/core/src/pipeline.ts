@@ -19,8 +19,13 @@ import { detectConventionRoots } from './conventions.js';
 import { discover } from './discover/discover.js';
 import { hashCandidates } from './duplicates.js';
 import { type Graph, buildGraph } from './graph/graph.js';
-import { createSharpProbe } from './probe-sharp.js';
-import { type AssetProbe, type ProbeDiagnostic, type ProbeOptions, probeAssets } from './probe.js';
+import { createSharpProbe } from './probe/probe-sharp.js';
+import {
+  type AssetProbe,
+  type ProbeDiagnostic,
+  type ProbeOptions,
+  probeAssets,
+} from './probe/probe.js';
 import { type AliasMap, loadAliases } from './resolve/aliases.js';
 import { type ServingRoots, resolveReferences } from './resolve/resolve.js';
 import { decideServingRoots } from './resolve/serving-root-decision.js';

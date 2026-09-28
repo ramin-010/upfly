@@ -30,7 +30,7 @@ import {
   patternTargets,
   planOptimization,
 } from './plan.js';
-import type { AssetProbe, EncodeFormat, ImageProbe } from './probe.js';
+import type { AssetProbe, EncodeFormat, ImageProbe } from './probe/probe.js';
 import type { AliasMap } from './resolve/aliases.js';
 import type { ServingRoots } from './resolve/resolve.js';
 import { hashText } from './scan/text-hash.js';

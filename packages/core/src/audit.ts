@@ -18,7 +18,7 @@ import { findDuplicates } from './duplicates.js';
 import type { Graph } from './graph/graph.js';
 import { unreferencedAssets } from './graph/graph.js';
 import { compareStrings } from './paths.js';
-import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe/probe.js';
 import {
   type ResolutionHealth,
   dependsOnServingRoot,
