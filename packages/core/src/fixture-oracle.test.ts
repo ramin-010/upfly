@@ -31,8 +31,9 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
 /**
  * Every fixture root, and both kinds matter.
  *
- * The five framework trees back `fixtures.test.ts`; `packages/core/fixtures` backs the
- * `*.fixtures.test.ts` files, whose literal expected arrays this file exists to check.
+ * The five framework trees back `fixtures.test.ts`, and `partial-pattern` backs the
+ * partial-states tests; `packages/core/fixtures` backs the `*.fixtures.test.ts` files, whose
+ * literal expected arrays this file exists to check.
  */
 const ROOTS: readonly { readonly label: string; readonly dir: string }[] = [
   { label: 'vite-react', dir: join(TREES, 'vite-react') },
@@ -40,6 +41,7 @@ const ROOTS: readonly { readonly label: string; readonly dir: string }[] = [
   { label: 'astro', dir: join(TREES, 'astro') },
   { label: 'plain-html', dir: join(TREES, 'plain-html') },
   { label: 'eleventy', dir: join(TREES, 'eleventy') },
+  { label: 'partial-pattern', dir: join(TREES, 'partial-pattern') },
   { label: 'adapter-fixtures', dir: ADAPTER_FIXTURES },
 ];
 
@@ -224,6 +226,14 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
   'plain-html/index.html': {
     'images/removed.png': { why: 'ignored', because: 'inside an HTML comment' },
   },
+  'partial-pattern/src/App.jsx': {
+    'theme-${mode}.png': {
+      why: 'oracle-boundary',
+      because:
+        'the JSDoc comment names the template the function below uses, detected there as `/theme-${mode}.png`; the harvest keeps each file as a set of paths, so it cannot tell the mention from the use',
+    },
+    'theme-dark.png': { why: 'ignored', because: 'inside a `//` comment, which Babel discards' },
+  },
   // The Astro adapter's own fixture: two deliberate non-references, which say something
   // about the engine, and two paths the harvest cuts short, which say something about
   // this oracle.
@@ -257,7 +267,7 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
     'escaped.png': {
       why: 'ignored',
       because:
-        '`&lt;img src="escaped.png"&gt;` — entity-escaped text renders as prose, not as an element',
+        '`&lt;img src="escaped.png"&gt;` is entity-escaped text, which renders as prose, not as an element',
     },
   },
   'adapter-fixtures/css/site.css': {
@@ -276,8 +286,7 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
   'adapter-fixtures/javascript/Gallery.jsx': {
     './assets/retired.png': {
       why: 'ignored',
-      because:
-        'a commented-out `import` — the case §5.1(i) names, and the reason this decision had to become written rather than invisible',
+      because: 'a commented-out `import`, which no bundler loads',
     },
     './assets/example.png': {
       why: 'ignored',
@@ -304,7 +313,7 @@ const KNOWN_NOT_DETECTED: Readonly<Record<string, Readonly<Record<string, NotDet
     },
     './icons/a-key-that-looks-like-a-path.png': {
       why: 'ignored',
-      because: 'a JSON *key*, not a value — nothing points at it, so it names no reference',
+      because: 'a JSON key, not a value: nothing points at it, so it names no reference',
     },
   },
   'adapter-fixtures/markdown/README.md': {
@@ -490,6 +499,6 @@ describe('fixture references, derived rather than pasted', () => {
       for (const entry of Object.values(excused)) byKind[entry.why] += 1;
     }
 
-    expect(byKind).toEqual({ ignored: 25, 'no-adapter': 3, 'oracle-boundary': 4 });
+    expect(byKind).toEqual({ ignored: 26, 'no-adapter': 3, 'oracle-boundary': 5 });
   });
 });
