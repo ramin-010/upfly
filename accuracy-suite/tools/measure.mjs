@@ -6,7 +6,7 @@
  * `matrix.mjs`, which imports nothing; this file is the part that touches a subprocess, the
  * disk and the built engine. The scan is resolved twice, under the key's declared serving
  * roots and under no configuration, and each run's figure is reported on its own.
- * See "Measuring the engine against the tree" in ARCHITECTURE.md.
+ * See "Measuring the engine against the tree" in accuracy-suite/README.md.
  *
  * Usage: node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
  * `--skip-strict` is for debugging the harness, and its numbers must not be quoted.

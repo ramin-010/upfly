@@ -7,7 +7,7 @@
  * that write a path in its encoded spellings. A check built on the engine's code agrees
  * with the engine's mistakes; `fixture-integrity.test.ts` follows the same rule. Each item
  * comes back `confirmed-genuine`, `confirmed-false` or `ambiguous`, with the evidence that
- * decided it. See "Verifying findings from outside the engine" in ARCHITECTURE.md.
+ * decided it. See "Verifying findings from outside the engine" in bench/README.md.
  */
 
 import { appendFileSync } from 'node:fs';

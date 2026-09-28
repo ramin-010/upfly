@@ -168,3 +168,83 @@ Stated plainly, because a check whose limits are unstated is read as a guarantee
 - **It says nothing about whether an `expect` is right.** It proves the key describes the
   tree. Whether the tree's answers are the correct ones is a human judgement, and 14 of them
   are openly marked as not yet made.
+
+## Measuring the engine against the tree
+
+`accuracy-suite/tools/measure.mjs` scans the tree once and resolves the scan twice. The first run
+uses the serving roots the answer key declares. The second declares nothing and uses the roots
+`decideServingRoots` works out, which is what `servingRootsFor` gives any run on a project that
+declares none. Each run reports its own figure for the claimed population, and the two are never
+added together: a figure that blends two configurations describes neither. Nothing is measured
+until `check-key.mjs --strict` passes, since a key that disagrees with the tree would measure the
+disagreement rather than the engine. The command fails on any defect in the first run and on a
+stale gap in the second; the second run's other misses are listed by name and do not fail it.
+
+The judging is in `matrix.mjs`, which imports nothing, not the engine and not `node:fs`. The key
+and the engine's observations are both arguments, so `coverage-matrix.test.ts` can feed it damaged
+inputs and check that each one moves a row the wrong way. It joins the key to the engine's
+references by position and puts every key entry in exactly one bucket:
+
+| bucket | meaning |
+|---|---|
+| `met` | the engine's outcome is one the entry's `expect` accepts |
+| `missed` | the outcome is not, or the file was never observed |
+| `threw` | the file could not be scanned, and the reference is absent |
+| `knownGap` | the entry records why today's engine differs, and it still does |
+| `staleGap` | the entry records a gap, but the engine now agrees, so the record is out of date |
+| `notExercised` | the gap is about a mechanism this run did not use |
+
+A throw is its own outcome because a crashed adapter is as silent as a correct refusal, and the
+two mean opposite things. Where an entry's `expect` accepts silence, its throw is still named, but
+not counted as a defect. The join also runs the other way: a reference the engine resolved where
+the key lists nothing is reported, and that is the more dangerous direction, since a miss is a gap
+in coverage while an unlisted link is a claim a rewrite would act on. `BUCKETS` is the one list of
+buckets; the arithmetic check and the table's columns both come from it, so no bucket can hold
+entries the page does not print.
+
+Some gaps are about a mechanism rather than a missing reader. An entry whose gap says detection
+picks the wrong directory cannot be settled by a run that declares its serving roots: detection
+never runs there, and the entry can agree with its `expect` for reasons unrelated to the gap.
+Reading that agreement as the gap closing would delete the record of a live defect. So such an
+entry names its mechanism in `gapMechanism`, from the closed list `GAP_MECHANISMS`, rather than
+leaving the harness to read it from the gap's prose, and each run states how it relates to each
+mechanism:
+
+- Outside its configuration (`outOfConfiguration`): the entry is judged on its outcome, met or
+  missed, and the gap is neither confirmed nor retired. The first run treats detection this way.
+- Exercised (`exercises`): the entry is judged on a run that used the mechanism, the run itself or
+  one supplied in `observedUnder`, and the gap is confirmed or found stale. The second run
+  exercises detection.
+- Neither: the entry is `notExercised`, printed with the reason and never read as closed.
+
+A run exercises nothing unless it says so, so a gap stays open until a run that used its mechanism
+judges it. An unknown mechanism name throws: a misspelling would otherwise leave a gap unjudgeable
+forever or make a run claim less than it did, and neither would show as a red row.
+
+The matrix cannot see a mistake the key shares. Where the key and the engine agree and are both
+wrong, the join finds nothing; a construct the tree does not contain appears nowhere; and nothing
+proves that each `expect` is right. `blindSpots()` returns these limits as text, and
+`renderMatrix` prints them at the end of every matrix.
+
+
+## What the tree says about real repositories
+
+The coverage tree measures the engine on the shapes someone thought to build. It cannot say how
+much of a real repository falls outside them, because a shape nobody imagined does not show up as
+a failure. It shows up as nothing.
+
+Counting a real repository's references by shape does not close that gap. A reference can only
+carry a shape an adapter emits, and `shapes.reconcile.test.ts` holds the engine's vocabulary equal
+to the tree's, so a reference outside the tree's shapes can only carry one already known to have
+no instance, such as those on `UNTESTED_SHAPE_IDS`. Both sides of a "share of references in tested
+shapes" come from the same list, so the share comes out high whatever the repository holds, and it
+would not be accuracy even if it could come out low. `bench/src/transferability.ts` therefore
+prints no share and no average. Per repository, it counts the references in shapes the tree tests
+and names the rest, which gives the tree a growth list taken from real code.
+
+A shape nobody imagined can only be seen by a check that never asks the engine what shape anything
+is. The false-negative sweep in `bench/src/validate.ts` searches each validation repository for
+every asset's filename and accounts for each mention the graph did not link: either an adapter
+missed a reference, or the mention is correctly out of scope, and a person adjudicates what the
+sweep cannot explain. That sweep, not a count by shape, is the evidence that the tree's results
+hold on real code.

@@ -110,7 +110,7 @@ jobs:
     # ceiling is not the 3,000 ms design target, which the engine does not meet; the output
     # prints both. It catches a regression above about 30% and cannot see a 10% one: for
     # that, compare two builds back to back with `bench/src/noise.ts`. See "The gate is a
-    # regression ceiling, not the target" in ARCHITECTURE.md.
+    # regression ceiling, not the target" in bench/README.md.
     name: bench (gate) / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:

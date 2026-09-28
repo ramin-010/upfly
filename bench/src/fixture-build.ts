@@ -6,7 +6,7 @@
  * of that class pointed at a file that does not exist. An instrument that cannot tell those
  * trees apart is reported as blind to that class rather than trusted. The build and the link
  * check share no code with the engine, so they cannot share its mistakes. See "The fixture
- * build" in ARCHITECTURE.md.
+ * build" in bench/README.md.
  */
 
 import { spawn, spawnSync } from 'node:child_process';

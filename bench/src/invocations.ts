@@ -6,7 +6,7 @@
  * enough apart to pass or fail the same code, so this spawns `run.js --graph-only --json`
  * N times and reports the spread between them. A fresh process is the point: module
  * load, JIT warm-up, a fresh libuv threadpool, and whatever else the OS does differently.
- * See "The gate is a regression ceiling, not the target" in ARCHITECTURE.md.
+ * See "The gate is a regression ceiling, not the target" in bench/README.md.
  */
 
 import { execFile } from 'node:child_process';

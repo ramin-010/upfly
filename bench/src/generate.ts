@@ -5,7 +5,7 @@
  * is derived from a seed, so two runs on two machines measure the same work. A tree with
  * the right file count and the wrong content times the wrong work, so file sizes per
  * extension, the extension mix and the directory depth are measured on `astro-docs`,
- * `eleventy-docs` and `shadcn-ui`. See "The benchmark tree" in ARCHITECTURE.md.
+ * `eleventy-docs` and `shadcn-ui`. See "The benchmark tree" in bench/README.md.
  *
  * It is generated into the OS temp directory, never into the workspace: the v2 VS Code
  * extension watches every folder named `public` in the workspace and converts what lands
@@ -434,7 +434,7 @@ function expandWeights(): string[] {
  * ever confirm that the skip is safe. Both rates below are measured on the five
  * validation repositories. They are far apart because most markup in documentation sits
  * inside fenced code blocks, which the adapter masks before parse5 sees it, and the
- * filler reproduces that. See "The benchmark tree" in ARCHITECTURE.md.
+ * filler reproduces that. See "The benchmark tree" in bench/README.md.
  */
 export interface MarkdownShape {
   /** This document carries raw HTML: fenced, live, or both. */

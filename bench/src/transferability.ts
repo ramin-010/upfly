@@ -7,7 +7,7 @@
  * tree's, so only shapes already known to be untested can appear here, never one nobody has
  * named. The false-negative sweep in `validate.ts` can find such a shape, because it searches
  * the text for filenames and never asks what shape anything is. See "What the tree says about
- * real repositories" in ARCHITECTURE.md.
+ * real repositories" in accuracy-suite/README.md.
  *
  * Read-only. Usage: `pnpm --filter upfly-bench run transferability`
  */

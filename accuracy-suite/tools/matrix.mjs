@@ -7,7 +7,7 @@
  * check that each row goes the wrong way. It judges outcomes, not shapes: a shape that
  * differs from the key's is listed apart and is never a miss. A file the scanner could not
  * read is its own outcome, never a refusal. The join runs both ways, and there is no total.
- * See "Measuring the engine against the tree" in ARCHITECTURE.md.
+ * See "Measuring the engine against the tree" in accuracy-suite/README.md.
  */
 
 /**
@@ -61,7 +61,7 @@ export const BUCKETS = Object.freeze([
  * declared serving roots never runs detection, so its agreeing with the key says nothing
  * about a detection gap. Declared per entry rather than read from the gap's prose, because
  * matching English would fail in the direction that deletes a live gap.
- * See "Measuring the engine against the tree" in ARCHITECTURE.md.
+ * See "Measuring the engine against the tree" in accuracy-suite/README.md.
  */
 export const GAP_MECHANISMS = Object.freeze([
   // Finding serving roots by directory name (`detectServingRoots`). It never runs when the

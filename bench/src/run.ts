@@ -59,7 +59,7 @@ const DESIGN_TARGET_MS = 3_000;
  * code, and a ceiling inside that range flips its verdict on the same commit. It catches
  * a regression above about 30% and cannot see a 10% one, which needs an A/B run back to
  * back in one session with `noise.ts`. See "The gate is a regression ceiling, not the
- * target" in ARCHITECTURE.md.
+ * target" in bench/README.md.
  *
  * `UPFLY_BENCH_BUDGET_MS` overrides it, which is how CI pins it per platform.
  */
