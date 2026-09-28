@@ -13,8 +13,11 @@ function find(text: string, file = '/project/index.html'): RawReference[] {
   return htmlAdapter.findReferences({ file, text });
 }
 
+/** The paths read, leaving out the values declined in attributes Upfly does not read. */
 function paths(text: string): string[] {
-  return find(text).map((reference) => reference.rawPath);
+  return find(text)
+    .filter((reference) => reference.declined !== true)
+    .map((reference) => reference.rawPath);
 }
 
 function slices(text: string): string[] {
@@ -161,7 +164,11 @@ describe('htmlAdapter', () => {
     });
 
     it('reads nothing from a meta tag or a link that names no image', () => {
-      expect(find('<meta name="description" content="/img/logo.png">')).toEqual([]);
+      // Declined and counted, never read as a path.
+      const described = find('<meta name="description" content="/img/logo.png">');
+      expect(described.map(({ shape, declined }) => [shape, declined])).toEqual([
+        ['html.attribute.other', true],
+      ]);
       expect(find('<a href="/files/report.pdf">x</a>')).toEqual([]);
       expect(find('<a href="/about">x</a>')).toEqual([]);
     });
@@ -970,15 +977,15 @@ describe('htmlAdapter', () => {
       // Not a gap. Outside foreign content the HTML spec renames `<image>` to `<img>`,
       // and `href` is not an `<img>` attribute, so the markup displays nothing and there
       // is no reference to find.
-      expect(find('<image href="/a/hero.png">')).toEqual([]);
+      expect(paths('<image href="/a/hero.png">')).toEqual([]);
     });
 
     it('leaves <use href> alone, deliberately', () => {
       // `<use href="#icon">`, the commonest form, names an element in the same document,
       // and `/a/sprite.svg#icon` names a vector Upfly neither converts nor deletes. Pinned
       // so that reading `<use>` stays a decision.
-      expect(find('<svg><use href="#icon"/></svg>')).toEqual([]);
-      expect(find('<svg><use href="/a/sprite.svg#icon"/></svg>')).toEqual([]);
+      expect(paths('<svg><use href="#icon"/></svg>')).toEqual([]);
+      expect(paths('<svg><use href="/a/sprite.svg#icon"/></svg>')).toEqual([]);
     });
   });
 
@@ -1111,5 +1118,36 @@ describe("a <template>'s content is read like the markup around it", () => {
     // In foreign content the tag makes an ordinary element, so reading the fragment has to
     // come in addition to reading children, never instead of it.
     expect(paths('<svg><template><image href="/svg.png"/></template></svg>')).toEqual(['/svg.png']);
+  });
+});
+
+describe('a value naming an image in an attribute Upfly does not read', () => {
+  it('is returned declined and counted by attribute, never read as a path', () => {
+    const references = find(
+      '<img src="/img/a.png" title="/img/tooltip.png" data-src="/img/lazy.jpg" alt="A photo of hero.png">' +
+        '<link rel="preload" as="image" href="/img/hero.png" imagesrcset="/img/one.png 1x, /img/two.png 2x">' +
+        '<a href="/about/" title="/about/">About</a>',
+    );
+    const declined = references.filter((reference) => reference.declined === true);
+
+    const later = 'which a browser or a lazy-loading script may load, and Upfly does not read yet';
+    expect(declined.map((reference) => [reference.rawPath, reference.note])).toEqual([
+      [
+        '/img/tooltip.png',
+        'HTML attribute title, which Upfly does not read as a file path on this element',
+      ],
+      ['/img/lazy.jpg', `HTML attribute data-src, ${later}`],
+      ['/img/one.png', `HTML attribute imagesrcset, ${later}`],
+      ['/img/two.png', `HTML attribute imagesrcset, ${later}`],
+    ]);
+    for (const reference of declined) {
+      expect([reference.shape, reference.ceiling, reference.asserted]).toEqual([
+        'html.attribute.other',
+        'unsafe',
+        false,
+      ]);
+    }
+    // The positions Upfly does read are unchanged.
+    expect(paths('<img src="/img/a.png" title="/img/tooltip.png">')).toContain('/img/a.png');
   });
 });

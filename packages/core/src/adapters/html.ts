@@ -23,6 +23,7 @@ import {
   holdsUndecodableCharacterReference,
   isExternalUrl,
   parseSrcset,
+  plausiblePathShape,
   provablyNotAFile,
   readAsUrl,
   spellingsOf,
@@ -249,7 +250,10 @@ function collectFromAttribute(input: {
     attribute: (other) => attributeValue(element, other),
     valueText: () => url.text,
   });
-  if (position === null) return;
+  if (position === null) {
+    declineAttributeValue(name, raw, start, asTheUrlParserReads(decodedValue), context);
+    return;
+  }
 
   if (position.html === 'srcset') {
     if (entityEscaped) {
@@ -280,6 +284,50 @@ function collectFromAttribute(input: {
     return;
   }
   addAttributeReference(url.text, url.start, context, position.html);
+}
+
+/** Attributes a browser or a lazy-loading script loads an image from, which Upfly does not read yet. */
+const NOT_READ_YET: ReadonlySet<string> = new Set(['data-src', 'data-srcset', 'imagesrcset']);
+
+/** Of those, the ones that hold a candidate list, as `srcset` does. */
+const SRCSET_LISTS: ReadonlySet<string> = new Set(['data-srcset', 'imagesrcset']);
+
+/**
+ * A path-shaped value naming an image in an attribute Upfly does not read on its element,
+ * returned declined so the report counts it by attribute, as the JSX reader does: a
+ * tooltip's `title`, an `alt`, a custom attribute, or one Upfly does not read yet
+ * (`NOT_READ_YET`). The resolver discards it; nothing links or rewrites it.
+ */
+function declineAttributeValue(
+  name: string,
+  raw: string,
+  start: number,
+  parserValue: string,
+  context: Context,
+): void {
+  const note = NOT_READ_YET.has(name)
+    ? `HTML attribute ${name}, which a browser or a lazy-loading script may load, and Upfly does not read yet`
+    : `HTML attribute ${name}, which Upfly does not read as a file path on this element`;
+  const values = SRCSET_LISTS.has(name)
+    ? parseSrcset(raw).map((candidate) => ({ text: candidate.url, at: start + candidate.offset }))
+    : [{ text: urlWithin(raw, start).text, at: urlWithin(raw, start).start }];
+  for (const { text, at } of values) {
+    const { path } = splitPathSuffix(text);
+    if (path === '' || isExternalUrl(text, 'attr') || !plausiblePathShape(path)) continue;
+    if (!attributeCouldNameAnImage(text, values.length === 1 ? parserValue : text)) continue;
+    context.references.push({
+      file: context.file,
+      start: at,
+      end: at + path.length,
+      rawPath: path,
+      kind: 'attr',
+      shape: 'html.attribute.other',
+      ceiling: 'unsafe',
+      asserted: false,
+      declined: true,
+      note,
+    });
+  }
 }
 
 /**

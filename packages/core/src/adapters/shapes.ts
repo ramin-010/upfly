@@ -201,6 +201,17 @@ export const SHAPES = [
   { id: 'html.svg.image.xlink', label: 'SVG image@xlink:href', emission: 'engine' },
   { id: 'html.svg.feimage', label: 'SVG feImage', emission: 'engine' },
   {
+    id: 'html.attribute.other',
+    label: 'a path in an HTML attribute Upfly does not read',
+    emission: 'declined',
+    why:
+      'A path naming an image in an attribute Upfly does not read on its element: a ' +
+      "tooltip's `title`, an `alt`, a custom attribute, or `data-src` and `imagesrcset`, " +
+      'which a lazy-loading script or the browser may load and Upfly does not read yet. The ' +
+      'HTML reader returns it as a declined value, which the resolver discards and the report ' +
+      "counts under the attribute's name, so the report never says nothing was skipped.",
+  },
+  {
     id: 'html.style.element',
     label: '<style> element carrying CSS',
     emission: 'engine',
