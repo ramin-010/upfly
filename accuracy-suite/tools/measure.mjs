@@ -10,7 +10,7 @@
  *
  * Usage: node tools/measure.mjs [--root DIR] [--key PATH] [--skip-strict]
  * `--skip-strict` is for debugging the harness, and its numbers must not be quoted.
- * It needs `pnpm build`, which `pnpm coverage-tree:measure` runs first.
+ * It needs `pnpm build`, which `pnpm accuracy:measure` runs first.
  */
 
 import { spawnSync } from 'node:child_process';

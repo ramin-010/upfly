@@ -262,7 +262,7 @@ if (baseline.status !== 0) {
 
   let failures = 0;
   for (const testCase of cases) {
-    const root = mkdtempSync(join(tmpdir(), 'coverage-tree-proof-'));
+    const root = mkdtempSync(join(tmpdir(), 'accuracy-suite-proof-'));
     try {
       for (const dir of ['tree', 'key', 'tools']) {
         cpSync(join(here, dir), join(root, dir), { recursive: true });

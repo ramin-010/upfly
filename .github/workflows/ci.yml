@@ -48,7 +48,7 @@ jobs:
       - name: Test
         run: pnpm test
 
-  coverage-tree:
+  accuracy-suite:
     # The answer key and the tree are one instrument: a key that has drifted from the tree
     # still reads green, and the measuring harness refuses to run until they agree. `check`
     # says they agree; `prove` then damages them eighteen ways and confirms the check fails
@@ -58,8 +58,8 @@ jobs:
     # because `.gitattributes` pins `eol=lf`. The Windows cell is where a CRLF checkout would
     # show; the other four would re-read the same bytes.
     #
-    # `coverage-tree:measure` is not run here: it needs `pnpm build`, and these two do not.
-    name: coverage tree self-check / ${{ matrix.os }}
+    # `accuracy:measure` is not run here: it needs `pnpm build`, and these two do not.
+    name: accuracy suite self-check / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -76,10 +76,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Key and tree agree
-        run: pnpm coverage-tree:check
+        run: pnpm accuracy:check
 
       - name: And the check can still fail
-        run: pnpm coverage-tree:prove
+        run: pnpm accuracy:prove
 
   coverage:
     name: coverage gate (core >= 90%)
