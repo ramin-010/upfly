@@ -287,8 +287,8 @@ that declares `formatKept` in `SHAPES` is one `optimize` never repoints at a con
 link preview's image in `<meta content>` and an image in `<a href>`, in HTML and in JSX. The
 reference is linked, so its asset is never reported dead; the planner declines to move it and says
 why, and under `replace` the original it names is kept. This is not one of `rewriteRefusal`'s
-tests, which `relocate.ts` repeats, because a move keeps the format: `upfly move` still repoints
-such a reference to the file's new place.
+tests, which `relocate.ts` repeats, because a move keeps the format: `planRelocation` still
+repoints such a reference to the file's new place.
 
 ### Serving roots
 

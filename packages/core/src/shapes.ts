@@ -83,7 +83,8 @@ export interface ShapeDeclaration {
    * Why `optimize` never repoints a reference of this shape at a converted file, as a
    * sentence the plan prints; absent when nothing about the shape stops it. The reference
    * still links its asset, so the asset is never reported dead, and `--replace` keeps the
-   * original the reference names. A move keeps the format, so `upfly move` still repoints it.
+   * original the reference names. A move keeps the format, so `planRelocation` still repoints
+   * it.
    */
   readonly formatKept?: string;
 }

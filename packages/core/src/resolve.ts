@@ -140,10 +140,10 @@ interface ResolveContext {
 /**
  * The resolution ladder, whose order is load-bearing. A declined value is settled before
  * anything is looked up. The ceiling tests come next because without a static path no later
- * question means anything, and the extension filter comes straight after them. Above them it would drop `url($hero)` and `` `/img/${file}` ``, which
- * have no extension to test; below the rungs that turn a miss into a finding it would let
- * every `url(inter.woff2)` be reported. See "The resolver's seven outcomes" in
- * ARCHITECTURE.md.
+ * question means anything, and the extension filter comes straight after them. Above them
+ * it would drop `url($hero)` and `` `/img/${file}` ``, which have no extension to test; below
+ * the rungs that turn a miss into a finding it would let every `url(inter.woff2)` be
+ * reported. See "The resolver's seven outcomes" in ARCHITECTURE.md.
  */
 function resolveOne(raw: RawReference, context: ResolveContext): Reference | null {
   const { index, root, publicDirs } = context;

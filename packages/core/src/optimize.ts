@@ -274,11 +274,7 @@ function patternTargetAssets(graph: Graph): readonly Asset[] {
 
 /**
  * Every asset a pattern reference could match, for a caller that measures them whatever the
- * encode cap says. The pipeline does not: a pattern is never rewritten, so no plan waits on
- * them, and the cap is kept to the largest images alike.
- *
- * Exported because the caller runs the probe. `optimize` takes no measurements of its own,
- * so the saving it writes comes from the same numbers as the saving the audit reported.
+ * encode cap says.
  */
 export function alwaysMeasureFor(graph: Graph): readonly Asset[] {
   return patternTargetAssets(graph);

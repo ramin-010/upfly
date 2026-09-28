@@ -58,8 +58,9 @@ export interface AliasSkip {
 }
 
 /**
- * A skip while the configs are read. `config` is set when the folders are those of every
- * config whose chain reads that file, known only once every chain is.
+ * A skip recorded while the configs are read. When a tsconfig or jsconfig file itself could
+ * not be read, `config` is its path, and `scopes` gains the folder of every config whose
+ * `extends` chain reaches it, which is known only once every chain has been followed.
  */
 interface PendingSkip {
   readonly what: string;
@@ -180,8 +181,8 @@ export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): r
 
     if (rule.wildcard) {
       if (!rawPath.startsWith(rule.prefix)) continue;
-      // Leading separators are stripped before joining. A Vite prefix has no trailing
-      // slash (`'@': './src'`), so the rest of `@/x.png` is `/x.png`, which
+      // Leading separators are stripped before joining. Under a key with no trailing slash,
+      // such as `"@*"`, the rest of `@/x.png` is `/x.png`, which
       // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
       const rest = rawPath.slice(rule.prefix.length).replace(/^[/\\]+/, '');
       for (const target of rule.targets) out.push(toPosix(resolvePath(target, rest)));

@@ -343,17 +343,17 @@ function skippedSection(report: Report): string[] {
 }
 
 /**
- * The values an adapter declined, one line per reason. A reason names the construct, such as
- * the attribute, so a reader who knows that a prop holds a file path can see which prop.
- */
-/**
  * The hint naming the flag that lists what a count stands for, or nothing when the list is
- * already there. "It" at a count of one, "them" otherwise.
+ * already there.
  */
 function listHint(flag: string, list: readonly unknown[] | null, n: number): string {
   return list === null ? ` (use ${flag} to list ${n === 1 ? 'it' : 'them'})` : '';
 }
 
+/**
+ * The values an adapter declined, one line per reason. A reason names the construct, such as
+ * the attribute, so a reader who knows that a prop holds a file path can see which prop.
+ */
 function declinedValueLines(report: Report): string[] {
   const { count: total, byReason, values } = report.references.declinedValues;
   if (total === 0) return [];

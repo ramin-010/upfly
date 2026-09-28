@@ -325,10 +325,6 @@ function nameSite(
   };
 }
 
-/**
- * The patterns an adapter declined. The resolver never globs one, so, like a pattern a run
- * had no serving root to glob, what it names is unknown rather than absent.
- */
 /** The openers of the hole syntaxes the resolver never globs, such as Liquid's `{{`. */
 const UNGLOBBED_OPENERS: readonly string[] = TEMPLATE_HOLES.filter((hole) => !hole.globbed).map(
   (hole) => hole.opener,
@@ -362,6 +358,10 @@ function asGlobbedHoles(path: string): string {
   return path.replace(ANY_HOLE, '#{x}');
 }
 
+/**
+ * The patterns an adapter declined. The resolver never globs one, so, like a pattern a run
+ * had no serving root to glob, what it names is unknown rather than absent.
+ */
 function declinedPatterns(graph: Graph): readonly Reference[] {
   return graph.byResolution.discarded.filter(
     (reference) =>
