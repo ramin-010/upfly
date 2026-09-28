@@ -10,6 +10,7 @@
  * cannot be told apart from a decision nobody made.
  */
 
+import { isAbsolute, join } from 'node:path';
 import type { AliasMap } from './aliases.js';
 import type { AssetNode, Graph } from './graph.js';
 import type { Declined } from './manifest.js';
@@ -106,6 +107,13 @@ export interface PlanInput {
    * for `resolveReferences`, and a rewrite that only an alias could resolve is declined.
    */
   readonly aliases?: AliasMap;
+  /**
+   * The names in a directory, or `[]` when it cannot be listed. With it, the check on where
+   * references lead also counts files the walk did not index, such as images an ignore rule
+   * excluded, by listing the directories on the way to each place a path could lead. No file
+   * is read. Absent, only the walk's images are counted.
+   */
+  readonly listDirectory?: (absolutePath: string) => readonly string[];
   readonly rootLinkPolicy?: RootLinkPolicy;
 }
 
@@ -291,20 +299,22 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   // Where a reference leads depends on every file the plan writes and removes, so it is
   // checked on a whole plan. Withdrawing a conversion changes those files and drops its
   // rewrites, so the plan is made again without it until the check withdraws nothing.
+  const onDisk = unindexedFiles(input);
   const before = leadsTo(
     input,
     input.graph.references.filter(isLinked),
     input.graph.assets.map((node) => node.asset),
+    onDisk,
   );
   let repointed = repoint(input, converting, relativeOf);
-  let misdirected = misdirectedConversions(input, repointed, before);
+  let misdirected = misdirectedConversions(input, repointed, before, onDisk);
   while (misdirected.size > 0) {
     for (const [asset, reason] of misdirected) {
       converting.delete(asset);
       declined.push({ path: asset, line: null, reason });
     }
     repointed = repoint(input, converting, relativeOf);
-    misdirected = misdirectedConversions(input, repointed, before);
+    misdirected = misdirectedConversions(input, repointed, before, onDisk);
   }
   declined.push(...repointed.declined);
 
@@ -390,13 +400,19 @@ function misdirectedConversions(
   input: PlanInput,
   repointed: Repointed,
   before: Destinations,
+  onDisk: UnindexedFiles | undefined,
 ): Map<string, string> {
   const linked = input.graph.references.filter(isLinked);
   const asLeft = (reference: Reference): RawReference => {
     const repointing = repointed.rewritten.get(reference);
     return repointing === undefined ? reference : { ...reference, rawPath: repointing.replacement };
   };
-  const after = leadsTo(input, linked.map(asLeft), assetsAfter(input.graph, repointed.conversions));
+  const after = leadsTo(
+    input,
+    linked.map(asLeft),
+    assetsAfter(input.graph, repointed.conversions),
+    onDisk,
+  );
   const writing = new Map(
     repointed.conversions.map((conversion) => [conversion.target, conversion]),
   );
@@ -466,19 +482,22 @@ function placeOf(reference: RawReference): string {
 }
 
 /**
- * Where each of these references leads among `files`: the one file a literal reaches, or
- * every file a pattern matches.
+ * Where each of these references leads among `files`, and among the files on disk the walk
+ * did not index when `onDisk` can find them: the one file a literal reaches, or every file a
+ * pattern matches.
  */
 function leadsTo(
   input: PlanInput,
   references: readonly RawReference[],
   files: readonly Asset[],
+  onDisk: UnindexedFiles | undefined,
 ): Destinations {
   const answers = resolveReferences(references, {
     root: input.graph.root,
     assets: files,
     servingRoots: input.servingRoots,
     ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
+    ...(onDisk === undefined ? {} : { unindexed: onDisk }),
     // The question is where a path leads among these files, which the disk as it stands
     // cannot answer.
     exists: () => false,
@@ -491,6 +510,42 @@ function leadsTo(
       linkedPaths(answer).map((path) => relativePath(input.graph.root, path)),
     ]),
   );
+}
+
+/** The file at a path that exists on disk but is not one of the walk's images, or null. */
+type UnindexedFiles = (absolutePath: string) => string | null;
+
+/**
+ * The files inside the project that the walk did not index, such as those an ignore rule
+ * excluded, found by listing each directory on the way to a path rather than by reading any
+ * file. Undefined when the caller gave no way to list a directory. A walk image is never
+ * answered here: the plan's own list says whether it is still there.
+ */
+function unindexedFiles(input: PlanInput): UnindexedFiles | undefined {
+  const list = input.listDirectory;
+  if (list === undefined) return undefined;
+
+  const { root } = input.graph;
+  const indexed = new Set(input.graph.assets.map((node) => node.asset.relative));
+  // Many paths share their directories, so each is listed once.
+  const listings = new Map<string, readonly string[]>();
+  const names = (directory: string): readonly string[] => {
+    const known = listings.get(directory) ?? list(directory);
+    listings.set(directory, known);
+    return known;
+  };
+
+  return (path) => {
+    const relative = relativePath(root, path);
+    const outside = relative === '..' || relative.startsWith('../') || isAbsolute(relative);
+    if (relative === '' || outside || indexed.has(relative)) return null;
+    let directory = root;
+    for (const segment of relative.split('/')) {
+      if (!names(directory).includes(segment)) return null;
+      directory = join(directory, segment);
+    }
+    return directory;
+  };
 }
 
 /**

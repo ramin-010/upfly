@@ -4,6 +4,7 @@
  * this, so what those builds prove is what users run.
  */
 
+import { readdirSync } from 'node:fs';
 import { listExcludedFiles } from './discover.js';
 import { createNodeFileStore } from './file-store-node.js';
 import {
@@ -102,6 +103,7 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
       .concat(excluded.unread),
     servingRoots: pipeline.servingRoots,
     aliases: pipeline.aliases,
+    listDirectory,
     format: input.format,
     publicPolicy: input.publicPolicy,
     apply: input.apply,
@@ -112,4 +114,17 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.beforeWrite === undefined ? {} : { beforeWrite: input.beforeWrite }),
   });
   return { pipeline, optimize: result };
+}
+
+/**
+ * The names in a directory, for the plan's count of the files an ignore rule kept out of the
+ * walk. Only names are read, never a file. A directory that cannot be listed, most often one
+ * that does not exist, holds nothing the plan can count.
+ */
+function listDirectory(path: string): readonly string[] {
+  try {
+    return readdirSync(path);
+  } catch {
+    return [];
+  }
 }

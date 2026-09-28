@@ -602,10 +602,69 @@ describe('a reference whose converted name reaches another file first', () => {
     },
   );
 
+  const TWO_ROOTS = { dirs: ['public', 'apps/web/public'], declared: true };
+
+  describe('a file the run excluded', () => {
+    // An ignore rule keeps a file out of the walk, not off the disk, so a page can still load
+    // it. A rewritten path that reaches it first would show that picture.
+    const page = [
+      'export const App = () => (',
+      '  <>',
+      '    <img src="/img/logo.png" alt="" />',
+      '    <img src="/img/texture.png" alt="" />',
+      '  </>',
+      ');',
+      '',
+    ].join('\n');
+
+    it.each([
+      ['named in .upflyignore', { '.upflyignore': 'apps/web/public/img/logo.webp\n' }, []],
+      ['in a folder an exclude names', {}, ['apps/web/public/img/']],
+    ] as const)(
+      'keeps the page and the original when a nearer file %s already has the new name',
+      async (_how, texts, extraIgnores) => {
+        const root = await project({ 'apps/web/src/App.tsx': page, ...texts });
+        await picture(root, 'public/img/logo.png');
+        await picture(root, 'public/img/texture.png', 'texture.png');
+        await anotherPicture(root, 'apps/web/public/img/logo.webp');
+        const other = await readFile(join(root, 'apps/web/public/img/logo.webp'));
+
+        const { pipeline, optimize } = await optimizeProject({
+          root,
+          declared: TWO_ROOTS,
+          format: 'webp',
+          publicPolicy: 'replace',
+          apply: true,
+          extraIgnores,
+        });
+
+        expect(pipeline.graph.assets.map((node) => node.asset.relative)).toEqual([
+          'public/img/logo.png',
+          'public/img/texture.png',
+        ]);
+        const after = await files(root);
+        expect({
+          page: await readFile(join(root, 'apps/web/src/App.tsx'), 'utf8'),
+          logo: after.filter((path) => path.startsWith('public/img/logo.')),
+          texture: after.filter((path) => path.startsWith('public/img/texture.')),
+        }).toEqual({
+          page: page.replace('/img/texture.png', '/img/texture.webp'),
+          logo: ['public/img/logo.png'],
+          texture: ['public/img/texture.webp'],
+        });
+        expect(await readFile(join(root, 'apps/web/public/img/logo.webp'))).toEqual(other);
+        expect(optimize.plan.declined).toContainEqual({
+          path: 'public/img/logo.png',
+          line: null,
+          reason: expect.stringContaining('reaches apps/web/public/img/logo.webp first'),
+        });
+      },
+    );
+  });
+
   describe('a reference the plan leaves as written', () => {
     // A converted file is new, so a page that goes on naming another image can find it
     // first: in a nearer website folder, or where an alias looks first.
-    const TWO_ROOTS = { dirs: ['public', 'apps/web/public'], declared: true };
 
     /** The project-relative asset the reference with this text in `file` links, or null. */
     function linkedFrom(pipeline: PipelineOutput, file: string, rawPath: string): string | null {

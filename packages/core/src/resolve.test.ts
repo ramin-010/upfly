@@ -1136,6 +1136,43 @@ describe('serving roots carry where they came from', () => {
   });
 });
 
+describe('files outside the assets, for a caller that can find them', () => {
+  // The planner asks where a path would lead among every file on disk. A file the walk did
+  // not index is found where the index misses, in the order the resolver looks.
+  const roots = { dirs: ['public', 'apps/web/public'], declared: true };
+  const page = { file: join(ROOT, 'apps/web/src/App.jsx'), kind: 'attr' } as const;
+  const nearer = join(ROOT, 'apps/web/public/logo.png');
+
+  it('finds one in a nearer serving root before an asset further away', () => {
+    const [reference] = resolveReferences([raw({ rawPath: '/logo.png', ...page })], {
+      root: ROOT,
+      assets: [asset('public/logo.png')],
+      servingRoots: roots,
+      exists: NOTHING_EXISTS,
+      unindexed: (path) => (path === toPosix(nearer) ? nearer : null),
+    });
+
+    expect(expectResolution(reference, 'resolved').resolvedPath).toBe(nearer);
+  });
+
+  it('is asked only where the index misses, so an asset in the same place wins', () => {
+    const asked: string[] = [];
+    const [reference] = resolveReferences([raw({ rawPath: '/logo.png', ...page })], {
+      root: ROOT,
+      assets: [asset('apps/web/public/logo.png')],
+      servingRoots: roots,
+      exists: NOTHING_EXISTS,
+      unindexed: (path) => {
+        asked.push(path);
+        return path;
+      },
+    });
+
+    expect(expectResolution(reference, 'resolved').resolvedPath).toBe(nearer);
+    expect(asked).toEqual([]);
+  });
+});
+
 /**
  * A `medium` ceiling on a SCSS or Less path helps only if the glob treats `#{…}` and
  * `@{…}` as holes, as it does `${…}`. Otherwise the path is matched literally, finds

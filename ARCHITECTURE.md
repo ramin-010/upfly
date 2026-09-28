@@ -221,6 +221,12 @@ it is consulted only for references that did not resolve, once per candidate pat
 spelling (see "Percent-encoded and entity-encoded paths"). It is a required option rather than
 an optional one, because a default would let a call site keep the false `broken` silently.
 
+A second port, `unindexed`, is optional and the pipeline never passes it, so the audit resolves
+against the walk alone. It answers for a file that exists but is not an asset, and the resolver
+asks it wherever the index misses, in the order it looks, so the file a path reaches first is
+found wherever it lies. The planner passes it when it checks where references would lead once a
+plan is applied (see "The transaction"). A pattern is still matched against the assets only.
+
 ### Ask `isLinked`, never `resolution === 'resolved'`
 
 Two of the seven outcomes are linked into the graph, so:
@@ -1701,9 +1707,16 @@ lose one. A conversion that breaks this is withdrawn: one of whose rewrites woul
 else, with a decline naming the file that rewrite would reach, or whose new file a reference left
 as written would reach first, with a decline naming that reference and the file it reaches now.
 Under `replace` its original stays. Withdrawing a conversion changes those files and drops its
-rewrites, so the plan is made again without it until the check withdraws nothing. The check sees
-what the resolver sees: a file the walk excluded is not among the assets, and a name that differs
-only in case is another name.
+rewrites, so the plan is made again without it until the check withdraws nothing.
+
+The check counts every file that exists, not only the walk's images: an ignore rule limits what a
+run changes, not what a browser loads, so a nearer `logo.webp` named in `.upflyignore` or inside a
+folder `--exclude` names still takes the page. `optimize` gives the planner a way to list a
+directory, and a file the walk did not index is found by listing each directory on the way to a
+place a path could lead, inside the project only. Only names are read, never a file, and the disk
+is only read. The resolver's optional `unindexed` port asks for it wherever its index misses, in
+the order it looks, and both sides of the comparison are read that way. A name that differs only
+in case is still another name to the check.
 
 The old-path text search (see "Moving an asset") then guards the references the graph never found,
 for a path written down literally. **The bound that remains:** a path assembled at runtime that the

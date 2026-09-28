@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AliasMap } from './aliases.js';
 import { buildGraph } from './graph.js';
@@ -94,6 +94,7 @@ function input(
     hedged: over.hedged ?? new Set(),
     servingRoots: over.servingRoots ?? { dirs: over.served ?? ['public'], declared: false },
     ...(over.aliases === undefined ? {} : { aliases: over.aliases }),
+    ...(over.listDirectory === undefined ? {} : { listDirectory: over.listDirectory }),
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
   };
 }
@@ -1482,6 +1483,42 @@ describe('an asset whose converted name a reference would find elsewhere first',
     expect(plan.keptOriginals).toEqual([]);
     expect(plan.declined.map((entry) => entry.reason)).toEqual([
       expect.stringContaining('which reaches apps/web/public/img/logo.webp first'),
+    ]);
+  });
+
+  it('declines it when a file the walk excluded holds the new name nearer, found by listing its folders', () => {
+    const listings = new Map([
+      [ROOT, ['apps', 'public']],
+      [join(ROOT, 'apps'), ['web']],
+      [join(ROOT, 'apps/web'), ['public', 'src']],
+      [join(ROOT, 'apps/web/public'), ['img']],
+      [join(ROOT, 'apps/web/public/img'), ['logo.webp']],
+      [join(ROOT, 'public'), ['img']],
+      [join(ROOT, 'public/img'), ['logo.png', 'texture.png']],
+    ]);
+    const plan = planOptimization(
+      input({
+        assets: [asset('public/img/logo.png'), asset('public/img/texture.png')],
+        references: [
+          url(PAGE, '/img/logo.png', 'public/img/logo.png'),
+          url(PAGE, '/img/texture.png', 'public/img/texture.png', 100),
+        ],
+        servingRoots: TWO_ROOTS,
+        publicPolicy: 'replace',
+        listDirectory: (path) => listings.get(path) ?? [],
+      }),
+    );
+
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['public/img/texture.png', true],
+    ]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'public/img/logo.png',
+        line: null,
+        reason:
+          '`/img/logo.png` in `apps/web/src/App.tsx` would become `/img/logo.webp`, which reaches apps/web/public/img/logo.webp first, so the reference would load that file instead. Rename one of the two images and run again.',
+      },
     ]);
   });
 

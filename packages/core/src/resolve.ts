@@ -80,6 +80,14 @@ export interface ResolveOptions {
    * keep that false `broken` silently.
    */
   readonly exists: (absolutePath: string) => boolean;
+  /**
+   * The file at a path that exists but is not among `assets`, or null. A caller asking where
+   * a path would lead among every file on disk, rather than among the indexed ones, passes
+   * it. It is asked wherever the index misses, in the order the resolver looks, so a nearer
+   * file the walk excluded is found before an asset further away. A pattern is matched
+   * against `assets` only. Absent, only `assets` are found.
+   */
+  readonly unindexed?: (absolutePath: string) => string | null;
 }
 
 /**
@@ -97,7 +105,7 @@ export function resolveReferences(
   options: ResolveOptions,
 ): Reference[] {
   const context: ResolveContext = {
-    index: new AssetIndex(options.assets),
+    index: new AssetIndex(options.assets, options.unindexed),
     root: options.root,
     publicDirs: options.servingRoots.dirs,
     excludedRoots: options.excludedRoots ?? [],
@@ -468,15 +476,18 @@ const HOLE = String.fromCharCode(0xe000);
 class AssetIndex {
   private readonly byPath: ReadonlyMap<string, string>;
   private readonly ordered: readonly string[];
+  private readonly unindexed: (path: string) => string | null;
 
-  constructor(assets: readonly Asset[]) {
+  /** @param unindexed see `ResolveOptions.unindexed` */
+  constructor(assets: readonly Asset[], unindexed?: (path: string) => string | null) {
     const byPath = new Map<string, string>();
     for (const asset of assets) byPath.set(toPosix(asset.path), asset.path);
     this.byPath = byPath;
     this.ordered = [...byPath.keys()].sort(compareStrings);
+    this.unindexed = unindexed ?? (() => null);
   }
 
-  /** The asset a literal path names, or `null`. */
+  /** The file a literal path names, or `null`. */
   lookup(
     path: string,
     raw: RawReference,
@@ -484,18 +495,19 @@ class AssetIndex {
     publicDirs: readonly string[],
   ): Candidate | null {
     for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
-      const match = this.byPath.get(candidate.path);
-      if (match !== undefined) return { path: match, via: candidate.via };
+      const match = this.lookupExact(candidate.path);
+      if (match !== null) return { path: match, via: candidate.via };
     }
     return null;
   }
 
   /**
-   * The asset at an already-absolute POSIX path, or `null`. An expanded alias is already
-   * complete, its base taken from the config, so it skips the candidates `lookup` builds.
+   * The asset, or else the unindexed file, at an already-absolute POSIX path, or `null`. An
+   * expanded alias is already complete, its base taken from the config, so it skips the
+   * candidates `lookup` builds.
    */
   lookupExact(path: string): string | null {
-    return this.byPath.get(path) ?? null;
+    return this.byPath.get(path) ?? this.unindexed(path);
   }
 
   /**

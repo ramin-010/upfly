@@ -86,6 +86,11 @@ export interface OptimizeInput {
   readonly servingRoots: ServingRoots;
   /** The aliases the resolver used. See `PlanInput.aliases`. */
   readonly aliases?: AliasMap;
+  /**
+   * Lists a directory, so the plan counts the files the walk did not index. See
+   * `PlanInput.listDirectory`.
+   */
+  readonly listDirectory?: (absolutePath: string) => readonly string[];
   readonly format: EncodeFormat;
   readonly publicPolicy: PublicPolicy;
   readonly rootLinkPolicy?: RootLinkPolicy;
@@ -291,6 +296,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
       hedged: hedgedAssets(input.audit),
       servingRoots: input.servingRoots,
       ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
+      ...(input.listDirectory === undefined ? {} : { listDirectory: input.listDirectory }),
       ...(blocked === undefined
         ? {}
         : {
