@@ -101,6 +101,7 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
       .map((entry) => ({ file: entry.relative, reason: entry.detail }))
       .concat(excluded.unread),
     servingRoots: pipeline.servingRoots,
+    aliases: pipeline.aliases,
     format: input.format,
     publicPolicy: input.publicPolicy,
     apply: input.apply,

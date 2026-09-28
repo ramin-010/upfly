@@ -1,12 +1,16 @@
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import type { AliasMap } from './aliases.js';
 import { buildGraph } from './graph.js';
-import { compareStrings } from './paths.js';
+import { compareStrings, toPosix } from './paths.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
 import type { AssetProbe } from './probe.js';
 import { SHAPES, whyFormatKept } from './shapes.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
-const ROOT = '/repo';
+// Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
+// Windows `path.resolve` gives a bare '/repo' the current drive, which no asset here would have.
+const ROOT = resolve('/repo');
 
 function asset(relative: string, bytes = 10_000): Asset {
   return {
@@ -89,6 +93,7 @@ function input(
     publicPolicy: over.publicPolicy ?? 'keep-original',
     hedged: over.hedged ?? new Set(),
     servingRoots: over.servingRoots ?? { dirs: over.served ?? ['public'], declared: false },
+    ...(over.aliases === undefined ? {} : { aliases: over.aliases }),
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
   };
 }
@@ -1306,6 +1311,177 @@ describe('an asset whose converted name is already taken', () => {
     expect(plan.declined.map((d) => d.reason)).toEqual([
       'img/possum.png would also convert to img/possum.webp, and img/possum.webp already exists, so converting it would replace a file rather than add one. Rename one of them and run again.',
       'img/possum.jpg would also convert to img/possum.webp, and img/possum.webp already exists, so converting it would replace a file rather than add one. Rename one of them and run again.',
+    ]);
+  });
+});
+
+describe('an asset whose converted name a reference would find elsewhere first', () => {
+  // A rewrite changes only the extension, and the new path is resolved again against the
+  // files the plan leaves. A nearer serving root, or an alias tried before the one that
+  // linked the original, can hold another file of the new name.
+  const TWO_ROOTS = { dirs: ['public', 'apps/web/public'], declared: true };
+  const PAGE = 'apps/web/src/App.tsx';
+  const scope = toPosix(ROOT);
+  const IMPORT: Partial<Reference> = {
+    kind: 'import',
+    shape: 'js.import.static',
+    ceiling: 'certain',
+    confidence: 'certain',
+    resolvedVia: 'serving-root',
+  };
+
+  /** A root-relative reference in `file`, starting at `start`. */
+  function url(file: string, rawPath: string, target: string, start = 10): Reference {
+    return resolved(file, rawPath, target, {
+      resolvedVia: 'serving-root',
+      start,
+      end: start + rawPath.length,
+    });
+  }
+
+  it('declines it, naming the file a nearer serving root holds, while the image beside it converts', () => {
+    const plan = planOptimization(
+      input({
+        assets: [
+          asset('apps/web/public/img/logo.webp'),
+          asset('public/img/logo.png'),
+          asset('public/img/texture.png'),
+        ],
+        references: [
+          url(PAGE, '/img/logo.png', 'public/img/logo.png'),
+          url(PAGE, '/img/texture.png', 'public/img/texture.png', 100),
+        ],
+        servingRoots: TWO_ROOTS,
+        publicPolicy: 'replace',
+      }),
+    );
+
+    // Not converted, so its original stays whatever the policy.
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['public/img/texture.png', true],
+    ]);
+    expect(
+      plan.rewrites.flatMap((rewrite) => rewrite.edits.map((edit) => edit.replacement)),
+    ).toEqual(['/img/texture.webp']);
+    expect(plan.keptOriginals).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'public/img/logo.png',
+        line: null,
+        reason:
+          '`/img/logo.png` in `apps/web/src/App.tsx` would become `/img/logo.webp`, which reaches apps/web/public/img/logo.webp first, so the reference would load that file instead. Rename one of the two images and run again.',
+      },
+    ]);
+  });
+
+  it('declines it when a longer alias key maps the new name to another file', () => {
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@/img/',
+          targets: [`${scope}/assets/img`],
+          wildcard: true,
+          scope,
+          source: 'tsconfig.json',
+        },
+        { prefix: '@/', targets: [`${scope}/src`], wildcard: true, scope, source: 'tsconfig.json' },
+      ],
+      skipped: [],
+    };
+    const plan = planOptimization(
+      input({
+        assets: [asset('assets/img/hero.webp'), asset('src/img/hero.png')],
+        references: [resolved('src/App.tsx', '@/img/hero.png', 'src/img/hero.png', IMPORT)],
+        aliases,
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.rewrites).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'src/img/hero.png',
+        line: null,
+        reason:
+          '`@/img/hero.png` in `src/App.tsx` would become `@/img/hero.webp`, which reaches assets/img/hero.webp first, so the reference would load that file instead. Rename one of the two images and run again.',
+      },
+    ]);
+  });
+
+  it('declines it when the new name reaches no file, as through an alias whose key is the old name', () => {
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: 'brand-logo.png',
+          targets: [`${scope}/src/img/logo.png`],
+          wildcard: false,
+          scope,
+          source: 'tsconfig.json',
+        },
+      ],
+      skipped: [],
+    };
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/img/logo.png')],
+        references: [resolved('src/App.tsx', 'brand-logo.png', 'src/img/logo.png', IMPORT)],
+        aliases,
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined).toEqual([
+      {
+        path: 'src/img/logo.png',
+        line: null,
+        reason:
+          '`brand-logo.png` in `src/App.tsx` would become `brand-logo.webp`, which names no file Upfly can find, so repointing the reference would break it.',
+      },
+    ]);
+  });
+
+  it('names the first reference that would miss and counts the rest', () => {
+    const plan = planOptimization(
+      input({
+        assets: [asset('apps/web/public/img/logo.webp'), asset('public/img/logo.png')],
+        references: [
+          url(PAGE, '/img/logo.png', 'public/img/logo.png'),
+          url('apps/web/src/Nav.tsx', '/img/logo.png', 'public/img/logo.png'),
+        ],
+        servingRoots: TWO_ROOTS,
+      }),
+    );
+
+    expect(plan.declined.map((entry) => entry.reason)).toEqual([
+      expect.stringMatching(
+        /^`\/img\/logo\.png` in `apps\/web\/src\/App\.tsx` \(and 1 more\) would become /,
+      ),
+    ]);
+  });
+
+  it('plans again without the conversion, so no other sentence says it converted', () => {
+    // A link preview naming the image is refused on its own account, in a sentence saying the
+    // image converted without it, which is true only while the conversion stands.
+    const preview = resolved(PAGE, '/img/logo.png', 'public/img/logo.png', {
+      shape: 'html.meta.content.image',
+      resolvedVia: 'serving-root',
+      start: 100,
+      end: 113,
+    });
+    const plan = planOptimization(
+      input({
+        assets: [asset('apps/web/public/img/logo.webp'), asset('public/img/logo.png')],
+        references: [url(PAGE, '/img/logo.png', 'public/img/logo.png'), preview],
+        servingRoots: TWO_ROOTS,
+        publicPolicy: 'replace',
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.rewrites).toEqual([]);
+    expect(plan.keptOriginals).toEqual([]);
+    expect(plan.declined.map((entry) => entry.reason)).toEqual([
+      expect.stringContaining('which reaches apps/web/public/img/logo.webp first'),
     ]);
   });
 });

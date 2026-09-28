@@ -8,6 +8,7 @@
  * planner, so that each rule has one implementation.
  */
 
+import type { AliasMap } from './aliases.js';
 import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
 import { UpflyError } from './errors.js';
@@ -83,6 +84,8 @@ export interface OptimizeInput {
    */
   readonly excludedFiles?: readonly string[];
   readonly servingRoots: ServingRoots;
+  /** The aliases the resolver used. See `PlanInput.aliases`. */
+  readonly aliases?: AliasMap;
   readonly format: EncodeFormat;
   readonly publicPolicy: PublicPolicy;
   readonly rootLinkPolicy?: RootLinkPolicy;
@@ -287,6 +290,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
       publicPolicy: input.publicPolicy,
       hedged: hedgedAssets(input.audit),
       servingRoots: input.servingRoots,
+      ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
       ...(blocked === undefined
         ? {}
         : {

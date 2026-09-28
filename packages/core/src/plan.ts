@@ -10,15 +10,16 @@
  * cannot be told apart from a decision nobody made.
  */
 
+import type { AliasMap } from './aliases.js';
 import type { AssetNode, Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
-import type { ServingRoots } from './resolve.js';
+import { type ServingRoots, resolveReferences } from './resolve.js';
 import { whyFormatKept } from './shapes.js';
-import type { Edit, Reference } from './types.js';
+import type { Asset, Edit, Reference } from './types.js';
 
 /** What happens to the original when a public asset is converted. */
 export type PublicPolicy =
@@ -99,6 +100,12 @@ export interface PlanInput {
    * served: an asset under any of these directories is.
    */
   readonly servingRoots: ServingRoots;
+  /**
+   * The aliases the resolver used. Each rewritten path is resolved again under them, so an
+   * import is checked against the rules that linked it. Absent means none were loaded, as
+   * for `resolveReferences`, and a rewrite that only an alias could resolve is declined.
+   */
+  readonly aliases?: AliasMap;
   readonly rootLinkPolicy?: RootLinkPolicy;
 }
 
@@ -281,32 +288,24 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   // pattern's decline would count the wrong targets as not converting.
   for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
 
-  declinePartialPatterns(input, converting, relativeOf, declined);
-
-  const edits = new Map<string, EditsInFile>();
-  const rewritten = new Set<Reference>();
-  for (const reference of input.graph.references) {
-    const moved = collectRewrite(reference, {
-      input,
-      root: input.graph.root,
-      converting,
-      relativeOf,
-      edits,
-      declined,
-    });
-    if (moved) rewritten.add(reference);
+  // Where a rewritten path leads depends on every file the plan writes and removes, so it
+  // is checked on a whole plan. Withdrawing a conversion changes those files and drops its
+  // rewrites, so the plan is made again without it until the check withdraws nothing.
+  let repointed = repoint(input, converting, relativeOf);
+  let misdirected = misdirectedConversions(input, repointed);
+  while (misdirected.size > 0) {
+    for (const [asset, reason] of misdirected) {
+      converting.delete(asset);
+      declined.push({ path: asset, line: null, reason });
+    }
+    repointed = repoint(input, converting, relativeOf);
+    misdirected = misdirectedConversions(input, repointed);
   }
-
-  // Last, because whether an original may go depends on which references this plan
-  // rewrites, and that is known only once every reference has been decided.
-  const stillNeeded = originalsStillNeeded(input, converting, rewritten);
-  const conversions = [...converting.values()].map((conversion) =>
-    stillNeeded.has(conversion.asset) ? { ...conversion, replacesOriginal: false } : conversion,
-  );
+  declined.push(...repointed.declined);
 
   return {
-    conversions: conversions.sort((a, b) => compareStrings(a.asset, b.asset)),
-    rewrites: [...edits.entries()]
+    conversions: [...repointed.conversions].sort((a, b) => compareStrings(a.asset, b.asset)),
+    rewrites: [...repointed.edits.entries()]
       .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
       .sort((a, b) => compareStrings(a.file, b.file)),
     declined: declined.sort(
@@ -315,9 +314,141 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     // Derived from the surviving conversions rather than collected as decisions were
     // made, so an asset `vetoCollisions` withdrew cannot claim a kept original for a file
     // that never converted.
-    keptOriginals: keptOriginals(conversions, stillNeeded, input),
+    keptOriginals: keptOriginals(repointed.conversions, repointed.stillNeeded, input),
     refusal: null,
   };
+}
+
+/** A reference a plan repoints: the text it is given, and the conversion it follows. */
+interface Repointing {
+  readonly replacement: string;
+  readonly conversion: PlannedConversion;
+}
+
+/** What a plan does with the references, for one set of conversions. */
+interface Repointed {
+  /** The conversions, each saying whether its original is removed. */
+  readonly conversions: readonly PlannedConversion[];
+  readonly edits: ReadonlyMap<string, EditsInFile>;
+  /** Every reference an edit moves, in the graph's order. */
+  readonly rewritten: ReadonlyMap<Reference, Repointing>;
+  /** The originals `replace` keeps because a reference still needs them, and why. */
+  readonly stillNeeded: ReadonlyMap<string, string>;
+  /** What these conversions leave as written, and why. */
+  readonly declined: readonly Declined[];
+}
+
+/** Decide every reference against these conversions, then which originals may go. */
+function repoint(
+  input: PlanInput,
+  converting: ReadonlyMap<string, PlannedConversion>,
+  relativeOf: ReadonlyMap<string, string>,
+): Repointed {
+  const declined: Declined[] = [];
+  declinePartialPatterns(input, converting, relativeOf, declined);
+
+  const edits = new Map<string, EditsInFile>();
+  const rewritten = new Map<Reference, Repointing>();
+  for (const reference of input.graph.references) {
+    const repointing = collectRewrite(reference, {
+      input,
+      root: input.graph.root,
+      converting,
+      relativeOf,
+      edits,
+      declined,
+    });
+    if (repointing !== null) rewritten.set(reference, repointing);
+  }
+
+  // Last, because whether an original may go depends on which references this plan
+  // rewrites, and that is known only once every reference has been decided.
+  const stillNeeded = originalsStillNeeded(input, converting, rewritten);
+  const conversions = [...converting.values()].map((conversion) =>
+    stillNeeded.has(conversion.asset) ? { ...conversion, replacesOriginal: false } : conversion,
+  );
+  return { conversions, edits, rewritten, stillNeeded, declined };
+}
+
+/**
+ * The conversions one of whose rewritten paths would reach a file other than the converted
+ * one, each with the sentence saying where it would lead.
+ *
+ * A rewrite changes only the extension, and from the file holding it the new name can reach
+ * a file the old one never did: one of that name in a nearer serving root, or one an alias
+ * rule or target tried earlier maps to. So each new path is resolved as the resolver will
+ * read it once the plan is applied: from its own file, among the files the plan leaves, with
+ * the run's serving roots and aliases. See "The transaction" in ARCHITECTURE.md.
+ */
+function misdirectedConversions(input: PlanInput, repointed: Repointed): Map<string, string> {
+  const misdirected = new Map<string, string>();
+  const moves = [...repointed.rewritten];
+  if (moves.length === 0) return misdirected;
+
+  const answers = resolveReferences(
+    moves.map(([reference, { replacement }]) => ({ ...reference, rawPath: replacement })),
+    {
+      root: input.graph.root,
+      assets: assetsAfter(input.graph, repointed.conversions),
+      servingRoots: input.servingRoots,
+      ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
+      // The question is where the path leads among the files the plan leaves, which the
+      // disk as it stands cannot answer.
+      exists: () => false,
+    },
+  );
+  // A path that names no image is left out of the answers, so each is found by where its
+  // reference sits: a file and an offset, which no two edits of a plan share.
+  const answerAt = new Map(answers.map((answer) => [`${answer.file}\n${answer.start}`, answer]));
+
+  // The first miss for each conversion is named and the rest counted, as the kept-original
+  // sentences do, so the reason stays one sentence and names a line to look at.
+  const misses = new Map<string, { reference: Reference; outcome: string; count: number }>();
+  for (const [reference, { replacement, conversion }] of moves) {
+    const answer = answerAt.get(`${reference.file}\n${reference.start}`);
+    const reached =
+      answer?.resolution === 'resolved'
+        ? relativePath(input.graph.root, answer.resolvedPath)
+        : null;
+    if (reached === conversion.target) continue;
+
+    const miss = misses.get(conversion.asset);
+    if (miss !== undefined) {
+      misses.set(conversion.asset, { ...miss, count: miss.count + 1 });
+      continue;
+    }
+    const outcome =
+      reached === null
+        ? `would become \`${replacement}\`, which names no file Upfly can find, so repointing the reference would break it.`
+        : `would become \`${replacement}\`, which reaches ${reached} first, so the reference would load that file instead. Rename one of the two images and run again.`;
+    misses.set(conversion.asset, { reference, outcome, count: 1 });
+  }
+
+  for (const [asset, { reference, outcome, count }] of misses) {
+    const where = `\`${reference.rawPath}\` in \`${relativePath(input.graph.root, reference.file)}\``;
+    const more = count === 1 ? '' : ` (and ${count - 1} more)`;
+    misdirected.set(asset, `${where}${more} ${outcome}`);
+  }
+  return misdirected;
+}
+
+/**
+ * The assets once a plan is applied: each converted file added, and each original the plan
+ * removes taken away.
+ */
+function assetsAfter(graph: Graph, conversions: readonly PlannedConversion[]): Asset[] {
+  const conversionOf = new Map(conversions.map((conversion) => [conversion.asset, conversion]));
+  return graph.assets.flatMap(({ asset }) => {
+    const conversion = conversionOf.get(asset.relative);
+    if (conversion === undefined) return [asset];
+    const converted: Asset = {
+      ...asset,
+      path: withExtension(asset.path, conversion.format),
+      relative: conversion.target,
+      extension: `.${conversion.format}`,
+    };
+    return conversion.replacesOriginal ? [converted] : [asset, converted];
+  });
 }
 
 interface Saving {
@@ -598,27 +729,28 @@ interface RewriteContext {
 /**
  * Decide whether one reference is repointed, and record why when it is not.
  *
- * Returns whether an edit was recorded. The deletion check needs exactly that: an original
- * may go only once every reference to it has moved, and "moved" means an edit this plan
- * holds, not what kind of reference it is.
+ * Returns the repointing when an edit was recorded, and null otherwise. The deletion check
+ * needs exactly that: an original may go only once every reference to it has moved, and
+ * "moved" means an edit this plan holds, not what kind of reference it is.
  */
-function collectRewrite(reference: Reference, context: RewriteContext): boolean {
-  if (!isLinked(reference)) return false;
+function collectRewrite(reference: Reference, context: RewriteContext): Repointing | null {
+  if (!isLinked(reference)) return null;
 
   const targets = linkedPaths(reference).map(
     (path) => context.relativeOf.get(path) ?? toPosix(path),
   );
-  const converted = targets.filter((target) => context.converting.has(target));
-  if (converted.length === 0) return false;
+  const converted = targets.flatMap((target) => context.converting.get(target) ?? []);
+  const [conversion] = converted;
+  if (conversion === undefined) return null;
 
   const obstacle = obstacleTo(reference, context.input);
   if (obstacle?.kind === 'refused') {
     context.declined.push({
       path: relativePath(context.root, reference.file),
       line: null,
-      reason: `${obstacle.why}, so ${converted.join(', ')} was converted without this reference moving`,
+      reason: `${obstacle.why}, so ${converted.map((each) => each.asset).join(', ')} was converted without this reference moving`,
     });
-    return false;
+    return null;
   }
 
   // A pattern is never rewritten: its text is a template, not a path with a range to
@@ -634,18 +766,15 @@ function collectRewrite(reference: Reference, context: RewriteContext): boolean 
           'a template reference is assembled at runtime, so its text cannot be repointed even though every asset it matches converted',
       });
     }
-    return false;
+    return null;
   }
 
-  if (obstacle !== null) return false;
+  if (obstacle !== null) return null;
 
-  collectEdit(
-    context.edits,
-    relativePath(context.root, reference.file),
-    reference,
-    withExtension(reference.rawPath, context.input.format),
-  );
-  return true;
+  // Past the pattern test the reference is a literal, which links one asset: `conversion`.
+  const replacement = withExtension(reference.rawPath, context.input.format);
+  collectEdit(context.edits, relativePath(context.root, reference.file), reference, replacement);
+  return { replacement, conversion };
 }
 
 /** A reference that links at least one asset: the only kind a plan could move. */
@@ -773,7 +902,7 @@ function rewriteRefusal(reference: LinkedReference, input: PlanInput): string | 
 function originalsStillNeeded(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
-  rewritten: ReadonlySet<Reference>,
+  rewritten: ReadonlyMap<Reference, Repointing>,
 ): ReadonlyMap<string, string> {
   const needed = new Map<string, string>();
   for (const node of input.graph.assets) {
@@ -787,7 +916,7 @@ function originalsStillNeeded(
 /** The sentence for one original `replace` keeps, or null when every reference to it moves. */
 function whyStillNeeded(
   references: readonly Reference[],
-  rewritten: ReadonlySet<Reference>,
+  rewritten: ReadonlyMap<Reference, Repointing>,
   root: string,
 ): string | null {
   // Unreachable while `unusedUnderReplace` declines every unlinked asset first. Kept so

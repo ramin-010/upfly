@@ -7,6 +7,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AuditResult } from './audit.js';
 import { buildGraph } from './graph.js';
@@ -24,7 +25,9 @@ import type { ScannedText } from './scan.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
-const ROOT = '/repo';
+// Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
+// Windows `path.resolve` gives a bare '/repo' the current drive, which no asset here would have.
+const ROOT = resolve('/repo');
 const RUN_ID = '2026-01-01T000000-abcd';
 
 function sha(text: string): string {

@@ -1684,6 +1684,19 @@ once its one asset converts; a pattern, the only reference that links several as
 The deletion half runs last and does not rely on the first: it keeps the original of an asset
 nothing links to on its own account, so loosening the conversion half can never delete a file.
 
+**A repointed reference has to lead to the converted file.** A rewrite changes only the
+extension, and from the file that holds it the new name can reach a file the old name never did:
+an image of that name in a nearer serving root, or one that an alias rule or target tried earlier
+maps to. The collision check looks only at the converted file's own path. So once a plan's
+rewrites are chosen, each new path is resolved again from its own file, against the files the
+plan leaves (every converted file added, every original it removes gone) and with the run's
+serving roots and aliases. A conversion one of whose rewrites would reach anything else is
+withdrawn, and its decline names the file that rewrite would reach, so under `replace` its
+original stays. Withdrawing a conversion changes those files and drops its rewrites, so the plan
+is made again without it until the check withdraws nothing. The check sees what the resolver
+sees: a file the walk excluded is not among the assets, and a name that differs only in case is
+another name.
+
 The old-path text search (see "Moving an asset") then guards the references the graph never found,
 for a path written down literally. **The bound that remains:** a path assembled at runtime that the
 graph did not find, pointing at an asset some other reference links and this run moves. The text

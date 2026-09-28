@@ -7,7 +7,8 @@ import { animatedPng, gradientFrames } from '../test/animated-png.js';
 import { MANIFEST_PATH } from './manifest.js';
 import { optimizeProject } from './optimize-project.js';
 import type { OptimizeProgress } from './optimize.js';
-import type { PipelineProgress } from './pipeline.js';
+import { relativePath } from './paths.js';
+import type { PipelineOutput, PipelineProgress } from './pipeline.js';
 
 /** The plain HTML fixture: real images, relative references, no build step. */
 const PLAIN_HTML = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/plain-html');
@@ -449,6 +450,152 @@ describe('an animated GIF, when the run converts to AVIF', () => {
     expect(after).toContain('images/loop.gif');
     expect(after).not.toContain('images/loop.avif');
   });
+});
+
+describe('a reference whose converted name reaches another file first', () => {
+  // A rewrite changes only the extension, and from the file that holds it the new name can
+  // reach a file the old name never did: one in a nearer website folder, or one an alias rule
+  // tried earlier maps to. Repointed there, the reference would show that other picture.
+
+  /** A project outside the workspace holding these text files. */
+  async function project(texts: Readonly<Record<string, string>>): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), 'upfly-optimize-project-'));
+    roots.push(root);
+    for (const [relative, text] of Object.entries(texts)) {
+      await mkdir(dirname(join(root, relative)), { recursive: true });
+      await writeFile(join(root, relative), text);
+    }
+    return root;
+  }
+
+  /** A fixture image that converts to a smaller WebP, copied to `relative`. */
+  async function picture(root: string, relative: string, fixture = 'logo.png'): Promise<void> {
+    await mkdir(dirname(join(root, relative)), { recursive: true });
+    await cp(join(PLAIN_HTML, 'images', fixture), join(root, relative));
+  }
+
+  /** A WebP of a different picture from any `picture` writes. */
+  async function anotherPicture(root: string, relative: string): Promise<void> {
+    const { default: sharp } = await import('sharp');
+    await mkdir(dirname(join(root, relative)), { recursive: true });
+    await sharp(join(PLAIN_HTML, 'images/team.jpg')).webp().toFile(join(root, relative));
+  }
+
+  /** The project-relative asset a reference with this text links, or null. */
+  function linkedBy(pipeline: PipelineOutput, rawPath: string): string | null {
+    const reference = pipeline.graph.references.find((entry) => entry.rawPath === rawPath);
+    return reference?.resolution === 'resolved'
+      ? relativePath(pipeline.graph.root, reference.resolvedPath)
+      : null;
+  }
+
+  it('keeps the page and the original when a nearer website folder already serves the new name', async () => {
+    const page = [
+      'export const App = () => (',
+      '  <>',
+      '    <img src="/img/logo.png" alt="" />',
+      '    <img src="/img/texture.png" alt="" />',
+      '  </>',
+      ');',
+      '',
+    ].join('\n');
+    const root = await project({ 'apps/web/src/App.tsx': page });
+    await picture(root, 'public/img/logo.png');
+    await picture(root, 'public/img/texture.png', 'texture.png');
+    // The page belongs to apps/web, so its URLs are served from apps/web/public first, and
+    // from public only for a file apps/web/public does not hold.
+    await anotherPicture(root, 'apps/web/public/img/logo.webp');
+    const other = await readFile(join(root, 'apps/web/public/img/logo.webp'));
+
+    const { pipeline, optimize } = await optimizeProject({
+      root,
+      declared: { dirs: ['public', 'apps/web/public'], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+    });
+
+    expect(linkedBy(pipeline, '/img/logo.png')).toBe('public/img/logo.png');
+    const after = await files(root);
+    // One comparison, so a failure shows the page and the files together. The picture beside
+    // the logo, whose new name nothing nearer holds, still moves.
+    expect({
+      page: await readFile(join(root, 'apps/web/src/App.tsx'), 'utf8'),
+      logo: after.filter((path) => path.startsWith('public/img/logo.')),
+      texture: after.filter((path) => path.startsWith('public/img/texture.')),
+    }).toEqual({
+      page: page.replace('/img/texture.png', '/img/texture.webp'),
+      logo: ['public/img/logo.png'],
+      texture: ['public/img/texture.webp'],
+    });
+    expect(await readFile(join(root, 'apps/web/public/img/logo.webp'))).toEqual(other);
+    expect(optimize.plan.declined).toContainEqual({
+      path: 'public/img/logo.png',
+      line: null,
+      reason: expect.stringContaining('reaches apps/web/public/img/logo.webp first'),
+    });
+  });
+
+  const IMPORT = `import hero from '@/img/hero.png';\nexport const App = () => <img src={hero} alt="" />;\n`;
+
+  it.each([
+    [
+      'a longer alias key',
+      {
+        'tsconfig.json':
+          '{ "compilerOptions": { "paths": { "@/*": ["./src/*"], "@/img/*": ["./assets/img/*"] } } }\n',
+        'src/App.tsx': IMPORT,
+      },
+      'src/App.tsx',
+      'src/img/hero.png',
+      'assets/img/hero.webp',
+    ],
+    [
+      "the nearest config's alias",
+      {
+        'tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./shared/*"] } } }\n',
+        'apps/web/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }\n',
+        'apps/web/src/App.tsx': IMPORT,
+      },
+      'apps/web/src/App.tsx',
+      'shared/img/hero.png',
+      'apps/web/src/img/hero.webp',
+    ],
+    [
+      "an alias's earlier target",
+      {
+        'tsconfig.json':
+          '{ "compilerOptions": { "paths": { "@/*": ["./src/*", "./shared/*"] } } }\n',
+        'src/App.tsx': IMPORT,
+      },
+      'src/App.tsx',
+      'shared/img/hero.png',
+      'src/img/hero.webp',
+    ],
+  ] as const)(
+    'keeps an import as written when %s maps its new name to another file',
+    async (_how, texts, page, image, other) => {
+      const root = await project(texts);
+      await picture(root, image);
+      await anotherPicture(root, other);
+
+      const { pipeline, optimize } = await optimizeProject({
+        root,
+        format: 'webp',
+        publicPolicy: 'keep-original',
+        apply: false,
+      });
+
+      expect(linkedBy(pipeline, '@/img/hero.png')).toBe(image);
+      expect(optimize.plan.rewrites.map((rewrite) => rewrite.file)).not.toContain(page);
+      expect(optimize.plan.conversions.map((conversion) => conversion.asset)).not.toContain(image);
+      expect(optimize.plan.declined).toContainEqual({
+        path: image,
+        line: null,
+        reason: expect.stringContaining(`reaches ${other} first`),
+      });
+    },
+  );
 });
 
 describe('an animated PNG', () => {
