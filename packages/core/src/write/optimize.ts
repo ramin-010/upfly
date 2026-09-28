@@ -361,11 +361,21 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
 
   let written: { readonly plan: OptimizationPlan; readonly manifest: Manifest };
   try {
-    const staged = await stage(plan, runDir, input);
-    const final = await keepOriginalsNamedSince(plan, staged, runDir, input);
+    const staging: string[] = [];
+    let final: Awaited<ReturnType<typeof keepOriginalsNamedSince>>;
+    try {
+      const staged = await stage(plan, runDir, input, staging);
+      final = await keepOriginalsNamedSince(plan, staged, runDir, input);
+      await prepare(final.operations, input.store, runDir);
+    } catch (error) {
+      // Refused before any file in the project was written, so nothing will ever read what
+      // was staged for it: each encode is a full-size image.
+      await removeEach(input.store, staging);
+      throw error;
+    }
     written = {
       plan: final.plan,
-      manifest: await applyUnderLock(final.plan, final.operations, runDir, input),
+      manifest: await commitUnderLock(final.plan, final.operations, runDir, input),
     };
   } finally {
     await held.release();
@@ -433,14 +443,24 @@ async function keepOriginalsNamedSince(
   };
 }
 
-/** Everything an applied run does while it holds the lock. */
-async function applyUnderLock(
+/** Remove each file a refused run staged; one already gone is no reason to stop. */
+async function removeEach(store: FileStore, paths: readonly string[]): Promise<void> {
+  for (const path of paths) {
+    try {
+      await store.remove(path);
+    } catch {
+      // The refusal being thrown is what the caller needs to see.
+    }
+  }
+}
+
+/** Commit a prepared plan, recording what it declined. */
+async function commitUnderLock(
   plan: OptimizationPlan,
   operations: readonly PlannedOperation[],
   runDir: string,
   input: OptimizeInput,
 ): Promise<Manifest> {
-  await prepare(operations, input.store, runDir);
   const context: RunContext = {
     runId: input.runId,
     runDir,
@@ -484,6 +504,7 @@ async function stage(
   plan: OptimizationPlan,
   runDir: string,
   input: OptimizeInput,
+  staging: string[],
 ): Promise<PlannedOperation[]> {
   const operations: PlannedOperation[] = [];
   const animated = animatedAssets(input.probes);
@@ -502,6 +523,8 @@ async function stage(
       throw originalMoved(conversion.asset, 'was removed after Upfly read the project');
     }
 
+    // Recorded before the step that writes it, so a refusal part way removes it too.
+    staging.push(`${runDir}/${staged}`);
     await unlessOriginalMoved(input.store, conversion.asset, original, () =>
       input.probe.encodeToFile({
         path: source.asset.path,
@@ -526,6 +549,7 @@ async function stage(
 
     // Before `prepare`, which refuses a delete whose backup is not actually there.
     const backup = `backup/${conversion.asset}`;
+    staging.push(`${runDir}/${backup}`);
     await unlessOriginalMoved(input.store, conversion.asset, original, () =>
       input.store.copy(conversion.asset, `${runDir}/${backup}`),
     );

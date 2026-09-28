@@ -468,6 +468,30 @@ describe('the lock covers the gap between staging and committing', () => {
   });
 });
 
+describe('a run refused before it writes', () => {
+  const stagedFiles = (tree: ReadonlyMap<string, string>) =>
+    [...tree.keys()].filter((path) => path.startsWith(`.upfly/runs/${RUN_ID}/`));
+
+  it.each([
+    ['a page it rewrites changed during the encodes', 'src/App.jsx', 'export {};\n'],
+    ['a file appeared at the converted name during the encodes', 'src/logo.webp', 'theirs'],
+  ])('leaves none of its staged files behind when %s', async (_when, path, text) => {
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    const probe: ImageProbe = {
+      ...project.probe,
+      async encodeToFile(options) {
+        project.tree.set(path, text);
+        return project.probe.encodeToFile(options);
+      },
+    };
+
+    await expect(optimize(inputFor({ ...project, probe }))).rejects.toThrow();
+
+    // Every encode is a full-size image, and a refused run is not one `undo` can reach.
+    expect(stagedFiles(project.tree)).toEqual([]);
+  });
+});
+
 describe('an image saved while it is being encoded', () => {
   it('is refused, so the file converted is the file backed up and removed', async () => {
     const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
