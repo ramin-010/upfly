@@ -41,7 +41,7 @@ const keyPath = resolve(arg('--key', join(TREE_ROOT, 'key', 'coverage-key.json')
 // ---- the key check -------------------------------------------------------------
 if (process.argv.includes('--skip-strict')) {
   process.stdout.write(
-    '⚠️  --skip-strict: the key was NOT verified against the tree. Every number below is\n' +
+    '--skip-strict: the key was not verified against the tree, so every number below is\n' +
       '    unsupported and must not be quoted or committed.\n\n',
   );
 } else {
@@ -54,8 +54,8 @@ if (process.argv.includes('--skip-strict')) {
   process.stderr.write(check.stderr ?? '');
   if (check.status !== 0) {
     process.stderr.write(
-      '\n🔴 REFUSING TO MEASURE. The key and the tree disagree, so a matrix built now would\n' +
-        '   be measuring the disagreement rather than the engine. Fix the key first (R75).\n',
+      '\nNot measuring: the key and the tree disagree, so a matrix built now would\n' +
+        '   measure the disagreement rather than the engine. Fix the key first.\n',
     );
     process.exit(1);
   }
@@ -65,7 +65,7 @@ if (process.argv.includes('--skip-strict')) {
 // ---- the engine ----------------------------------------------------------------
 const DIST = join(HERE, '..', '..', 'packages', 'core', 'dist', 'index.js');
 if (!existsSync(DIST)) {
-  process.stderr.write(`🔴 ${DIST} is missing. Run \`pnpm build\` first.\n`);
+  process.stderr.write(`${DIST} is missing. Run \`pnpm build\` first.\n`);
   process.exit(1);
 }
 const core = await import(pathToFileURL(DIST).href);
@@ -223,7 +223,7 @@ const run2 = buildMatrix(key, observedUnconfigured, {
 
 const RULE = '='.repeat(90);
 process.stdout.write(
-  `RUN 1 — THE SUITE'S STATED CONFIGURATION: the key's servingRoots, declared\n   roots: ${declaredRoots.dirs.join(', ')}\n\n`,
+  `Run 1, the suite's stated configuration: the key's servingRoots, declared\n   roots: ${declaredRoots.dirs.join(', ')}\n\n`,
 );
 process.stdout.write(`${renderMatrix(run1, { emissionOf })}\n`);
 
@@ -232,7 +232,7 @@ process.stdout.write(
     '',
     '',
     RULE,
-    'RUN 2 — NO CONFIGURATION: decideServingRoots (detection ∪ inference), the path a stranger runs',
+    'Run 2, no configuration: decideServingRoots (detection and inference), the path a stranger runs',
     `   roots: ${decision.servingRoots.dirs.join(', ') || '(none)'}`,
     `   detected by name: ${decision.detected.join(', ') || '(none)'}`,
     `   added by inference: ${decision.added.join(', ') || '(none)'}`,
@@ -248,10 +248,10 @@ process.stdout.write(
   [
     '',
     RULE,
-    'TWO NUMBERS, EACH OVER EVERY CLAIMED ENTRY, NEVER ADDED TOGETHER (R179):',
-    `  run 1 — the suite's stated configuration:  claimed ${one.met} of ${one.expected}`,
+    'Two numbers, each over every claimed entry, never added together:',
+    `  run 1, the suite's stated configuration:  claimed ${one.met} of ${one.expected}`,
     ...missLines(one.misses),
-    `  run 2 — no configuration:                  claimed ${two.met} of ${two.expected}`,
+    `  run 2, no configuration:                  claimed ${two.met} of ${two.expected}`,
     ...missLines(two.misses),
     '',
   ].join('\n'),
@@ -265,7 +265,7 @@ process.stdout.write(
 function missLines(misses) {
   return misses.map((miss) => {
     const why = miss.bucket === 'knownGap' ? `knownGap: ${miss.keyGap}` : miss.detail;
-    return `      miss  ${miss.file}:${miss.line} ${JSON.stringify(miss.raw)} [${miss.bucket}] — ${why}`;
+    return `      miss  ${miss.file}:${miss.line} ${JSON.stringify(miss.raw)} [${miss.bucket}]: ${why}`;
   });
 }
 
@@ -279,11 +279,11 @@ const defects =
   run1.unkeyed.length +
   run2.findings.filter((item) => item.kind === 'stale-known-gap').length;
 if (defects > 0) {
-  process.stdout.write(`\n🔴 ${defects} finding(s) above. Read them; they are not a score.\n`);
+  process.stdout.write(`\n${defects} finding(s) above. Read them; they are not a score.\n`);
   process.exit(1);
 }
 process.stdout.write(
-  '\n✅ Run 1: every keyed entry matched its expected outcome, or carries a knownGap.\n',
+  '\nRun 1: every keyed entry matched its expected outcome, or carries a knownGap.\n',
 );
 
 function posix(path) {
