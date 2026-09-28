@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Saved on Windows, with the quote on the next line</title>
+  </head>
+  <body>
+    <h1>Our partner</h1>
+
+    <!--
+      Every line of this page ends with CR LF, and the closing quote sits on the line
+      below the address, so the value ends with a CR LF. The HTML parser reads it as
+      one LF, and a browser strips it from the address. It is not a character reference.
+    -->
+    <p><img src="/img/hero.jpg
+" alt="Our partner"></p>
+  </body>
+</html>

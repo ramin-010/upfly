@@ -93,6 +93,12 @@ describe('markdownAdapter', () => {
       expect(slices(source)).toEqual(['./hero.avif', './hero@2x.avif', './hero.jpg']);
     });
 
+    it('reads an img tag whose closing quote sits on the next line as a browser does', () => {
+      const source = 'Some prose.\n\n<img src="./logo.png\n" alt="Logo">\n';
+      expect(paths(source)).toEqual(['./logo.png']);
+      expect(slices(source)).toEqual(['./logo.png']);
+    });
+
     it('finds both markdown and HTML references in one document', () => {
       const source = '![a](./a.png)\n\n<img src="./b.png">';
       expect(paths(source)).toEqual(['./a.png', './b.png']);

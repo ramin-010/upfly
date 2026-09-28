@@ -57,6 +57,30 @@ function asTheParserReads(text: string): string {
   return text.replace(/\r\n?/g, '\n');
 }
 
+/**
+ * A single URL's text and range within an attribute value, without the C0 controls and
+ * spaces at either end, which the URL parser strips before it reads a URL.
+ * https://url.spec.whatwg.org/#concept-basic-url-parser
+ */
+function urlWithin(
+  value: string,
+  valueStart: number,
+): { readonly text: string; readonly start: number; readonly end: number } {
+  let from = 0;
+  let to = value.length;
+  while (from < to && value.charCodeAt(from) <= 0x20) from += 1;
+  while (to > from && value.charCodeAt(to - 1) <= 0x20) to -= 1;
+  return { text: value.slice(from, to), start: valueStart + from, end: valueStart + to };
+}
+
+/**
+ * A single URL as a browser reads it from parse5's value: stripped at either end as
+ * `urlWithin` strips it, and with every tab and line break inside it removed.
+ */
+function asTheUrlParserReads(value: string): string {
+  return urlWithin(value, 0).text.replace(/[\t\n\r]/g, '');
+}
+
 /** Whether the path carries percent-encoding. */
 function isPercentEncoded(raw: string): boolean {
   return /%[0-9A-Fa-f]{2}/.test(raw);
@@ -192,20 +216,26 @@ function collectFromAttribute(input: {
     context,
   } = input;
 
+  // A single URL is read as the browser reads it: the URL parser strips the C0 controls and
+  // spaces around it, so a value whose closing quote sits on the next line still names a
+  // file. The range covers the URL alone, and a rewrite leaves that whitespace in place.
+  const url = urlWithin(raw, start);
+
   // Every URL-valued position below answers the character-reference question through this
   // one helper, so a new position gets the same answer. It drops another host's URL first,
   // as `addAttributeReference` does for an unescaped one: an entity in a query string
   // (`?w=1&amp;h=2`) does not make that file ours.
   const escaped = (shape: ShapeId | 'srcset'): void => {
     const isSrcset = shape === 'srcset';
-    if (escapedIsSomebodyElses(raw, isSrcset)) return;
+    if (escapedIsSomebodyElses(isSrcset ? raw : url.text, isSrcset)) return;
     // A `srcset` is a list, so its one range is not one path and there is nothing to
     // decode for a lookup. It stays unsafe; only single-URL attributes are resolved decoded.
     if (isSrcset) {
       addEntityEscapedReference({ start, end }, context, 'path.charref');
       return;
     }
-    addCharacterReferenceReference(raw, decodedValue, { start, end }, context, charrefShape(shape));
+    const parsed = asTheUrlParserReads(decodedValue);
+    addCharacterReferenceReference(url.text, parsed, url, context, charrefShape(shape));
   };
 
   if (name === 'style') {
@@ -224,7 +254,7 @@ function collectFromAttribute(input: {
 
   const position = urlPosition(tagName, name, {
     attribute: (other) => attributeValue(element, other),
-    valueText: () => raw,
+    valueText: () => url.text,
   });
   if (position === null) return;
 
@@ -245,13 +275,19 @@ function collectFromAttribute(input: {
     return;
   }
 
-  // A single URL's range is its whole value, so the value must be its source text exactly:
-  // one that spans lines in a CRLF file holds a CR that parse5 dropped, and no range spells it.
-  if (raw !== decodedValue) {
+  // The URL parser also removes every tab and line break inside a URL, so no range of the
+  // source spells the path a browser reads.
+  if (/[\t\n\r]/.test(url.text)) {
+    addUrlWithLineBreakReference(url, context, position.html);
+    return;
+  }
+  // Compared with parse5's value as the URL parser reads it, so the CR LF that ends a line
+  // around the URL in a CRLF file is whitespace, not a sign of character references.
+  if (url.text !== asTheUrlParserReads(decodedValue)) {
     escaped(position.html);
     return;
   }
-  addAttributeReference(raw, start, context, position.html);
+  addAttributeReference(url.text, url.start, context, position.html);
 }
 
 /**
@@ -679,6 +715,31 @@ function addEntityEscapedReference(
     ceiling: 'unsafe',
     asserted: true,
     note: 'contains HTML character references, so the path text cannot be located exactly',
+  });
+}
+
+/**
+ * A single URL with a tab or line break inside it, which the URL parser removes, so no range
+ * of the source spells the path a browser reads and the reference stays unsafe. Another
+ * host's URL is dropped first, as everywhere else.
+ */
+function addUrlWithLineBreakReference(
+  range: { start: number; end: number },
+  context: Context,
+  shape: ShapeId,
+): void {
+  const rawPath = context.text.slice(range.start, range.end);
+  if (isExternalUrl(rawPath, 'attr')) return;
+  context.references.push({
+    file: context.file,
+    start: range.start,
+    end: range.end,
+    rawPath,
+    kind: 'attr',
+    shape,
+    ceiling: 'unsafe',
+    asserted: true,
+    note: 'contains a tab or line break, which a browser removes from a URL, so the path text cannot be located exactly',
   });
 }
 

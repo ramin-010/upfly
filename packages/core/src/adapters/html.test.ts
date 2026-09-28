@@ -630,13 +630,101 @@ describe('htmlAdapter', () => {
       expect(slices(source)).toEqual(['/img/c.png']);
     });
 
-    it('keeps a single URL that spans lines unsafe, since no range spells the value parse5 read', () => {
-      // A single URL's range is its whole value, and parse5 dropped the CR inside it.
-      const references = find('<img src="./img/logo.png\r\n">');
+    it('reads a single URL whose value ends with the line break, not as character references', () => {
+      const source = '<img src="./img/logo.png\r\n" alt="">';
+      const references = find(source);
 
-      expect(references.map((reference) => [reference.shape, reference.ceiling])).toEqual([
-        ['path.charref', 'unsafe'],
+      expect(
+        references.map((reference) => [reference.rawPath, reference.ceiling, reference.note]),
+      ).toEqual([['./img/logo.png', 'high', undefined]]);
+      expect(slices(source)).toEqual(['./img/logo.png']);
+    });
+
+    it('keeps a single URL with a line break inside it unsafe, and says why', () => {
+      const [reference] = find('<img src="./img/\r\nlogo.png">');
+
+      expect([reference?.shape, reference?.ceiling]).toEqual(['html.img.src', 'unsafe']);
+      expect(reference?.note).toContain('line break');
+      expect(reference?.note).not.toContain('character references');
+    });
+  });
+
+  describe('whitespace around a single URL', () => {
+    // A browser reads these values as URLs, and the URL parser strips the C0 controls and
+    // spaces at either end of a URL and removes every tab and line break inside it.
+    it('reads a URL whose value ends with a line break, and ranges over the URL alone', () => {
+      const source = '<img alt="" src="/img/a.png\n">';
+      const references = find(source);
+
+      expect(references.map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/a.png', 'high'],
       ]);
+      expect(slices(source)).toEqual(['/img/a.png']);
+    });
+
+    it('reads a URL whose value starts with a line break and spaces', () => {
+      const source = '<img alt="" src="\n      /img/a.png">';
+
+      const references = find(source);
+
+      expect(references.map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/a.png', 'high'],
+      ]);
+      expect(slices(source)).toEqual(['/img/a.png']);
+    });
+
+    it('reads a poster, an icon and a link to an image the same way', () => {
+      const source = [
+        '<video poster=" /img/poster.png\t"></video>',
+        '<link rel="icon" href="\n  /favicon.png">',
+        '<a href="/img/full.png\n">full size</a>',
+      ].join('\n');
+
+      expect(find(source).map((reference) => [reference.rawPath, reference.shape])).toEqual([
+        ['/img/poster.png', 'html.video.poster'],
+        ['/favicon.png', 'html.link.href.icon'],
+        ['/img/full.png', 'html.a.href.image'],
+      ]);
+      expect(slices(source)).toEqual(['/img/poster.png', '/favicon.png', '/img/full.png']);
+    });
+
+    it('rewrites the URL and leaves the whitespace around it in place', () => {
+      const source = '<img src="\n  /img/a.png\n">';
+      const [reference] = find(source);
+      const rewritten = htmlAdapter.rewrite({
+        text: source,
+        edits: [
+          { start: reference?.start ?? 0, end: reference?.end ?? 0, replacement: '/img/a.webp' },
+        ],
+      });
+
+      expect(rewritten).toBe('<img src="\n  /img/a.webp\n">');
+    });
+
+    it('keeps a URL with a tab or line break inside it unsafe, since no range spells what a browser reads', () => {
+      for (const source of ['<img src="/img/\nlogo.png">', '<img src="/img/\tlogo.png">']) {
+        const references = find(source);
+
+        expect(
+          references.map((reference) => [reference.shape, reference.ceiling]),
+          source,
+        ).toEqual([['html.img.src', 'unsafe']]);
+      }
+    });
+
+    it('keeps unsafe a URL whose character references spell whitespace the URL parser drops', () => {
+      // parse5 decodes these to a line break and a space, which the URL parser then removes,
+      // so the decoded spelling is not the path a browser loads.
+      for (const source of ['<img src="/img/a&#10;b.png">', '<img src="&#32;/img/a.png">']) {
+        const [reference] = find(source);
+
+        expect([reference?.shape, reference?.ceiling], source).toEqual(['path.charref', 'unsafe']);
+      }
+    });
+
+    it('finds nothing in a value that is only whitespace, or another host with some around it', () => {
+      expect(find('<img src=" \n ">')).toEqual([]);
+      expect(find('<img src="\n  https://cdn.example.com/a.png">')).toEqual([]);
     });
   });
 

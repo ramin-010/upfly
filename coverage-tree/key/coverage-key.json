@@ -7915,6 +7915,54 @@
           "column": 29
         }
       ]
+    },
+    {
+      "path": "apps/web/src-line-break-after.html",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The value ends with a line break, because the closing quote sits on the next line. A browser strips the whitespace around a URL before it loads it, so this is the banner. Read with the line break, the path's extension is not an image's, and the reference is dropped with no report line.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 371,
+          "line": 14,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src-line-break-before.html",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The value starts with a line break and six spaces. A browser strips them before it loads the URL, so this is the team photo. Looked up with them, the path names nothing, and a working image is reported as a broken reference.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 409,
+          "line": 16,
+          "column": 7
+        }
+      ]
+    },
+    {
+      "path": "apps/web/crlf-src-line-break.html",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "resolved",
+          "why": "The page ends its lines with CR LF, and the closing quote sits on the line below the path, so the value ends with a CR LF. The HTML parser reads it as one LF, and a browser strips that from the URL, so this is the hero image. Taken for a sign of character references, the CR made the reference unsafe.",
+          "target": "apps/web/public/img/hero.jpg",
+          "offset": 493,
+          "line": 15,
+          "column": 18
+        }
+      ]
     }
   ]
 }

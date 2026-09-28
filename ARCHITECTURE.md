@@ -1008,8 +1008,19 @@ preprocessing turns each CR LF pair and each lone CR into one LF before tokenisi
 saved with CR LF line endings a value that spans lines differs from its source text without
 holding a character reference. A `srcset` or a `style` attribute is read path by path, and a line
 break between paths is only whitespace, so such a value is read as it is in a file with LF line
-endings. A single URL's range is its whole value, and one holding a CR that parse5 dropped has no
-range that spells it, so it stays `unsafe`.
+endings.
+
+A single URL is read as the browser reads it. The HTML specification calls such a value a URL
+"potentially surrounded by spaces", and the URL parser strips the C0 controls and spaces at either
+end of a URL and removes every tab and line break inside it. So an `<img>` whose closing quote sits
+on the line below its path names that path, in a file with either line ending. Read with the line
+break, the path's extension would not be an image's and the reference would vanish with no report
+line; read with a leading one, a working image would be reported as broken. The reference's range
+covers the URL's own text, so a rewrite leaves the whitespace around it where the author put it.
+That text is compared with parse5's value as the URL parser reads it, so a CR at either end is no
+sign of a character reference, and a path whose references decode to whitespace the URL parser
+drops, such as `&#10;`, stays `unsafe`. A tab or line break inside the URL leaves no range that
+spells what the browser reads, so that reference stays `unsafe` too, with a note saying why.
 
 The flag is acted on only inside a reference position, once the attribute has been judged to hold a
 reference. Acting on it earlier, for every attribute of every element, would turn escaped `alt`
