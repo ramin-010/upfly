@@ -134,6 +134,33 @@ describe('a source file saved after the scan read it', () => {
   });
 });
 
+describe('an original that a page created during the run names', () => {
+  it('stays, and the rest of the run is written', async () => {
+    const root = await copy();
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: true,
+      // After the first search for mentions and before the deletes: the window the images
+      // take to encode.
+      beforeWrite: async () => {
+        await writeFile(join(root, 'notes.html'), '<img src="images/logo.png">\n');
+        return true;
+      },
+    });
+
+    expect(await files(root)).toContain('images/logo.png');
+    expect(await files(root)).toContain('images/logo.webp');
+    expect(optimize.plan.keptOriginals).toContainEqual({
+      asset: 'images/logo.png',
+      reason: expect.stringContaining('notes.html:1'),
+    });
+  });
+});
+
 describe('an original that a page the run excludes still shows', () => {
   // `--exclude` and `.upflyignore` limit what a run changes. The search a delete makes
   // first reads past them, or the page they left out loses its picture while the run

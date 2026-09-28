@@ -1763,9 +1763,9 @@ record rather than the files: commit hashes each edit target again before writin
 another run changed after this run staged is refused anyway.
 
 `commit` and `revert` each take the lock for their whole duration, so a caller that uses the
-transaction directly is covered. `optimize` also takes it before `prepare` and holds it until
-`commit` returns, so no other run can start and finish between this run's checks and its first
-manifest write. The holds nest: a run may take the lock again while it holds it, and releasing a
+transaction directly is covered. `optimize` also takes it before the encodes and holds it until
+`commit` returns, so no other run can start and finish while this run encodes, or between its
+checks and its first manifest write. The holds nest: a run may take the lock again while it holds it, and releasing a
 nested hold does nothing, so an inner `commit` finishing does not unlock the run around it.
 Re-entry needs both the same run id and the same process. A process id alone cannot tell apart two
 runs in one process, as an editor extension would have; a run id alone would let an `undo` started
@@ -1900,7 +1900,11 @@ it cannot be ruled out, so no original is deleted, and each decline names the fi
 not be read. The search also reads what the run's rules excluded, since an excluded page can still
 show the original (see "Discovery" for what stays unread and why). When the only mention is in a
 file the run excluded, the decline says so, rather than that Upfly cannot rewrite the path there.
-What that leaves uncovered is under "The transaction".
+The encodes can take minutes, and a page saved or created meanwhile can name an original the plan
+deletes, so an applied run makes the search again after them, under the lock, over the project
+walked again. An original a mention then names is kept, with the reason, and the run goes on: its
+converted file is written and the references the plan read still move to it, as under
+`keep-original`. What that leaves uncovered is under "The transaction".
 
 ## Performance budget
 

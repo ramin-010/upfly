@@ -382,19 +382,19 @@ describe('the lock covers the gap between staging and committing', () => {
     const suspended = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let armed = true;
+    let stagedHashes = 0;
 
     const suspending: FileStore = {
       ...project.store,
       async hash(path) {
-        // Suspends on a staged-path hash taken after the lock exists, which lands inside
-        // `prepare`. `stage` hashes staged paths too and runs before the lock, so keying
-        // on the path alone would stop the run in the wrong place; the assertion below
-        // checks where it stopped.
-        if (armed && project.tree.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
-          armed = false;
-          reached();
-          await suspended;
+        // Suspends on the second hash of a staged path, which lands inside `prepare`: `stage`
+        // takes the first, after the encode. The assertion below checks where it stopped.
+        if (project.tree.has(LOCK_PATH) && path.startsWith('.upfly/runs/')) {
+          stagedHashes += 1;
+          if (stagedHashes === 2) {
+            reached();
+            await suspended;
+          }
         }
         return project.store.hash(path);
       },
@@ -423,6 +423,33 @@ describe('the lock covers the gap between staging and committing', () => {
 
     // And the run cleans up after itself, or the next one inherits a locked project.
     expect(project.tree.has(LOCK_PATH)).toBe(false);
+  });
+
+  it('refuses a second run while the first is still encoding', async () => {
+    const project = harness({ 'src/App.jsx': SOURCE, 'src/logo.png': 'PNG' });
+    const other: RunContext = {
+      runId: 'run-other',
+      runDir: '.upfly/runs/run-other',
+      now: () => '2026-09-13T00:00:00.000Z',
+      declined: [],
+    };
+    let during: unknown = null;
+    const probe: ImageProbe = {
+      ...project.probe,
+      async encodeToFile(options) {
+        during = await commit([], project.store, other).then(
+          (manifest) => manifest.state,
+          (error: unknown) => error,
+        );
+        return project.probe.encodeToFile(options);
+      },
+    };
+
+    await optimize(inputFor({ ...project, probe }));
+
+    // The encodes can take minutes. A run that started and finished inside them would have
+    // its manifest replaced by this run's.
+    expect(during).toEqual(expect.objectContaining({ code: 'TRANSACTION_LOCKED' }));
   });
 
   it('lets that same second run through once the lock is gone', async () => {
@@ -535,6 +562,59 @@ describe('replace refuses to delete an original a mention would outlive', () => 
       'public/logo.png',
     ]);
     expect(result.plan.conversions[0]?.replacesOriginal).toBe(true);
+  });
+
+  it('keeps an original that a page saved during the encodes names, and converts it all the same', async () => {
+    const { input, tree, probe } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'about.html': '<p>About</p>',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'about.html'],
+    );
+    const saving: ImageProbe = {
+      ...probe,
+      async encodeToFile(options) {
+        tree.set('about.html', '<img src="/logo.png">');
+        return probe.encodeToFile(options);
+      },
+    };
+
+    const result = await optimize({ ...input, probe: saving, apply: true });
+
+    // Deleting the original now would break `about.html`. The run goes on: the new file is
+    // written and the page the plan read is pointed at it.
+    expect(tree.get('public/logo.png')).toBe('PNG');
+    expect(tree.has('public/logo.webp')).toBe(true);
+    expect(tree.get('index.html')).toBe('<img src="/logo.webp">');
+    const kept = result.plan.keptOriginals.find((entry) => entry.asset === 'public/logo.png');
+    expect(kept?.reason).toContain('about.html:1');
+    expect(result.manifest?.operations.map((operation) => operation.kind)).not.toContain('delete');
+  });
+
+  it('keeps an original that a file created during the encodes names, found by walking again', async () => {
+    const { input, tree, probe } = servedProject(
+      { 'index.html': '<img src="/logo.png">', 'public/logo.png': 'PNG' },
+      ['index.html'],
+    );
+    const creating: ImageProbe = {
+      ...probe,
+      async encodeToFile(options) {
+        tree.set('notes.html', '<img src="/logo.png">');
+        return probe.encodeToFile(options);
+      },
+    };
+    const listFiles = async () => ({
+      files: [...tree.keys()].filter((path) => path.endsWith('.html')),
+      unread: [],
+    });
+
+    const result = await optimize({ ...input, probe: creating, apply: true, listFiles });
+
+    expect(tree.get('public/logo.png')).toBe('PNG');
+    const kept = result.plan.keptOriginals.find((entry) => entry.asset === 'public/logo.png');
+    expect(kept?.reason).toContain('notes.html:1');
   });
 
   it('refuses the conversion when a mention survives in a file nothing parses', async () => {

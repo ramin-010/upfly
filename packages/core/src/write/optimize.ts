@@ -19,6 +19,7 @@ import {
   spellingsFor,
 } from '../plan/old-path-search.js';
 import {
+  MENTION_SURVIVES,
   type OptimizationPlan,
   type PlanRefusal,
   type PlannedRewrite,
@@ -83,6 +84,12 @@ export interface OptimizeInput {
    * wording only: `files` stays the whole search, so a delete never depends on it.
    */
   readonly excludedFiles?: readonly string[];
+  /**
+   * Walks the project again for the search made after the encodes, which can take minutes,
+   * so a page saved or created meanwhile is read as it is then. Without it that search reads
+   * `files` again, which finds a page saved since but not a new one.
+   */
+  readonly listFiles?: () => Promise<Pick<OptimizeInput, 'files' | 'unread' | 'excludedFiles'>>;
   readonly servingRoots: ServingRoots;
   /** The aliases the resolver used. See `PlanInput.aliases`. */
   readonly aliases?: AliasMap;
@@ -169,6 +176,7 @@ interface Blocked {
 async function mentionsThatWouldSurvive(
   plan: OptimizationPlan,
   input: OptimizeInput,
+  scope: Pick<OptimizeInput, 'files' | 'unread' | 'excludedFiles'> = input,
 ): Promise<Blocked> {
   const deleting = plan.conversions.filter((conversion) => conversion.replacesOriginal);
   if (deleting.length === 0) {
@@ -186,7 +194,7 @@ async function mentionsThatWouldSurvive(
 
   const found = await findSurvivingPaths({
     moves: deleting.map((conversion) => ({ from: conversion.asset, to: conversion.target })),
-    files: input.files,
+    files: scope.files,
     readFile: (relative) => input.store.readText(relative),
     servingDirs: input.servingRoots.dirs,
   });
@@ -200,7 +208,7 @@ async function mentionsThatWouldSurvive(
   // An occurrence names a spelling, not an asset, so map back through each asset's
   // spellings. Two assets can share one (the suffix `img/hero.png`, or `/hero.png` under two
   // serving roots), and a mention of it then blocks both: a lost saving, never a lost file.
-  const excludedFiles = new Set(input.excludedFiles ?? []);
+  const excludedFiles = new Set(scope.excludedFiles ?? []);
   const assets = new Map<string, string>();
   const excluded = new Map<string, string>();
   for (const conversion of deleting) {
@@ -220,7 +228,7 @@ async function mentionsThatWouldSurvive(
 
   // A file the search could not open, or a directory the walk could not list, may hold the
   // mention that matters, so every original the plan would delete stays.
-  const gaps = [...input.unread, ...found.unsearchable].sort((a, b) =>
+  const gaps = [...scope.unread, ...found.unsearchable].sort((a, b) =>
     compareStrings(a.file, b.file),
   );
   const unread = new Map<string, string>();
@@ -338,12 +346,12 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   if (input.beforeWrite !== undefined && !(await input.beforeWrite(plan))) return unwritten;
 
   await input.store.createExclusive(FOLDER_GITIGNORE, '*\n');
-  const operations = await stage(plan, runDir, input);
 
-  // Held from before `prepare` until after `commit`, not only inside `commit`: a run that
-  // started and finished between the two would have its committed manifest replaced by
-  // this run's pending one, leaving its backups with nothing pointing at them. `commit`
-  // re-enters this hold, and releasing that inner hold does nothing.
+  // Held from before the encodes until after `commit`, not only inside `commit`: a run that
+  // started and finished while this one encoded, or between `prepare` and `commit`, would
+  // have its committed manifest replaced by this run's pending one, leaving its backups
+  // with nothing pointing at them. `commit` re-enters this hold, and releasing that inner
+  // hold does nothing.
   const held = await acquireLock({
     store: input.store,
     runId: input.runId,
@@ -351,14 +359,78 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     ...input.lock,
   });
 
-  let manifest: Manifest;
+  let written: { readonly plan: OptimizationPlan; readonly manifest: Manifest };
   try {
-    manifest = await applyUnderLock(plan, operations, runDir, input);
+    const staged = await stage(plan, runDir, input);
+    const final = await keepOriginalsNamedSince(plan, staged, runDir, input);
+    written = {
+      plan: final.plan,
+      manifest: await applyUnderLock(final.plan, final.operations, runDir, input),
+    };
   } finally {
     await held.release();
   }
-  input.onProgress?.({ stage: 'written', files: pathsTouched(manifest).length });
-  return { plan, runId: input.runId, runDir, manifest, refusal: null };
+  input.onProgress?.({ stage: 'written', files: pathsTouched(written.manifest).length });
+  return { ...written, runId: input.runId, runDir, refusal: null };
+}
+
+/**
+ * The plan and its operations once the search for mentions has run again, after the encodes
+ * and under the lock, over the files as they are now. The encodes can take minutes, and a
+ * page saved or created meanwhile can name an original the plan deletes. Such an original is
+ * kept, with the reason, and the run goes on: the new file is still written and the
+ * references the plan read still move to it, as under `keep-original`.
+ */
+async function keepOriginalsNamedSince(
+  plan: OptimizationPlan,
+  operations: readonly PlannedOperation[],
+  runDir: string,
+  input: OptimizeInput,
+): Promise<{ readonly plan: OptimizationPlan; readonly operations: readonly PlannedOperation[] }> {
+  if (!plan.conversions.some((conversion) => conversion.replacesOriginal)) {
+    return { plan, operations };
+  }
+  const scope = input.listFiles === undefined ? input : await input.listFiles();
+  const blocked = await mentionsThatWouldSurvive(plan, input, scope);
+
+  const kept = new Map<string, string>();
+  for (const { asset } of plan.conversions) {
+    const named = blocked.assets.get(asset);
+    const excluded = blocked.excluded.get(asset);
+    const unread = blocked.unread.get(asset);
+    const why =
+      named !== undefined
+        ? `${named} ${MENTION_SURVIVES}, written while Upfly was converting, in a form Upfly cannot rewrite`
+        : excluded !== undefined
+          ? `${excluded} ${MENTION_SURVIVES}, written while Upfly was converting, in a file this run excluded`
+          : unread !== undefined
+            ? `${unread} could not be read to rule out a mention of it`
+            : null;
+    if (why !== null) kept.set(asset, `converted, but the original was kept: ${why}`);
+  }
+  if (kept.size === 0) return { plan, operations };
+
+  // Each backup was taken for a delete that no longer happens.
+  for (const operation of operations) {
+    if (operation.kind === 'delete' && kept.has(operation.path)) {
+      await input.store.remove(`${runDir}/${operation.backup}`);
+    }
+  }
+  return {
+    plan: {
+      ...plan,
+      conversions: plan.conversions.map((conversion) =>
+        kept.has(conversion.asset) ? { ...conversion, replacesOriginal: false } : conversion,
+      ),
+      keptOriginals: [
+        ...plan.keptOriginals,
+        ...[...kept].map(([asset, reason]) => ({ asset, reason })),
+      ].sort((a, b) => compareStrings(a.asset, b.asset)),
+    },
+    operations: operations.filter(
+      (operation) => !(operation.kind === 'delete' && kept.has(operation.path)),
+    ),
+  };
 }
 
 /** Everything an applied run does while it holds the lock. */

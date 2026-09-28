@@ -5,7 +5,8 @@
  */
 
 import { readdirSync } from 'node:fs';
-import { listExcludedFiles } from './discover/discover.js';
+import { defaultAdapters } from './adapters/default-adapters.js';
+import { discover, listExcludedFiles } from './discover/discover.js';
 import {
   type PipelineOutput,
   type PipelineProgress,
@@ -16,6 +17,7 @@ import type { PublicPolicy } from './plan/plan.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import type { EncodeFormat } from './probe/probe.js';
 import type { ServingRoots } from './resolve/resolve.js';
+import type { DiscoveryResult } from './types.js';
 import { createNodeFileStore } from './write/file-store-node.js';
 import {
   type OptimizeInput,
@@ -75,12 +77,6 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
   });
   const { discovery } = pipeline;
-  // Under replace, the search a delete makes first reads past the run's exclusions: they
-  // limit what the run changes, and a page one left out may still show the original.
-  const excluded =
-    input.publicPolicy === 'replace'
-      ? await listExcludedFiles(discovery)
-      : { files: [], unread: [] };
 
   const result = await optimize({
     graph: pipeline.graph,
@@ -88,19 +84,17 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     probes: pipeline.probes ?? [],
     probe: await createSharpProbe(),
     store: createNodeFileStore(discovery.root),
-    // Every file the walk found, not only those the graph holds a reference in: the search
-    // for leftover mentions of a deleted original is for references the graph missed.
-    files: [
-      ...[...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
-      ...excluded.files,
-    ],
-    // A directory the walk could not list reached no search, so a mention inside it cannot
-    // be ruled out.
-    excludedFiles: excluded.files,
-    unread: discovery.skipped
-      .filter((entry) => entry.reason === 'unreadable-directory')
-      .map((entry) => ({ file: entry.relative, reason: entry.detail }))
-      .concat(excluded.unread),
+    ...(await searchScope(discovery, input.publicPolicy)),
+    // The same walk again, for the search made after the encodes.
+    listFiles: async () =>
+      searchScope(
+        await discover({
+          root: discovery.root,
+          adapters: defaultAdapters,
+          ...(input.extraIgnores === undefined ? {} : { extraIgnores: input.extraIgnores }),
+        }),
+        input.publicPolicy,
+      ),
     servingRoots: pipeline.servingRoots,
     aliases: pipeline.aliases,
     listDirectory,
@@ -114,6 +108,38 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.beforeWrite === undefined ? {} : { beforeWrite: input.beforeWrite }),
   });
   return { pipeline, optimize: result };
+}
+
+/**
+ * What the search for mentions of a deleted original reads, from one walk: every file the walk
+ * found, not only those the graph holds a reference in, since the search is for references the
+ * graph missed.
+ */
+async function searchScope(
+  discovery: DiscoveryResult,
+  publicPolicy: PublicPolicy,
+): Promise<{
+  readonly files: readonly string[];
+  readonly excludedFiles: readonly string[];
+  readonly unread: readonly { readonly file: string; readonly reason: string }[];
+}> {
+  // Under replace, the search reads past the run's exclusions: they limit what the run
+  // changes, and a page one left out may still show the original.
+  const excluded =
+    publicPolicy === 'replace' ? await listExcludedFiles(discovery) : { files: [], unread: [] };
+  return {
+    files: [
+      ...[...discovery.sourceFiles, ...discovery.unscannedFiles].map((file) => file.relative),
+      ...excluded.files,
+    ],
+    excludedFiles: excluded.files,
+    // A directory the walk could not list reached no search, so a mention inside it cannot
+    // be ruled out.
+    unread: discovery.skipped
+      .filter((entry) => entry.reason === 'unreadable-directory')
+      .map((entry) => ({ file: entry.relative, reason: entry.detail }))
+      .concat(excluded.unread),
+  };
 }
 
 /**
