@@ -420,6 +420,59 @@ describe('loadAliases: Vite', () => {
   });
 });
 
+describe('expandAlias: Vite applies the first alias its config declares', () => {
+  it('rewrites through the first declared key that matches, not the longest, and nothing after it', async () => {
+    const map = await load({
+      'vite.config.ts': [
+        "import path from 'node:path';",
+        'export default {',
+        '  resolve: {',
+        '    alias: {',
+        "      '@': path.resolve(__dirname, 'src'),",
+        "      '@/components': path.resolve(__dirname, 'lib/components'),",
+        '    },',
+        '  },',
+        '};',
+        '',
+      ].join('\n'),
+    });
+
+    // Vite loads `src/components/icon.png`. A rewrite planned against `lib/components` would
+    // point the import at a file Vite never reads, and the build would fail.
+    expect(expandAlias(map, '@/components/icon.png', from('src/main.ts'))).toEqual([
+      from('src/components/icon.png'),
+    ]);
+  });
+
+  it('applies a Vite alias before a tsconfig key, and leaves the tsconfig what Vite does not map', async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@/components/*": ["./shared/components/*"], "~/*": ["./src/*"] } } }',
+      'vite.config.ts': "export default { resolve: { alias: { '@': '/src' } } };\n",
+    });
+
+    // Vite's alias plugin runs before any plugin that reads tsconfig `paths`.
+    expect(expandAlias(map, '@/components/x.png', from('src/a.ts'))).toEqual([
+      from('src/components/x.png'),
+    ]);
+    expect(expandAlias(map, '~/x.png', from('src/a.ts'))).toEqual([from('src/x.png')]);
+  });
+
+  it("does not fall back to an outer Vite config's alias from inside another Vite project", async () => {
+    const map = await load({
+      'vite.config.ts': "export default { resolve: { alias: { '~': '/shared' } } };\n",
+      'apps/web/vite.config.ts': "export default { resolve: { alias: { '@': '/src' } } };\n",
+    });
+
+    // `apps/web` is built with its own config, which declares no `~`.
+    expect(expandAlias(map, '~/x.png', from('apps/web/src/a.ts'))).toEqual([]);
+    expect(expandAlias(map, '@/x.png', from('apps/web/src/a.ts'))).toEqual([
+      from('apps/web/src/x.png'),
+    ]);
+    expect(expandAlias(map, '~/x.png', from('src/a.ts'))).toEqual([from('shared/x.png')]);
+  });
+});
+
 describe('loadAliases: the folders a skip covers', () => {
   it('records the folders a skipped setting leaves without their aliases', async () => {
     const map = await load({

@@ -3,10 +3,15 @@
  * drawn at random: `extends` chains (arrays, cycles, packages), `baseUrl`, `${configDir}` and
  * nested projects. TypeScript is asked through its public API and sees a file at every
  * `probe.ts` and `lib.ts`, so it answers with its own first candidate, whatever Upfly computed.
+ *
+ * Then against Vite's, over `resolve.alias` sections drawn at random. Vite is asked through
+ * its public `createIdResolver` in alias-only mode, which runs the alias plugin Vite ships and
+ * nothing else, so its answer is the path Vite goes on to load.
  */
 
 import { posix, resolve } from 'node:path';
 import ts from 'typescript';
+import { BuildEnvironment, createIdResolver, resolveConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from '../paths.js';
 import { expandAlias, loadAliases } from './aliases.js';
@@ -221,6 +226,125 @@ describe('loadAliases against TypeScript', () => {
 
       // A generator that stopped producing mapped paths would pass with nothing checked.
       expect(probes).toBeGreaterThan(ROUNDS);
+      expect(found.slice(0, 3), `${found.length} of ${probes} paths disagree`).toEqual([]);
+    },
+    TIMEOUT_MS,
+  );
+});
+
+/**
+ * Keys that begin one another (`@` and `@/components`), one ending in a slash, and two that
+ * JavaScript enumerates before the other keys of an object (`1`, `2`) beside one that only
+ * starts like them (`1/a`).
+ */
+const VITE_FINDS = [
+  '@',
+  '@/',
+  '@/components',
+  '@/components/icons',
+  '~',
+  '@components',
+  '#img',
+  '1',
+  '1/a',
+  '2',
+];
+const VITE_TARGETS = ['src', 'lib/components', 'shared', 'src/components', 'assets/img'];
+const VITE_TAILS = ['', '/', '/x.png', '/components/icon.png', '/icons/a.svg', 'x.png', '//x.png'];
+
+interface ViteEntry {
+  readonly find: string;
+  readonly target: string;
+  /** Whether the replacement ends in `/`, which Vite drops when the key ends in one too. */
+  readonly slash: boolean;
+}
+
+function viteEntries(random: () => number): ViteEntry[] {
+  return Array.from({ length: 1 + Math.floor(random() * 5) }, () => ({
+    find: pick(random, VITE_FINDS),
+    target: pick(random, VITE_TARGETS),
+    slash: random() < 0.3,
+  }));
+}
+
+/** The config module as Vite's templates write it, its aliases an object or an array. */
+function viteConfigText(entries: readonly ViteEntry[], form: 'object' | 'array'): string {
+  const value = ({ target, slash }: ViteEntry) =>
+    `path.resolve(__dirname, ${JSON.stringify(target)})${slash ? " + '/'" : ''}`;
+  const items = entries.map((entry) =>
+    form === 'object'
+      ? `${JSON.stringify(entry.find)}: ${value(entry)}`
+      : `{ find: ${JSON.stringify(entry.find)}, replacement: ${value(entry)} }`,
+  );
+  const alias = form === 'object' ? `{ ${items.join(', ')} }` : `[${items.join(', ')}]`;
+  return `import path from 'node:path';\nexport default { resolve: { alias: ${alias} } };\n`;
+}
+
+/** The value that module exports for `resolve.alias`. */
+function viteAliasValue(
+  entries: readonly ViteEntry[],
+  form: 'object' | 'array',
+): Record<string, string> | { find: string; replacement: string }[] {
+  const replacement = ({ target, slash }: ViteEntry) =>
+    `${resolve(ROOT, target)}${slash ? '/' : ''}`;
+  if (form === 'array') {
+    return entries.map((entry) => ({ find: entry.find, replacement: replacement(entry) }));
+  }
+  // Assigned in written order, so the keys fall in the order the object literal gives them.
+  const object: Record<string, string> = {};
+  for (const entry of entries) object[entry.find] = replacement(entry);
+  return object;
+}
+
+describe('loadAliases against Vite', () => {
+  it(
+    'gives the path Vite rewrites each import to, and no candidate where no Vite alias matches',
+    async () => {
+      const config = `${ROOT}/vite.config.ts`;
+      const importer = `${ROOT}/src/main.ts`;
+      let probes = 0;
+      let mapped = 0;
+      const found: object[] = [];
+      for (let round = 0; round < ROUNDS; round++) {
+        const random = seeded(round);
+        const entries = viteEntries(random);
+        const form = random() < 0.5 ? 'object' : 'array';
+        const text = viteConfigText(entries, form);
+        const map = await loadAliases({
+          root: ROOT,
+          files: [{ path: config, relative: 'vite.config.ts' }],
+          readFile: async () => text,
+          isFile: (path) => toPosix(path) === config,
+        });
+        expect(map.skipped).toEqual([]);
+
+        const resolved = await resolveConfig(
+          {
+            configFile: false,
+            root: ROOT,
+            logLevel: 'silent',
+            resolve: { alias: viteAliasValue(entries, form) },
+          },
+          'build',
+        );
+        const environment = new BuildEnvironment('client', resolved);
+        const resolveId = createIdResolver(resolved);
+        for (const find of VITE_FINDS) {
+          for (const tail of VITE_TAILS) {
+            const id = `${find}${tail}`;
+            probes += 1;
+            const vite = await resolveId(environment, id, importer, true);
+            if (vite !== undefined) mapped += 1;
+            const expected = vite === undefined ? [] : [toPosix(resolve(vite))];
+            const upfly = expandAlias(map, id, importer);
+            if (JSON.stringify(upfly) === JSON.stringify(expected)) continue;
+            found.push({ round, id, vite: expected, upfly, config: text });
+          }
+        }
+      }
+
+      // A generator that stopped producing mapped paths would pass with nothing checked.
+      expect(mapped).toBeGreaterThan(ROUNDS);
       expect(found.slice(0, 3), `${found.length} of ${probes} paths disagree`).toEqual([]);
     },
     TIMEOUT_MS,

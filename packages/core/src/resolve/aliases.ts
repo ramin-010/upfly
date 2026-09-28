@@ -42,6 +42,11 @@ export interface AliasRule {
    * inherited rule, the base it came from.
    */
   readonly source: string;
+  /**
+   * The tool that applies the rule, which decides how it is chosen: Vite takes the first
+   * alias its config declares that matches, TypeScript an exact key, then the longest prefix.
+   */
+  readonly tool: 'vite' | 'typescript';
 }
 
 /** A config or alias that was found but could not be read, kept so the report can say why. */
@@ -71,8 +76,10 @@ interface PendingSkip {
 
 export interface AliasMap {
   /**
-   * Nearest config first; within one config an exact key, then the longest prefix, so
-   * `@/app/(create)/*` beats `@/*` on the same path.
+   * In the order they are tried: Vite's rules first, the nearest config first and each
+   * config's in the order it declares them; then tsconfig's, the nearest config first and
+   * within one config an exact key, then the longest prefix, so `@/app/(create)/*` beats
+   * `@/*` on the same path.
    */
   readonly rules: readonly AliasRule[];
   readonly skipped: readonly AliasSkip[];
@@ -144,14 +151,18 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
     }
   }
 
-  // Nearest config first, as TypeScript reads only the nearest. Within one config, the order
-  // TypeScript takes: an exact key, then the longest prefix, so `@/app/(create)/*` beats
-  // `@/*`. Then by source, so the order is the same on every run.
+  // Vite's alias plugin runs before any other resolver, a plugin reading tsconfig `paths`
+  // included, so Vite's rules come first. Then the nearest config first, as each tool reads
+  // only the nearest. Within one Vite config, the order it declares, which the stable sort
+  // keeps; within one tsconfig, TypeScript's: an exact key, then the longest prefix, so
+  // `@/app/(create)/*` beats `@/*`. Then by source, so the order is the same on every run.
   const sorted = unique(rules).sort(
     (a, b) =>
+      Number(a.tool === 'typescript') - Number(b.tool === 'typescript') ||
       b.scope.length - a.scope.length ||
-      Number(a.wildcard) - Number(b.wildcard) ||
-      b.prefix.length - a.prefix.length ||
+      (a.tool === 'vite'
+        ? 0
+        : Number(a.wildcard) - Number(b.wildcard) || b.prefix.length - a.prefix.length) ||
       compareStrings(a.source, b.source),
   );
 
@@ -168,31 +179,52 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 }
 
 /**
- * Expand an alias-shaped path into candidate absolute POSIX paths, in rule order: the nearest
- * config's rules first, then each parent folder's as a fallback. Returns `[]` when no rule
- * applies, and the resolver then reports the path as `unresolved-alias` rather than `broken`.
+ * Expand an alias-shaped path into candidate absolute POSIX paths, in the order
+ * `matchingRules` gives. Returns `[]` when no rule applies, and the resolver then reports the
+ * path as `unresolved-alias` rather than `broken`.
  */
 export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): readonly string[] {
+  return matchingRules(map, rawPath, fromFile).flatMap((rule) => expandRule(rule, rawPath));
+}
+
+/**
+ * The rules that map `rawPath` written in `fromFile`, in the order they are tried. A Vite
+ * alias that matches is the only rule, since Vite loads what its first matching alias names
+ * and tries nothing after it, and only the nearest Vite config's aliases apply. Otherwise the
+ * tsconfig rules: the nearest config's first, then each parent folder's as a fallback.
+ */
+export function matchingRules(
+  map: AliasMap,
+  rawPath: string,
+  fromFile: string,
+): readonly AliasRule[] {
   const from = toPosix(fromFile);
-  const out: string[] = [];
+  const out: AliasRule[] = [];
+  // The folder of the nearest Vite config: a file is built by that project alone.
+  let viteScope: string | null = null;
 
   for (const rule of map.rules) {
     if (!from.startsWith(`${rule.scope}/`) && from !== rule.scope) continue;
-
-    if (rule.wildcard) {
-      if (!rawPath.startsWith(rule.prefix)) continue;
-      // Leading separators are stripped before joining. Under a key with no trailing slash,
-      // such as `"@*"`, the rest of `@/x.png` is `/x.png`, which
-      // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
-      const rest = rawPath.slice(rule.prefix.length).replace(/^[/\\]+/, '');
-      for (const target of rule.targets) out.push(toPosix(resolvePath(target, rest)));
-    } else {
-      if (rawPath !== rule.prefix) continue;
-      for (const target of rule.targets) out.push(toPosix(target));
+    if (rule.tool === 'vite') {
+      viteScope ??= rule.scope;
+      if (rule.scope !== viteScope) continue;
     }
+    const matches = rule.wildcard ? rawPath.startsWith(rule.prefix) : rawPath === rule.prefix;
+    if (!matches) continue;
+    if (rule.tool === 'vite') return [rule];
+    out.push(rule);
   }
-
   return out;
+}
+
+/** The paths a rule that matches `rawPath` expands it to. */
+function expandRule(rule: AliasRule, rawPath: string): string[] {
+  if (!rule.wildcard) return rule.targets.map((target) => toPosix(target));
+  // Leading separators are stripped before joining. Under a key with no trailing slash,
+  // such as `"@*"`, the rest of `@/x.png` is `/x.png`, which
+  // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
+  const rest = rawPath.slice(rule.prefix.length).replace(/^[/\\]+/, '');
+  return rule.targets.map((target) => toPosix(resolvePath(target, rest)));
 }
 
 // ---------------------------------------------------------------------------
@@ -344,7 +376,7 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
       continue;
     }
 
-    rules.push(makeRule(from, targets.map(fill), base, folder, declaredIn.source));
+    rules.push(makeRule(from, targets.map(fill), base, folder, declaredIn.source, 'typescript'));
   }
   return rules;
 }
@@ -469,8 +501,10 @@ async function readViteConfig(
 
   const { entries, unread } = readViteAliases(text, path);
   for (const { find, target } of entries) {
-    rules.push(makeRule(find, [target], dirname(path), dirname(path), source));
-    rules.push(makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source));
+    rules.push(makeRule(find, [target], dirname(path), dirname(path), source, 'vite'));
+    rules.push(
+      makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source, 'vite'),
+    );
   }
   for (const item of unread) skip(item.reason);
 }
@@ -486,6 +520,7 @@ function makeRule(
   base: string,
   scope: string,
   source: string,
+  tool: AliasRule['tool'],
 ): AliasRule {
   const wildcard = from.endsWith('*');
   const prefix = wildcard ? from.slice(0, -1) : from;
@@ -495,6 +530,7 @@ function makeRule(
     wildcard,
     scope: toPosix(scope),
     source,
+    tool,
     targets: targets.map((target) =>
       toPosix(resolvePath(base, target.endsWith('*') ? target.slice(0, -1) : target)),
     ),

@@ -84,6 +84,25 @@ describe('readViteAliases reads what Vite computes from the config location', ()
     ]);
   });
 
+  it('reads an alias object in the order JavaScript gives its keys, which is the order Vite tries', () => {
+    const { entries } = read([
+      'export default { resolve: { alias: {',
+      "  '1/a': '/a',",
+      "  '@': '/first',",
+      "  '1': '/one',",
+      "  '@': '/last',",
+      '} } }',
+    ]);
+
+    // Keys that are array indices come first, and a repeated key keeps its first place and
+    // its last value.
+    expect(entries).toEqual([
+      { find: '1', target: at('one'), line: 4 },
+      { find: '1/a', target: at('a'), line: 2 },
+      { find: '@', target: at('last'), line: 5 },
+    ]);
+  });
+
   it('reads nothing, and reports nothing, from a config with no alias', () => {
     expect(
       read([

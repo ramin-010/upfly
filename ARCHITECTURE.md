@@ -519,13 +519,24 @@ app maps `~` to its own folder.
 Aliases are scoped to the directory of the config that uses them. `shadcn-ui` has roughly twenty
 configs all defining `@/*`, and without scoping every one of them would offer a candidate for every
 reference in the workspace. A base that other configs extend, and that is not itself a
-`tsconfig.json` or `jsconfig.json`, serves files only through those configs. The rules are tried
-nearest config first and, within one config, in TypeScript's order: an exact key, then the longest
-prefix. So wherever the nearest config maps a path, the first candidate is the file TypeScript
-resolves, which `aliases.property.test.ts` checks against TypeScript's own resolver over configs
-drawn at random. Three differences from TypeScript remain: every matching rule is tried, where
-TypeScript takes one pattern; a config in a parent folder is a fallback, where TypeScript uses only
-the nearest; and `include`, `files` and `references` are not read.
+`tsconfig.json` or `jsconfig.json`, serves files only through those configs.
+
+Each rule is chosen as the tool that applies it chooses. Vite's alias plugin runs before every
+other resolver, a plugin that reads tsconfig `paths` included, and applies the first alias its
+config declares that matches, however long the others are: under `{ '@': 'src', '@/components':
+'lib/components' }`, `@/components/icon.png` is `src/components/icon.png`. So Vite's rules are
+tried first, only the nearest Vite config's, in the order it declares them (an object's in the
+order JavaScript enumerates its keys), and a Vite alias that matches is the only candidate: when its
+file is missing, the build fails there rather than trying another alias. A rewrite planned through
+any other rule would point the import at a file Vite never reads. `aliases.property.test.ts` checks
+this against Vite's own alias resolution, over alias sections drawn at random.
+
+The tsconfig rules follow, nearest config first and, within one config, in TypeScript's order: an
+exact key, then the longest prefix. So wherever the nearest config maps a path, the first candidate
+is the file TypeScript resolves, which the same test file checks against TypeScript's own resolver
+over configs drawn at random. Three differences from TypeScript remain: every matching rule is
+tried, where TypeScript takes one pattern; a config in a parent folder is a fallback, where
+TypeScript uses only the nearest; and `include`, `files` and `references` are not read.
 
 **A package specifier is not an alias** (rung 6b). `@11ty/logo/img/logo.png` names a file inside
 `node_modules`, which the walk prunes, so no alias configuration will ever resolve it; it is

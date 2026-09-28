@@ -47,6 +47,8 @@ type Imported =
 
 type Module = 'path' | 'url' | 'vite';
 
+type Property = t.ObjectExpression['properties'][number];
+
 interface Context {
   readonly configPath: string;
   /** Top-level `const` initialisers, by name. */
@@ -143,7 +145,9 @@ export function readViteAliases(text: string, configPath: string): ViteAliases {
 
 function readAlias(alias: t.Expression, root: string, context: Context, sink: Sink): void {
   if (alias.type === 'ObjectExpression') {
-    for (const property of alias.properties) readObjectEntry(property, root, context, sink);
+    for (const property of inKeyOrder(alias.properties)) {
+      readObjectEntry(property, root, context, sink);
+    }
     return;
   }
   if (alias.type === 'ArrayExpression') {
@@ -152,6 +156,45 @@ function readAlias(alias: t.Expression, root: string, context: Context, sink: Si
   }
   const line = lineOf(alias);
   throw new OffTheList(line, `resolve.alias at line ${line} ${RUNS_CODE}`);
+}
+
+/**
+ * An object literal's properties in the order JavaScript enumerates the object, which is the
+ * order Vite tries its aliases in: keys that are array indices first, ascending, then the
+ * rest as written, a repeated key keeping its first place and its last value. A property with
+ * no static key stays where it is written.
+ */
+function inKeyOrder(properties: readonly Property[]): Property[] {
+  const staticKey = (property: Property) =>
+    property.type === 'ObjectProperty' ? keyOf(property) : null;
+  const last = new Map<string, Property>();
+  for (const property of properties) {
+    const key = staticKey(property);
+    if (key !== null) last.set(key, property);
+  }
+
+  const indices: { readonly index: number; readonly property: Property }[] = [];
+  const rest: Property[] = [];
+  for (const property of properties) {
+    const key = staticKey(property);
+    if (key === null) {
+      rest.push(property);
+      continue;
+    }
+    const kept = last.get(key);
+    // Taken already, at the key's first place.
+    if (kept === undefined) continue;
+    last.delete(key);
+    if (isArrayIndex(key)) indices.push({ index: Number(key), property: kept });
+    else rest.push(kept);
+  }
+  indices.sort((a, b) => a.index - b.index);
+  return [...indices.map(({ property }) => property), ...rest];
+}
+
+/** A key JavaScript reads as an array index: a canonical integer below 2^32 - 1. */
+function isArrayIndex(key: string): boolean {
+  return /^(0|[1-9]\d*)$/.test(key) && Number(key) < 2 ** 32 - 1;
 }
 
 function readObjectEntry(

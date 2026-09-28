@@ -15,7 +15,7 @@
 import { spell } from '../adapters/reference-path.js';
 import type { Graph } from '../graph/graph.js';
 import { compareStrings, relativePath, toPosix } from '../paths.js';
-import type { AliasMap, AliasRule } from '../resolve/aliases.js';
+import { type AliasMap, type AliasRule, matchingRules } from '../resolve/aliases.js';
 import { isLinked, linkedPaths } from '../resolve/reference.js';
 import type { ServingRoots } from '../resolve/resolve.js';
 import type { Reference } from '../types.js';
@@ -298,19 +298,13 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
 /**
  * The alias rule this reference goes through, or `null` when it is not aliased.
  *
- * Scope is checked as well as the prefix, with the same condition as `expandAlias`: a rule
- * applies only to references from inside the directory its config governs. Matching the
+ * The rules are the ones `expandAlias` tries, so scope is checked as well as the prefix: a
+ * rule applies only to references from inside the directory its config governs. Matching the
  * prefix alone would re-spell a `~/` reference through an alias the resolver never used,
  * producing text that looks right and reaches nothing.
  */
 function aliasRuleFor(rawPath: string, file: string, aliases: AliasMap): AliasRule | null {
-  for (const rule of aliases.rules) {
-    const matches = rule.wildcard ? rawPath.startsWith(rule.prefix) : rawPath === rule.prefix;
-    if (!matches) continue;
-    if (!file.startsWith(`${rule.scope}/`) && file !== rule.scope) continue;
-    return rule;
-  }
-  return null;
+  return matchingRules(aliases, rawPath, file)[0] ?? null;
 }
 
 /** The aliased spelling of a new path under this rule, or `null` if it has none. */

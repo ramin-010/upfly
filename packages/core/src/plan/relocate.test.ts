@@ -323,6 +323,7 @@ describe('relocate, and how a path is re-spelled', () => {
           wildcard: true,
           scope: '/repo',
           source: 'tsconfig.json',
+          tool: 'typescript',
         },
       ],
       skipped: [],
@@ -414,6 +415,7 @@ describe('relocate, and how a path is re-spelled', () => {
           wildcard: true,
           scope: '/repo',
           source: 'tsconfig.json',
+          tool: 'typescript',
         },
       ],
       skipped: [],
@@ -449,7 +451,14 @@ describe('relocate, and how a path is re-spelled', () => {
     // ordinary relative one it resolved as.
     const aliases: AliasMap = {
       rules: [
-        { prefix: '~/', targets: ['/repo/src'], wildcard: true, scope: '/repo/src', source: 'x' },
+        {
+          prefix: '~/',
+          targets: ['/repo/src'],
+          wildcard: true,
+          scope: '/repo/src',
+          source: 'x',
+          tool: 'typescript',
+        },
       ],
       skipped: [],
     };
@@ -485,6 +494,7 @@ describe('relocate, and how a path is re-spelled', () => {
           wildcard: true,
           scope: '/repo',
           source: 'tsconfig.json',
+          tool: 'typescript',
         },
       ],
       skipped: [],
