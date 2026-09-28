@@ -3,7 +3,7 @@
  *
  * A reference's resolution says what happened to it; its shape says what it is, so the
  * coverage matrix can count outcomes per construct. The coverage tree's answer key
- * (`coverage-tree/key/coverage-key.json`) defines the list, and this file holds a second copy.
+ * (`accuracy-suite/key/coverage-key.json`) defines the list, and this file holds a second copy.
  * Neither can import the other: the key's checker, `check-key.mjs`, imports only `node:`
  * modules and files beside it, so the key is never certified by the engine it measures, and
  * a shipped package must not depend on a test fixture. `shapes.reconcile.test.ts` fails when

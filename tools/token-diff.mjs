@@ -832,7 +832,7 @@ function scriptKind(file) {
 /** A path under a folder that holds test data, which no comment sweep may touch. @param {string} file */
 function isTestData(file) {
   const folders = file.split('/').slice(0, -1);
-  return file.startsWith('coverage-tree/tree/') || folders.includes('fixtures');
+  return file.startsWith('accuracy-suite/tree/') || folders.includes('fixtures');
 }
 
 /** @param {string} text */

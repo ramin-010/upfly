@@ -1090,10 +1090,10 @@ it is its CSS.
 Every reference an adapter emits carries a shape: the construct it was written in, such as
 `html.img.src`, `css.url.in-comment` or `path.absolute-url`. A reference's resolution says what
 happened to it; its shape says what it is, so outcomes can be counted per construct. The coverage
-matrix (`coverage-tree/tools/matrix.mjs`) prints one row per shape and no total, so no single
+matrix (`accuracy-suite/tools/matrix.mjs`) prints one row per shape and no total, so no single
 figure can be quoted out of context.
 
-The coverage tree's answer key, `coverage-tree/key/coverage-key.json`, defines the vocabulary, and
+The coverage tree's answer key, `accuracy-suite/key/coverage-key.json`, defines the vocabulary, and
 `packages/core/src/shapes.ts` holds a second copy as `SHAPES`, which the engine exports. Neither can
 import the other. The key's checker, `check-key.mjs`, imports only `node:` modules and files beside
 it, so the key is never certified by the engine it measures, and a shipped package must not depend
@@ -1185,7 +1185,7 @@ emits `js.string.literal` and the resolver reads it as an ordinary path.
 
 #### Measuring the engine against the tree
 
-`coverage-tree/tools/measure.mjs` scans the tree once and resolves the scan twice. The first run
+`accuracy-suite/tools/measure.mjs` scans the tree once and resolves the scan twice. The first run
 uses the serving roots the answer key declares. The second declares nothing and uses the roots
 `decideServingRoots` works out, which is what `servingRootsFor` gives any run on a project that
 declares none. Each run reports its own figure for the claimed population, and the two are never

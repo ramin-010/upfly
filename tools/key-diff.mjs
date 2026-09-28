@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INTERNAL_REFERENCE, URL_PATTERN } from './comment-check.mjs';
 
-export const KEY_FILE = 'coverage-tree/key/coverage-key.json';
+export const KEY_FILE = 'accuracy-suite/key/coverage-key.json';
 
 /**
  * Where prose lives, as paths with `*` for any array index or object key.

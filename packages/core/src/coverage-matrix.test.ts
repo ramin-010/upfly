@@ -1,5 +1,5 @@
 /**
- * Tests for the coverage matrix (`coverage-tree/tools/matrix.mjs`), written to show that its
+ * Tests for the coverage matrix (`accuracy-suite/tools/matrix.mjs`), written to show that its
  * checks can fail: decisions are made from the matrix's table, and a check nobody has seen
  * fail proves nothing. See "Reference shapes" in ARCHITECTURE.md.
  *
@@ -23,7 +23,7 @@ import {
   claimedPopulation,
   reconcile,
   renderMatrix,
-} from '../../../coverage-tree/tools/matrix.mjs';
+} from '../../../accuracy-suite/tools/matrix.mjs';
 
 interface Entry {
   raw: string;

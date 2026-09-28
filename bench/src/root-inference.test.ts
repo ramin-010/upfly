@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { type DirectoryVerdict, type RepoResult, measureRepoAt } from './root-inference.js';
 
-const TREE = join(import.meta.dirname, '..', '..', 'coverage-tree', 'tree');
+const TREE = join(import.meta.dirname, '..', '..', 'accuracy-suite', 'tree');
 
 /** The serving roots the tree's answer key lists: the answer to score against, not an input. */
 const TRUTH = ['apps/web/public', 'apps/docs/public', 'sites/root-served', 'legacy/public'];
@@ -31,8 +31,8 @@ let correct: RepoResult;
 let wrong: RepoResult;
 
 beforeAll(async () => {
-  correct = await measureRepoAt(TREE, 'coverage-tree', TRUTH, false);
-  wrong = await measureRepoAt(TREE, 'coverage-tree', [''], false);
+  correct = await measureRepoAt(TREE, 'accuracy-suite', TRUTH, false);
+  wrong = await measureRepoAt(TREE, 'accuracy-suite', [''], false);
 }, BUDGET_MS);
 
 function weightedGap(directories: readonly DirectoryVerdict[]): number {

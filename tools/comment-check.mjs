@@ -41,7 +41,7 @@ export const MAX_COMMENT_LINES = 10;
 
 // Scanned directories, relative to the root. Each package under `packages/` adds its own.
 const PACKAGE_DIRS = ['src', 'test'];
-const OTHER_DIRS = ['bench/src', 'coverage-tree/tools', 'tools'];
+const OTHER_DIRS = ['bench/src', 'accuracy-suite/tools', 'tools'];
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|js|mjs|cjs)$/;
 const SKIPPED_DIRS = new Set(['node_modules', 'dist', '__snapshots__']);
 

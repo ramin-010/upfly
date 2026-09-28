@@ -25,7 +25,7 @@ import {
   summariseBreakdowns,
 } from './breakdown.js';
 
-const TREE = join(import.meta.dirname, '..', '..', 'coverage-tree', 'tree');
+const TREE = join(import.meta.dirname, '..', '..', 'accuracy-suite', 'tree');
 
 /**
  * Real filesystem work, and vitest's default timeout is 5 s.

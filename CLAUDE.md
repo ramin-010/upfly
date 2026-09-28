@@ -56,7 +56,7 @@ it is the only channel between chats and a chat can end at any moment.
     design note for `ARCHITECTURE.md`. Output text (report reasons, messages, CLI output) never
     carries an internal reference. The standard, with examples: `../notes/15-comment-standard.md`.
     `pnpm comments:check` runs inside `pnpm check` and fails on any finding in any scanned file:
-    each package's `src` and `test`, `bench/src`, `coverage-tree/tools`, `tools`, and the source
+    each package's `src` and `test`, `bench/src`, `accuracy-suite/tools`, `tools`, and the source
     files at the repository's root. There is no baseline and no exemption.
 
 ## Two things that decide whether this product is trusted

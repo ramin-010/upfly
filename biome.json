@@ -11,8 +11,8 @@
       "packages/core/fixtures",
       "fixtures/**/.next",
 
-      "coverage-tree/tree",
-      "coverage-tree/key"
+      "accuracy-suite/tree",
+      "accuracy-suite/key"
     ]
   },
   "formatter": {
