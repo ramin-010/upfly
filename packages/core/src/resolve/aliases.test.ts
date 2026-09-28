@@ -581,3 +581,37 @@ describe('expandAlias: scope', () => {
     expect(expandAlias(map, '@/other.png', from('a.tsx'))).toEqual([]);
   });
 });
+
+describe('expandAlias: a tsconfig key with text after its *', () => {
+  it('matches the text around the * and puts what it stands for where each target has its *', async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@icons/*.svg": ["./src/icons/*.svg", "./gen/icon-*", "lib"] } } }',
+    });
+
+    // A target with no `*` is used whole, as TypeScript uses it.
+    expect(expandAlias(map, '@icons/ui/star.svg', from('a.ts'))).toEqual([
+      from('src/icons/ui/star.svg'),
+      from('gen/icon-ui/star'),
+      from('lib'),
+    ]);
+    // The `.svg` is part of the key, so a PNG under `@icons/` is not the key's to map.
+    expect(expandAlias(map, '@icons/star.png', from('a.ts'))).toEqual([]);
+  });
+
+  it('reports a key with a second *, which TypeScript does not read, and maps nothing with it', async () => {
+    const map = await load({
+      'tsconfig.json': '{ "compilerOptions": { "paths": { "@/*/img/*": ["./src/*/img/*"] } } }',
+    });
+
+    expect(map.skipped).toEqual([
+      {
+        what: 'tsconfig.json',
+        reason:
+          'the alias "@/*/img/*" has more than one "*", which TypeScript does not accept, so it was not read',
+        scopes: [toPosix(ROOT)],
+      },
+    ]);
+    expect(expandAlias(map, '@/a/img/b.png', from('a.ts'))).toEqual([]);
+  });
+});

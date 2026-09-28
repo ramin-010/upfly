@@ -482,6 +482,45 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(text).toBe('img/logo.png');
   });
 
+  it('re-spells through a key with text after its *, and refuses a name the key cannot hold', () => {
+    // `@icons/*.svg` maps only a path ending in `.svg`, so `@icons/star.png` is text no
+    // key maps: the import would break.
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@icons/',
+          suffix: '.svg',
+          targets: ['/repo/src/icons'],
+          targetPatterns: ['*.svg'],
+          wildcard: true,
+          scope: '/repo',
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      skipped: [],
+    };
+    const graph = graphFor({
+      assets: ['src/icons/star.svg'],
+      references: [
+        {
+          file: 'src/App.tsx',
+          rawPath: '@icons/star.svg',
+          target: 'src/icons/star.svg',
+          via: 'serving-root',
+        },
+      ],
+    });
+    const moved = (to: string) =>
+      replacementFor(graph, { from: 'src/icons/star.svg', to }, { aliases });
+
+    expect(moved('src/icons/ui/moon.svg').text).toBe('@icons/ui/moon.svg');
+    expect(moved('src/icons/star.png').plan.moves).toEqual([]);
+    expect(moved('src/icons/star.png').plan.refused[0]?.reason).toContain(
+      'cannot express src/icons/star.png',
+    );
+  });
+
   it('refuses when the alias cannot express the destination', () => {
     // `~/* → src/*` cannot name anything outside `src/`, so after the move no alias path
     // reaches the file. The import would have to become a URL string, which is a code

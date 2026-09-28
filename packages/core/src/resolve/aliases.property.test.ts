@@ -32,8 +32,32 @@ const CONFIGS = [
   'node_modules/@acme/tsconfig/base.json',
   'node_modules/@acme/tsconfig/tsconfig.json',
 ];
-const KEYS = ['@/*', '~/*', '#lib/*', '@/components/*', '$lib', '$lib/*'];
-const PATTERN_TARGETS = ['./src/*', 'src/*', '../shared/*', '*', '${configDir}/lib/*', './gen/*'];
+/**
+ * `@icons/*.svg` has text after its `*`, and ties `@icons/*` on prefix length, which TypeScript
+ * settles by the order the keys are written.
+ */
+const KEYS = [
+  '@/*',
+  '~/*',
+  '#lib/*',
+  '@/components/*',
+  '$lib',
+  '$lib/*',
+  '@icons/*.svg',
+  '@icons/*',
+];
+/** With text after the `*`, text before it in the same name, and no `*` at all. */
+const PATTERN_TARGETS = [
+  './src/*',
+  'src/*',
+  '../shared/*',
+  '*',
+  '${configDir}/lib/*',
+  './gen/*',
+  './src/icons/*.svg',
+  './gen/icon-*',
+  'lib',
+];
 const EXACT_TARGETS = ['./src/lib', '${configDir}/src/lib', 'lib'];
 const BASE_URLS = ['.', './src', '..', '${configDir}/src', '${configDir}'];
 
@@ -71,7 +95,7 @@ function pathsOf(random: () => number): Record<string, string[]> {
   const count = 1 + Math.floor(random() * 3);
   for (let i = 0; i < count; i++) {
     const key = pick(random, KEYS);
-    paths[key] = key.endsWith('*')
+    paths[key] = key.includes('*')
       ? [pick(random, PATTERN_TARGETS), ...(random() < 0.3 ? [pick(random, PATTERN_TARGETS)] : [])]
       : [pick(random, EXACT_TARGETS)];
   }
@@ -123,7 +147,9 @@ function relative(path: string): string {
 function typescriptHost(
   files: ReadonlyMap<string, string>,
 ): ts.ParseConfigFileHost & ts.ModuleResolutionHost {
-  const probe = /\/(probe|lib)\.ts$/;
+  // A module stands at every path a probe specifier can reach, `.ts` added: `probe`,
+  // `icon-probe`, `probe.svg` and `lib`.
+  const probe = /(probe|\/lib)(\.svg)?\.ts$/;
   return {
     useCaseSensitiveFileNames: true,
     getCurrentDirectory: () => ROOT,
@@ -173,9 +199,7 @@ async function disagreements(
     }));
   const specifiers = new Set(
     projects.flatMap(({ options }) =>
-      Object.keys(options.paths ?? {}).map((key) =>
-        key.endsWith('*') ? `${key.slice(0, -1)}probe` : key,
-      ),
+      Object.keys(options.paths ?? {}).map((key) => key.replace('*', 'probe')),
     ),
   );
 
@@ -187,9 +211,14 @@ async function disagreements(
     for (const specifier of specifiers) {
       // Only where TypeScript uses `paths`: past them it looks through `baseUrl` and in
       // `node_modules`, which `expandAlias` does not model.
-      const mapped = keys.some((key) =>
-        key.endsWith('*') ? specifier.startsWith(key.slice(0, -1)) : specifier === key,
-      );
+      const mapped = keys.some((key) => {
+        const [head = '', tail] = key.split('*');
+        return tail === undefined
+          ? specifier === key
+          : specifier.length >= head.length + tail.length &&
+              specifier.startsWith(head) &&
+              specifier.endsWith(tail);
+      });
       if (!mapped) continue;
       probes += 1;
 

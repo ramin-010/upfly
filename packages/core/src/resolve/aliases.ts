@@ -28,11 +28,28 @@ export interface AliasRule {
    * whole spelling and sets `wildcard: false`.
    */
   readonly prefix: string;
-  /** Absolute directories (or files, for an exact rule) the prefix expands to, in order. */
+  /**
+   * The text a reference must end with, after the part the key's `*` stands for, when a
+   * tsconfig key has text after its `*`: `'.svg'` for `'@icons/*.svg'`. Absent when the `*`
+   * ends the key.
+   */
+  readonly suffix?: string;
+  /**
+   * Absolute directories (or files, for an exact rule) the rule expands a path into, in
+   * order. For a wildcard rule, each target's folder: its text up to the last `/` before its
+   * `*`.
+   */
   readonly targets: readonly string[];
   /**
-   * Whether the rule matches a prefix rather than the whole path: a tsconfig key ending in
-   * `*`, or a Vite key followed by `/`.
+   * For a wildcard rule, what each target writes after its folder, in `targets`' order, with
+   * `*` where the part the key's `*` matched goes: `'*.svg'` for `'src/icons/*.svg'`, `'icon-*'`
+   * for `'src/icon-*'`. One with no `*` is used whole, as TypeScript uses such a target.
+   * Absent when every target is its folder and a `*`, as `'src/*'` is.
+   */
+  readonly targetPatterns?: readonly string[];
+  /**
+   * Whether the rule matches a prefix rather than the whole path: a tsconfig key with a `*`,
+   * or a Vite key followed by `/`.
    */
   readonly wildcard: boolean;
   /** Folder of the config that uses the rule: only references from inside it may use it. */
@@ -206,20 +223,35 @@ export function matchingRule(map: AliasMap, rawPath: string, fromFile: string): 
     if (!from.startsWith(`${rule.scope}/`) && from !== rule.scope) continue;
     nearest[rule.tool] ??= rule.scope;
     if (rule.scope !== nearest[rule.tool]) continue;
-    const matches = rule.wildcard ? rawPath.startsWith(rule.prefix) : rawPath === rule.prefix;
-    if (matches) return rule;
+    if (rule.wildcard ? fitsPattern(rule, rawPath) : rawPath === rule.prefix) return rule;
   }
   return null;
 }
 
-/** The paths a rule that matches `rawPath` expands it to. */
+/** Whether a path starts with the rule's prefix and ends with its suffix, the two apart. */
+function fitsPattern(rule: AliasRule, rawPath: string): boolean {
+  const suffix = rule.suffix ?? '';
+  return (
+    rawPath.length >= rule.prefix.length + suffix.length &&
+    rawPath.startsWith(rule.prefix) &&
+    rawPath.endsWith(suffix)
+  );
+}
+
+/**
+ * The paths a rule that matches `rawPath` expands it to: the part the key's `*` matched put
+ * where each target's `*` is, as TypeScript substitutes it.
+ */
 function expandRule(rule: AliasRule, rawPath: string): string[] {
   if (!rule.wildcard) return rule.targets.map((target) => toPosix(target));
-  // Leading separators are stripped before joining. Under a key with no trailing slash,
-  // such as `"@*"`, the rest of `@/x.png` is `/x.png`, which
-  // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
-  const rest = rawPath.slice(rule.prefix.length).replace(/^[/\\]+/, '');
-  return rule.targets.map((target) => toPosix(resolvePath(target, rest)));
+  const matched = rawPath.slice(rule.prefix.length, rawPath.length - (rule.suffix ?? '').length);
+  return rule.targets.map((target, index) => {
+    const rest = (rule.targetPatterns?.[index] ?? '*').replace('*', () => matched);
+    // Leading separators are stripped before joining. Under a key with no trailing slash,
+    // such as `"@*"`, the rest of `@/x.png` is `/x.png`, which
+    // `path.resolve(base, '/x.png')` treats as absolute, dropping the base.
+    return toPosix(resolvePath(target, rest.replace(/^[/\\]+/, '')));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -352,13 +384,18 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
     if (from === null || property.type !== 'ObjectProperty') continue;
 
     const targets = arrayOfStrings(property.value);
-    if (targets === null) {
+    // TypeScript reports a key with a second `*` and matches nothing with it.
+    if (targets === null || from.indexOf('*') !== from.lastIndexOf('*')) {
+      const problem =
+        targets === null
+          ? 'does not map to a list of string paths'
+          : 'has more than one "*", which TypeScript does not accept';
       const key = JSON.stringify([declaredIn.source, from]);
       let skip = context.reported.get(key);
       if (skip === undefined) {
         skip = {
           what: declaredIn.source,
-          reason: `the alias "${from}" does not map to a list of string paths, so it was not read`,
+          reason: `the alias "${from}" ${problem}, so it was not read`,
           scopes: new Set(),
           config: null,
         };
@@ -380,7 +417,15 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
 function unique(rules: readonly AliasRule[]): AliasRule[] {
   const seen = new Set<string>();
   return rules.filter((rule) => {
-    const key = JSON.stringify([rule.prefix, rule.wildcard, rule.scope, rule.source, rule.targets]);
+    const key = JSON.stringify([
+      rule.prefix,
+      rule.suffix,
+      rule.wildcard,
+      rule.scope,
+      rule.source,
+      rule.targets,
+      rule.targetPatterns,
+    ]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -517,18 +562,39 @@ function makeRule(
   source: string,
   tool: AliasRule['tool'],
 ): AliasRule {
-  const wildcard = from.endsWith('*');
-  const prefix = wildcard ? from.slice(0, -1) : from;
+  // TypeScript reads a key's one `*` wherever it is. A Vite key arrives as `@` or `@/*`, and
+  // any other `*` in it is text Vite matches as written.
+  const starOf = (text: string) =>
+    tool === 'typescript' ? text.indexOf('*') : text.endsWith('*') ? text.length - 1 : -1;
+  const star = starOf(from);
+  const common = { scope: toPosix(scope), source, tool };
 
+  if (star === -1) {
+    return {
+      ...common,
+      prefix: from,
+      wildcard: false,
+      targets: targets.map((target) =>
+        toPosix(resolvePath(base, target.endsWith('*') ? target.slice(0, -1) : target)),
+      ),
+    };
+  }
+
+  const suffix = from.slice(star + 1);
+  const parts = targets.map((target) => {
+    const at = starOf(target);
+    const cut = target.lastIndexOf('/', (at === -1 ? target.length : at) - 1) + 1;
+    return { folder: target.slice(0, cut), pattern: target.slice(cut) };
+  });
   return {
-    prefix,
-    wildcard,
-    scope: toPosix(scope),
-    source,
-    tool,
-    targets: targets.map((target) =>
-      toPosix(resolvePath(base, target.endsWith('*') ? target.slice(0, -1) : target)),
-    ),
+    ...common,
+    prefix: from.slice(0, star),
+    ...(suffix === '' ? {} : { suffix }),
+    wildcard: true,
+    targets: parts.map(({ folder }) => toPosix(resolvePath(base, folder))),
+    ...(parts.every(({ pattern }) => pattern === '*')
+      ? {}
+      : { targetPatterns: parts.map(({ pattern }) => pattern) }),
   };
 }
 

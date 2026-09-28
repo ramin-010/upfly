@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from '../paths.js';
 import type { Asset, RawReference, Reference } from '../types.js';
-import type { AliasMap } from './aliases.js';
+import { type AliasMap, loadAliases } from './aliases.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { CONVENTIONAL_SERVING_ROOTS, resolveReferences, servedFromAnyRoot } from './resolve.js';
 
@@ -1412,6 +1412,30 @@ describe('rung 2 through a declared alias', () => {
         { map: everyPath, extra: [asset('types/lib/img/alias-5.png')] },
       )?.resolution,
     ).toBe('dynamic');
+  });
+
+  it('globs through a key with text after its *, which the target keeps', async () => {
+    const map = await loadAliases({
+      root: ROOT,
+      files: [{ path: toPosix(join(ROOT, 'tsconfig.json')), relative: 'tsconfig.json' }],
+      readFile: async () =>
+        '{ "compilerOptions": { "paths": { "@icons/*.svg": ["./src/icons/*.svg"] } } }',
+      isFile: () => false,
+    });
+    const extra = [
+      asset('src/icons/star.svg'),
+      asset('src/icons/moon.svg'),
+      asset('src/icons/star.png'),
+    ];
+
+    const found = expectResolution(
+      throughAlias({ rawPath: '@icons/${name}.svg' }, { map, extra }),
+      'resolved-pattern',
+    );
+    expect(found.resolvedPaths).toEqual([
+      join(ROOT, 'src/icons/moon.svg'),
+      join(ROOT, 'src/icons/star.svg'),
+    ]);
   });
 });
 

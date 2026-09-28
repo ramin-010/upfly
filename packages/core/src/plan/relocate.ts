@@ -311,13 +311,22 @@ function aliasRuleFor(rawPath: string, file: string, aliases: AliasMap): AliasRu
 function aliasTextFor(rule: AliasRule, newRelative: string, root: string): string | null {
   if (!rule.wildcard) return null;
 
-  for (const target of rule.targets) {
+  for (const [index, target] of rule.targets.entries()) {
     const base = toPosix(relativePath(root, target));
     // `''` is a target at the project root, under which every path sits.
     const inside = base === '' || newRelative === base || newRelative.startsWith(`${base}/`);
     if (!inside) continue;
     const rest = base === '' ? newRelative : newRelative.slice(base.length + 1);
-    return `${rule.prefix}${rest}`;
+    // The new path has to have the text the target writes around its `*`, and a target with
+    // no `*` names one file whatever the path says.
+    const pattern = rule.targetPatterns?.[index] ?? '*';
+    const star = pattern.indexOf('*');
+    if (star === -1) continue;
+    const before = pattern.slice(0, star);
+    const after = pattern.slice(star + 1);
+    if (rest.length < before.length + after.length) continue;
+    if (!rest.startsWith(before) || !rest.endsWith(after)) continue;
+    return `${rule.prefix}${rest.slice(before.length, rest.length - after.length)}${rule.suffix ?? ''}`;
   }
   return null;
 }

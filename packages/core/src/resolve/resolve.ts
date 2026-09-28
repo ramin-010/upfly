@@ -384,9 +384,9 @@ function resolveThroughAlias(
 /**
  * Rung 2 through a declared alias: each expansion of the pattern, in the order rung 4b tries
  * them, globbed as `matchPattern` globs a candidate, and the first that names an asset wins.
- * The holes are marked before the alias is expanded, so a prefix has to lie wholly in the
- * text the author fixed. A link through an alias is recorded as `serving-root`, as rung 4b
- * records one.
+ * The holes are marked before the alias is expanded, so a key's prefix, and any text after
+ * its `*`, has to lie wholly in the text the author fixed. A link through an alias is
+ * recorded as `serving-root`, as rung 4b records one.
  */
 function matchThroughAlias(
   pattern: string,

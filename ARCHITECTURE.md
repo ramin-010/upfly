@@ -503,10 +503,13 @@ Two details that are easy to get wrong:
   throws on both. It is parsed with `@babel/parser` (a JSONC document *is* a JavaScript object
   literal) rather than by stripping comments with a regex, which would be "never regex JavaScript"
   wearing a different extension. Values are read off the AST, never reconstructed into an object.
-- **A tsconfig key and a Vite key mean different things.** `"@/*"` is a pattern whose `*` says
-  "prefix"; a Vite key replaces the whole path or the key followed by `/`, so `{ '@': '/src' }`
-  maps `@` and `@/x.png` but never `@img/x.png`. Each Vite alias therefore makes two rules, the
-  key and the key with `/`.
+- **A tsconfig key and a Vite key mean different things.** A tsconfig key's one `*` stands for
+  whatever lies between the text around it, so `"@icons/*.svg"` maps `@icons/ui/star.svg` by
+  `ui/star`, and that goes where each target writes its `*`: `src/icons/*.svg` gives
+  `src/icons/ui/star.svg`. TypeScript reads no key with a second `*`, and Upfly reports one. A
+  Vite key replaces the whole path or the key followed by `/`, so `{ '@': '/src' }` maps `@` and
+  `@/x.png` but never `@img/x.png`. Each Vite alias therefore makes two rules, the key and the
+  key with `/`.
 
 A config's aliases are its `paths` after `extends`, merged as TypeScript merges them: each base in
 order, then the config's own settings, a `paths` later in the chain replacing an earlier one whole.
