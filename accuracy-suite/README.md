@@ -224,7 +224,7 @@ proves that each `expect` is right. `blindSpots()` returns these limits as text,
 
 ## What the tree says about real repositories
 
-The coverage tree measures the engine on the shapes someone thought to build. It cannot say how
+The accuracy suite measures the engine on the shapes someone thought to build. It cannot say how
 much of a real repository falls outside them, because a shape nobody imagined does not show up as
 a failure. It shows up as nothing.
 

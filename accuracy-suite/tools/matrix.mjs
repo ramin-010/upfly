@@ -1,5 +1,5 @@
 /**
- * The coverage matrix: what the engine did against what the answer key says a correct
+ * The suite's matrix: what the engine did against what the answer key says a correct
  * engine does, one row per reference shape.
  *
  * It imports nothing, not the engine and not `node:fs`, and takes the key and the engine's

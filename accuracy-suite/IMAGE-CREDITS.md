@@ -1,4 +1,4 @@
-# Coverage tree image credits
+# Accuracy suite image credits
 
 Every photograph in this tree is in the **public domain**, and every licence was **read from
 the Wikimedia Commons API rather than assumed** — the method recorded in

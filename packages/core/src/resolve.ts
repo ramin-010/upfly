@@ -201,7 +201,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 4. Points at an asset we found. Every spelling, literal first: `enc%20name.png` can be a
   //    file with a percent sign in its name, while `hero%20image.png` can name
-  //    `hero image.png`. Only literal-then-decoded gets both right, and the coverage tree
+  //    `hero image.png`. Only literal-then-decoded gets both right, and the accuracy suite
   //    holds the pair so the order is tested.
   for (const { spelling, path: candidate } of spellings) {
     const found = index.lookup(candidate, raw, root, publicDirs);

@@ -3,7 +3,7 @@
  *
  * On the five validation repositories a wrong serving root never outscores the right one,
  * at every volume floor tried, and an instrument that has only seen inputs it gets right
- * has not shown it can disagree. The coverage tree holds the trap: `docs-examples/public`
+ * has not shown it can disagree. The accuracy suite holds the trap: `docs-examples/public`
  * is a directory named `public` that serves nothing.
  *
  * The assertions pin directions, not numbers, because the tree grows: a wrong truth gives a
@@ -21,7 +21,7 @@ const TREE = join(import.meta.dirname, '..', '..', 'accuracy-suite', 'tree');
 const TRUTH = ['apps/web/public', 'apps/docs/public', 'sites/root-served', 'legacy/public'];
 
 /**
- * These tests walk and scan the whole coverage tree. One `measureRepoAt` takes about a second
+ * These tests walk and scan the whole accuracy suite. One `measureRepoAt` takes about a second
  * on an idle machine and has taken over 5 s under load, past vitest's default timeout, so the
  * tests share the measurements made once in `beforeAll`, under a generous budget.
  */

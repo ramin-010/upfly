@@ -71,7 +71,7 @@ describe('inferServingRoots finds what a name cannot', () => {
 
 describe('the bar is volume, because a rate alone points the wrong way', () => {
   it('rejects a perfect rate over too few references', () => {
-    // The coverage tree's `docs-examples/public`, a directory named `public` that serves
+    // The accuracy suite's `docs-examples/public`, a directory named `public` that serves
     // nothing. It scores 100%, which is why a rate-only bar takes it.
     const result = inferServingRoots({
       assets: ['docs-examples/public/sample.png'],

@@ -159,7 +159,7 @@ describe('detectServingRoots', () => {
  * one edge of that rule, and fails against the loosening its comment names.
  */
 describe('only a folder a project owns is a serving root', () => {
-  it('rejects a `public/` no project owns, as in the coverage tree', () => {
+  it('rejects a `public/` no project owns, as in the accuracy suite', () => {
     const tree = walk(['docs-examples', 'docs-examples/public'], ['docs-examples/guide.md']);
 
     expect(detectServingRoots(tree).dirs).toEqual([]);
@@ -168,7 +168,7 @@ describe('only a folder a project owns is a serving root', () => {
   it('is not vouched for by a project file further up, only by one in the parent', () => {
     // The loosening that looks harmless is "some ancestor is a project". Every folder in
     // a repository has one, its root, so that is no rule at all: the case above has this
-    // shape inside the coverage tree, whose root holds a `package.json`.
+    // shape inside the accuracy suite, whose root holds a `package.json`.
     const tree = walk(['docs-examples', 'docs-examples/public'], ['package.json']);
 
     expect(detectServingRoots(tree).dirs).toEqual([]);

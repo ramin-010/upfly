@@ -392,7 +392,7 @@ function previousNonSpace(text: string, at: number): number {
  * The host decides the shape. What would break these references is Markdown handing its
  * raw HTML over and masking the inactive regions, not `<img src>` parsing, which the HTML
  * adapter's own shapes cover. CSS from a `<style>` element maps to `md.style-attribute`
- * too: no Markdown `<style>` element has turned up in the coverage tree or a validation
+ * too: no Markdown `<style>` element has turned up in the accuracy suite or a validation
  * repository to fill a row of its own.
  */
 function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference {

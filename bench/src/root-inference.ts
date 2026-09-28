@@ -32,7 +32,7 @@ const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 /**
  * How many root-relative asset references a directory needs before its gap counts, set with
- * `--min=`. A rate over a handful is not a measurement: the coverage tree's
+ * `--min=`. A rate over a handful is not a measurement: the accuracy suite's
  * `docs-examples/public` serves nothing, yet resolves both of its own references, and a bar
  * reading the rate alone would take it for a serving root.
  *

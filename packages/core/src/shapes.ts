@@ -2,7 +2,7 @@
  * The reference-shape vocabulary: which construct a reference was written in.
  *
  * A reference's resolution says what happened to it; its shape says what it is, so the
- * coverage matrix can count outcomes per construct. The coverage tree's answer key
+ * suite's matrix can count outcomes per construct. The accuracy suite's answer key
  * (`accuracy-suite/key/coverage-key.json`) defines the list, and this file holds a second copy.
  * Neither can import the other: the key's checker, `check-key.mjs`, imports only `node:`
  * modules and files beside it, so the key is never certified by the engine it measures, and
@@ -17,7 +17,7 @@
  * What the engine as a whole reports for a shape and, when it reports nothing, whether that
  * is a gap or the correct answer.
  *
- * The coverage matrix counts each class apart and never adds them together, so a zero reads
+ * The suite's matrix counts each class apart and never adds them together, so a zero reads
  * differently for a missing reader and for a decoy correctly ignored. Only `engine` rows form
  * the claimed population, where a miss is a bug. The class describes what reaches the report,
  * not what an adapter emits: an adapter emits a `decoy.typo` as a `js.string.literal`, and the
@@ -68,7 +68,7 @@ export interface ShapeDeclaration {
    * module syntax and the adapter names `path.bare-specifier`, while the same text in a plain
    * string is emitted as `js.string.literal`.
    *
-   * When the engine's shape and the key's disagree, the coverage matrix reads this field to
+   * When the engine's shape and the key's disagree, the suite's matrix reads this field to
    * tell a correct difference of layer from a defect, so the harness keeps no exemption list
    * of its own. `shapes.reconcile.test.ts` checks that each id names another real shape.
    */
@@ -99,7 +99,7 @@ const LINK_FORMAT_KEPT =
 /**
  * Every reference shape the engine knows, and what it reports for each.
  *
- * Rows follow the coverage key's order, except that `path.charref`, `path.bare-specifier`,
+ * Rows follow the answer key's order, except that `path.charref`, `path.bare-specifier`,
  * `pattern.partial` and `decoy.regex` sit with their families. `as const satisfies` keeps
  * the literal ids, so `ShapeId` is derived from this array and an adapter can only name a
  * shape that exists here.
@@ -724,7 +724,7 @@ export const SHAPES = [
       'files on disk tell the two apart.',
   },
 
-  // ---- Emitted by an adapter, absent from the coverage tree -------------------
+  // ---- Emitted by an adapter, absent from the accuracy suite -------------------
   //
   // Nothing measures these yet. They are declared rather than left unnamed, because a shape
   // with no name cannot be reported as uncovered. `UNTESTED_SHAPE_IDS` lists them.
@@ -734,7 +734,7 @@ export const SHAPES = [
     emission: 'engine',
     why:
       'A dynamic `import()` of an image, emitted by `collectFromImportExpression`. The ' +
-      'coverage tree has no instance of it, so nothing measures it.',
+      'accuracy suite has no instance of it, so nothing measures it.',
   },
   {
     id: 'js.jsx.srcset',
@@ -742,7 +742,7 @@ export const SHAPES = [
     emission: 'engine',
     why:
       'A `srcSet` candidate list in JSX, split with the same `parseSrcset` the HTML adapter ' +
-      'uses. The coverage tree has no instance of it; its `html.img.srcset.*` rows reach that ' +
+      'uses. The accuracy suite has no instance of it; its `html.img.srcset.*` rows reach that ' +
       'code only through the HTML adapter.',
   },
   {

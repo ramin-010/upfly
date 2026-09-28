@@ -76,7 +76,7 @@ export interface RawReference {
    * `css.image-set`.
    *
    * `kind` is the coarse bucket the resolver reasons with. `shape` is the fine one the
-   * coverage matrix (`SHAPES`) is keyed on, and only it can be crossed with a real
+   * suite's matrix (`SHAPES`) is keyed on, and only it can be crossed with a real
    * repository to say what share of its references the tests cover. Required rather than
    * defaulted, so a new emission site cannot join the wrong row unnoticed.
    */

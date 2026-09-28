@@ -335,7 +335,7 @@ or `static` directory is claimed only when a project file sits beside it, in its
 because VitePress keeps its `package.json` at the repository root. The list is `PROJECT_MARKERS`
 and, like the names, an argument. Detection reads the whole walk for it, not only the files an
 adapter claims: a `Gemfile` is an unscanned file. Measured on the five validation repositories, all
-14 name-matched folders have a `package.json` beside them and all 14 are kept; the coverage tree's
+14 name-matched folders have a `package.json` beside them and all 14 are kept; the accuracy suite's
 `docs-examples/public` has none and is rejected. **Every marker except `package.json` is untested
 on a real repository**, because the corpus holds only JavaScript projects. A folder whose project
 file sits further up is rejected: Phoenix's `priv/static`, Spring Boot's
@@ -395,7 +395,7 @@ caller; `inferServingRoots` does the scoring.
   (`MIN_ROOT_REFERENCES`) and must resolve at least 40% of them (`MIN_ROOT_RESOLUTION_RATE`). A
   folder named `public` that serves nothing can resolve two references out of two, so a rate alone
   would take it. Measured over 201 directories in the five validation repositories and the
-  coverage tree, true roots scored at least 45.8% once the volume floor applied, and wrong ones at
+  accuracy suite, true roots scored at least 45.8% once the volume floor applied, and wrong ones at
   most 0%.
 - **A tie refuses.** A rejected root leaves every affected reference where it already was,
   `broken` or `discarded`, so a false reject costs nothing new. A false accept links a reference to
@@ -582,7 +582,7 @@ a lie").
 The literal spelling is tried first. `enc%20name.png` can be a real file whose name contains a
 percent sign, while `hero%20image.png` reaches a file called `hero image.png`, and as text the two
 cannot be told apart. An engine that never decodes gets the second wrong; one that always decodes
-gets the first wrong. The coverage tree holds both files, so the order is tested rather than
+gets the first wrong. The accuracy suite holds both files, so the order is tested rather than
 assumed.
 
 A path that cannot be fully decoded offers no decoded spelling at all. A partly decoded path is
@@ -1093,7 +1093,7 @@ happened to it; its shape says what it is, so outcomes can be counted per constr
 matrix (`accuracy-suite/tools/matrix.mjs`) prints one row per shape and no total, so no single
 figure can be quoted out of context.
 
-The coverage tree's answer key, `accuracy-suite/key/coverage-key.json`, defines the vocabulary, and
+The accuracy suite's answer key, `accuracy-suite/key/coverage-key.json`, defines the vocabulary, and
 `packages/core/src/shapes.ts` holds a second copy as `SHAPES`, which the engine exports. Neither can
 import the other. The key's checker, `check-key.mjs`, imports only `node:` modules and files beside
 it, so the key is never certified by the engine it measures, and a shipped package must not depend
@@ -1307,7 +1307,7 @@ So the list errs wide (`style` matches the word "styling" in prose) and has four
 
 The skip decides per file: one token anywhere parses the whole document. A test of one spelling
 therefore needs a file of its own, because a file holding several spellings is parsed if any one of
-them is handled, and cannot show which. The coverage tree keeps `encoded-entity.md`,
+them is handled, and cannot show which. The accuracy suite keeps `encoded-entity.md`,
 `encoded-percent-dot.md` and `encoded-percent-letter.md` apart for this reason.
 
 One gap is accepted. A CSS-in-JS block with the bare `css` tag, whose body does not parse, which

@@ -1,5 +1,5 @@
 /**
- * `SHAPES` and the coverage key's shape list are two copies of one vocabulary, and neither
+ * `SHAPES` and the answer key's shape list are two copies of one vocabulary, and neither
  * can import the other. This test fails when they differ in either direction. See
  * "Reference shapes" in ARCHITECTURE.md.
  *
@@ -128,7 +128,7 @@ function auditEmitsAs(
   return problems;
 }
 
-describe('the shape vocabulary reconciles with the coverage tree', () => {
+describe('the shape vocabulary reconciles with the accuracy suite', () => {
   it('agrees with the tree in both directions', () => {
     const key = loadKey();
     const problems = reconcile({

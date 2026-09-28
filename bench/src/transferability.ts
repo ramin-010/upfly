@@ -26,7 +26,7 @@ import {
 } from 'upfly-core';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
 
-/** The shapes the coverage tree has at least one instance of, read from its answer key. */
+/** The shapes the accuracy suite has at least one instance of, read from its answer key. */
 async function testedShapes(): Promise<ReadonlySet<string>> {
   const keyPath = new URL('../../accuracy-suite/key/coverage-key.json', import.meta.url);
   const key = JSON.parse(await readFile(keyPath, 'utf8')) as {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Proves that a change to the coverage tree's answer key touched only its prose. Entries are
+ * Proves that a change to the accuracy suite's answer key touched only its prose. Entries are
  * matched on their file's path, `raw`, `occurrence` and `shape`, and every other field must be
  * identical, in the same order. Prose fields may be reworded but not added or removed, because
  * the key check reads their presence (a `knownGap`, an `absent` reason).

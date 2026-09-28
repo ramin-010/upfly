@@ -15,7 +15,7 @@ import { compareStrings } from './paths.js';
 /**
  * How many root-relative asset references a directory needs before its rate counts.
  *
- * A rate alone is fooled by a thin directory: the coverage tree's `docs-examples/public`
+ * A rate alone is fooled by a thin directory: the accuracy suite's `docs-examples/public`
  * serves nothing, yet resolves both root-relative references in its own `example.html`.
  * At a floor of 3 it drops out, and true and wrong roots separate completely.
  */
@@ -25,7 +25,7 @@ export const MIN_ROOT_REFERENCES = 3;
  * The share of a directory's root-relative references a candidate must resolve.
  *
  * Once the volume floor applies, true roots score at least 45.8% and wrong ones at most 0%
- * across the five validation repositories and the coverage tree, and 40% sits inside that
+ * across the five validation repositories and the accuracy suite, and 40% sits inside that
  * gap. It is not `RESOLUTION_FLOOR` (25%), which asks a different question: how much of a
  * whole repository must resolve before the engine trusts its graph.
  */

@@ -1,5 +1,5 @@
 /**
- * Runs the engine over the coverage tree and renders the matrix.
+ * Runs the engine over the accuracy suite and renders the matrix.
  *
  * It runs `check-key.mjs --strict` first and refuses to measure if that fails: a key that
  * disagrees with the tree would measure the disagreement, not the engine. The judging is in
