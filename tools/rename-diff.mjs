@@ -236,10 +236,14 @@ function listing(text, folder, source) {
  * @typedef {Revisions & { mode: 'folder', from: string, to: string }} FolderOptions
  * @typedef {Revisions & { mode: 'moves', moves: Map<string, string>,
  *   mirrors: Array<[string, string]>, keepNames: boolean }} MoveOptions
+ */
+
+/**
  * @typedef {{ key: string, raw: string, line: number, path: 'import' | 'other' | null }} Item
  * @typedef {{ item: Item } | { imports: Item[][] }} Unit
  * @typedef {{ importPaths: number, otherPaths: number, importBlocks: number,
- *   textLines: number }} Tally
+ *   textLines: number, comments: number }} Tally
+ * @typedef {{ paths: Map<string, string>, rewrite: (text: string) => string }} Moved
  * @typedef {{ side: 'old', paths: Map<string, string> } | { side: 'new', targets: Set<string> }}
  *   Side
  */
@@ -254,12 +258,12 @@ const PATH_JOINERS = new Set(['join', 'resolve']);
  * Proves that moving files changed nothing but where they are and the paths that name them.
  * Git must see each move as a rename, with no other file added, deleted or renamed, and each
  * moved file keeps its mode. A changed file of code, moved or not, must hold the same tokens
- * and comments in the same order, with two exceptions: a string naming a path may change if
- * it still reaches the same place from where its file now is, and a run of imports may be
- * re-sorted, since the formatter orders imports by path. Any other file may change only where
- * a moved file's whole path appears, and only to its new path. With `keepNames` a renamed
- * file fails. A mirror says a build writes each file under a source folder to the same place
- * under an output folder, so a path to the built file moves with its source.
+ * and comments in the same order, except that a path may change where it still reaches the
+ * same place from where its file now is, and a run of imports may be re-sorted, as the
+ * formatter orders them by path. Anywhere, a moved file's whole path, or a renamed file's
+ * name as a whole path segment, may become the new one (`pathRewriter`). With `keepNames` a
+ * renamed file fails. A mirror says a build writes each file under a source folder to the
+ * same place under an output folder, so a path to the built file moves with its source.
  *
  * @param {MoveOptions} options
  * @returns {{ exitCode: number, output: string }}
@@ -290,8 +294,9 @@ export function runMoves({ root, moves, mirrors, keepNames, base, head }) {
   );
 
   const paths = pathsMoved(moves, mirrors);
+  const moved = { paths, rewrite: pathRewriter(paths, renamed) };
   /** @type {Tally} */
-  const tally = { importPaths: 0, otherPaths: 0, importBlocks: 0, textLines: 0 };
+  const tally = { importPaths: 0, otherPaths: 0, importBlocks: 0, textLines: 0, comments: 0 };
   let identical = 0;
   for (const [oldFile, newFile] of [...seen.renamed, ...seen.modified.map((f) => pair(f, f))]) {
     const oldBytes = read(`${base}:${oldFile}`);
@@ -299,7 +304,7 @@ export function runMoves({ root, moves, mirrors, keepNames, base, head }) {
     if (oldBytes.equals(newBytes)) {
       if (oldFile !== newFile) identical += 1;
     } else {
-      problems.push(...compareFile(oldBytes, newBytes, { oldFile, newFile }, paths, tally));
+      problems.push(...compareFile(oldBytes, newBytes, { oldFile, newFile }, moved, tally));
     }
   }
 
@@ -310,7 +315,8 @@ export function runMoves({ root, moves, mirrors, keepNames, base, head }) {
     `Other changed files: ${seen.modified.length}.`,
     `Paths changed that reach the same place: ${tally.importPaths} in imports, ` +
       `${tally.otherPaths} elsewhere. Import runs re-sorted: ${tally.importBlocks}. ` +
-      `Lines of text with a moved path: ${tally.textLines}.`,
+      `Lines of text with a moved path: ${tally.textLines}. Comments with a moved path: ` +
+      `${tally.comments}.`,
     ...problems.map((problem) => `  ${problem}`),
     problems.length === 0
       ? 'Nothing changed but where the files are and the paths that name them.'
@@ -376,20 +382,45 @@ function modeChanges(moves, before, after) {
  * @param {Buffer} oldBytes
  * @param {Buffer} newBytes
  * @param {{ oldFile: string, newFile: string }} files
- * @param {Map<string, string>} paths
+ * @param {Moved} moved
  * @param {Tally} tally
  * @returns {string[]}
  */
-function compareFile(oldBytes, newBytes, { oldFile, newFile }, paths, tally) {
+function compareFile(oldBytes, newBytes, { oldFile, newFile }, moved, tally) {
   if (oldBytes.includes(0) || newBytes.includes(0)) return [`${newFile}: a binary file changed`];
   const [oldText, newText] = [oldBytes.toString('utf8'), newBytes.toString('utf8')];
-  if (!CODE_EXTENSION.test(newFile)) return compareText(oldText, newText, newFile, paths, tally);
+  if (!CODE_EXTENSION.test(newFile)) {
+    return compareText(oldText, newText, newFile, moved.rewrite, tally);
+  }
   return compareCode(
     { text: oldText, file: oldFile },
     { text: newText, file: newFile },
-    paths,
+    moved,
     tally,
   );
+}
+
+/**
+ * Text with each moved path replaced where it stands whole, and each renamed file's old name
+ * replaced where it is a whole path segment, as in `join(root, 'key', 'old.json')`.
+ *
+ * @param {Map<string, string>} paths
+ * @param {ReadonlyArray<[string, string]>} renamed each an old path and a new one, the name changed
+ * @returns {(text: string) => string}
+ */
+function pathRewriter(paths, renamed) {
+  const literal = (/** @type {string} */ text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const byLength = [...paths.keys()].sort((a, b) => b.length - a.length).map(literal);
+  const whole = new RegExp(`(?<![\\w./-])(?:${byLength.join('|')})(?![\\w/-])`, 'g');
+  const names = new Map(renamed.map(([from, to]) => [baseName(from), baseName(to)]));
+  const name = new RegExp(
+    `(?<![\\w.-])(?:${[...names.keys()].map(literal).join('|')})(?![\\w-])`,
+    'g',
+  );
+  return (text) => {
+    const moved = text.replace(whole, (found) => paths.get(found) ?? found);
+    return names.size === 0 ? moved : moved.replace(name, (found) => names.get(found) ?? found);
+  };
 }
 
 /**
@@ -432,32 +463,28 @@ function pathsMoved(moves, mirrors) {
 }
 
 /**
- * A file that is not code, line by line: each changed line must be the old one with every
- * moved path that stands whole replaced by its new path.
+ * A file that is not code, line by line: each changed line must be the old one with its
+ * moved paths and renamed names rewritten (see `pathRewriter`).
  *
  * @param {string} oldText
  * @param {string} newText
  * @param {string} file
- * @param {Map<string, string>} paths
+ * @param {(text: string) => string} rewrite
  * @param {Tally} tally
  * @returns {string[]}
  */
-function compareText(oldText, newText, file, paths, tally) {
+function compareText(oldText, newText, file, rewrite, tally) {
   const [oldLines, newLines] = [oldText.split('\n'), newText.split('\n')];
   if (oldLines.length !== newLines.length) {
     return [`${file}: ${oldLines.length} lines became ${newLines.length}`];
   }
-  const escaped = [...paths.keys()]
-    .sort((a, b) => b.length - a.length)
-    .map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const whole = new RegExp(`(?<![\\w./-])(?:${escaped.join('|')})(?![\\w/-])`, 'g');
   /** @type {string[]} */
   const problems = [];
   oldLines.forEach((line, index) => {
     const newLine = newLines[index] ?? '';
     if (line === newLine) return;
     tally.textLines += 1;
-    if (line.replace(whole, (found) => paths.get(found) ?? found) !== newLine) {
+    if (rewrite(line) !== newLine) {
       problems.push(`${file}:${index + 1}\n    - ${line}\n    + ${newLine}`);
     }
   });
@@ -466,15 +493,16 @@ function compareText(oldText, newText, file, paths, tally) {
 
 /**
  * A file of code, before and after, compared unit by unit (see `codeUnits`). A string counts
- * as unchanged when its text is, or when it reaches the same place.
+ * as unchanged when its text is, or when it reaches the same place; a string or a comment
+ * also when it is the old one rewritten (see `pathRewriter`).
  *
  * @param {{ text: string, file: string }} before
  * @param {{ text: string, file: string }} after
- * @param {Map<string, string>} paths
+ * @param {Moved} moved
  * @param {Tally} tally
  * @returns {string[]}
  */
-function compareCode(before, after, paths, tally) {
+function compareCode(before, after, { paths, rewrite }, tally) {
   const oldUnits = codeUnits(before.text, before.file, { side: 'old', paths });
   const newUnits = codeUnits(after.text, after.file, {
     side: 'new',
@@ -482,7 +510,7 @@ function compareCode(before, after, paths, tally) {
   });
   const count = Math.max(oldUnits.length, newUnits.length);
   for (let i = 0; i < count; i += 1) {
-    if (!sameUnit(oldUnits[i], newUnits[i], tally)) {
+    if (!sameUnit(oldUnits[i], newUnits[i], rewrite, tally)) {
       const near = (/** @type {Unit[]} */ units) => units.slice(i, i + 6).flatMap(itemsOf);
       return [mismatch(after.file, near(oldUnits), near(newUnits))];
     }
@@ -493,15 +521,12 @@ function compareCode(before, after, paths, tally) {
 /**
  * @param {Unit | undefined} a
  * @param {Unit | undefined} b
+ * @param {(text: string) => string} rewrite
  * @param {Tally} tally
  */
-function sameUnit(a, b, tally) {
+function sameUnit(a, b, rewrite, tally) {
   if (a !== undefined && b !== undefined && 'item' in a && 'item' in b) {
-    if (a.item.raw === b.item.raw) return true;
-    if (a.item.key !== b.item.key || b.item.path === null) return false;
-    if (b.item.path === 'import') tally.importPaths += 1;
-    else tally.otherPaths += 1;
-    return true;
+    return sameItem(a.item, b.item, rewrite, tally);
   }
   if (a === undefined || b === undefined || !('imports' in a) || !('imports' in b)) return false;
   const [left, right] = [sortedByKey(a.imports), sortedByKey(b.imports)];
@@ -519,6 +544,25 @@ function sameUnit(a, b, tally) {
   if (a.imports.map(keyOf).join('\n') !== b.imports.map(keyOf).join('\n')) {
     tally.importBlocks += 1;
   }
+  return true;
+}
+
+/**
+ * @param {Item} a
+ * @param {Item} b
+ * @param {(text: string) => string} rewrite
+ * @param {Tally} tally
+ */
+function sameItem(a, b, rewrite, tally) {
+  if (a.raw === b.raw) return true;
+  if (a.key === b.key && b.path !== null) {
+    if (b.path === 'import') tally.importPaths += 1;
+    else tally.otherPaths += 1;
+    return true;
+  }
+  if (rewrite(a.raw) !== b.raw) return false;
+  if (a.key.startsWith('comment ')) tally.comments += 1;
+  else tally.otherPaths += 1;
   return true;
 }
 

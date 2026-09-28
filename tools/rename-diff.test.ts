@@ -395,3 +395,78 @@ describe('files moved between folders', () => {
     expect(result.stderr).toContain('--move takes <old>=<new>');
   });
 });
+
+describe('a file renamed in place', () => {
+  const repos: string[] = [];
+  afterEach(() => {
+    for (const repo of repos.splice(0)) rmSync(repo, { recursive: true, force: true });
+  });
+
+  function git(repo: string, ...args: string[]) {
+    const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+    return execFileSync('git', [...identity, '-c', 'commit.gpgsign=false', ...args], {
+      cwd: repo,
+    });
+  }
+
+  function edit(repo: string, file: string, from: string, to: string) {
+    const target = join(repo, file);
+    writeFileSync(target, readFileSync(target, 'utf8').replace(from, to));
+    git(repo, 'add', '--', file);
+  }
+
+  /** `data/old-key.json` becomes `data/new-key.json`, named by path, by name and in a comment. */
+  function renamed() {
+    const repo = mkdtempSync(join(realpathSync.native(tmpdir()), 'upfly-rename-in-place-'));
+    repos.push(repo);
+    const files: Record<string, string[]> = {
+      'data/old-key.json': ['{', '  "entries": 1,', '  "note": "one"', '}'],
+      'tools/load.mjs': [
+        "import { join } from 'node:path';",
+        '',
+        '// Reads data/old-key.json from the root it is given.',
+        "export const key = (root) => join(root, 'data', 'old-key.json');",
+        "export const alone = (root) => join(root, 'old-key.json');",
+        "export const other = 'data/my-old-key.json';",
+      ],
+      'notes.md': ['The key is `old-key.json`, in data/.'],
+    };
+    for (const [file, lines] of Object.entries(files)) {
+      mkdirSync(dirname(join(repo, file)), { recursive: true });
+      writeFileSync(join(repo, file), `${lines.join('\n')}\n`);
+    }
+    git(repo, 'init', '--quiet');
+    git(repo, 'config', 'core.autocrlf', 'false');
+    git(repo, 'add', '--', '.');
+    git(repo, 'commit', '--quiet', '-m', 'base');
+    renameSync(join(repo, 'data/old-key.json'), join(repo, 'data/new-key.json'));
+    git(repo, 'add', '--', 'data');
+    edit(repo, 'tools/load.mjs', '// Reads data/old-key.json', '// Reads data/new-key.json');
+    edit(repo, 'tools/load.mjs', "'data', 'old-key.json'", "'data', 'new-key.json'");
+    edit(repo, 'tools/load.mjs', "join(root, 'old-key.json')", "join(root, 'new-key.json')");
+    edit(repo, 'notes.md', '`old-key.json`', '`new-key.json`');
+    return repo;
+  }
+
+  function run(repo: string) {
+    const args = [SCRIPT, '--root', repo, '--move', 'data/old-key.json=data/new-key.json'];
+    const result = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  }
+
+  it('passes the new name wherever the old one stood as a whole path segment', () => {
+    const repo = renamed();
+    const result = run(repo);
+    expect(result.output).toContain('1 renames git sees, 0 keep their names, 1 of 1 identical.');
+    expect(result.output).toContain('Comments with a moved path: 1.');
+    expect(result.status).toBe(0);
+  });
+
+  it('fails the old name changed inside a longer name', () => {
+    const repo = renamed();
+    edit(repo, 'tools/load.mjs', 'data/my-old-key.json', 'data/my-new-key.json');
+    const result = run(repo);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('tools/load.mjs:6');
+  });
+});
