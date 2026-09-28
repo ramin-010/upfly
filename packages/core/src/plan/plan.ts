@@ -10,7 +10,7 @@
  * cannot be told apart from a decision nobody made.
  */
 
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { splitPathSuffix } from '../adapters/reference-path.js';
 import { whyFormatKept } from '../adapters/shapes.js';
 import { resolutionHealth } from '../audit/resolution-health.js';
@@ -617,11 +617,29 @@ function unindexedFiles(input: PlanInput): UnindexedFiles | undefined {
     return null;
   };
 
+  // An alias can point outside the project, as `../shared/*` does in a monorepo package, and a
+  // file there can take a rewritten reference first. Such a path is listed from the alias
+  // target it is under; no other path outside the project is listed.
+  const outsideTargets = (input.aliases?.rules ?? [])
+    .flatMap((rule) => rule.targets)
+    .filter((target) => isOutside(relativePath(root, target)));
+
   return (path) => {
     const relative = relativePath(root, path);
-    const outside = relative === '..' || relative.startsWith('../') || isAbsolute(relative);
-    return relative === '' || outside ? null : find(root, relative.split('/'));
+    if (relative === '') return null;
+    if (!isOutside(relative)) return find(root, relative.split('/'));
+    const at = toPosix(path);
+    const target = outsideTargets.find((base) => at === base || at.startsWith(`${base}/`));
+    if (target === undefined) return null;
+    // An exact alias names a file, so its folder is where the listing starts. Joined, so the
+    // listing is asked for the native path, as it is for every folder inside the project.
+    const from = at === target ? dirname(target) : target;
+    return find(join(from), relativePath(from, at).split('/'));
   };
+}
+
+function isOutside(relative: string): boolean {
+  return relative === '..' || relative.startsWith('../') || isAbsolute(relative);
 }
 
 /**

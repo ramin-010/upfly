@@ -1495,6 +1495,41 @@ describe('an asset whose converted name a reference would find elsewhere first',
     ]);
   });
 
+  it('declines it when an alias target outside the project holds the new name first, found by listing it', () => {
+    // A monorepo package whose alias reads a shared folder beside it before its own `src`.
+    const shared = join(ROOT, '../shared');
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@/',
+          targets: [toPosix(shared), `${scope}/src`],
+          wildcard: true,
+          scope,
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      skipped: [],
+    };
+    const listings = new Map([
+      [shared, ['img']],
+      [join(shared, 'img'), ['logo.webp']],
+    ]);
+    const plan = planOptimization(
+      input({
+        assets: [asset('src/img/logo.png')],
+        references: [resolved('src/App.tsx', '@/img/logo.png', 'src/img/logo.png', IMPORT)],
+        aliases,
+        listDirectory: (path) => listings.get(path) ?? [],
+      }),
+    );
+
+    expect(plan.conversions).toEqual([]);
+    expect(plan.declined.map((entry) => entry.reason)).toEqual([
+      expect.stringContaining('which reaches ../shared/img/logo.webp first'),
+    ]);
+  });
+
   it('declines it when a file the walk excluded holds the new name nearer, found by listing its folders', () => {
     const listings = new Map([
       [ROOT, ['apps', 'public']],

@@ -1675,8 +1675,9 @@ The check counts every file that exists, not only the walk's images: an ignore r
 run changes, not what a browser loads, so a nearer `logo.webp` named in `.upflyignore` or inside a
 folder `--exclude` names still takes the page. `optimize` gives the planner a way to list a
 directory, and a file the walk did not index is found by listing each directory on the way to a
-place a path could lead, inside the project only. Only names are read, never a file, and the disk
-is only read. The resolver's optional `unindexed` port asks for it wherever its index misses, in
+place a path could lead: inside the project, and under an alias target outside it, since
+`../shared/*` in a monorepo package can reach a file there first. Only names are read, never a
+file, and the disk is only read. The resolver's optional `unindexed` port asks for it wherever its index misses, in
 the order it looks, and both sides of the comparison are read that way.
 
 The check folds case on every platform, as the collision check does (see "Two paths are the same
