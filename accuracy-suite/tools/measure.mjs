@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   NON_DEFECT_KINDS,
   blindSpots,
@@ -69,7 +69,7 @@ if (!existsSync(DIST)) {
   process.stderr.write(`🔴 ${DIST} is missing. Run \`pnpm build\` first.\n`);
   process.exit(1);
 }
-const core = await import(`file:///${DIST.replace(/\\/g, '/')}`);
+const core = await import(pathToFileURL(DIST).href);
 const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, shapeById } = core;
 
 // Run 2 calls the production decision, never a copy of it. A build older than the
