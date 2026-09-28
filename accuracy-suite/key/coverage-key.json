@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "what": "The answer key for the coverage tree. Every reference in tree/, and the outcome the engine should produce for it.",
-  "authored": "By hand. Positions are stamped by tools/stamp-positions.mjs; meanings are not.",
-  "neverAScore": "This key produces a coverage matrix, one row per shape. It has no total, no percentage and no overall row, and it must stay impossible to turn into one.",
+  "what": "The answer key for the accuracy suite. Every reference in tree/, and the outcome the engine should produce for it.",
+  "authored": "Each expected answer was written down before the engine ran. Positions are stamped by tools/stamp-positions.mjs; the answers are not.",
+  "neverAScore": "This key produces a matrix, one row per shape. It has no total, no percentage and no overall row, and it must stay impossible to turn into one.",
   "expectSemantics": {
     "_": "Seven outcomes, matching the engine's Resolution union. `expect` is the outcome a correct engine should produce, not what today's engine does: a .vue reference expects to be found, which is what lets the matrix say \"0 of 8, no reader\" out loud. Where today's engine is known to differ, `knownGap` says so.",
     "resolved": "Points at exactly one asset, and `target` names it.",
@@ -471,7 +471,7 @@
       "id": "astro.template.expression",
       "label": "a path from an expression in the template body",
       "motivation": "Declared in the fence, used in the body.",
-      "absent": "Present in the tree and keyed under a different row. `<img src={heroPath} />` carries no path: the path is the string constant in the fence, which is keyed as js.string.literal. Counting the use site as well would double-count one reference, which the coverage matrix must not do."
+      "absent": "Present in the tree and keyed under a different row. `<img src={heroPath} />` carries no path: the path is the string constant in the fence, which is keyed as js.string.literal. Counting the use site as well would double-count one reference, which the matrix must not do."
     },
     {
       "id": "decoy.regex",
@@ -2781,7 +2781,7 @@
           "occurrence": 1,
           "shape": "html.img.srcset.w",
           "expect": "broken",
-          "why": "Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5, the partial miss the coverage matrix exists to show.",
+          "why": "Candidate 4 of 5, pointing at nothing. This is what turns a srcset row from 5 of 5 into 4 of 5, the partial miss the matrix exists to show.",
           "offset": 2120,
           "line": 61,
           "column": 11
