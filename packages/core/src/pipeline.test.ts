@@ -537,6 +537,41 @@ describe('a page read in the wrong encoding', () => {
   });
 });
 
+describe('a relative pattern a script builds for the page that loads it', () => {
+  it('hedges each image whose path ends with its fixed segments when it matches nothing', async () => {
+    // The browser reads the path from the page's folder, `pages/`, which a script does not know.
+    const root = project({
+      'package.json': '{ "name": "site", "private": true }\n',
+      'pages/index.html': '<script src="../js/app.js"></script>\n',
+      'js/app.js': "export const show = (el, n) => { el.src = 'img/icon-' + n + '.png'; };\n",
+      'pages/img/icon-1.png': 'one, never decoded',
+      'pages/img/icon-2.png': 'two, never decoded',
+      'pages/icon-3.png': 'three, outside the pattern, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(
+      output.references.filter((reference) => reference.file.endsWith('app.js')),
+    ).toMatchObject([{ resolution: 'dynamic', ceiling: 'medium' }]);
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([
+      ['dead', 'pages/icon-3.png'],
+      ['possibly-dead', 'pages/img/icon-1.png'],
+      ['possibly-dead', 'pages/img/icon-2.png'],
+    ]);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

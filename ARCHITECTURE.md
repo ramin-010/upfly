@@ -789,6 +789,12 @@ escaped string names what its escapes decode to. That holds where a path is asse
 stays `dynamic`, and its decoded path travels as `assembledPath`, so `héro.png` is hedged rather
 than called dead.
 
+A relative pattern that matched nothing is hedged the same way (`unmatchedRelativePatterns`). A
+script can build a path the browser reads from the folder of the page that loads it, `'img/icon-'
++ n + '.png'` in `js/app.js` loaded by `pages/index.html`, and the resolver globs from the
+script's folder, not the page's, so `pages/img/icon-1.png` is hedged rather than called dead.
+Globbing from the pages that load a script would need the script graph.
+
 A pattern through an alias no rule maps is `unresolved-alias`, and only a rule could say which
 directory the alias stands for, so the sweep drops the alias, the first segment, and globs the
 rest the same way (`unmappedAliasPatterns`): with no config that maps `@/`,

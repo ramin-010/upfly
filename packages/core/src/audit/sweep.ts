@@ -231,8 +231,9 @@ async function sweepFiles(
  *
  * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
  * tested against every candidate, as the resolver would glob it from whichever directory the
- * site serves: a root-relative one the run had no serving root to glob, one written through
- * an alias no rule maps, one an adapter declined, and a bundler's glob that matched nothing.
+ * site serves: a root-relative one the run had no serving root to glob, a relative one that
+ * matched nothing, one written through an alias no rule maps, one an adapter declined, and a
+ * bundler's glob that matched nothing.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -250,6 +251,9 @@ async function sweepUnresolvedReferences(
         [reference, servedFromAnyRoot(afterAliasToken(provenPath(reference)))] as const,
     ),
     ...declinedPatterns(options.graph).map(
+      (reference) => [reference, servedFromAnyRoot(openBased(provenPath(reference)))] as const,
+    ),
+    ...unmatchedRelativePatterns(options.graph).map(
       (reference) => [reference, servedFromAnyRoot(openBased(provenPath(reference)))] as const,
     ),
     ...unglobbedHolePatterns(options.graph).map(
@@ -396,6 +400,21 @@ function declinedPatterns(graph: Graph): readonly Reference[] {
     (reference) =>
       reference.declined === true && interpolationChunks(provenPath(reference)).length > 1,
   );
+}
+
+/**
+ * The relative patterns that matched nothing. A script builds a path the browser reads from the
+ * folder of the page that loads it, which the resolver does not know, so like a declined pattern
+ * what it names is unknown rather than absent. A bare name in an import is a package, not a
+ * relative path, and a glob is read in its own syntax.
+ */
+function unmatchedRelativePatterns(graph: Graph): readonly Reference[] {
+  return graph.byResolution.dynamic.filter((reference) => {
+    if (reference.ceiling !== 'medium' || reference.glob !== undefined) return false;
+    const path = provenPath(reference);
+    if (path.startsWith('./') || path.startsWith('../')) return true;
+    return reference.kind !== 'import' && !/^[/@~#$]/.test(path);
+  });
 }
 
 /**
