@@ -1057,7 +1057,7 @@ describe("a <template>'s content is read like the markup around it", () => {
     expect(slices(source)).toEqual([...expected]);
   });
 
-  it('keeps the references around a template in document order (the control)', () => {
+  it('keeps the references around a template in document order', () => {
     const source = '<img src="/a.png"><template><img src="/b.png"></template><img src="/c.png">';
 
     expect(paths(source)).toEqual(['/a.png', '/b.png', '/c.png']);

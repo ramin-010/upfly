@@ -88,8 +88,8 @@ export const URL_POSITIONS: readonly UrlPosition[] = [
   // `xlink:href` the SVG 1.1 form that most shipped markup still uses.
   { tag: 'image', attribute: 'href', html: 'html.svg.image.href', jsx: 'js.jsx.svg' },
   { tag: 'image', attribute: 'xlink:href', html: 'html.svg.image.xlink', jsx: 'js.jsx.svg' },
-  // Both `feImage` spellings share one shape, where `<image>` has one each: the coverage
-  // tree holds too few `feImage` entries to fill two rows.
+  // Both `feImage` spellings share one shape, where `<image>` has one each: the accuracy
+  // suite holds too few `feImage` entries to fill two rows.
   { tag: 'feimage', attribute: 'href', html: 'html.svg.feimage', jsx: 'js.jsx.svg' },
   { tag: 'feimage', attribute: 'xlink:href', html: 'html.svg.feimage', jsx: 'js.jsx.svg' },
 ];

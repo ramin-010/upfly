@@ -202,9 +202,8 @@ function collectFromAttribute(input: {
     context,
   } = input;
 
-  // A single URL is read as the browser reads it: the URL parser strips the C0 controls and
-  // spaces around it, so a value whose closing quote sits on the next line still names a
-  // file. The range covers the URL alone, and a rewrite leaves that whitespace in place.
+  // A single URL is read as a browser reads it (see `urlWithin`). The range covers the URL
+  // alone, so a rewrite leaves the whitespace around it in place.
   const url = urlWithin(raw, start);
 
   // Every URL-valued position below answers the character-reference question through this
@@ -261,8 +260,7 @@ function collectFromAttribute(input: {
     return;
   }
 
-  // The URL parser also removes every tab and line break inside a URL, so no range of the
-  // source spells the path a browser reads.
+  // A tab or line break inside the URL: `urlWithin` says why no range spells it.
   if (/[\t\n\r]/.test(url.text)) {
     addUrlWithLineBreakReference(url, context, position.html);
     return;
@@ -379,7 +377,6 @@ function styleElementFailure(element: ParsedElement, context: Context, error: un
 /** Whether parse5 found no end tag, so the element runs to the end of the document. */
 function isUnclosed(element: ParsedElement): boolean {
   const location = element.sourceCodeLocation;
-  // parse5 leaves `endTag` unset when the tag was never closed.
   return (
     location !== undefined &&
     location !== null &&

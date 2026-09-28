@@ -31,7 +31,7 @@ import {
  * Where a template hole starts, in any syntax in `TEMPLATE_HOLES`, tested at one position.
  *
  * A hole is the one thing a bare destination may hold that would otherwise end it:
- * `![Logo]({{ site.baseurl }}/logo.png)` is how Jekyll, Hugo and Eleventy all write a path,
+ * `![Logo]({{ site.baseurl }}/logo.png)` is how Jekyll and Eleventy both write a path,
  * and stopping at its first space would find nothing at all. Missing it entirely is the
  * worse failure: the image then looks unreferenced, and a later rewrite breaks the page with
  * nothing reported. A hole is only ever read whole, so a run of holes stays linear.
@@ -93,9 +93,8 @@ export const markdownAdapter: Adapter = defineAdapter({
     // on purpose: it matches any tag, known or not, and narrowing it to `img` or `src`
     // would risk skipping a real reference.
     if (MARKUP_OPENER.test(masked)) {
-      // A `<style>` left unclosed makes this throw, its CSS running to the end. Everything collected
-      // above is still correct, so it rides along with the failure, and `scan` still
-      // reports the file as unparseable.
+      // If the HTML reader throws, everything collected above is still correct, so it rides
+      // along with the failure, and `scan` still reports the file as unparseable.
       try {
         references.push(
           ...htmlAdapter
@@ -372,7 +371,7 @@ function stringEnd(text: string, open: number): number {
   return -1;
 }
 
-/** The first character at or after `at` that is not whitespace. */
+/** The first index at or after `at` that is not whitespace, or `text.length` if none is. */
 function nextNonSpace(text: string, at: number): number {
   let index = at;
   while (index < text.length && text.charAt(index).trim() === '') index++;
@@ -471,7 +470,7 @@ function collectDefinitions(masked: string, file: string, references: RawReferen
 
 /**
  * Each `[` paired with the `]` that closes it: brackets nest, a backslash escapes one, and a
- * blank line closes every bracket still open, as it ends the paragraph they sit in.
+ * blank line leaves every bracket still open unpaired, as it ends the paragraph they sit in.
  */
 function pairBrackets(text: string): Map<number, number> {
   const pairs = new Map<number, number>();

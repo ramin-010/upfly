@@ -58,7 +58,7 @@ function positionOf(error: unknown, style: PositionStyle): Position | null {
   return { line, column: column + 1 };
 }
 
-/** A position counted from the start of a fragment, counted from the start of its file. */
+/** A position within a fragment, recounted from the start of the file the fragment sits in. */
 function inFile(
   at: Position | null,
   origin: { readonly line: number; readonly column: number } | undefined,
