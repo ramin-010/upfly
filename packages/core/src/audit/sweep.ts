@@ -260,7 +260,7 @@ async function sweepUnresolvedReferences(
     ...unknownTargetReferences(options.graph).flatMap((reference) =>
       reference.glob === undefined
         ? []
-        : [[reference, globFromAnyRoot(reference.rawPath, reference.glob.dot)] as const],
+        : [[reference, globFromAnyRoot(provenPath(reference), reference.glob.dot)] as const],
     ),
   ]);
   const assets = [...candidates.values()].flat();

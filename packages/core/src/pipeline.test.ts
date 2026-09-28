@@ -439,6 +439,69 @@ describe('the name search', () => {
   });
 });
 
+describe('an escaped string where a path is asserted', () => {
+  it('stays dynamic and hedges the image its decoded text names', async () => {
+    const root = project({
+      'package.json': '{ "name": "app", "private": true }\n',
+      'src/App.jsx':
+        "import hero from './img/h\\u00e9ro.png';\n" +
+        "export const A = () => <img src={'./img/caf\\u00e9.png'} alt={hero} />;\n",
+      'src/img/café.png': 'a cafe, never decoded',
+      'src/img/héro.png': 'a hero, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ rawPath, resolution }) => [rawPath, resolution])).toEqual([
+      ['./img/h\\u00e9ro.png', 'dynamic'],
+      ['./img/caf\\u00e9.png', 'dynamic'],
+    ]);
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([
+      ['possibly-dead', 'src/img/café.png'],
+      ['possibly-dead', 'src/img/héro.png'],
+    ]);
+  });
+
+  it('hedges what an escaped glob pattern could name once decoded', async () => {
+    const root = project({
+      'package.json': '{ "name": "app", "private": true }\n',
+      'src/gallery.js':
+        "export const a = import.meta.glob('./img/caf\\u00e9-*.png');\n" +
+        "export const b = import.meta.glob('./art/h\\u00e9ro-*.{png,jpg}');\n",
+      'src/img/café-1.png': 'a cafe, never decoded',
+      'src/art/héro-1.jpg': 'a hero, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ resolution }) => resolution)).toEqual(['dynamic', 'dynamic']);
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([
+      ['possibly-dead', 'src/art/héro-1.jpg'],
+      ['possibly-dead', 'src/img/café-1.png'],
+    ]);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

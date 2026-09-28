@@ -162,7 +162,10 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    path, so what follows its last dot is no extension that could rule it out.
   if (raw.unread === true) return unlinked(raw, 'dynamic');
   if (raw.ceiling === 'unsafe') {
-    return provablyNotAnAsset(raw) ? null : unlinked(raw, 'dynamic');
+    // A glob's extension can be a brace, `*.{png,jpg}`, which only the glob reading sees.
+    const notAnAsset =
+      raw.glob === undefined ? provablyNotAnAsset(raw) : globNamesNoImage(provenPath(raw));
+    return notAnAsset ? null : unlinked(raw, 'dynamic');
   }
 
   // 2. A pattern. Glob it, and never let it fall through to `broken`. Glob the path the

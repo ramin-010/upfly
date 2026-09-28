@@ -780,7 +780,11 @@ and `` alt={`../img/team-${id}.jpg`} `` hedges `src/img/team-1.jpg` rather than 
 Nothing resolved it, so a relative one could be anchored at its file or at the project root; the
 files it names end with its segments after any leading `./` or `../`, and the open base matches
 that ending. The sweep also reads the path a reference's text proves as well as the text, so an
-escaped string names what its escapes decode to.
+escaped string names what its escapes decode to. That holds where a path is asserted too: in
+`import hero from './img/h\u00e9ro.png'`, `src={'./img/caf\u00e9.png'}` or an escaped
+`import.meta.glob` pattern, no range spells the decoded path, so the reference is `unsafe` and
+stays `dynamic`, and its decoded path travels as `assembledPath`, so `héro.png` is hedged rather
+than called dead.
 
 A pattern through an alias no rule maps is `unresolved-alias`, and only a rule could say which
 directory the alias stands for, so the sweep drops the alias, the first segment, and globs the

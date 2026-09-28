@@ -1719,10 +1719,16 @@ describe('import.meta.glob', () => {
     expect(found.every((reference) => reference.shape !== 'js.import.meta.glob')).toBe(true);
   });
 
-  it('refuses a pattern written with an escape, whose text no range spells', () => {
-    const [reference] = globs("import.meta.glob('./img/caf\\u00e9-*.png');");
+  it('refuses a pattern written with an escape, and keeps what it decodes to', () => {
+    // No range spells the decoded pattern, so it is never globbed, only hedged by.
+    const [reference] = find("import.meta.glob('./img/caf\\u00e9-*.png');", '/project/src/a.ts');
 
-    expect(reference).toMatchObject({ shape: 'js.import.meta.glob', ceiling: 'unsafe' });
-    expect(reference?.glob).toBeUndefined();
+    expect(reference).toMatchObject({
+      rawPath: './img/caf\\u00e9-*.png',
+      assembledPath: './img/café-*.png',
+      shape: 'js.import.meta.glob',
+      ceiling: 'unsafe',
+      glob: { exclude: [], dot: false },
+    });
   });
 });

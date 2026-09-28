@@ -901,13 +901,15 @@ function collectFromImportMetaGlob(node: CallExpression, context: Context): void
   for (const { start, end, text, value } of patterns) {
     context.handled.set(start, null);
     if (value.startsWith('!')) continue;
-    // Vite globs the decoded value, which no range spells, so an escaped pattern is refused.
+    // Vite globs the decoded value, which no range spells, so an escaped pattern is refused;
+    // the decoded pattern still travels, so what it could name is hedged.
     const escaped = text !== value;
     context.references.push({
       file: context.file,
       start,
       end,
       rawPath: text,
+      ...(escaped ? { assembledPath: value } : {}),
       kind: 'import',
       shape: 'js.import.meta.glob',
       ceiling: escaped ? 'unsafe' : 'medium',
@@ -915,7 +917,7 @@ function collectFromImportMetaGlob(node: CallExpression, context: Context): void
       note: escaped
         ? 'import.meta.glob(): the pattern contains escape sequences, so its text cannot be located exactly'
         : 'import.meta.glob(): a glob the bundler expands when it builds; the resolver decides which assets it names',
-      ...(escaped ? {} : { glob }),
+      glob,
     });
   }
 }
@@ -1433,12 +1435,15 @@ function addLiteralReference(
 
   if (raw !== literal.value) {
     // The source contains escape sequences, so the decoded value is a different
-    // length from the text and no range would point at the path correctly.
+    // length from the text and no range would point at the path correctly. The decoded
+    // path still travels, so what it names is hedged rather than called unused.
+    const decoded = kind === 'attr' ? urlWithin(literal.value, 0).text : literal.value;
     addReference({
       context,
       start,
       end,
       rawPath: raw,
+      assembledPath: splitPathSuffix(decoded).path,
       kind,
       shape,
       ceiling: 'unsafe',
