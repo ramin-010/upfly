@@ -713,6 +713,9 @@ export const SHAPES = [
     why:
       'A bare package specifier such as `some-ui-kit/dist/logo.png` names a file inside a ' +
       "dependency: real, but not the project's to rewrite, so it resolves `out-of-scope`. " +
+      "The resolver reads it as module resolution does, through the tsconfig's `baseUrl` and " +
+      '`paths` first and never beside the importing file, and a name with no path after it ' +
+      'that nothing finds, such as `missing.png`, is `broken`. ' +
       'Inside `import`, `import()` and `require()` the adapter recognises it by its spelling; ' +
       'in a plain string the same text could be a relative path written without `./`, so the ' +
       'adapter emits `js.string.literal` and the resolver treats it as an ordinary path.',

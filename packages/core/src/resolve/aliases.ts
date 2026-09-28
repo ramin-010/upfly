@@ -99,7 +99,24 @@ export interface AliasMap {
    * `@/*` on the same path.
    */
   readonly rules: readonly AliasRule[];
+  /**
+   * Every tsconfig or jsconfig that serves the files under its folder, nearest first, with the
+   * absolute `baseUrl` it uses or `null`. TypeScript reads only a file's nearest config, so one
+   * with no `paths` still keeps a parent config's keys from its files, and a module name none
+   * of its keys maps is looked for under its `baseUrl`. Absent, as in a map built by hand, the
+   * nearest config is the nearest with a key, and no `baseUrl` is known.
+   */
+  readonly tsconfigs?: readonly { readonly scope: string; readonly baseUrl: string | null }[];
   readonly skipped: readonly AliasSkip[];
+}
+
+/** How `expandAlias` reads a path. */
+export interface ExpandOptions {
+  /**
+   * The path is a module name in an import, so when no rule matches it, it is looked for
+   * under the nearest tsconfig's `baseUrl`, as TypeScript looks.
+   */
+  readonly baseUrl?: boolean;
 }
 
 export interface LoadAliasesOptions {
@@ -127,6 +144,7 @@ const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
  */
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
   const rules: AliasRule[] = [];
+  const tsconfigs: { scope: string; baseUrl: string | null; path: string }[] = [];
   const skipped: PendingSkip[] = [];
   const context: TsContext = {
     options,
@@ -160,6 +178,11 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
     const config = effective.get(path);
     if (config === undefined) continue;
     rules.push(...rulesOf(config, dirname(path), context));
+    tsconfigs.push({
+      scope: toPosix(dirname(path)),
+      baseUrl: baseUrlIn(config, dirname(path)),
+      path: toPosix(path),
+    });
     // What a config in this chain could not read, this config's files lose.
     for (const skip of skipped) {
       if (skip.config !== null && config.visited.has(skip.config)) {
@@ -185,6 +208,7 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 
   return {
     rules: sorted,
+    tsconfigs: byFolder(tsconfigs),
     skipped: skipped
       .map(({ what, reason, scopes }) => ({
         what,
@@ -197,12 +221,21 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 
 /**
  * Expand an alias-shaped path into candidate absolute POSIX paths: the targets of the rule
- * `matchingRule` chooses, in order. Returns `[]` when no rule applies, and the resolver then
- * reports the path as `unresolved-alias` rather than `broken`.
+ * `matchingRule` chooses, in order. With `baseUrl`, a module name no rule matches is looked
+ * for under the nearest tsconfig's `baseUrl`; TypeScript tries it only when no key matches,
+ * so a key whose targets miss has no fallback. Returns `[]` when nothing applies.
  */
-export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): readonly string[] {
+export function expandAlias(
+  map: AliasMap,
+  rawPath: string,
+  fromFile: string,
+  options: ExpandOptions = {},
+): readonly string[] {
   const rule = matchingRule(map, rawPath, fromFile);
-  return rule === null ? [] : expandRule(rule, rawPath);
+  if (rule !== null) return expandRule(rule, rawPath);
+  const baseUrl =
+    options.baseUrl === true ? (nearestTsconfig(map, toPosix(fromFile))?.baseUrl ?? null) : null;
+  return baseUrl === null ? [] : [toPosix(resolvePath(baseUrl, rawPath))];
 }
 
 /**
@@ -215,17 +248,31 @@ export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): r
  */
 export function matchingRule(map: AliasMap, rawPath: string, fromFile: string): AliasRule | null {
   const from = toPosix(fromFile);
-  // The folder of the nearest config of each tool, taken from the first rule in scope, since
-  // the rules come nearest config first.
-  const nearest: Record<AliasRule['tool'], string | null> = { vite: null, typescript: null };
+  // The folder of the nearest config of each tool: TypeScript's from `tsconfigs`, where a
+  // config with no keys counts too; else from the first rule in scope, since the rules come
+  // nearest config first.
+  const nearest: Record<AliasRule['tool'], string | null> = {
+    vite: null,
+    typescript: nearestTsconfig(map, from)?.scope ?? null,
+  };
 
   for (const rule of map.rules) {
-    if (!from.startsWith(`${rule.scope}/`) && from !== rule.scope) continue;
+    if (!serves(rule.scope, from)) continue;
     nearest[rule.tool] ??= rule.scope;
     if (rule.scope !== nearest[rule.tool]) continue;
     if (rule.wildcard ? fitsPattern(rule, rawPath) : rawPath === rule.prefix) return rule;
   }
   return null;
+}
+
+/** Whether a config in `scope` serves `file`: the file is in that folder or below it. */
+function serves(scope: string, file: string): boolean {
+  return file.startsWith(`${scope}/`) || file === scope;
+}
+
+/** The nearest tsconfig that serves a POSIX file, when the map records its tsconfigs. */
+function nearestTsconfig(map: AliasMap, file: string) {
+  return map.tsconfigs?.find(({ scope }) => serves(scope, file));
 }
 
 /** Whether a path starts with the rule's prefix and ends with its suffix, the two apart. */
@@ -376,7 +423,7 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
   if (config.paths === null) return [];
   const { map, declaredIn } = config.paths;
   const fill = (value: string) => value.replace(CONFIG_DIR, () => toPosix(folder));
-  const base = config.baseUrl === null ? dirname(declaredIn.path) : fill(config.baseUrl);
+  const base = baseUrlIn(config, folder) ?? dirname(declaredIn.path);
 
   const rules: AliasRule[] = [];
   for (const property of map.properties) {
@@ -411,6 +458,32 @@ function rulesOf(config: EffectiveConfig, folder: string, context: TsContext): A
     rules.push(makeRule(from, targets.map(fill), base, folder, declaredIn.source, 'typescript'));
   }
   return rules;
+}
+
+/** The absolute `baseUrl` a config uses, `${configDir}` read as its own folder, or `null`. */
+function baseUrlIn(config: EffectiveConfig, folder: string): string | null {
+  if (config.baseUrl === null) return null;
+  return toPosix(resolvePath(config.baseUrl.replace(CONFIG_DIR, () => toPosix(folder))));
+}
+
+/**
+ * One entry per folder, nearest first. Configs in one folder serve its files together, as
+ * their keys do, and the first by name that sets a `baseUrl` gives it.
+ */
+function byFolder(
+  configs: readonly {
+    readonly scope: string;
+    readonly baseUrl: string | null;
+    readonly path: string;
+  }[],
+): { readonly scope: string; readonly baseUrl: string | null }[] {
+  const folders = new Map<string, string | null>();
+  for (const { scope, baseUrl } of [...configs].sort((a, b) => compareStrings(a.path, b.path))) {
+    if ((folders.get(scope) ?? null) === null) folders.set(scope, baseUrl);
+  }
+  return [...folders]
+    .map(([scope, baseUrl]) => ({ scope, baseUrl }))
+    .sort((a, b) => b.scope.length - a.scope.length || compareStrings(a.scope, b.scope));
 }
 
 /** Rules that say exactly the same thing, such as one config and another extending it. */

@@ -730,13 +730,23 @@ describe('resolveReferences', () => {
     });
 
     it('takes precedence over the alias bucket', () => {
-      const reference = resolveReferences([raw({ rawPath: '@/legacy/old.png' })], {
-        root: ROOT,
-        assets: ASSETS,
-        excludedRoots: EXCLUDED,
-        servingRoots: CONVENTIONAL_SERVING_ROOTS,
-        exists: (path) => path === toPosix(join(ROOT, 'src/@/legacy/old.png')),
-      })[0];
+      // In a stylesheet, where the text is a path: an import's is a module name instead.
+      const reference = resolveReferences(
+        [
+          raw({
+            rawPath: '@/legacy/old.png',
+            kind: 'css-url',
+            file: join(ROOT, 'src', 'app.css'),
+          }),
+        ],
+        {
+          root: ROOT,
+          assets: ASSETS,
+          excludedRoots: EXCLUDED,
+          servingRoots: CONVENTIONAL_SERVING_ROOTS,
+          exists: (path) => path === toPosix(join(ROOT, 'src/@/legacy/old.png')),
+        },
+      )[0];
 
       expect(reference?.resolution).toBe('out-of-scope');
     });
@@ -1326,19 +1336,26 @@ describe('rung 2 through a declared alias', () => {
     ]);
   });
 
-  it('prefers a file at the written path to the alias', () => {
+  it('prefers a file at the written path to the alias, where the text is a path', () => {
     // A folder named `@` beside the file is what the text names first, as rung 4 prefers
     // a file at the written path to any mapping.
+    const extra = [asset('src/@/img/alias-9.png')];
     const found = expectResolution(
-      throughAlias(
-        { rawPath: '@/img/alias-${n}.png' },
-        { extra: [asset('src/@/img/alias-9.png')] },
-      ),
+      throughAlias({ rawPath: '@/img/alias-${n}.png', kind: 'attr' }, { extra }),
       'resolved-pattern',
     );
 
     expect(linkedPaths(found)).toEqual([join(ROOT, 'src/@/img/alias-9.png')]);
     expect(found.resolvedVia).toBe('file');
+    // In an import the text is a module name, which is never looked for beside the module.
+    const imported = expectResolution(
+      throughAlias({ rawPath: '@/img/alias-${n}.png' }, { extra }),
+      'resolved-pattern',
+    );
+    expect(linkedPaths(imported)).toEqual([
+      join(ROOT, 'src/img/alias-1.png'),
+      join(ROOT, 'src/img/alias-2.png'),
+    ]);
   });
 
   it('does not glob through an alias whose scope does not cover the file', () => {
@@ -1436,6 +1453,64 @@ describe('rung 2 through a declared alias', () => {
       join(ROOT, 'src/icons/moon.svg'),
       join(ROOT, 'src/icons/star.svg'),
     ]);
+  });
+});
+
+describe('a bare module name, read as module resolution reads it', () => {
+  const MODULE = join(ROOT, 'lib', 'main.ts');
+
+  async function tsconfig(compilerOptions: object): Promise<AliasMap> {
+    return loadAliases({
+      root: ROOT,
+      files: [{ path: toPosix(join(ROOT, 'tsconfig.json')), relative: 'tsconfig.json' }],
+      readFile: async () => JSON.stringify({ compilerOptions }),
+      isFile: () => false,
+    });
+  }
+
+  function bare(
+    rawPath: string,
+    options: {
+      readonly aliases?: AliasMap;
+      readonly extra?: readonly Asset[];
+      readonly exists?: (path: string) => boolean;
+    } = {},
+  ): Reference | undefined {
+    return resolveReferences([raw({ rawPath, kind: 'import', file: MODULE })], {
+      root: ROOT,
+      assets: [...ASSETS, ...(options.extra ?? [])],
+      servingRoots: CONVENTIONAL_SERVING_ROOTS,
+      ...(options.aliases === undefined ? {} : { aliases: options.aliases }),
+      exists: options.exists ?? NOTHING_EXISTS,
+    })[0];
+  }
+
+  it('calls a bare name that nothing finds broken, since it names no file inside a package', () => {
+    expect(bare('missing.png')?.resolution).toBe('broken');
+  });
+
+  it('never looks for a bare name beside the importing file', () => {
+    const beside = asset('lib/logo.png');
+
+    expect(bare('logo.png', { extra: [beside] })?.resolution).toBe('broken');
+    // Nor does a file there that an ignore rule excluded put the import out of scope.
+    const excluded = (path: string) => toPosix(path) === toPosix(beside.path);
+    expect(bare('logo.png', { exists: excluded })?.resolution).toBe('broken');
+  });
+
+  it("finds a bare name under the tsconfig's baseUrl when no key maps it", async () => {
+    const found = expectResolution(
+      bare('assets/logo.png', { aliases: await tsconfig({ baseUrl: './src' }) }),
+      'resolved',
+    );
+
+    expect(found.resolvedPath).toBe(join(ROOT, 'src/assets/logo.png'));
+  });
+
+  it('calls a bare name that a key maps and misses unresolved-alias, as any alias miss is', async () => {
+    const aliases = await tsconfig({ paths: { '*': ['./types/*'] } });
+
+    expect(bare('missing.png', { aliases })?.resolution).toBe('unresolved-alias');
   });
 });
 

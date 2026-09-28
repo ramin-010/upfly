@@ -144,10 +144,11 @@ So the resolver runs a numbered ladder, and **the order is load-bearing**:
 | 2 | `ceiling === 'medium'`, globbed as written, else through a declared alias | `resolved-pattern` / `dynamic` / `unresolved-alias` | `` `./img/${name}.png` ``, `` `@/img/${n}.png` `` |
 | 3 | not a tracked extension | *dropped, no report line* | `./inter.woff2` |
 | 4 | resolves in the asset set | `resolved` | `./hero.png` |
-| 4b | alias-shaped, and a declared alias matches | `resolved` | `~/assets/logo.png` |
+| 4b | alias-shaped, and a declared alias, or for an import the tsconfig's `baseUrl`, finds it | `resolved` | `~/assets/logo.png` |
 | 5 | under an excluded root, exists on disk, or a drive path outside the project, as written or through a declared alias | `out-of-scope` | `../legacy/old.png` |
 | 6 | alias-shaped, nothing matched | `unresolved-alias` | `@/assets/logo.png` |
 | 6b | a package specifier | `out-of-scope` | `@11ty/logo/img/logo.png` |
+| 6c | a bare module name with no path after it, which no alias maps | on to rung 7 | `import x from 'missing.png'` |
 | 7 | asserted | `broken` | `./missing.png`, a real finding |
 | 8 | otherwise | `discarded` | a path-shaped string in `package.json` |
 
@@ -517,7 +518,9 @@ Targets are read against the `baseUrl` in force, which is absolute against the c
 it, else against the folder of the config that wrote `paths`, and `${configDir}` at the start of
 either is the folder of the config that uses them. So SvelteKit's `tsconfig.json`, which extends the
 config `svelte-kit sync` writes into `.svelte-kit/`, maps `$lib` to its own `src/lib`, and a Nuxt 3
-app maps `~` to its own folder.
+app maps `~` to its own folder. An import's module name that no key maps is looked for under the
+`baseUrl`, as TypeScript looks, and only then: a key that matches is the only answer, its targets
+the only candidates.
 
 Aliases are scoped to the directory of the config that uses them. `shadcn-ui` has roughly twenty
 configs all defining `@/*`, and without scoping every one of them would offer a candidate for every
@@ -539,7 +542,8 @@ exact key, then the longest prefix. So wherever the nearest config maps a path, 
 is the file TypeScript resolves, which the same test file checks against TypeScript's own resolver
 over configs drawn at random. As in TypeScript, only the nearest config's rules apply and only
 the best key's targets are candidates: a path they miss is `unresolved-alias`, never a link
-through a shorter key or a parent folder's config to a file the import does not load. One
+through a shorter key or a parent folder's config to a file the import does not load. A nearer
+config with no `paths` is still the nearest, so a parent config's keys do not reach its files. One
 difference remains: `include`, `files` and `references` are not read, so the nearest config is
 the one nearest by folder.
 
@@ -548,6 +552,10 @@ the one nearest by folder.
 `out-of-scope`. The two shapes differ by one character: `@/…` has an empty scope, which no registry
 permits. Nor does npm permit a `$` in a name, since it refuses any name `encodeURIComponent`
 changes, so SvelteKit's `$lib/…` is an alias, never a package.
+An import's module name is never looked for beside the importing file, as no module resolution
+looks there: `import logo from 'logo.png'` does not load the `logo.png` beside the module. A bare
+name with no path after it names a package itself, not a file inside one, so when no alias and no
+`baseUrl` finds it, it is `broken` (rung 6c) rather than out of scope.
 Nor is the first argument of `new URL(name, import.meta.url)` a package specifier. The URL
 constructor resolves it against the module's own URL, so the JavaScript adapter gives it an
 attribute's kind rather than an import's: a bare `hero.png` is the file beside the module, and

@@ -582,6 +582,35 @@ describe('expandAlias: scope', () => {
   });
 });
 
+describe('expandAlias: a module name, as TypeScript resolves one', () => {
+  it("looks a name no key maps up under the nearest config's baseUrl, and only then", async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "baseUrl": "./src", "paths": { "@/*": ["./lib/*"] } } }',
+    });
+
+    expect(expandAlias(map, 'img/x.png', from('a.ts'), { baseUrl: true })).toEqual([
+      from('src/img/x.png'),
+    ]);
+    // TypeScript tries `baseUrl` alone only when no key matches: a key's targets are the
+    // only candidates, read against the `baseUrl`.
+    expect(expandAlias(map, '@/x.png', from('a.ts'), { baseUrl: true })).toEqual([
+      from('src/lib/x.png'),
+    ]);
+    expect(expandAlias(map, 'img/x.png', from('a.ts'))).toEqual([]);
+  });
+
+  it("lets a nearer config with no paths keep a parent config's keys from its files", async () => {
+    const map = await load({
+      'tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }',
+      'packages/ui/tsconfig.json': '{ "compilerOptions": { "strict": true } }',
+    });
+
+    expect(expandAlias(map, '@/x.png', from('packages/ui/a.ts'))).toEqual([]);
+    expect(expandAlias(map, '@/x.png', from('a.ts'))).toEqual([from('src/x.png')]);
+  });
+});
+
 describe('expandAlias: a tsconfig key with text after its *', () => {
   it('matches the text around the * and puts what it stands for where each target has its *', async () => {
     const map = await load({

@@ -43,7 +43,7 @@
     }
   ],
   "aliases": {
-    "_": "From tree/tsconfig.json, and in sites/kit-app and sites/nuxt-app from their tsconfig.json, which extends the config the framework generates (.svelte-kit/, .nuxt/). apps/web and sites/vue-app also map @ in their Vite configs. Anything else that is alias-shaped maps nowhere on purpose.",
+    "_": "From tree/tsconfig.json, and in sites/kit-app and sites/nuxt-app from their tsconfig.json, which extends the config the framework generates (.svelte-kit/, .nuxt/). apps/web and sites/vue-app also map @ in their Vite configs. Anything else that is alias-shaped maps nowhere on purpose. tree/tsconfig.json also sets baseUrl to the tree root, where a bare import that no key maps is looked for before any package.",
     "~/*": "shared/*",
     "@img/*": "shared/assets/img/*",
     "@web/*": "apps/web/src/*",
@@ -299,7 +299,7 @@
     {
       "id": "path.bare-specifier",
       "label": "a bare package specifier",
-      "motivation": "Out-of-scope rather than unresolved-alias: the file exists, it is just not ours. The row holds an import, a require() and a plain string constant, so it is named for what the path is rather than for `import`."
+      "motivation": "A bare specifier in module syntax is read as module resolution reads it: through the tsconfig's baseUrl and paths, then as a package, and never beside the importing file. A file inside a package is out-of-scope rather than unresolved-alias: the file exists, it is just not ours. A name nothing finds is broken. The row holds imports, a require() and a plain string constant, so it is named for what the path is rather than for `import`."
     },
     {
       "id": "js.require",
@@ -8031,6 +8031,42 @@
           "offset": 151,
           "line": 3,
           "column": 40
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/PackageMark.tsx",
+      "entries": [
+        {
+          "raw": "logo.png",
+          "occurrence": 1,
+          "shape": "path.bare-specifier",
+          "expect": "broken",
+          "why": "Written with no ./ in front, so a module name and not a path: module resolution looks it up through the tsconfig's baseUrl and paths, then as a package, and never beside the importing file. The logo.png beside this module is not what it loads, and nothing else is: broken.",
+          "offset": 18,
+          "line": 1,
+          "column": 19
+        },
+        {
+          "raw": "missing-mark.png",
+          "occurrence": 1,
+          "shape": "path.bare-specifier",
+          "expect": "broken",
+          "why": "A bare module name that no baseUrl, alias or package gives a file: broken, a real finding. With nothing after the name it names a package itself, not a file inside one, so out-of-scope's reason would be false.",
+          "offset": 47,
+          "line": 2,
+          "column": 19
+        },
+        {
+          "raw": "shared/assets/img/thumb.png",
+          "occurrence": 1,
+          "shape": "path.bare-specifier",
+          "expect": "resolved",
+          "why": "A bare module name that the tsconfig's baseUrl, the tree root, finds before any package is asked: resolved, as TypeScript resolves it.",
+          "target": "shared/assets/img/thumb.png",
+          "offset": 85,
+          "line": 3,
+          "column": 20
         }
       ]
     }

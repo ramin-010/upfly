@@ -1,8 +1,9 @@
 /**
  * `loadAliases` and `expandAlias` against TypeScript's own module resolution, over configs
  * drawn at random: `extends` chains (arrays, cycles, packages), `baseUrl`, `${configDir}` and
- * nested projects. TypeScript is asked through its public API and sees a file at every
- * `probe.ts` and `lib.ts`, so it answers with its own first candidate, whatever Upfly computed.
+ * nested projects. TypeScript is asked through its public API and sees a module at every path
+ * a probe name can reach outside `node_modules`, and Upfly's answer is its first candidate
+ * where such a module stands, so both say which file an import loads, or that none does.
  *
  * Then against Vite's, over `resolve.alias` sections drawn at random. Vite is asked through
  * its public `createIdResolver` in alias-only mode, which runs the alias plugin Vite ships and
@@ -34,7 +35,7 @@ const CONFIGS = [
 ];
 /**
  * `@icons/*.svg` has text after its `*`, and ties `@icons/*` on prefix length, which TypeScript
- * settles by the order the keys are written.
+ * settles by the order the keys are written. `*` maps every name, so `baseUrl` never answers.
  */
 const KEYS = [
   '@/*',
@@ -45,7 +46,10 @@ const KEYS = [
   '$lib/*',
   '@icons/*.svg',
   '@icons/*',
+  '*',
 ];
+/** Names with no alias's first character, which only `baseUrl`, a `*` key or a package finds. */
+const BARE = ['probe', 'src/probe'];
 /** With text after the `*`, text before it in the same name, and no `*` at all. */
 const PATTERN_TARGETS = [
   './src/*',
@@ -147,17 +151,19 @@ function relative(path: string): string {
 function typescriptHost(
   files: ReadonlyMap<string, string>,
 ): ts.ParseConfigFileHost & ts.ModuleResolutionHost {
-  // A module stands at every path a probe specifier can reach, `.ts` added: `probe`,
-  // `icon-probe`, `probe.svg` and `lib`.
+  // A module stands at every path a probe name can reach, `.ts` added: `probe`, `icon-probe`,
+  // `probe.svg` and `lib`. None in `node_modules`, where Upfly looks for no module: a package
+  // is a question for the resolver's other rungs.
   const probe = /(probe|\/lib)(\.svg)?\.ts$/;
+  const isModule = (path: string) => probe.test(path) && !path.includes('/node_modules/');
   return {
     useCaseSensitiveFileNames: true,
     getCurrentDirectory: () => ROOT,
     readDirectory: () => [],
     directoryExists: () => true,
-    fileExists: (path) => files.has(toPosix(path)) || probe.test(toPosix(path)),
+    fileExists: (path) => files.has(toPosix(path)) || isModule(toPosix(path)),
     readFile: (path) =>
-      files.get(toPosix(path)) ?? (probe.test(toPosix(path)) ? 'export {};' : undefined),
+      files.get(toPosix(path)) ?? (isModule(toPosix(path)) ? 'export {};' : undefined),
     onUnRecoverableConfigFileDiagnostic: () => {},
   };
 }
@@ -171,11 +177,15 @@ interface Disagreement {
   readonly files: Readonly<Record<string, string>>;
 }
 
-/** Every specifier some project maps, asked from every project folder whose own `paths` maps it. */
+/** Every name some project's key gives, and the bare ones, asked from every project folder. */
 async function disagreements(
   round: number,
   files: ReadonlyMap<string, string>,
-): Promise<{ readonly probes: number; readonly found: readonly Disagreement[] }> {
+): Promise<{
+  readonly probes: number;
+  readonly loaded: number;
+  readonly found: readonly Disagreement[];
+}> {
   const discovered = [...files.keys()]
     .filter((path) => !path.includes('/node_modules/'))
     .map((path) => ({ path, relative: relative(path) }));
@@ -197,36 +207,28 @@ async function disagreements(
       folder: posix.dirname(path),
       options: ts.getParsedCommandLineOfConfigFile(path, {}, host)?.options ?? {},
     }));
-  const specifiers = new Set(
-    projects.flatMap(({ options }) =>
+  const specifiers = new Set([
+    ...projects.flatMap(({ options }) =>
       Object.keys(options.paths ?? {}).map((key) => key.replace('*', 'probe')),
     ),
-  );
+    ...BARE,
+  ]);
 
   let probes = 0;
+  let loaded = 0;
   const found: Disagreement[] = [];
   for (const { folder, options } of projects) {
-    const keys = Object.keys(options.paths ?? {});
     const from = `${folder}/main.ts`;
     for (const specifier of specifiers) {
-      // Only where TypeScript uses `paths`: past them it looks through `baseUrl` and in
-      // `node_modules`, which `expandAlias` does not model.
-      const mapped = keys.some((key) => {
-        const [head = '', tail] = key.split('*');
-        return tail === undefined
-          ? specifier === key
-          : specifier.length >= head.length + tail.length &&
-              specifier.startsWith(head) &&
-              specifier.endsWith(tail);
-      });
-      if (!mapped) continue;
       probes += 1;
-
       const resolved = ts.resolveModuleName(specifier, from, options, host).resolvedModule;
-      const first = expandAlias(map, specifier, from)[0];
-      const typescript =
-        resolved === undefined ? '(unresolved)' : relative(resolved.resolvedFileName);
-      const upfly = first === undefined ? '(no candidate)' : relative(`${first}.ts`);
+      // The resolver takes the first candidate that names a file, as TypeScript does.
+      const first = expandAlias(map, specifier, from, { baseUrl: true }).find((candidate) =>
+        host.fileExists(`${candidate}.ts`),
+      );
+      const typescript = resolved === undefined ? '(none)' : relative(resolved.resolvedFileName);
+      const upfly = first === undefined ? '(none)' : relative(`${first}.ts`);
+      if (resolved !== undefined) loaded += 1;
       if (typescript === upfly) continue;
       found.push({
         round,
@@ -238,23 +240,25 @@ async function disagreements(
       });
     }
   }
-  return { probes, found };
+  return { probes, loaded, found };
 }
 
 describe('loadAliases against TypeScript', () => {
   it(
-    'gives, from each project folder, the file TypeScript resolves for every path its nearest config maps',
+    'gives, from each project folder, the file TypeScript loads for every module name, or none where it loads none',
     async () => {
       let probes = 0;
+      let loaded = 0;
       const found: Disagreement[] = [];
       for (let round = 0; round < ROUNDS; round++) {
         const result = await disagreements(round, generate(seeded(round)));
         probes += result.probes;
+        loaded += result.loaded;
         found.push(...result.found);
       }
 
-      // A generator that stopped producing mapped paths would pass with nothing checked.
-      expect(probes).toBeGreaterThan(ROUNDS);
+      // A generator that stopped producing names TypeScript can load would pass on "none".
+      expect(loaded).toBeGreaterThan(ROUNDS);
       expect(found.slice(0, 3), `${found.length} of ${probes} paths disagree`).toEqual([]);
     },
     TIMEOUT_MS,

@@ -154,7 +154,13 @@ export type {
   ReferenceEntry,
 } from './report/report.js';
 export { expandAlias, loadAliases } from './resolve/aliases.js';
-export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './resolve/aliases.js';
+export type {
+  AliasMap,
+  AliasRule,
+  AliasSkip,
+  ExpandOptions,
+  LoadAliasesOptions,
+} from './resolve/aliases.js';
 export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve/resolve.js';
 export {
   type InferServingRootsInput,

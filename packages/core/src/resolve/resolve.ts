@@ -19,7 +19,7 @@ import {
 import { compareStrings, extensionOf, isImageExtension, toPosix } from '../paths.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from '../types.js';
 import type { AliasMap } from './aliases.js';
-import { expandAlias } from './aliases.js';
+import { expandAlias, matchingRule } from './aliases.js';
 import { provenPath } from './reference.js';
 
 /**
@@ -239,7 +239,12 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
         exclusionReason: 'names a file inside an npm package, which is not an indexed asset',
       };
     }
-    return unlinked(raw, 'unresolved-alias');
+    // 6c. A bare name with no path after it, which no alias maps, could only name a package
+    //     itself, never a file inside one: it falls to rung 7, as any path to nothing does.
+    const mapped = spellings.some(
+      ({ path: spelled }) => matchingRule(context.aliases, spelled, raw.file) !== null,
+    );
+    if (!isBareSpecifier(path, raw.kind) || mapped) return unlinked(raw, 'unresolved-alias');
   }
 
   // 7. The author said this was an asset and it points at nothing.
@@ -283,7 +288,7 @@ function outOfScope(
       candidatePaths(spelled, raw, context.root, context.publicDirs).map(({ path: at }) => at),
     ),
     ...(aliasShapedIn(spellings, raw.kind)
-      ? spellings.flatMap(({ path: spelled }) => expandAlias(context.aliases, spelled, raw.file))
+      ? spellings.flatMap(({ path: spelled }) => throughDeclared(spelled, raw, context))
       : []),
   ];
   for (const candidate of candidates) {
@@ -362,7 +367,7 @@ function resolveThroughAlias(
   if (!aliasShapedIn(spellings, raw.kind)) return null;
 
   for (const { spelling, path: spelled } of spellings) {
-    for (const candidate of expandAlias(context.aliases, spelled, raw.file)) {
+    for (const candidate of throughDeclared(spelled, raw, context)) {
       const target = context.index.lookupExact(candidate);
       if (target === null) continue;
       return {
@@ -394,7 +399,7 @@ function matchThroughAlias(
   context: ResolveContext,
 ): readonly string[] {
   if (!isAliasShapedPattern(pattern, raw.kind)) return [];
-  for (const candidate of expandAlias(context.aliases, withHoles(pattern), raw.file)) {
+  for (const candidate of throughDeclared(withHoles(pattern), raw, context)) {
     const matches = context.index.matchGlob(candidate);
     if (matches.length > 0) return matches;
   }
@@ -403,7 +408,8 @@ function matchThroughAlias(
 
 /**
  * Whether a pattern is written through an alias no declared rule covers. A package-shaped
- * pattern is not an alias: it names files inside `node_modules`, and stays `dynamic`.
+ * pattern is not an alias: it names files inside `node_modules`, and stays `dynamic`, as does
+ * any bare module name.
  */
 function throughUnmappedAlias(
   pattern: string,
@@ -413,9 +419,22 @@ function throughUnmappedAlias(
   const fixed = withHoles(pattern);
   return (
     isAliasShapedPattern(pattern, raw.kind) &&
+    !isBareSpecifier(fixed, raw.kind) &&
     !isPackageSpecifier(fixed, raw.kind) &&
     expandAlias(context.aliases, fixed, raw.file).length === 0
   );
+}
+
+/**
+ * The paths an alias-shaped path leads to through what the project declares. An import's is a
+ * module name, so a name no alias maps is also looked for under the tsconfig's `baseUrl`.
+ */
+function throughDeclared(
+  path: string,
+  raw: RawReference,
+  context: ResolveContext,
+): readonly string[] {
+  return expandAlias(context.aliases, path, raw.file, { baseUrl: raw.kind === 'import' });
 }
 
 /**
@@ -441,19 +460,18 @@ function isPackageSpecifier(path: string, kind: RawReference['kind']): boolean {
   // file inside a package, and `@missing/astro.png` is only a scope and a name. `@/…` has
   // an empty scope and fails `[^/]+`.
   if (/^@[^/]+\/[^/]+\//.test(path)) return true;
-  // A bare specifier in an import position: `lodash/x.png`, never `./x.png`.
-  if (kind !== 'import') return false;
-  // An `@` path was decided above: one the pattern rejected is an alias, either `@/…` or a
-  // scope and name with no subpath. No npm package name starts with `$`, so `$lib/…` is an
-  // alias, as SvelteKit writes one.
-  return (
-    !path.startsWith('.') &&
-    !path.startsWith('/') &&
-    !path.startsWith('~') &&
-    !path.startsWith('#') &&
-    !path.startsWith('@') &&
-    !path.startsWith('$')
-  );
+  // An unscoped name needs a path after it for the same reason: `lodash/x.png`, never `x.png`.
+  return isBareSpecifier(path, kind) && path.includes('/');
+}
+
+/**
+ * Whether a path is a bare module name: in an import, neither relative nor rooted, and not
+ * written with an alias's first character. An `@` path is a scope or an alias, which
+ * `isPackageSpecifier` tells apart, and no npm package name starts with `$`, so `$lib/…` is an
+ * alias, as SvelteKit writes one.
+ */
+function isBareSpecifier(path: string, kind: RawReference['kind']): boolean {
+  return kind === 'import' && isAliasShaped(path, kind) && !/^[@~#$]/.test(path);
 }
 
 /**
@@ -581,11 +599,12 @@ interface Candidate {
 /**
  * Where a path might live, in the order the candidates are tried.
  *
- * A relative path resolves against the referencing file. A root-relative one is tried
- * against each serving root whose app directory is an ancestor of the file, nearest first
- * (see `servingRootsFor`), then against the project root, where a plain static site serves
- * `/hero.png` from. A Windows drive path is absolute, and has a candidate only inside the
- * project. See "The resolver's seven outcomes" in ARCHITECTURE.md.
+ * A relative path resolves against the referencing file, except a module name in an import,
+ * which has no candidate here. A root-relative one is tried against each serving root whose
+ * app directory is an ancestor of the file, nearest first (see `servingRootsFor`), then
+ * against the project root, where a plain static site serves `/hero.png` from. A Windows
+ * drive path is absolute, and has a candidate only inside the project. See "The resolver's
+ * seven outcomes" in ARCHITECTURE.md.
  */
 function candidatePaths(
   path: string,
@@ -593,6 +612,9 @@ function candidatePaths(
   root: string,
   publicDirs: readonly string[],
 ): readonly Candidate[] {
+  // Module resolution never looks for a name that is not relative beside the importing file:
+  // it reads it through aliases and `baseUrl`, then as a package.
+  if (raw.kind === 'import' && isAliasShaped(path, raw.kind)) return [];
   if (isDrivePath(path)) {
     const inside = drivePathInProject(path, root);
     return inside === null ? [] : [{ path: inside, via: 'file' }];
