@@ -1083,8 +1083,9 @@ attribute as unread:
    decodes some legacy names written without their semicolon, such as `&eacute` before a `.`,
    which our decoder leaves alone, so where the two disagree the offsets would describe text the
    browser never saw. This comparison is what makes a bounded decoder safe to use.
-3. Each mapped range starts within the attribute, runs forwards, and is no shorter than the path
-   the CSS adapter found. `rawPath` is sliced from the source, so it always matches its range.
+3. Each mapped range starts within the attribute, runs forwards, and, decoded, is the path the CSS
+   adapter found, so a map off by any amount is refused. `html.guard.test.ts` checks it against the
+   map the decoder built when an emoji a reference spelled got one entry for its two code units.
 
 An unread `style` attribute, whether escaped beyond these guards or simply not valid CSS, is
 reported with a note saying whether its CSS contains `url()` or `image-set()`. Without one there is

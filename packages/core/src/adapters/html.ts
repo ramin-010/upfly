@@ -453,8 +453,8 @@ function describeUrlFunction(css: string): string {
  * 1. Our decoder finishes. A name the HTML spec does not define, such as `&eacut;`, stops it.
  * 2. Our decoded text equals parse5's, which also decodes legacy names without a semicolon:
  *    where the two differ, our offsets would describe text the browser never saw.
- * 3. Each mapped range starts within the attribute, runs forwards, and is no shorter than
- *    the path the CSS adapter found.
+ * 3. Each mapped range starts within the attribute, runs forwards, and decodes to the path
+ *    the CSS adapter found.
  *
  * @returns `true` when it handled the attribute, `false` to let the caller refuse it.
  */
@@ -489,9 +489,9 @@ function collectFromEscapedStyleAttribute(
     if (start < baseOffset || end < start) return false;
 
     const rawPath = context.text.slice(start, end);
-    // Guard 3. `rawPath` is sliced from the source, so it matches its range by
-    // construction; the length check catches a map that is wrong but still yields a string.
-    if (rawPath.length < reference.rawPath.length) return false;
+    // Guard 3: the source range, decoded, must be the path the CSS reader found, so a map
+    // that is off by any amount is refused rather than trusted.
+    if (decodeCharacterReferencesWithMap(rawPath)?.text !== reference.rawPath) return false;
 
     remapped.push({ ...reference, start, end, rawPath });
   }
