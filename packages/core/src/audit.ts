@@ -12,7 +12,6 @@
  * a line.
  */
 
-import { citeReferences } from './citation.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
 import { conventionLinkFor } from './conventions.js';
 import { findDuplicates } from './duplicates.js';
@@ -25,7 +24,8 @@ import {
   dependsOnServingRoot,
   resolutionHealth,
 } from './resolution-health.js';
-import type { ReadFilePort } from './scan.js';
+import { citeReferences } from './scan/citation.js';
+import type { ReadFilePort } from './scan/scan.js';
 import type { Mention, SweepResult } from './sweep.js';
 
 /** An asset nothing references, whose filename the sweep found nowhere else either. */

@@ -11,7 +11,7 @@ import { buildGraph } from './graph.js';
 import { toPosix } from './paths.js';
 import { type Move, planRelocation } from './relocate.js';
 import { resolveReferences } from './resolve.js';
-import { scanSources } from './scan.js';
+import { scanSources } from './scan/scan.js';
 import type { Asset, RawReference, Reference } from './types.js';
 
 /**

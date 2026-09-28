@@ -11,7 +11,7 @@
 import { UpflyError } from './errors.js';
 import { compareStrings, relativePath } from './paths.js';
 import { linkedPaths } from './reference.js';
-import type { ScannedText } from './scan.js';
+import type { ScannedText } from './scan/scan.js';
 import type { Asset, Reference, Resolution, UnscannedExtension, UnscannedFile } from './types.js';
 import { countExtensions } from './unscanned.js';
 

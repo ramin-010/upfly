@@ -33,7 +33,7 @@ import {
 } from './plan.js';
 import type { AssetProbe, EncodeFormat, ImageProbe } from './probe.js';
 import type { ServingRoots } from './resolve.js';
-import { hashText } from './text-hash.js';
+import { hashText } from './scan/text-hash.js';
 import {
   type FileStore,
   type LockPorts,

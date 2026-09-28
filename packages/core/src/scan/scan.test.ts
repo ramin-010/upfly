@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { UpflyError } from './errors.js';
+import { UpflyError } from '../errors.js';
+import type { Adapter, RawReference, SourceFile } from '../types.js';
 import { type ReadFilePort, scanSources } from './scan.js';
 import { hashText } from './text-hash.js';
-import type { Adapter, RawReference, SourceFile } from './types.js';
 
 /**
  * `scan` owns error handling for every adapter, so the interesting cases are failures: a

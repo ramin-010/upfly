@@ -25,7 +25,7 @@ import {
 import type { ClassificationBound, ReferenceEntry, Report } from './report.js';
 import { resolveReferences } from './resolve.js';
 import type { ServingRoots } from './resolve.js';
-import { scanSources } from './scan.js';
+import { scanSources } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';
 import type { ExcludedRoot, Reference, UnscannedFile } from './types.js';

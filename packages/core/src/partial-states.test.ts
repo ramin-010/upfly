@@ -10,7 +10,7 @@ import { type PublicPolicy, patternTargets, planOptimization } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import { resolveReferences } from './resolve.js';
-import { scanSources } from './scan.js';
+import { scanSources } from './scan/scan.js';
 
 /**
  * Planning a tree that is half working, which real repositories rarely are.

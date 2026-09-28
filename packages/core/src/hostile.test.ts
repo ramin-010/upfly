@@ -21,7 +21,7 @@ import { probeAssets } from './probe.js';
 import { renderReport } from './report-human.js';
 import { buildReport } from './report.js';
 import { resolveReferences } from './resolve.js';
-import { scanSources } from './scan.js';
+import { scanSources } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter } from './types.js';
 

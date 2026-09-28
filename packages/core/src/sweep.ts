@@ -16,7 +16,6 @@ import {
   spellingsOf,
   splitPathSuffix,
 } from './adapters/reference-path.js';
-import { citationAt, lineOf, withSourceTexts } from './citation.js';
 import { formatBytes } from './format.js';
 import type { Graph } from './graph.js';
 import { unreferencedAssets } from './graph.js';
@@ -24,7 +23,8 @@ import { compareStrings, imageFilenameCandidates } from './paths.js';
 import { provenPath } from './reference.js';
 import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
 import { servedFromAnyRoot } from './resolve.js';
-import type { ReadFilePort, ScannedMention } from './scan.js';
+import { citationAt, lineOf, withSourceTexts } from './scan/citation.js';
+import type { ReadFilePort, ScannedMention } from './scan/scan.js';
 import type { Reference, ReferenceKind } from './types.js';
 
 /** Where an asset's name turned up. */

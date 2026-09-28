@@ -11,9 +11,9 @@
  * reported.
  */
 
-import { compareStrings, relativePath } from './paths.js';
+import { compareStrings, relativePath } from '../paths.js';
+import type { Reference } from '../types.js';
 import type { ReadFilePort } from './scan.js';
-import type { Reference } from './types.js';
 
 /** Where a reference sits, as the report prints it. */
 export interface Citation {

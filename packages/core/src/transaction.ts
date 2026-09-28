@@ -23,7 +23,7 @@ import {
   parseManifest,
   serialiseManifest,
 } from './manifest.js';
-import { hashText } from './text-hash.js';
+import { hashText } from './scan/text-hash.js';
 import type { Edit } from './types.js';
 
 /**

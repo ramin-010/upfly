@@ -13,8 +13,13 @@ export type {
   ServingRootUnknownFinding,
   SuppressedBroken,
 } from './audit.js';
-export { citeReferences, lineOf } from './citation.js';
-export type { Citation, CitationOptions, CitationResult, UnreadableSource } from './citation.js';
+export { citeReferences, lineOf } from './scan/citation.js';
+export type {
+  Citation,
+  CitationOptions,
+  CitationResult,
+  UnreadableSource,
+} from './scan/citation.js';
 export { cssAdapter, findCssReferences } from './adapters/css.js';
 export { htmlAdapter } from './adapters/html.js';
 export { findJavaScriptReferences, javascriptAdapter } from './adapters/javascript.js';
@@ -170,14 +175,14 @@ export {
   resolutionHealth,
 } from './resolution-health.js';
 export type { ResolveOptions, ServingRoots } from './resolve.js';
-export { scanSources } from './scan.js';
+export { scanSources } from './scan/scan.js';
 export type {
   ReadFilePort,
   ScanDiagnostic,
   ScanOptions,
   ScanResult,
   ScannedText,
-} from './scan.js';
+} from './scan/scan.js';
 export { conventionLinkFor, detectConventionRoots } from './conventions.js';
 export type { ConventionLink, ConventionRoot } from './conventions.js';
 export { sweepForMentions } from './sweep.js';

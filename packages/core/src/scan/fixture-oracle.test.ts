@@ -16,15 +16,15 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultAdapters } from './adapters/default-adapters.js';
-import { discover } from './discover/discover.js';
-import { IMAGE_EXTENSIONS, toPosix } from './paths.js';
+import { defaultAdapters } from '../adapters/default-adapters.js';
+import { discover } from '../discover/discover.js';
+import { IMAGE_EXTENSIONS, toPosix } from '../paths.js';
+import type { Adapter } from '../types.js';
 import { scanSources } from './scan.js';
-import type { Adapter } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const TREES = join(HERE, '../../../fixtures');
-const ADAPTER_FIXTURES = join(HERE, '../fixtures');
+const TREES = join(HERE, '../../../../fixtures');
+const ADAPTER_FIXTURES = join(HERE, '../../fixtures');
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 

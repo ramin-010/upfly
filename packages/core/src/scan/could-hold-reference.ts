@@ -11,8 +11,8 @@
  * ARCHITECTURE.md.
  */
 
-import { TEMPLATE_HOLES } from './adapters/reference-path.js';
-import { IMAGE_EXTENSIONS } from './paths.js';
+import { TEMPLATE_HOLES } from '../adapters/reference-path.js';
+import { IMAGE_EXTENSIONS } from '../paths.js';
 
 // Constructs that mark a reference position without an extension. `href` also matches
 // `xlink:href`, and `style` matches `styled`.

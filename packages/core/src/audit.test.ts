@@ -3,7 +3,7 @@ import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { buildGraph } from './graph.js';
 import type { AssetProbe } from './probe.js';
-import type { ReadFilePort } from './scan.js';
+import type { ReadFilePort } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { SweepResult } from './sweep.js';
 import type { Asset, RawReference, Reference, UnscannedFile } from './types.js';

@@ -23,7 +23,7 @@ import { type Graph, buildGraph } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { type AssetProbe, type ProbeDiagnostic, type ProbeOptions, probeAssets } from './probe.js';
 import { type ServingRoots, resolveReferences } from './resolve.js';
-import { type ScanDiagnostic, scanSources } from './scan.js';
+import { type ScanDiagnostic, scanSources } from './scan/scan.js';
 import { decideServingRoots } from './serving-root-decision.js';
 import { type SweepResult, sweepForMentions } from './sweep.js';
 import type { Adapter, Asset, DiscoveryResult, Reference } from './types.js';

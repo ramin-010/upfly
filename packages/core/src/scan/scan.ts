@@ -8,12 +8,12 @@
  * "Scanning: one place that owns adapter failure" in ARCHITECTURE.md.
  */
 
+import { UpflyError } from '../errors.js';
+import { imageFilenameCandidates } from '../paths.js';
+import type { Adapter, RawReference, SourceFile, UnscannedFile } from '../types.js';
 import { lineOf } from './citation.js';
 import { couldHoldReference } from './could-hold-reference.js';
-import { UpflyError } from './errors.js';
-import { imageFilenameCandidates } from './paths.js';
 import { hashText } from './text-hash.js';
-import type { Adapter, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /**
  * Reads a file's text. Injected so this module stays pure.
