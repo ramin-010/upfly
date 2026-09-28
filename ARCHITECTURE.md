@@ -642,7 +642,10 @@ each name is decoded once inside an attribute value, where it counts only whole 
 semicolon. That is how CommonMark decodes a link destination, so `![](caf&eacute;.png)` names
 `café.png`, as `<img src="caf&eacute;.png">` does. A numeric reference of at most seven decimal or
 six hexadecimal digits to zero, a surrogate or a number past U+10FFFF reads as U+FFFD, as
-CommonMark (0.31.2, section 2.5) and HTML both read it. Anything else written like a reference,
+CommonMark (0.31.2, section 2.5) and HTML both read it. HTML alone reads a number from 128 to 159
+through the Windows-1252 table, as parse5 does with the table of its `entities` dependency, so
+`&#128;uro.png` names `€uro.png`, not a C1 control; every reading but a Markdown destination's takes
+the table, and CommonMark's keeps the number's own code point. Anything else written like a reference,
 such as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`,
 and text it rejects, such as `100%`, is treated the same way.
 

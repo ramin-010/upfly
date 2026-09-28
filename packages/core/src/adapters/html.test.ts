@@ -313,6 +313,16 @@ describe('htmlAdapter', () => {
       expect(references[0]?.ceiling).toBe('high');
     });
 
+    // `high` means the decoding agreed with parse5's, the reading a browser gives the page.
+    it('decodes each numeric reference from 128 to 159 as the HTML parser does', () => {
+      for (let code = 128; code <= 159; code += 1) {
+        for (const written of [`&#${code};`, `&#x${code.toString(16)};`]) {
+          const [reference] = find(`<img src="/img/${written}uro.png">`);
+          expect(reference?.ceiling, written).toBe('high');
+        }
+      }
+    });
+
     /**
      * An escaped value matters only where the attribute is a reference position. Acted on
      * for every attribute, it would turn escaped `alt` text, other sites' links and

@@ -294,6 +294,15 @@ describe('spellingsOf', () => {
     ]);
   });
 
+  it('reads a numeric reference from 128 to 159 as HTML does, and as CommonMark in Markdown', () => {
+    const decoded = (kind: 'attr' | 'md') =>
+      spellingsOf('/img/&#128;uro.png', kind).find(({ spelling }) => spelling === 'html-entities')
+        ?.path;
+
+    expect(decoded('attr')).toBe('/img/\u20acuro.png');
+    expect(decoded('md')).toBe('/img/\u0080uro.png');
+  });
+
   it('decodes every character-reference form', () => {
     for (const written of ['a&amp;b.png', 'a&#38;b.png', 'a&#x26;b.png', 'a&#X26;b.png']) {
       expect(spellingsOf(written, 'attr').map((candidate) => candidate.path)).toContain('a&b.png');

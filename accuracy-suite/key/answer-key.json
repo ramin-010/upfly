@@ -1116,6 +1116,14 @@
       "height": 320
     },
     {
+      "path": "sites/root-served/marks/€uro.png",
+      "bytes": 23230,
+      "sha256": "a1c06dfa84ccf199",
+      "source": "migrant",
+      "width": 160,
+      "height": 120
+    },
+    {
       "path": "apps/web/public/icons/mask.svg",
       "bytes": 195,
       "sha256": "4180ad624d283747",
@@ -6328,6 +6336,35 @@
           "offset": 647,
           "line": 22,
           "column": 26
+        }
+      ]
+    },
+    {
+      "path": "sites/root-served/charref.html",
+      "entries": [
+        {
+          "raw": "marks/&#128;uro.png",
+          "occurrence": 1,
+          "shape": "path.charref",
+          "expect": "resolved",
+          "why": "HTML reads a numeric reference from 128 to 159 through the Windows-1252 table, as a browser does, so &#128; is the euro sign rather than the C1 control U+0080, and the path names the euro mark beside this page.",
+          "decoded": "marks/€uro.png",
+          "target": "sites/root-served/marks/€uro.png",
+          "offset": 327,
+          "line": 12,
+          "column": 15
+        },
+        {
+          "raw": "marks/&#x80;uro.png",
+          "occurrence": 1,
+          "shape": "path.charref",
+          "expect": "resolved",
+          "why": "The same mark through a hexadecimal reference, which the table reads the same way.",
+          "decoded": "marks/€uro.png",
+          "target": "sites/root-served/marks/€uro.png",
+          "offset": 409,
+          "line": 13,
+          "column": 15
         }
       ]
     },

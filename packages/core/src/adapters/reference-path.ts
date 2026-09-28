@@ -306,7 +306,9 @@ export function spellingsOf(
   ];
 
   const escaped = kind === 'md' && holdsBackslashEscape(rawPath);
-  const decoded = escaped ? decodeMarkdownDestination(rawPath) : decodeCharacterReferences(rawPath);
+  const decoded = escaped
+    ? decodeMarkdownDestination(rawPath)
+    : decodeCharacterReferences(rawPath, kind !== 'md');
   if (decoded !== null && decoded !== rawPath) {
     candidates.push({ spelling: escaped ? 'markdown-escapes' : 'html-entities', path: decoded });
   }
@@ -379,7 +381,7 @@ export function decodeCharacterReferencesWithMap(
       continue;
     }
 
-    const character = decodeOneReference(match[1] ?? '');
+    const character = decodeOneReference(match[1] ?? '', true);
     if (character === null) return null;
     // Every code unit of the character maps to the reference's start. A character above
     // U+FFFF, such as an emoji, is two code units, which `for...of` would visit as one.
@@ -397,33 +399,55 @@ const ENTITY_ONCE = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/y;
 
 const REPLACEMENT_CHARACTER = String.fromCodePoint(0xfffd);
 
-/** One reference's body to its character, or `null` when it is outside the bound. */
-function decodeOneReference(body: string): string | null {
-  if (body.startsWith('#')) {
-    const isHex = body[1] === 'x' || body[1] === 'X';
-    const digits = isHex ? body.slice(2) : body.slice(1);
-    const code = Number.parseInt(digits, isHex ? 16 : 10);
-    // Zero, a surrogate and a number past the last code point read as U+FFFD in CommonMark
-    // and HTML alike (CommonMark 0.31.2, section 2.5). CommonMark reads at most 7 decimal or
-    // 6 hexadecimal digits as a reference, so a longer number is not given that reading.
-    const noCharacter = code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff;
-    if (noCharacter && digits.length <= (isHex ? 6 : 7)) return REPLACEMENT_CHARACTER;
-    if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
-    return String.fromCodePoint(code);
-  }
-  return decodeNamedReference(body);
+/**
+ * The characters HTML reads a numeric reference from 128 to 159 as, in order: the
+ * Windows-1252 character with that number, or, where the entry is 0, the number's own code
+ * point. The table parse5 reads through its `entities` dependency, as a browser does.
+ */
+const WINDOWS_1252_C1: readonly number[] = [
+  8364, 0, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352, 8249, 338, 0, 381, 0, 0, 8216, 8217,
+  8220, 8221, 8226, 8211, 8212, 732, 8482, 353, 8250, 339, 0, 382, 376,
+];
+
+/**
+ * One reference's body to its character, or `null` when it is outside the bound.
+ *
+ * @param windows1252 Whether 128 to 159 read through `WINDOWS_1252_C1`, as HTML reads them;
+ *   CommonMark reads each as its own code point.
+ */
+function decodeOneReference(body: string, windows1252: boolean): string | null {
+  return body.startsWith('#')
+    ? decodeNumericReference(body, windows1252)
+    : decodeNamedReference(body);
+}
+
+/** `#38` or `#x26` to its character, or `null` when it is outside the bound. */
+function decodeNumericReference(body: string, windows1252: boolean): string | null {
+  const isHex = body[1] === 'x' || body[1] === 'X';
+  const digits = isHex ? body.slice(2) : body.slice(1);
+  const code = Number.parseInt(digits, isHex ? 16 : 10);
+  // Zero, a surrogate and a number past the last code point read as U+FFFD in CommonMark
+  // and HTML alike (CommonMark 0.31.2, section 2.5). CommonMark reads at most 7 decimal or
+  // 6 hexadecimal digits as a reference, so a longer number is not given that reading.
+  const noCharacter = code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff;
+  if (noCharacter && digits.length <= (isHex ? 6 : 7)) return REPLACEMENT_CHARACTER;
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return null;
+  const remapped = windows1252 && code >= 128 && code <= 159 ? WINDOWS_1252_C1[code - 128] : 0;
+  return String.fromCodePoint(remapped || code);
 }
 
 /**
  * The text with every character reference resolved, or `null` when one is outside the
  * bound. A partly decoded path would be neither what the author wrote nor the file's name.
+ *
+ * @param windows1252 See `decodeOneReference`.
  */
-function decodeCharacterReferences(text: string): string | null {
+function decodeCharacterReferences(text: string, windows1252 = true): string | null {
   if (!text.includes('&')) return text;
 
   let decodable = true;
   const decoded = text.replace(ENTITY, (match, body: string) => {
-    const character = decodeOneReference(body);
+    const character = decodeOneReference(body, windows1252);
     if (character === null) decodable = false;
     return character ?? match;
   });
@@ -465,7 +489,7 @@ export function decodeMarkdownDestination(text: string, keepUndecodable = false)
       continue;
     }
 
-    const value = decodeOneReference(match[1] ?? '');
+    const value = decodeOneReference(match[1] ?? '', false);
     if (value === null && !keepUndecodable) return null;
     decoded.push(value ?? match[0]);
     index += match[0].length;
