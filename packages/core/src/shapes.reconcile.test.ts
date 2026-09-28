@@ -140,7 +140,7 @@ describe('the shape vocabulary reconciles with the accuracy suite', () => {
 
     expect(
       problems,
-      'The vocabulary and the coverage tree disagree. The TREE defines the list: a shape ' +
+      'The vocabulary and the accuracy suite disagree. The tree defines the list: a shape ' +
         'it declares must exist in shapes.ts. A shape only shapes.ts has is drift, unless ' +
         'it is on the growth list (UNTESTED_SHAPE_IDS) with a `why` naming the construct.',
     ).toEqual([]);

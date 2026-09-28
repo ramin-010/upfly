@@ -336,7 +336,7 @@ describe('a gap can only be retired by a run that exercises the mechanism it nam
     const rendered = renderMatrix(result);
 
     expect(NON_DEFECT_KINDS).toContain('gap-not-exercised');
-    expect(rendered).toContain('NOT EXERCISED by this run');
+    expect(rendered).toContain('not exercised by this run');
     expect(rendered).toContain('serving-root-detection');
   });
 
@@ -594,14 +594,14 @@ describe('the rendering', () => {
     // wrong, it reports nothing.
     const rendered = renderMatrix(result);
 
-    expect(rendered).toContain('CLASSIFICATION defect');
+    expect(rendered).toContain('classification defect');
     expect(rendered).toContain('cannot tell you');
   });
 
   it('marks a refusal row as reading backwards', () => {
     const rendered = renderMatrix(result, { emissionOf: () => 'declined' });
 
-    expect(rendered).toContain('a MISS here means the engine claimed it');
+    expect(rendered).toContain('a miss here means the engine claimed it');
   });
 
   // `reconcile` checks the rows' arithmetic, which can close while the printed table does
@@ -616,7 +616,7 @@ describe('the rendering', () => {
       for (const bucket of BUCKETS) expect(header).toContain(bucket.label);
     });
 
-    it("says so loudly when a row's printed columns do not sum to its `exp`", () => {
+    it("says so when a row's printed columns do not sum to its `exp`", () => {
       // Built by hand rather than through `buildMatrix`, because this state cannot occur
       // while `BUCKETS` is the single source. The page must still catch it if it ever does.
       const damaged = {
@@ -626,13 +626,13 @@ describe('the rendering', () => {
 
       const rendered = renderMatrix(damaged);
 
-      expect(rendered).toContain('DO NOT SUM TO `exp`');
+      expect(rendered).toContain('do not sum to `exp`');
       expect(rendered).toContain('html.img.src');
     });
 
     it('stays quiet when every row balances', () => {
       // The other direction. A warning that is always on is a warning nobody reads.
-      expect(renderMatrix(result)).not.toContain('DO NOT SUM TO');
+      expect(renderMatrix(result)).not.toContain('do not sum to');
     });
   });
 });

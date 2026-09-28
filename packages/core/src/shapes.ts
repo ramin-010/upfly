@@ -767,7 +767,7 @@ export type ShapeId = (typeof SHAPES)[number]['id'];
 export const SHAPE_IDS: ReadonlySet<string> = new Set(SHAPES.map((shape) => shape.id));
 
 /**
- * Shapes an adapter emits that no coverage-tree entry instantiates, so nothing measures them.
+ * Shapes an adapter emits that no accuracy-suite entry instantiates, so nothing measures them.
  *
  * `shapes.reconcile.test.ts` accepts these ids without a tree instance and fails once one
  * gains an instance, so the list cannot outlive the gap.

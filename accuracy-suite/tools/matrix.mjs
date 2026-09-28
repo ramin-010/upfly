@@ -178,7 +178,7 @@ function assertRunsAreConsistent(exercises, observedUnder, outOfConfiguration) {
   for (const mechanism of outOfConfiguration) {
     if (exercises.has(mechanism)) {
       throw new Error(
-        `"${mechanism}" is claimed as exercised AND as outside this configuration — it cannot be both`,
+        `"${mechanism}" is claimed as exercised and as outside this configuration; it cannot be both`,
       );
     }
   }
@@ -216,7 +216,7 @@ function assertMechanismsAreDeclared(key, exercises, outOfConfiguration = new Se
   if (unknown.size > 0) {
     const vocabulary = GAP_MECHANISMS.join(', ');
     const offenders = [...unknown].sort().join('\n  ');
-    throw new Error(`unknown gap mechanism(s) — the vocabulary is ${vocabulary}:\n  ${offenders}`);
+    throw new Error(`unknown gap mechanism(s); the vocabulary is ${vocabulary}:\n  ${offenders}`);
   }
 }
 
@@ -353,7 +353,7 @@ function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfigurati
       : {
           bucket: 'missed',
           kind: 'wrong-outcome',
-          detail: `expected ${entry.expect}, engine said ${actual} — under a configuration that does not use \`${entry.gapMechanism}\`, so the gap does not explain it`,
+          detail: `expected ${entry.expect}, engine said ${actual}, under a configuration that does not use \`${entry.gapMechanism}\`, so the gap does not explain it`,
           note,
         };
   }
@@ -366,7 +366,7 @@ function gapVerdict(entry, { actual, agrees, note }, exercises, outOfConfigurati
       kind: 'gap-not-exercised',
       detail:
         `this run does not exercise \`${entry.gapMechanism}\`, so the gap can be neither ` +
-        `confirmed nor retired here — the engine said ${actual}, which is not evidence`,
+        `confirmed nor retired here: the engine said ${actual}, which is not evidence`,
       note,
     };
   }
@@ -449,14 +449,13 @@ export function shapeDisagreements(key, observed, declarationOf = () => undefine
  */
 export function blindSpots() {
   return [
-    'It cannot see a CLASSIFICATION defect. It reports where the key and the engine ' +
-      'differ; where they agree and are both wrong it reports nothing. R80(a) sat ' +
-      'unapplied for a day inside this blind spot — both instruments called a partial ' +
-      'pattern a complete one.',
-    'It measures only the shapes the tree HAS. A shape nobody imagined does not appear ' +
-      "as a failure here, it appears as nothing. That gap is R76b's measurement, not this one.",
+    'It cannot see a classification defect. It reports where the key and the engine ' +
+      'differ; where they agree and are both wrong it reports nothing.',
+    'It measures only the shapes the tree has. A shape nobody imagined does not appear ' +
+      'as a failure here; it appears as nothing, and only a search of real repositories ' +
+      'can find it.',
     'Every `expect` is a judgement somebody made. The self-check proves the key describes ' +
-      'the tree; nothing proves the key describes a CORRECT engine.',
+      'the tree; nothing proves the key describes a correct engine.',
   ];
 }
 
@@ -484,13 +483,13 @@ export function renderMatrix(result, { emissionOf = () => undefined } = {}) {
 
 function heading() {
   return [
-    'coverage matrix — one row per shape, and DELIBERATELY NO TOTAL (R75)',
+    'accuracy suite: one row per shape, and no total',
     '',
-    '🔴 FOUR DIRECTIONS, AND SUMMING ACROSS THEM WOULD BE MEANINGLESS. A `claimed` row counts ' +
-      'found against expected. A `refusal` row reads BACKWARDS — the text is not a live path, so ' +
-      'a zero is right and a non-zero is the failure. An `unclaimed` row is a SCOPE DECISION: a ' +
-      'real file we choose not to index, and a miss there is not a bug (R92). A `gap` row is an ' +
-      'acknowledged debt with a ruling behind it.',
+    'Four directions, never summed. A `claimed` row counts found against expected. A ' +
+      '`refusal` row reads backwards: the text is not a live path, so a zero is right and a ' +
+      'non-zero is the failure. An `unclaimed` row is a scope decision: a real file Upfly ' +
+      'chooses not to index, so a miss there is not a bug. A `gap` row is a construct nothing ' +
+      "reads yet, and each entry's knownGap says why.",
   ];
 }
 
@@ -498,12 +497,12 @@ function arithmeticLine(result) {
   if (result.arithmetic.closes) {
     return [
       '',
-      `✅ arithmetic closes: every one of ${result.arithmetic.entries} key entries is in exactly one bucket.`,
+      `arithmetic closes: every one of ${result.arithmetic.entries} key entries is in exactly one bucket.`,
     ];
   }
   return [
     '',
-    '🔴 THE ARITHMETIC DOES NOT CLOSE. Every number below is suspect:',
+    'The arithmetic does not close, so every number below is suspect:',
     ...result.arithmetic.problems.map((problem) => `     ${problem}`),
   ];
 }
@@ -514,7 +513,7 @@ function arithmeticLine(result) {
  */
 function populations(result, emissionOf) {
   const buckets = tally(result, emissionOf);
-  const lines = ['', 'populations — read separately, never added together:'];
+  const lines = ['', 'populations, read separately and never added together:'];
   for (const [direction, bucket] of [...buckets].sort()) {
     const count = String(bucket.rows).padStart(3);
     lines.push(`  ${direction.padEnd(11)} ${count} rows  ${reading(direction, bucket)}`);
@@ -586,12 +585,12 @@ function notExercisedNote(result) {
   const mechanisms = [...new Set(items.map((item) => item.gapMechanism))].sort();
   return [
     '',
-    `⚠️  ${items.length} entr${items.length === 1 ? 'y is' : 'ies are'} NOT EXERCISED by this run ` +
+    `${items.length} entr${items.length === 1 ? 'y is' : 'ies are'} not exercised by this run ` +
       `(mechanism${mechanisms.length === 1 ? '' : 's'}: ${mechanisms.join(', ')}).`,
     '   Their knownGaps can be neither confirmed nor retired here, and the engine agreeing with',
-    '   the key on them means nothing — the mechanism the gap names never ran. Before R96 these',
-    '   printed as "the gap is closed", which retired a live defect and deleted the only record',
-    '   of it. They are listed under findings as `gap-not-exercised`.',
+    '   the key on them means nothing: the mechanism the gap names never ran. Reading them as',
+    '   closed would retire a live defect and delete its only record. They are listed under',
+    '   findings as `gap-not-exercised`.',
   ];
 }
 
@@ -607,10 +606,10 @@ function outOfConfigurationNote(result) {
   const met = items.filter((item) => item.bucket === 'met').length;
   return [
     '',
-    `ℹ️  ${items.length} entr${items.length === 1 ? 'y carries' : 'ies carry'} a knownGap in a mechanism ` +
+    `${items.length} entr${items.length === 1 ? 'y carries' : 'ies carry'} a knownGap in a mechanism ` +
       `this configuration does not use (${mechanisms.join(', ')}), so ${items.length === 1 ? 'it is' : 'they are'} ` +
       `judged on what this configuration produced: ${met} met.`,
-    '   Their gaps are neither confirmed nor retired here — the run that uses the mechanism',
+    '   Their gaps are neither confirmed nor retired here; the run that uses the mechanism',
     '   judges them:',
     ...items.map(
       (item) => `     ${item.file}:${item.line} ${JSON.stringify(item.raw)}  ${item.bucket}`,
@@ -620,10 +619,10 @@ function outOfConfigurationNote(result) {
 
 function reading(direction, bucket) {
   if (direction === 'claimed') {
-    return `${bucket.met} of ${bucket.expected} met — THE ONLY POPULATION WHERE A MISS IS A BUG`;
+    return `${bucket.met} of ${bucket.expected} met, the only population where a miss is a bug`;
   }
   if (direction === 'gap') {
-    return `${bucket.expected} entries nothing reads yet, each with a knownGap naming the ruling`;
+    return `${bucket.expected} entries nothing reads yet, each with a knownGap giving the reason`;
   }
   return `${bucket.expected} entries, ${bucket.missed} where the engine claimed something`;
 }
@@ -662,9 +661,9 @@ function rowTable(result, emissionOf, width) {
   if (unbalanced.length > 0) {
     lines.push(
       '',
-      '🔴 THE COLUMNS ABOVE DO NOT SUM TO `exp` ON THESE ROWS, SO THE TABLE IS HIDING ENTRIES:',
+      'The columns above do not sum to `exp` on these rows, so the table is hiding entries:',
       ...unbalanced.map((row) => `     ${row.shape}`),
-      '   A bucket exists that no column prints. Add it to BUCKETS rather than to this list.',
+      '   A bucket exists that no column prints. Add it to `BUCKETS` rather than to this list.',
     );
   }
   return lines;
@@ -672,12 +671,12 @@ function rowTable(result, emissionOf, width) {
 
 function directionOf(emission) {
   if (emission === 'declined') {
-    return 'refusal — not a live path; a MISS here means the engine claimed it';
+    return 'refusal: not a live path; a miss here means the engine claimed it';
   }
   if (emission === 'unclaimed') {
-    return 'UNCLAIMED — a real file, deliberately not indexed. A miss is not a bug';
+    return 'unclaimed: a real file, deliberately not indexed; a miss is not a bug';
   }
-  if (emission === 'gap') return 'gap — zero is expected until a reader exists';
+  if (emission === 'gap') return 'gap: zero is expected until a reader exists';
   return '';
 }
 
@@ -687,13 +686,13 @@ function findingList(result) {
   const lines = [
     '',
     `findings: ${defects.length} to answer, ${noted.length} noted`,
-    "  🔴 EACH ONE IS A QUESTION, NOT A VERDICT (R90). Both sides state their case: the key's " +
-      "`why` is what the tree author says a correct engine does; the engine's note is what it " +
-      'says about its own decision. A row reading 0 of N may mean the KEY is wrong.',
+    "  Each one is a question, not a verdict. Both sides state their case: the key's `why` " +
+      "is what the tree's author says a correct engine does; the engine's note is what it " +
+      'says about its own decision. A row reading 0 of N may mean the key is wrong.',
   ];
   for (const item of [...defects, ...noted]) {
     const where = `${item.file}:${item.line} ${JSON.stringify(item.raw)}`;
-    lines.push(`  [${item.kind}] ${where} — ${item.detail}`);
+    lines.push(`  [${item.kind}] ${where}: ${item.detail}`);
     if (item.keyWhy !== '') lines.push(`        key says:    ${item.keyWhy}`);
     if (item.keyGap !== '') lines.push(`        knownGap:    ${item.keyGap}`);
     if (item.engineNote !== '') lines.push(`        engine says: ${item.engineNote}`);
@@ -716,8 +715,8 @@ function disagreementList(result) {
   const unexplained = result.shapeDisagreements.filter((item) => !item.explained);
   return [
     '',
-    `shape disagreements: ${result.shapeDisagreements.length}, of which UNEXPLAINED: ${unexplained.length}`,
-    '  (explained = the key shape declares adapterEmitsAs naming what the engine emitted — R87)',
+    `shape disagreements: ${result.shapeDisagreements.length}, of which unexplained: ${unexplained.length}`,
+    "  (explained: the key's shape declares `adapterEmitsAs` naming what the engine emitted)",
     ...unexplained.map(
       (item) => `  ${item.file}:${item.line}  key ${item.keyShape}  ->  engine ${item.engineShape}`,
     ),
@@ -727,7 +726,7 @@ function disagreementList(result) {
 function blindSpotList() {
   return [
     '',
-    '🔴 what this instrument cannot tell you:',
+    'what this instrument cannot tell you:',
     ...blindSpots().map((spot) => `  - ${spot}`),
   ];
 }
