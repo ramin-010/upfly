@@ -1281,6 +1281,34 @@ describe('an asset whose converted name is already taken', () => {
   const assets = [asset('img/possum.png'), asset('img/possum.webp')];
   const references = [resolved('index.html', 'img/possum.png', 'img/possum.png')];
 
+  it('declines that one asset when the file there is one the walk excluded, found by listing', () => {
+    const listings = new Map([
+      [ROOT, ['img', 'index.html']],
+      [join(ROOT, 'img'), ['hero.png', 'hero.webp', 'other.png']],
+    ]);
+    const plan = planOptimization(
+      input({
+        assets: [asset('img/hero.png'), asset('img/other.png')],
+        references: [
+          resolved('index.html', 'img/hero.png', 'img/hero.png'),
+          resolved('index.html', 'img/other.png', 'img/other.png'),
+        ],
+        served: ['img'],
+        listDirectory: (path) => listings.get(path) ?? [],
+      }),
+    );
+
+    expect(plan.conversions.map((conversion) => conversion.asset)).toEqual(['img/other.png']);
+    expect(plan.declined).toEqual([
+      {
+        path: 'img/hero.png',
+        line: null,
+        reason:
+          'img/hero.webp already exists and this run excludes it, so converting it would replace a file rather than add one. Rename one of them and run again.',
+      },
+    ]);
+  });
+
   it('declines rather than writing over the file that is there', () => {
     const plan = planOptimization(input({ assets, references, served: ['img'] }));
 

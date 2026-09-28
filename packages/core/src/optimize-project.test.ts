@@ -134,6 +134,29 @@ describe('a source file saved after the scan read it', () => {
   });
 });
 
+describe('a converted name an excluded file already holds', () => {
+  it('declines that image and converts the rest', async () => {
+    const root = await copy();
+    await writeFile(join(root, 'images/logo.webp'), 'not ours to replace');
+    await writeFile(join(root, '.upflyignore'), 'images/logo.webp\n');
+
+    const { optimize } = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: true,
+    });
+
+    expect(await readFile(join(root, 'images/logo.webp'), 'utf8')).toBe('not ours to replace');
+    expect(optimize.plan.declined).toContainEqual({
+      path: 'images/logo.png',
+      line: null,
+      reason: expect.stringContaining('images/logo.webp already exists and this run excludes it'),
+    });
+    expect(optimize.plan.conversions.length).toBeGreaterThan(0);
+  });
+});
+
 describe('an original that a page created during the run names', () => {
   it('stays, and the rest of the run is written', async () => {
     const root = await copy();

@@ -295,12 +295,14 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   // Before everything that asks which assets convert. A literal repointed at a
   // conversion that is withdrawn afterwards names a file that is never written, and a
   // pattern's decline would count the wrong targets as not converting.
-  for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
+  const onDisk = unindexedFiles(input);
+  for (const asset of vetoCollisions(input, converting, declined, onDisk)) {
+    converting.delete(asset);
+  }
 
   // Where a reference leads depends on every file the plan writes and removes, so it is
   // checked on a whole plan. Withdrawing a conversion changes those files and drops its
   // rewrites, so the plan is made again without it until the check withdraws nothing.
-  const onDisk = unindexedFiles(input);
   const before = leadsTo(
     input,
     input.graph.references.filter(isLinked),
@@ -796,6 +798,12 @@ function convertDecision(
   };
 }
 
+/** A file already at a conversion's target, and whether the walk left it out. */
+interface ExistingFile {
+  readonly path: string;
+  readonly excluded: boolean;
+}
+
 /**
  * Why one asset in a colliding set is declined, naming everything in its way.
  *
@@ -811,7 +819,7 @@ function convertDecision(
 function collisionReason(
   asset: string,
   colliding: readonly string[],
-  existing: string | undefined,
+  existing: ExistingFile | undefined,
   converting: ReadonlyMap<string, PlannedConversion>,
   key: string,
 ): string {
@@ -829,10 +837,11 @@ function collisionReason(
     blockers.push(`${other} would convert to ${targetOf(other)}, ${sameFile}`);
   }
   if (existing !== undefined) {
+    const excluded = existing.excluded ? ' and this run excludes it' : '';
     blockers.push(
-      existing === target
-        ? `${target} already exists`
-        : `${existing} already exists, and is the same file as ${target} on Windows and macOS`,
+      existing.path === target
+        ? `${target} already exists${excluded}`
+        : `${existing.path} already exists${excluded}, and is the same file as ${target} on Windows and macOS`,
     );
   }
 
@@ -847,17 +856,25 @@ function collisionReason(
  * somebody made. Every asset involved is declined, naming the others, because which file
  * should win, or what to rename it to, is the user's choice. Only planned conversions
  * collide: an asset that was never going to convert overwrites nothing. Targets are
- * compared case-insensitively on every platform.
+ * compared case-insensitively on every platform. A file the walk did not index, such as
+ * one an ignore rule excludes, is found through `onDisk`: left to the transaction, it would
+ * stop the whole run rather than this one conversion.
  * See "Two paths are the same file more often than they look" in ARCHITECTURE.md.
  */
 function vetoCollisions(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
   declined: Declined[],
+  onDisk: UnindexedFiles | undefined,
 ): ReadonlySet<string> {
+  const { root } = input.graph;
   const alreadyThere = new Map(
     input.graph.assets.map((node) => [node.asset.relative.toLowerCase(), node.asset.relative]),
   );
+  const unindexedAt = (target: string): ExistingFile | undefined => {
+    const found = onDisk?.(join(root, target)) ?? null;
+    return found === null ? undefined : { path: relativePath(root, found), excluded: true };
+  };
 
   const claimants = new Map<string, string[]>();
   for (const conversion of converting.values()) {
@@ -870,7 +887,11 @@ function vetoCollisions(
   const withdraw = new Set<string>();
   for (const [key, assets] of claimants) {
     const contested = assets.length > 1;
-    const existing = alreadyThere.get(key);
+    const indexed = alreadyThere.get(key);
+    const existing =
+      indexed === undefined
+        ? unindexedAt(converting.get(assets[0] ?? '')?.target ?? key)
+        : { path: indexed, excluded: false };
 
     if (!contested && existing === undefined) continue;
 

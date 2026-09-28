@@ -1527,7 +1527,9 @@ Windows and macOS fold case; Linux does not. `Reaktor.jpg` and `reaktor.png` con
 and `reaktor.webp`, which are two files on one platform in the CI matrix and one file on the other
 two. Every comparison here folds case when the question is *would these end up as the same file*: the
 planner when it groups conversions by target and when it checks where each reference would lead once
-a plan is applied, and the transaction when `prepare` claims a path.
+a plan is applied, and the transaction when `prepare` claims a path. The planner's target check also
+lists the target's folder, names only, so a file the walk excluded that already holds the converted
+name declines that one conversion, where `prepare` would refuse the whole run.
 
 Folded on **every** platform, not only where the filesystem demands it. Folding everywhere costs a
 conversion on Linux that would have been safe there. Not folding means one repository gets a different
