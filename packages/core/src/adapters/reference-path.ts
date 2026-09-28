@@ -51,7 +51,20 @@ export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
     return !opensTemplateHole(rawPath);
   }
   if (isDrivePath(rawPath)) return false;
-  return rawPath.startsWith('//') || URL_SCHEME.test(rawPath);
+  // In an attribute `\\cdn/x.png` is protocol-relative, as the URL parser reads it. In a
+  // Markdown destination `\\` is one escaped backslash, so its text is not read this way.
+  const url = kind === 'attr' ? readAsUrl(rawPath, kind) : rawPath;
+  return url.startsWith('//') || URL_SCHEME.test(rawPath);
+}
+
+/**
+ * A path as the URL parser reads it where the kind is a URL: in an HTML or JSX attribute, a
+ * `new URL` name or a Markdown destination, a backslash is a slash on every platform, so
+ * `img\photo.png` loads `img/photo.png`. CSS reads a backslash as an escape and a JavaScript
+ * string writes one only as an escape, so their kinds keep it as written.
+ */
+export function readAsUrl(path: string, kind: ReferenceKind): string {
+  return kind === 'attr' || kind === 'md' ? path.replaceAll('\\', '/') : path;
 }
 
 /**
@@ -291,8 +304,9 @@ function decodeNamedReference(name: string): string | null {
  *
  * @param kind The reference's kind. Only in a Markdown destination (`'md'`) is a backslash
  * before ASCII punctuation an escape, decoded with the character references in one pass,
- * as CommonMark reads it. Anywhere else a backslash is left as written. Required, because
- * a call that left it out would lose the Markdown spelling without a word.
+ * as CommonMark reads it. A backslash left after that is a slash in an HTML or Markdown URL
+ * (`readAsUrl`), and is kept as written anywhere else. Required, because a call that left it
+ * out would lose the Markdown spelling without a word.
  */
 export function spellingsOf(
   rawPath: string,
@@ -318,7 +332,14 @@ export function spellingsOf(
     candidates.push({ spelling: 'percent-encoded', path: percent });
   }
 
-  return candidates;
+  // Read last, so a Markdown escape is decoded before its backslash could become a slash. A
+  // spelling that then reads as an earlier one adds nothing to try.
+  const read: { spelling: PathSpelling; path: string }[] = [];
+  for (const { spelling, path } of candidates) {
+    const url = readAsUrl(path, kind);
+    if (!read.some((earlier) => earlier.path === url)) read.push({ spelling, path: url });
+  }
+  return read;
 }
 
 /**

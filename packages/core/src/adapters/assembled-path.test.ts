@@ -178,6 +178,14 @@ describe('isExternalUrl', () => {
   ])('still reads %s as a URL', (_name, path) => {
     expect(isExternalUrl(path, 'attr')).toBe(true);
   });
+
+  it('reads a backslash as a slash in an attribute, as the URL parser does', () => {
+    // `\\cdn.example.com\x.png` loads from another host, as `//cdn.example.com/x.png` does.
+    for (const path of ['\\\\cdn.example.com\\x.png', '/\\cdn.example.com/x.png']) {
+      expect(isExternalUrl(path, 'attr'), path).toBe(true);
+      expect(isExternalUrl(path, 'css-url'), path).toBe(false);
+    }
+  });
 });
 
 /**
@@ -389,15 +397,18 @@ describe('spellingsOf', () => {
 
   /**
    * CommonMark removes a backslash before ASCII punctuation in a link destination (section
-   * 2.4), so in Markdown `my\_photo.png` names `my_photo.png`. Anywhere else the backslash
-   * is left as written.
+   * 2.4), so in Markdown `my\_photo.png` names `my_photo.png`. Nowhere else is it an escape:
+   * an attribute's URL parser reads it as a slash, and an import or CSS keeps it as written.
    */
   it('reads the backslash escapes of a Markdown destination and of nothing else', () => {
     expect(spellingsOf('/img/my\\_photo.png', 'md')).toEqual([
-      { spelling: 'literal', path: '/img/my\\_photo.png' },
+      { spelling: 'literal', path: '/img/my/_photo.png' },
       { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
     ]);
-    for (const kind of ['attr', 'import', 'css-url'] as const) {
+    expect(spellingsOf('/img/my\\_photo.png', 'attr')).toEqual([
+      { spelling: 'literal', path: '/img/my/_photo.png' },
+    ]);
+    for (const kind of ['import', 'css-url'] as const) {
       expect(spellingsOf('/img/my\\_photo.png', kind), kind).toEqual([
         { spelling: 'literal', path: '/img/my\\_photo.png' },
       ]);
@@ -409,9 +420,29 @@ describe('spellingsOf', () => {
       { spelling: 'literal', path: '/img/caf&eacute;.png' },
       { spelling: 'html-entities', path: `/img/caf${String.fromCodePoint(0xe9)}.png` },
     ]);
-    // A backslash before a letter escapes nothing.
+    // A backslash before a letter escapes nothing, and the URL reads it as a slash.
     expect(spellingsOf('C:\\site\\hero.png', 'md')).toEqual([
-      { spelling: 'literal', path: 'C:\\site\\hero.png' },
+      { spelling: 'literal', path: 'C:/site/hero.png' },
+    ]);
+  });
+
+  it('reads a backslash as a slash in an HTML or Markdown URL, and nowhere else', () => {
+    // The URL parser reads `img\photo.png` as `img/photo.png` on every platform. CSS reads a
+    // backslash as an escape, and a JavaScript string writes one only as an escape.
+    for (const kind of ['attr', 'md'] as const) {
+      expect(spellingsOf('img\\photo.png', kind), kind).toEqual([
+        { spelling: 'literal', path: 'img/photo.png' },
+      ]);
+    }
+    for (const kind of ['css-url', 'import', 'string', 'json'] as const) {
+      expect(spellingsOf('img\\photo.png', kind), kind).toEqual([
+        { spelling: 'literal', path: 'img\\photo.png' },
+      ]);
+    }
+    // In Markdown, after CommonMark's escapes: a backslash before punctuation still escapes it.
+    expect(spellingsOf('/img\\my\\_photo.png', 'md')).toEqual([
+      { spelling: 'literal', path: '/img/my/_photo.png' },
+      { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
     ]);
   });
 
@@ -572,7 +603,8 @@ describe('spell', () => {
       ({ spelling }) => spelling === 'markdown-escapes',
     );
 
-    expect(decoded?.path).toBe('/g/my_a&amp;b\\c.png');
+    // The escaped backslash is one backslash to CommonMark, which the URL reads as a slash.
+    expect(decoded?.path).toBe('/g/my_a&amp;b/c.png');
     const respelled = spell(decoded?.path ?? '', 'markdown-escapes');
     expect(spellingsOf(respelled, 'md').map((c) => c.path)).toContain(decoded?.path);
   });

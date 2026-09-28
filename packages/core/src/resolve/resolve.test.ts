@@ -1702,6 +1702,25 @@ describe('rung 5 through a declared alias', () => {
   });
 });
 
+describe('a backslash in an HTML or Markdown URL', () => {
+  // The URL parser reads it as a slash, so a page loads the same file on every platform:
+  // `\banner.png` is served from the root, never looked for at the root of this disk.
+  it.each([
+    ['attr', 'html.img.src', 'index.html', '\\banner.png', 'public/banner.png'],
+    ['attr', 'html.img.src', 'index.html', 'assets\\logo.png', 'src/assets/logo.png'],
+    ['md', 'md.image', 'page.md', '\\banner.png', 'public/banner.png'],
+  ] as const)('%s: %s in %s reads %s as %s', (kind, shape, file, rawPath, target) => {
+    const reference = resolveOne({
+      rawPath,
+      kind,
+      shape,
+      ceiling: 'high',
+      file: join(ROOT, 'src', file),
+    });
+    expect(expectResolution(reference, 'resolved').resolvedPath).toBe(join(ROOT, target));
+  });
+});
+
 describe("rung 2: a bundler's glob, read as Vite globs it", () => {
   const assets = [
     'src/img/one.png',

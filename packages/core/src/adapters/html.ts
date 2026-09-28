@@ -23,6 +23,7 @@ import {
   isExternalUrl,
   parseSrcset,
   provablyNotAFile,
+  readAsUrl,
   spellingsOf,
   splitPathSuffix,
   templateExpressionReason,
@@ -660,7 +661,8 @@ function addCharacterReferenceReference(
 ): void {
   const decoded = spellingsOf(raw, 'attr').find(({ spelling }) => spelling === 'html-entities');
   const decodable =
-    decoded?.path === parserValue && !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
+    decoded?.path === readAsUrl(parserValue, 'attr') &&
+    !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
   if (!decodable) {
     addEntityEscapedReference(range, context, shape);
     return;

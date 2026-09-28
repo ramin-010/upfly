@@ -653,8 +653,12 @@ In a Markdown destination a backslash before an ASCII punctuation character is a
 CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names
 `my_photo.png`, and `\&eacute;` is the text `&eacute;`, since an escaped `&` starts no reference.
 So for a reference of kind `md`, `spellingsOf` offers that reading, recorded as `markdown-escapes`
-when the path holds an escape. Anywhere else a backslash is left as written: in HTML it is not an
-escape, and the CSS adapter reports a path holding a CSS escape as `unsafe`.
+when the path holds an escape. Nowhere else is a backslash an escape. In an HTML or Markdown URL
+(an attribute, a `new URL` name, a destination) one left after decoding is read as a slash, as
+the URL parser reads it on every platform (`readAsUrl`): `<img src="img\photo.png">` loads
+`img/photo.png` on Linux as on Windows, and `\\cdn/x.png` in an attribute is another host's. In
+CSS it is an escape, and the CSS adapter reports a path holding one as `unsafe`; a JavaScript
+string writes one only as an escape, and keeps it.
 
 The spellings are tried one at a time, so a path that needs both decodings, such as
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
