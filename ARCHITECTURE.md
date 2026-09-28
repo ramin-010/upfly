@@ -163,7 +163,12 @@ one**, and moving it is wrong in both directions:
 above the ceiling tests it silently swallows `url($hero)` and `` `/img/${file}` ``, real dynamic
 references with no extension to test, and below the rungs that turn a miss into a finding it
 reports every `url(inter.woff2)` as broken. There is a test for each failure mode, because the
-placement is invisible otherwise.
+placement is invisible otherwise. One path passes rung 3 without an image extension: a likely
+typo where the element shows an image (`assertsAnImage`: an `<img>` source, a link preview, an
+icon, a Markdown image), whose extension is one keystroke from an image's, as `/img/typo.pn` is
+from `.png`. It goes on down the ladder, so it is `out-of-scope` if such a file exists and
+otherwise `broken` at rung 7, noted as a likely typo, rather than vanish. `/avatar.php`, a script
+that can serve an image, is further than one keystroke and is dropped.
 
 Rung 1 drops an `unsafe` path whose text shows an extension that is not an image's, such as
 `{{ page.data }}.json`. A construct an adapter could not read (`RawReference.unread`: a style

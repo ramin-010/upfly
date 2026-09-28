@@ -835,3 +835,33 @@ const FORMAT_KEPT: ReadonlyMap<string, string> = new Map(
 export function whyFormatKept(shape: string): string | null {
   return FORMAT_KEPT.get(shape) ?? null;
 }
+
+/**
+ * The positions whose element shows an image: an `<img>` or `<picture>` source, an image
+ * input, a poster, an icon, a preloaded image, a link preview, an SVG image, a Markdown
+ * image. A value there is the image the page shows, so the resolver reports a likely typo in
+ * its extension (`/img/typo.pn`) rather than drop it as it drops a font elsewhere.
+ */
+const IMAGE_ASSERTING_SHAPES: ReadonlySet<string> = new Set<ShapeId>([
+  'html.img.src',
+  'html.img.srcset.single',
+  'html.img.srcset.x',
+  'html.img.srcset.w',
+  'html.source.srcset',
+  'html.input.src',
+  'html.video.poster',
+  'html.link.href.icon',
+  'html.link.href.preload',
+  'html.meta.content.image',
+  'html.svg.image.href',
+  'html.svg.image.xlink',
+  'md.image',
+  'md.image.reference-style',
+  'js.jsx.meta.content.image',
+  'js.jsx.srcset',
+]);
+
+/** Whether a reference of this shape sits where its element shows an image. */
+export function assertsAnImage(shape: string): boolean {
+  return IMAGE_ASSERTING_SHAPES.has(shape);
+}

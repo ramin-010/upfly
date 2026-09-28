@@ -1702,6 +1702,32 @@ describe('rung 5 through a declared alias', () => {
   });
 });
 
+describe('rung 3: a likely typo where a position asserts an image', () => {
+  // One keystroke from an image extension, where the page asserts an image: it points at
+  // nothing, so it gets a line of its own rather than vanishing as a font does.
+  it.each([
+    ['attr', 'html.img.src', '/img/typo.pn'],
+    ['attr', 'html.meta.content.image', '/img/share.jpgg'],
+    ['md', 'md.image', './img/diagram.wepb'],
+  ] as const)('files %s %s holding %s as broken, a likely typo', (kind, shape, rawPath) => {
+    const reference = resolveOne({ rawPath, kind, shape, ceiling: 'high' });
+    expect([reference?.resolution, reference?.note]).toEqual([
+      'broken',
+      expect.stringMatching(/a likely typo/),
+    ]);
+  });
+
+  it('still drops an extension no keystroke from an image, and any where no image is asserted', () => {
+    // A script can serve an image at `/avatar.php`; a Markdown link names a page or a file.
+    for (const [kind, shape, rawPath] of [
+      ['attr', 'html.img.src', '/avatar.php'],
+      ['md', 'md.link', '/docs/guide.pn'],
+    ] as const) {
+      expect(resolveOne({ rawPath, kind, shape, ceiling: 'high' }), rawPath).toBeUndefined();
+    }
+  });
+});
+
 describe('a character reference, decoded only where a reader decodes it', () => {
   const cafe = `src/img/caf${String.fromCodePoint(0xe9)}.png`;
   const resolveBesideCafe = (overrides: Partial<RawReference> & { rawPath: string }) =>

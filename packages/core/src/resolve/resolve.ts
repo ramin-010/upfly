@@ -16,7 +16,14 @@ import {
   splitPathSuffix,
   staticExtensionOf,
 } from '../adapters/reference-path.js';
-import { compareStrings, extensionOf, isImageExtension, toPosix } from '../paths.js';
+import { assertsAnImage } from '../adapters/shapes.js';
+import {
+  IMAGE_EXTENSIONS,
+  compareStrings,
+  extensionOf,
+  isImageExtension,
+  toPosix,
+} from '../paths.js';
 import type {
   Asset,
   BundlerGlob,
@@ -207,9 +214,12 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
   //    not only the written one: `hero%2Epng` shows its extension only once decoded.
-  if (!spellings.some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))) {
-    return null;
-  }
+  //    Except a likely typo where the element shows an image: `/img/typo.pn` goes on down the
+  //    ladder, to be reported as a path to nothing, rather than vanish as a font does.
+  const typo = spellings.some(({ path: candidate }) => isImageExtension(extensionOf(candidate)))
+    ? undefined
+    : likelyTypo(spellings, raw);
+  if (typo === null) return null;
 
   // 4a. A name given to `new URL(name, import.meta.url)` goes through the nearest Vite
   //     config's aliases before anything else, as Vite's asset plugin reads it.
@@ -276,7 +286,10 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   }
 
   // 7. The author said this was an asset and it points at nothing.
-  if (raw.asserted) return unlinked(raw, 'broken');
+  if (raw.asserted) {
+    const broken = unlinked(raw, 'broken');
+    return typo === undefined ? broken : { ...broken, note: typo };
+  }
 
   // 8. A path-shaped string that turned out not to be a path. Counted, not a finding.
   return unlinked(raw, 'discarded');
@@ -387,6 +400,47 @@ function unlinked(
   resolution: 'dynamic' | 'broken' | 'discarded' | 'unresolved-alias',
 ): Reference {
   return { ...raw, resolution, confidence: 'unsafe', resolvedPath: null };
+}
+
+/**
+ * The note for a likely typo, or `null` when the path is none: an asserted reference where its
+ * element shows an image, whose extension is one keystroke (a letter added, dropped, changed
+ * or swapped with its neighbour) from an image extension, as `.pn` is from `.png`. Anything
+ * further, such as `/avatar.php`, a script that serves an image, is not called a typo.
+ */
+function likelyTypo(spellings: ReturnType<typeof spellingsOf>, raw: RawReference): string | null {
+  if (!raw.asserted || !assertsAnImage(raw.shape)) return null;
+  for (const { path } of spellings) {
+    const written = extensionOf(path);
+    if (written === '') continue;
+    const meant = IMAGE_EXTENSIONS.find((image) => oneKeystrokeApart(written, image));
+    if (meant !== undefined) {
+      return `ends in ${written}, one keystroke from ${meant}: a likely typo, so no image shows here`;
+    }
+  }
+  return null;
+}
+
+/** Whether two different texts are one added, dropped, changed or swapped letter apart. */
+function oneKeystrokeApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  if (a.length !== b.length) {
+    const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+    for (let index = 0; index < longer.length; index += 1) {
+      if (longer.slice(0, index) + longer.slice(index + 1) === shorter) return true;
+    }
+    return false;
+  }
+  const differ = [...a].flatMap((character, index) => (character === b[index] ? [] : [index]));
+  const [first, second] = differ;
+  if (differ.length === 1) return true;
+  return (
+    differ.length === 2 &&
+    first !== undefined &&
+    second === first + 1 &&
+    a[first] === b[second] &&
+    a[second] === b[first]
+  );
 }
 
 /**
