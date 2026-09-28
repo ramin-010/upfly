@@ -312,7 +312,7 @@ if (baseline.status !== 0) {
         process.stdout.write(
           `        exit ${result.status}, expected to say ${JSON.stringify(testCase.expect)}\n`,
         );
-        if (!wentRed) process.stdout.write('        🔴 THE CHECKER STAYED GREEN ON DAMAGE.\n');
+        if (!wentRed) process.stdout.write('        the checker stayed green on this damage.\n');
       }
     } finally {
       if (!keep) rmSync(root, { recursive: true, force: true });
@@ -323,7 +323,7 @@ if (baseline.status !== 0) {
   process.stdout.write(
     failures === 0
       ? `\nAll ${cases.length} mutations turned the check red. The guard is known to work.\n`
-      : `\n${failures} of ${cases.length} mutations did NOT fail the check. The guard is not trustworthy.\n`,
+      : `\n${failures} of ${cases.length} mutations did not fail the check, so the guard cannot be trusted.\n`,
   );
   if (failures > 0) process.exitCode = 1;
 }

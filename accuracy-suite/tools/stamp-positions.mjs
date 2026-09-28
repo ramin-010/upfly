@@ -148,7 +148,7 @@ function main() {
   renameSync(tmp, keyPath);
   process.stdout.write(`\n${changes.length} change(s) written to ${keyPath}\n`);
   process.stdout.write(
-    '🔴 Read the diff. A raw that moved by more than whitespace needed a person.\n',
+    'Read the diff: a raw that moved by more than whitespace needs a person to check its entry.\n',
   );
 }
 
