@@ -84,6 +84,26 @@ describe('path.bare-specifier: the disposition beats the construct', () => {
   });
 });
 
+describe('js.import.type: a type-only import or re-export loads no file', () => {
+  it('declines its path, so it is counted and never linked, guessed or rewritten', () => {
+    for (const source of [
+      "import type { Meta } from './img/typed.png';",
+      "import type Logo from './img/typed.png';",
+      "export type { Badge } from './img/typed.png';",
+      "export type * from './img/typed.png';",
+    ]) {
+      const reference = only(js(source));
+      expect([reference.shape, reference.declined, reference.ceiling], source).toEqual([
+        'js.import.type',
+        true,
+        'unsafe',
+      ]);
+    }
+    // The control: an import of a value loads the file.
+    expect(only(js("import logo from './img/typed.png';")).shape).toBe('js.import.static');
+  });
+});
+
 describe('path.charref: the spelling beats the construct', () => {
   it('claims a character-referenced img@src as path.charref', () => {
     expect(only(html('<img src="/gallery/a&amp;b.png">')).shape).toBe('path.charref');

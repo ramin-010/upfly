@@ -287,6 +287,11 @@
       "motivation": "The reference the bundler resolves, so breaking one breaks the build."
     },
     {
+      "id": "js.import.type",
+      "label": "a type-only import or re-export naming an image",
+      "motivation": "`import type` and `export type ... from` are erased when TypeScript compiles, so no file is loaded. Taken by the guessing rule, the path would be linked and a rewrite would change a module name only the type checker reads; declined, it is counted and never linked, so the row reads backwards: an outcome other than discarded is the failure."
+    },
+    {
       "id": "js.import.alias.mapped",
       "label": "import through a tsconfig paths alias",
       "motivation": "Turns the unresolved-alias bucket into real links."
@@ -7921,6 +7926,41 @@
           "offset": 678,
           "line": 16,
           "column": 67
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/typed-imports.ts",
+      "entries": [
+        {
+          "raw": "../assets/chart.png",
+          "occurrence": 1,
+          "shape": "js.import.type",
+          "expect": "discarded",
+          "why": "An import of types alone, with named bindings. TypeScript erases it, so nothing loads the chart; linked as a guess, a rewrite would repoint a module name only the type checker reads.",
+          "offset": 113,
+          "line": 2,
+          "column": 29
+        },
+        {
+          "raw": "../assets/inline-logo.jpg",
+          "occurrence": 1,
+          "shape": "js.import.type",
+          "expect": "discarded",
+          "why": "The same with a default binding, which is erased the same way.",
+          "offset": 158,
+          "line": 3,
+          "column": 24
+        },
+        {
+          "raw": "../assets/badges/badge-1.png",
+          "occurrence": 1,
+          "shape": "js.import.type",
+          "expect": "discarded",
+          "why": "A re-export of types alone, erased as an import of types is: the module is never loaded to re-export anything.",
+          "offset": 214,
+          "line": 4,
+          "column": 29
         }
       ]
     },

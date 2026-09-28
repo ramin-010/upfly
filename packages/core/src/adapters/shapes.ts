@@ -291,6 +291,16 @@ export const SHAPES = [
     emission: 'engine',
   },
   {
+    id: 'js.import.type',
+    label: 'a type-only import or re-export naming an image',
+    emission: 'declined',
+    why:
+      '`import type` and `export type ... from` are erased when TypeScript compiles, so the ' +
+      'file they name is never loaded. The JavaScript reader returns the path as a declined ' +
+      'value, which the resolver discards and the report counts: it is never linked, and ' +
+      'never rewritten.',
+  },
+  {
     id: 'js.import.alias.mapped',
     label: 'import through a tsconfig paths alias',
     emission: 'engine',

@@ -325,6 +325,12 @@ const ESCAPED_STRING: Decline = {
   reason: 'string written with escape sequences, whose text is not the path it spells',
 };
 
+/** A type-only import or re-export, which TypeScript erases, so the file it names never loads. */
+const TYPE_ONLY: Decline = {
+  reason: 'type-only import or export, which TypeScript erases, so it loads no file',
+  shape: 'js.import.type',
+};
+
 /** Where one JSX attribute's value sits, and what it makes of a path found inside it. */
 interface AttributeValue {
   readonly start: number;
@@ -365,6 +371,10 @@ function collectFromNode(node: BabelNode, context: Context): void {
   switch (node.type) {
     case 'ImportDeclaration':
       collectFromImportDeclaration(node, context);
+      return;
+    case 'ExportNamedDeclaration':
+    case 'ExportAllDeclaration':
+      if (node.exportKind === 'type' && node.source) declineValue(node.source, context, TYPE_ONLY);
       return;
     case 'ImportExpression':
       collectFromImportExpression(node, context);
@@ -833,8 +843,12 @@ function patternNames(pattern: BabelNode): readonly string[] {
 }
 
 function collectFromImportDeclaration(node: ImportDeclaration, context: Context): void {
-  // `import type { X } from './x'` is erased at compile time and never loads a file.
-  if (node.importKind === 'type') return;
+  // `import type { X } from './x'` is erased at compile time and never loads a file. Declined,
+  // so the guessing rule neither links nor rewrites its path, and the report counts it.
+  if (node.importKind === 'type') {
+    declineValue(node.source, context, TYPE_ONLY);
+    return;
+  }
   collectFromModuleSource(
     node.source,
     context,
