@@ -502,6 +502,41 @@ describe('an escaped string where a path is asserted', () => {
   });
 });
 
+describe('a page read in the wrong encoding', () => {
+  it('hedges each image its path could spell, one character for each U+FFFD', async () => {
+    const root = project({
+      'package.json': '{ "name": "site", "private": true }\n',
+      'img/café.png': 'a cafe, never decoded',
+      'img/cafés.png': 'two cafes, never decoded',
+      'photos/café.png': 'another cafe, never decoded',
+    });
+    // Latin-1 bytes: 0xE9 is not UTF-8, so the name reads `caf\uFFFD.png`.
+    writeFileSync(
+      join(root, 'latin1.html'),
+      Buffer.from('<img src="img/caf\xE9.png">\n', 'latin1'),
+    );
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ resolution }) => resolution)).toEqual(['dynamic']);
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([
+      ['dead', 'img/cafés.png'],
+      ['dead', 'photos/café.png'],
+      ['possibly-dead', 'img/café.png'],
+    ]);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

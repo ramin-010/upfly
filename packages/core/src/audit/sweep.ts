@@ -256,6 +256,11 @@ async function sweepUnresolvedReferences(
       (reference) =>
         [reference, servedFromAnyRoot(openBased(asGlobbedHoles(provenPath(reference))))] as const,
     ),
+    ...unknownTargetReferences(options.graph).flatMap((reference) =>
+      provenPath(reference).includes(REPLACEMENT_CHARACTER)
+        ? [[reference, spelledThroughReplacement(provenPath(reference))] as const]
+        : [],
+    ),
     // Last, so a glob is read in its own syntax whichever list above also holds it.
     ...unknownTargetReferences(options.graph).flatMap((reference) =>
       reference.glob === undefined
@@ -351,6 +356,24 @@ function unglobbedHolePatterns(graph: Graph): readonly Reference[] {
       interpolationChunks(asGlobbedHoles(path)).some((chunk) => chunk.replaceAll('/', '') !== '')
     );
   });
+}
+
+const REPLACEMENT_CHARACTER = '\uFFFD';
+
+/**
+ * A path holding U+FFFD as a test of the assets it could spell. Decoding puts one U+FFFD where
+ * each byte of a page in a single-byte encoding such as Latin-1 is not UTF-8, so each stands
+ * for one character; as for a declined pattern, the rest must end the asset's path in whole
+ * segments, from any base, case ignored.
+ */
+function spelledThroughReplacement(path: string): (relative: string) => boolean {
+  const fixed = openBased(splitPathSuffix(path).path).slice(1);
+  const source = fixed
+    .split(REPLACEMENT_CHARACTER)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^/]');
+  const expression = new RegExp(`^(?:.*/)?${source}$`, 'i');
+  return (relative) => expression.test(relative);
 }
 
 /** Every hole, in any syntax. */
