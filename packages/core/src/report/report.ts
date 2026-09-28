@@ -961,15 +961,25 @@ function referenceReport(
  */
 function unlinkedReason(reference: Reference, aliases: AliasMap): string {
   if (reference.resolution === 'out-of-scope') return reference.exclusionReason;
-  if (reference.resolution === 'unresolved-alias') return aliasReason(reference.file, aliases);
+  if (reference.resolution === 'unresolved-alias') return aliasReason(reference, aliases);
   return reference.note ?? 'no static path to resolve';
 }
 
 /**
  * Why no alias Upfly reads maps a reference. A config whose aliases Upfly could not read may
- * hold the alias, so each one that covers the file is named, the nearest first.
+ * hold the alias, so each one that covers the file is named, the nearest first. SvelteKit's
+ * `$lib` also says what writes it, since a fresh clone has not run that yet.
  */
-function aliasReason(file: string, aliases: AliasMap): string {
+function aliasReason(reference: Reference, aliases: AliasMap): string {
+  const reason = unmappedAliasReason(reference.file, aliases);
+  const svelteKit = reference.rawPath === '$lib' || reference.rawPath.startsWith('$lib/');
+  return svelteKit ? `${reason}. ${SVELTEKIT_WRITES_LIB}` : reason;
+}
+
+const SVELTEKIT_WRITES_LIB =
+  'SvelteKit writes `$lib` into `.svelte-kit/tsconfig.json` when `svelte-kit sync` runs, as installing the project does, so run that, then run Upfly again';
+
+function unmappedAliasReason(file: string, aliases: AliasMap): string {
   const from = toPosix(file);
   const depth = new Map<string, number>();
   for (const skip of aliases.skipped) {

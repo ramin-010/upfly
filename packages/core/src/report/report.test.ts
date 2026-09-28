@@ -1167,6 +1167,21 @@ describe('buildReport', () => {
       ]);
     });
 
+    it('says how SvelteKit writes `$lib`, so a fresh clone knows what to run first', () => {
+      const report = reportOf([
+        {
+          ...dynamicReference('src/routes/+page.svelte', '$lib/assets/logo.png', 0),
+          resolution: 'unresolved-alias',
+        },
+      ]);
+
+      expect(report.references.unsafe.map((entry) => entry.reason)).toEqual([
+        expect.stringContaining(
+          'SvelteKit writes `$lib` into `.svelte-kit/tsconfig.json` when `svelte-kit sync` runs',
+        ),
+      ]);
+    });
+
     it('names the nearest config it could not read first, once, and counts the others', () => {
       const unread = (what: string, scope: string, reason = 'could not be parsed') => ({
         what,

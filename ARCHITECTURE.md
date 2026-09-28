@@ -554,7 +554,9 @@ its argument is guessed at like any path-shaped string.
 `unresolved-alias` means an alias-shaped path that no alias Upfly reads maps. It is a final
 outcome, not pending work. The project may still declare the alias where Upfly does not look, such
 as a webpack config, SvelteKit's `kit.alias` or Astro's `vite.resolve.alias`, so the reason says
-which configs Upfly reads and never that the project declares none.
+which configs Upfly reads and never that the project declares none. For SvelteKit's `$lib` it also
+says what writes the alias: `svelte-kit sync`, run by installing the project, fills
+`.svelte-kit/tsconfig.json`, which a fresh clone does not have yet. `svelte.config.js` is not read.
 
 ### Non-asset extensions are the resolver's business
 
