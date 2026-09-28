@@ -209,7 +209,7 @@ const cases = [
         removeField(entry, 'target');
       }),
     args: ['--strict'],
-    expect: 'OPEN QUESTIONS',
+    expect: 'Open questions',
   },
   {
     name: 'an UNDECIDED entry with fewer than two candidate outcomes',

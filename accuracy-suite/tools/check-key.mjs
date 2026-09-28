@@ -69,13 +69,16 @@ for (const tool of ['check-key.mjs', 'scan-occurrences.mjs']) {
     .filter(([, line]) => /^\s*(import|export)\s.*\bfrom\s+['"]/.test(line))
     .filter(([, line]) => !/from\s+['"](node:|\.\/)/.test(line));
   for (const [lineNo, line] of offending) {
-    fail(`${tool}:${lineNo}`, `the self-check may only import node: and ./ — found ${line.trim()}`);
+    fail(
+      `${tool}:${lineNo}`,
+      `the self-check may only import node: and ./ modules; found ${line.trim()}`,
+    );
   }
   // Naming the engine in a comment is fine. A dynamic import or require of it is not, and
   // would slip past the static-import check above.
   for (const [lineNo, line] of source.split('\n').map((l, i) => [i + 1, l])) {
     if (/\b(require|import)\s*\(\s*['"`]/.test(line) && !/['"`](node:|\.\/)/.test(line)) {
-      fail(`${tool}:${lineNo}`, `a dynamic import that is not node: or ./ — ${line.trim()}`);
+      fail(`${tool}:${lineNo}`, `a dynamic import that is not node: or ./, in ${line.trim()}`);
     }
   }
 }
@@ -179,7 +182,7 @@ for (const group of key.files ?? []) {
       fail(label, `unknown expect ${JSON.stringify(entry.expect)}`);
     }
     if (entry.expect === 'UNDECIDED') {
-      undecided.push(`${label} — ${entry.why ?? '(no note)'}`);
+      undecided.push(`${label}: ${entry.why ?? '(no note)'}`);
       if (!Array.isArray(entry.candidates) || entry.candidates.length < 2) {
         fail(label, 'an UNDECIDED entry must list at least two candidate outcomes');
       }
@@ -235,7 +238,7 @@ for (const [rel, spans] of spansByFile) {
       fail(
         rel,
         `two references overlap at bytes ${sorted[i - 1][0]}-${sorted[i - 1][1]} and ` +
-          `${sorted[i][0]}-${sorted[i][1]} — almost always an occurrence index one too low`,
+          `${sorted[i][0]}-${sorted[i][1]}, almost always an occurrence index one too low`,
       );
     }
   }
@@ -286,7 +289,7 @@ for (const shape of key.shapes ?? []) {
   }
   if (count > 0 && count < 3 && !shape.singleReason) {
     const advice =
-      'Spec §4k.1 asks for three to five, deliberately varied: one example proves a shape ' +
+      'The suite asks for three to five, deliberately varied: one example proves a shape ' +
       'parses once, and it takes several before a row can say 4 of 5 and point at which one ' +
       'failed. Add instances, or say in `singleReason` why varying it is genuinely impossible';
     fail('shapes', `${shape.id} has ${count} instance(s). ${advice}`);
@@ -297,7 +300,7 @@ for (const shape of key.shapes ?? []) {
 const refCount = (key.files ?? []).reduce((n, g) => n + (g.entries ?? []).length, 0);
 
 if (!quiet) {
-  process.stdout.write('\ncoverage-tree self-check — plain text search only, no engine\n');
+  process.stdout.write('\naccuracy suite self-check: plain text search only, no engine\n');
   process.stdout.write(`  key       ${keyPath}\n`);
   process.stdout.write(`  tree      ${root}\n`);
   process.stdout.write(`  assets    ${listedAssets.size} listed\n`);
@@ -309,7 +312,7 @@ if (!quiet) {
 
 if (undecided.length > 0) {
   process.stdout.write(
-    `\nOPEN QUESTIONS — ${undecided.length} entr${undecided.length === 1 ? 'y' : 'ies'} marked UNDECIDED\n`,
+    `\nOpen questions: ${undecided.length} entr${undecided.length === 1 ? 'y' : 'ies'} marked UNDECIDED\n`,
   );
   for (const line of undecided) process.stdout.write(`  ? ${line}\n`);
   process.stdout.write(
@@ -320,7 +323,7 @@ if (undecided.length > 0) {
 }
 
 if (failures.length > 0) {
-  process.stdout.write(`\nFAILED — ${failures.length} problem(s)\n\n`);
+  process.stdout.write(`\nFailed: ${failures.length} problem(s)\n\n`);
   for (const line of failures) process.stdout.write(`  x ${line}\n`);
   process.stdout.write('\nA key/tree disagreement is a broken instrument, not a finding.\n');
   process.stdout.write('Nothing may measure this tree until it agrees with its own key.\n');
@@ -328,5 +331,5 @@ if (failures.length > 0) {
 } else if (strict && undecided.length > 0) {
   process.exitCode = 1;
 } else {
-  process.stdout.write('\nOK — the key and the tree agree.\n');
+  process.stdout.write('\nOK: the key and the tree agree.\n');
 }
