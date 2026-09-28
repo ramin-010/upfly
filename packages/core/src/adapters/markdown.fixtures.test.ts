@@ -13,10 +13,12 @@ import { markdownAdapter } from './markdown.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 
+/** The paths an adapter reads in a fixture, leaving out the values it declines and counts. */
 function referencesIn(adapter: typeof markdownAdapter, relative: string) {
   const file = join(FIXTURES, relative);
   const text = readFileSync(file, 'utf8');
-  return adapter.findReferences({ file, text }).map((reference) => ({
+  const read = adapter.findReferences({ file, text }).filter((reference) => !reference.declined);
+  return read.map((reference) => ({
     path: reference.rawPath,
     ceiling: reference.ceiling,
     asserted: reference.asserted,

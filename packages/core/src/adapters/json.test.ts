@@ -6,8 +6,11 @@ function find(text: string, file = '/project/manifest.json'): RawReference[] {
   return jsonAdapter.findReferences({ file, text });
 }
 
+/** The candidates, leaving out the keys and escaped strings declined as naming an image. */
 function paths(text: string): string[] {
-  return find(text).map((reference) => reference.rawPath);
+  return find(text)
+    .filter((reference) => reference.declined !== true)
+    .map((reference) => reference.rawPath);
 }
 
 function slices(text: string): string[] {
@@ -93,7 +96,41 @@ describe('jsonAdapter', () => {
       // A JSON escape makes the source text and the decoded value different
       // lengths. A speculative candidate is not worth an imprecise range.
       const source = '{"icon": "./a\\u002Db.png"}';
-      expect(find(source)).toEqual([]);
+      expect(paths(source)).toEqual([]);
+      // Declined instead, and counted, with the path it decodes to.
+      expect(find(source).map(({ declined, assembledPath }) => [declined, assembledPath])).toEqual([
+        [true, './a-b.png'],
+      ]);
+    });
+  });
+
+  describe('declines an image path where it reads none, and counts it', () => {
+    it('declines an object key and an escaped string that name an image', () => {
+      const references = find(
+        '{ "/img/keyed.png": 1, "icon": "img\\/escaped.png", "Upload hero.png": "x" }',
+      );
+
+      expect(
+        references.map(({ rawPath, declined, note, assembledPath }) => [
+          rawPath,
+          declined,
+          note,
+          assembledPath,
+        ]),
+      ).toEqual([
+        [
+          '/img/keyed.png',
+          true,
+          'JSON object key, which Upfly does not read as a file path',
+          undefined,
+        ],
+        [
+          'img\\/escaped.png',
+          true,
+          'JSON string written with escape sequences, whose text is not the path it spells',
+          'img/escaped.png',
+        ],
+      ]);
     });
   });
 

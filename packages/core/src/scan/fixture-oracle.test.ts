@@ -166,6 +166,8 @@ async function detected(root: { label: string; dir: string }): Promise<Detected>
 
   const byFile = new Map<string, Set<string>>();
   for (const reference of scanned.references) {
+    // A declined value, such as a JSON key naming an image, is counted but never read as a path.
+    if (reference.declined === true) continue;
     byFile.set(
       key(reference.file),
       (byFile.get(key(reference.file)) ?? new Set()).add(reference.rawPath),

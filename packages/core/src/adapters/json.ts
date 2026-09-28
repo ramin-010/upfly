@@ -11,10 +11,10 @@
  * ARCHITECTURE.md.
  */
 
-import { extensionOf } from '../paths.js';
+import { extensionOf, isImageExtension } from '../paths.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
-import { isExternalUrl, splitPathSuffix } from './reference-path.js';
+import { isExternalUrl, plausiblePathShape, splitPathSuffix } from './reference-path.js';
 import type { ShapeId } from './shapes.js';
 
 /** A JSON string literal, including its quotes. */
@@ -34,17 +34,23 @@ export const jsonAdapter: Adapter = defineAdapter({
       const quoted = match[0];
       if (quotedStart === undefined) continue;
 
-      // A string followed by a colon is a key. Keys are skipped: rewriting one
-      // would change what a lookup finds, which is a different and riskier edit
-      // than changing a path, and no format we support keys assets by name.
-      if (isObjectKey(text, quotedStart + quoted.length)) continue;
-
-      // The value between the quotes. Escapes are the one thing that breaks the
-      // one-to-one mapping between source text and value, so those are skipped:
-      // an escaped path cannot be located exactly, and a speculative candidate is
-      // never a promise we made in the first place.
+      // A string followed by a colon is a key. A key is never read as a path: rewriting one
+      // would change what a lookup finds, which is a different and riskier edit than
+      // changing a path, and no format we support keys assets by name. One naming an image
+      // is declined, so the report counts it.
       const raw = quoted.slice(1, -1);
-      if (raw.includes('\\')) continue;
+      if (isObjectKey(text, quotedStart + quoted.length)) {
+        declineCandidate(raw, quoted, quotedStart + 1, file, OBJECT_KEY, references);
+        continue;
+      }
+
+      // Escapes are the one thing that breaks the one-to-one mapping between source text
+      // and value: an escaped path cannot be located exactly, so it is never a candidate.
+      // One naming an image is declined, its decoded path kept for the sweep.
+      if (raw.includes('\\')) {
+        declineCandidate(raw, quoted, quotedStart + 1, file, ESCAPED_STRING, references);
+        continue;
+      }
 
       addCandidate(raw, quotedStart + 1, file, references);
     }
@@ -52,6 +58,56 @@ export const jsonAdapter: Adapter = defineAdapter({
     return references.sort((a, b) => a.start - b.start);
   },
 });
+
+const OBJECT_KEY = 'JSON object key, which Upfly does not read as a file path';
+
+const ESCAPED_STRING =
+  'JSON string written with escape sequences, whose text is not the path it spells';
+
+/**
+ * A key or an escaped string naming an image, returned declined under `reason` so the report
+ * counts it, as the JavaScript reader counts its declines; anything else is left out, as
+ * before. An escaped one covers its whole text, and its decoded path travels as
+ * `assembledPath`, since no range of the text spells it.
+ */
+function declineCandidate(
+  raw: string,
+  quoted: string,
+  start: number,
+  file: string,
+  reason: string,
+  references: RawReference[],
+): void {
+  const escaped = raw.includes('\\');
+  const decoded = escaped ? jsonStringValue(quoted) : raw;
+  if (decoded === null || isExternalUrl(decoded, 'json')) return;
+  const { path } = splitPathSuffix(decoded);
+  if (!isImageExtension(extensionOf(path)) || !plausiblePathShape(path)) return;
+  const rawPath = escaped ? raw : path;
+  references.push({
+    file,
+    start,
+    end: start + rawPath.length,
+    rawPath,
+    kind: 'json',
+    shape: shapeOf(path, file),
+    ceiling: 'unsafe',
+    asserted: false,
+    declined: true,
+    note: reason,
+    ...(escaped ? { assembledPath: path } : {}),
+  });
+}
+
+/** A JSON string's value, its escapes decoded, or `null` when an escape is malformed. */
+function jsonStringValue(quoted: string): string | null {
+  try {
+    const value: unknown = JSON.parse(quoted);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 function isObjectKey(text: string, afterString: number): boolean {
   for (let index = afterString; index < text.length; index += 1) {

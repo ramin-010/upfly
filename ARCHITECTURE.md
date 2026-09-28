@@ -956,7 +956,10 @@ The HTML reader declines the same way a path-shaped value naming an image in an 
 not read on its element (a `title`, a custom attribute), under `html.attribute.other` with one
 reason per attribute name; `data-src`, `data-srcset` and `imagesrcset`, which a lazy-loading
 script or the browser may load, say that Upfly does not read them yet, and a candidate list is
-declined one candidate at a time. So "Nothing was skipped" is printed only when it is true. The resolver never looks one up (rung 0), the report counts them by reason in
+declined one candidate at a time. The JSON reader declines an object key naming an image, which
+it never reads as a path, and a string naming one written with escape sequences, whose decoded
+path travels as `assembledPath` as JavaScript's does. So "Nothing was skipped" is printed only when
+it is true. The resolver never looks one up (rung 0), the report counts them by reason in
 `references.declinedValues`, and `--include-discarded` lists them. A component prop that holds a
 file path, such as scratch-www's `largeImage`, is counted this way rather than read: whether a
 prop names a file is the component's business, and the count is what shows which props a reader
