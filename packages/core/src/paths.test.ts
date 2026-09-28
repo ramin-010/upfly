@@ -221,6 +221,19 @@ describe('imageFilenameCandidates', () => {
     }
   });
 
+  it('reads a name written percent-encoded, as a URL names a file with a space', () => {
+    expect(tokens('<img src="/img/vue%20photo.png">')).toEqual(
+      expect.arrayContaining(['vue photo.png', 'vue%20photo.png']),
+    );
+    expect(tokens('![map](/img/Zaje%C4%8Dar%20(2).jpg)')).toContain('Zaječar (2).jpg');
+  });
+
+  it('reads a name that holds a percent sign but does not decode as written, and no more', () => {
+    // A file's name may hold `%`, and `%.p` decodes to nothing.
+    expect(tokens('width: 100%; background: url(half%.png)')).toEqual(['half%.png']);
+    expect(tokens('url(/img/hero.png)')).toEqual(['hero.png']);
+  });
+
   it('does not walk further left than the longest file name', () => {
     // No common file system allows a name over 255 characters. The bound also keeps a long
     // run from being walked again for every extension in it.

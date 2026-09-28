@@ -179,13 +179,61 @@ export function* imageFilenameCandidates(text: string): Generator<[token: string
   const extensions = extensionPattern();
   let extension = extensions.exec(text);
   while (extension !== null) {
-    yield* namesHoldingParentheses(text, extension.index, extension.index + extension[0].length);
+    const end = extension.index + extension[0].length;
+    yield* namesHoldingParentheses(text, extension.index, end);
+    yield* percentEncodedNames(text, extension.index, end);
     extension = extensions.exec(text);
   }
 }
 
 /** The longest name a common file system allows. */
 const MAX_NAME_LENGTH = 255;
+
+/** The longest such a name can be once percent-encoded, three characters for each byte. */
+const MAX_ENCODED_LENGTH = MAX_NAME_LENGTH * 3;
+
+/**
+ * The names a run holding `%` that ends at the extension starting at `dot` can stand for: the
+ * run as written, since a file's name may hold `%`, and the run percent-decoded, as a URL
+ * names `vue photo.png` with `vue%20photo.png`. A start after each `(` is read too, as for a
+ * name holding parentheses. A run with no `%` adds nothing, and one that does not decode adds
+ * only itself. A decoded name is yielded at the offset where its encoded run starts.
+ */
+function* percentEncodedNames(
+  text: string,
+  dot: number,
+  end: number,
+): Generator<[token: string, offset: number]> {
+  const floor = Math.max(0, end - MAX_ENCODED_LENGTH);
+  let start = dot;
+  while (start > floor && (text[start - 1] === '%' || isNameCharacter(text[start - 1] ?? ''))) {
+    start -= 1;
+  }
+  if (!text.slice(start, dot).includes('%')) return;
+
+  const starts = [start];
+  for (let index = start; index < dot; index += 1) {
+    if (text[index] === '(') starts.push(index + 1);
+  }
+  for (const from of starts) {
+    const written = text.slice(from, end);
+    if (!written.includes('%')) continue;
+    if (/[()]/.test(written) && !holdsBalancedParentheses(text, from, end)) continue;
+    yield [written, from];
+    const decoded = percentDecoded(written);
+    if (decoded !== null && decoded !== written) {
+      yield [decoded.slice(decoded.lastIndexOf('/') + 1), from];
+    }
+  }
+}
+
+function percentDecoded(text: string): string | null {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
+}
 
 function isNameCharacter(character: string): boolean {
   return character === '(' || character === ')' || FILENAME_CHARACTER.test(character);

@@ -399,6 +399,32 @@ describe('a glob import', () => {
   });
 });
 
+describe('the name search', () => {
+  const unusedKinds = async (root: string) => {
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead'
+        ? [[finding.kind, finding.asset]]
+        : [],
+    );
+  };
+
+  it('hedges an image named percent-encoded in a file Upfly does not read', async () => {
+    const root = project({
+      'package.json': '{ "name": "site", "private": true }\n',
+      'App.vue': '<template><img src="/img/vue%20photo.png"></template>\n',
+      'img/vue photo.png': 'a photo, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([['possibly-dead', 'img/vue photo.png']]);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

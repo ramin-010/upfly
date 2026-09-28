@@ -715,7 +715,10 @@ both. From each token the search walks left over up to six space-separated words
 `Firing Practice.webp` is found whole. A second pass starts at each image extension and walks
 left for names that hold parentheses in balanced pairs: `hero (1).png` is the name a browser
 gives a second download of `hero.png`. The pass is separate because parentheses in the token
-would change what it finds, `url(hero.png` in place of `hero.png` in `url(hero.png)`.
+would change what it finds, `url(hero.png` in place of `hero.png` in `url(hero.png)`. A third,
+from the same extensions, reads a run that holds `%`, and only such a run: it yields the run as
+written, since a file's name may hold `%`, and percent-decoded, as a URL names a file, so
+`/img/vue%20photo.png` in a file no adapter reads names `vue photo.png`.
 
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
 `unresolved-alias`, `discarded`, and the root-relative `broken` references that a run with no
