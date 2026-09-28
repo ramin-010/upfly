@@ -1701,3 +1701,88 @@ describe('rung 5 through a declared alias', () => {
     );
   });
 });
+
+describe("rung 2: a bundler's glob, read as Vite globs it", () => {
+  const assets = [
+    'src/img/one.png',
+    'src/img/two.png',
+    'src/img/three.jpg',
+    'src/img/.hidden.png',
+    'src/img/draft/sketch.png',
+    'src/img/.cache/stale.png',
+    'src/[draft]/img/wip.png',
+    'banner.png',
+  ].map(asset);
+
+  /** The project-relative paths a glob written in `src/gallery.ts` links, or its outcome. */
+  function globbed(
+    pattern: string,
+    options: { exclude?: readonly string[]; dot?: boolean; file?: string } = {},
+  ): readonly string[] | string {
+    const [reference] = resolveReferences(
+      [
+        raw({
+          rawPath: pattern,
+          file: join(ROOT, options.file ?? 'src/gallery.ts'),
+          shape: 'js.import.meta.glob',
+          ceiling: 'medium',
+          glob: { exclude: options.exclude ?? [], dot: options.dot ?? false },
+        }),
+      ],
+      { root: ROOT, assets, servingRoots: CONVENTIONAL_SERVING_ROOTS, exists: NOTHING_EXISTS },
+    );
+    if (reference === undefined) return 'dropped';
+    if (!isLinked(reference)) return reference.resolution;
+    return linkedPaths(reference).map((path) => toPosix(path).slice(toPosix(ROOT).length + 1));
+  }
+
+  it.each([
+    ['./img/*.png', ['src/img/one.png', 'src/img/two.png']],
+    ['./img/**/*.png', ['src/img/draft/sketch.png', 'src/img/one.png', 'src/img/two.png']],
+    ['./img/*.{png,jpg}', ['src/img/one.png', 'src/img/three.jpg', 'src/img/two.png']],
+    ['./img/*{.png,.jpg}', ['src/img/one.png', 'src/img/three.jpg', 'src/img/two.png']],
+    ['./img/t??.png', ['src/img/two.png']],
+    // A class has no dot guard, and picomatch negates one with `^` alone: `[!o]` holds `!`.
+    ['./img/[^o]*.*', ['src/img/.hidden.png', 'src/img/three.jpg', 'src/img/two.png']],
+    ['./img/[!o]*.png', ['src/img/one.png']],
+    ['../*.png', ['banner.png']],
+    ['**/sketch.png', ['src/img/draft/sketch.png']],
+  ])('links every asset %s matches', (pattern, matched) => {
+    expect(globbed(pattern)).toEqual(matched);
+  });
+
+  it('takes out what a negation of the call matches', () => {
+    expect(globbed('./img/*.png', { exclude: ['./img/t*.png'] })).toEqual(['src/img/one.png']);
+    expect(globbed('./img/**/*.png', { exclude: ['**/one.png', '**/sketch.png'] })).toEqual([
+      'src/img/two.png',
+    ]);
+  });
+
+  it('matches a name that starts with a dot only when the call asks for every file', () => {
+    expect(globbed('./img/**/*.png', { dot: true })).toEqual([
+      'src/img/.cache/stale.png',
+      'src/img/.hidden.png',
+      'src/img/draft/sketch.png',
+      'src/img/one.png',
+      'src/img/two.png',
+    ]);
+  });
+
+  it("reads the module's own folder literally, whatever glob syntax its name holds", () => {
+    expect(globbed('./img/*.png', { file: 'src/[draft]/gallery.ts' })).toEqual([
+      'src/[draft]/img/wip.png',
+    ]);
+  });
+
+  it('is dynamic when it matches nothing, and dropped when it can name no image', () => {
+    expect(globbed('./photos/*.png')).toBe('dynamic');
+    expect(globbed('./photos/*')).toBe('dynamic');
+    expect(globbed('./pages/*.vue')).toBe('dropped');
+    expect(globbed('./pages/**/*.{ts,tsx}')).toBe('dropped');
+  });
+
+  it('refuses syntax it does not read rather than misreading it', () => {
+    expect(globbed('./img/@(one|two).png')).toBe('dynamic');
+    expect(globbed('./img/{1..3}.png')).toBe('dynamic');
+  });
+});

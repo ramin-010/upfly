@@ -20,7 +20,7 @@ import { isLinked, linkedPaths } from '../resolve/reference.js';
 import type { ServingRoots } from '../resolve/resolve.js';
 import type { Reference } from '../types.js';
 import type { Declined } from '../write/manifest.js';
-import { servingRootOf } from './plan.js';
+import { patternCannotMove, servingRootOf } from './plan.js';
 import {
   type EditsInFile,
   NOT_UTF8,
@@ -354,7 +354,7 @@ function collectRepoint(
     declined.push({
       path: file,
       line: null,
-      reason: `a template reference is assembled at runtime, so its text cannot be repointed after ${moved.join(', ')} moved`,
+      reason: `${patternCannotMove(reference)} after ${moved.join(', ')} moved`,
     });
     return;
   }

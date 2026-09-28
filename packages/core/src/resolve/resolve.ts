@@ -17,7 +17,14 @@ import {
   staticExtensionOf,
 } from '../adapters/reference-path.js';
 import { compareStrings, extensionOf, isImageExtension, toPosix } from '../paths.js';
-import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from '../types.js';
+import type {
+  Asset,
+  BundlerGlob,
+  ExcludedRoot,
+  RawReference,
+  Reference,
+  ResolvedVia,
+} from '../types.js';
 import type { AliasMap } from './aliases.js';
 import { expandAlias, matchingRule } from './aliases.js';
 import { provenPath } from './reference.js';
@@ -162,6 +169,8 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    text proves (`provenPath`): the text of a `+` chain, or of a template with a
   //    same-file constant written in, is not the path it builds.
   if (raw.ceiling === 'medium') {
+    // A bundler's glob is written in glob syntax, which the holes below do not read.
+    if (raw.glob !== undefined) return resolveGlob(raw, raw.glob, context);
     const pattern = provenPath(raw);
     const written = index.matchPattern(pattern, raw, root, publicDirs);
     // Then through a declared alias, as rung 4b reads a literal path, so a file at the
@@ -477,6 +486,89 @@ function matchThroughAlias(
 }
 
 /**
+ * Rung 2 for a bundler's glob: every asset the pattern matches, less any that an `exclude`
+ * pattern matches, as Vite globs. Nothing left is `dynamic`, never `broken`, unless the pattern
+ * can name only files that are not images, which drops it as rung 3 drops `inter.woff2`.
+ */
+function resolveGlob(
+  raw: RawReference,
+  glob: BundlerGlob,
+  context: ResolveContext,
+): Reference | null {
+  const { matches, via } = globMatches(raw.rawPath, raw, glob.dot, context);
+  const excluded = new Set(
+    glob.exclude.flatMap((pattern) => globMatches(pattern, raw, glob.dot, context).matches),
+  );
+  const [first, ...rest] = matches.filter((match) => !excluded.has(match));
+  if (first === undefined) {
+    if (globNamesNoImage(raw.rawPath)) return null;
+    return unlinked(
+      raw,
+      throughUnmappedAlias(raw.rawPath, raw, context) ? 'unresolved-alias' : 'dynamic',
+    );
+  }
+  return {
+    ...raw,
+    resolution: 'resolved-pattern',
+    confidence: 'medium',
+    resolvedPaths: [first, ...rest],
+    resolvedVia: via,
+  };
+}
+
+/**
+ * The assets one glob pattern matches, from the first base that holds any. The bases are
+ * Vite's: `./` and `../` start at the module's folder, and anything else not rooted goes
+ * through a declared alias. A `/` pattern is tried against the serving roots and then the
+ * project root, as any root-relative pattern is. One that starts with `**` matches at any
+ * depth, which inside the project is the same as from its root.
+ */
+function globMatches(
+  pattern: string,
+  raw: RawReference,
+  dot: boolean,
+  context: ResolveContext,
+): { matches: readonly string[]; via: ResolvedVia } {
+  const candidates: readonly Candidate[] = pattern.startsWith('**')
+    ? [{ path: posix.join(toPosix(resolvePath(context.root)), pattern), via: 'project-root' }]
+    : [
+        ...candidatePaths(pattern, raw, context.root, context.publicDirs),
+        ...(isAliasShaped(pattern, raw.kind)
+          ? throughDeclared(pattern, raw, context).map((path) => ({
+              path,
+              via: 'serving-root' as const,
+            }))
+          : []),
+      ];
+  for (const candidate of candidates) {
+    const matches = context.index.matchBundlerGlob(candidate.path, pattern, dot);
+    if (matches.length > 0) return { matches, via: candidate.via };
+  }
+  return { matches: [], via: 'file' };
+}
+
+/**
+ * Whether every name a glob could match shows an extension that is not an image's, read from
+ * its last segment: `*.vue` and `*.{ts,tsx}` can name no image, while `*` and `*.{png,md}` can.
+ */
+function globNamesNoImage(pattern: string): boolean {
+  const last = pattern.slice(pattern.lastIndexOf('/') + 1);
+  return withFinalBraceExpanded(last).every((name) => {
+    const extension = /\.[A-Za-z0-9]+$/.exec(name)?.[0].toLowerCase();
+    return extension !== undefined && !isImageExtension(extension);
+  });
+}
+
+/** `*.{ts,tsx}` as `*.ts` and `*.tsx`; a name that does not end in a brace, alone. */
+function withFinalBraceExpanded(name: string): readonly string[] {
+  if (!name.endsWith('}')) return [name];
+  const open = matchingOpenBrace(name, name.length - 1);
+  if (open === -1) return [name];
+  const prefix = name.slice(0, open);
+  return topLevelAlternatives(name.slice(open + 1, -1)).map((choice) => `${prefix}${choice}`);
+}
+
+/**
  * Whether a pattern is written through an alias no declared rule covers. A package-shaped
  * pattern is not an alias: it names files inside `node_modules`, and stays `dynamic`, as does
  * any bare module name.
@@ -649,10 +741,22 @@ class AssetIndex {
 
   /** Every asset an absolute POSIX path with holes names, anchored at both ends. */
   matchGlob(pathWithHoles: string): readonly string[] {
+    return this.matchRegExp(globRegex(pathWithHoles, false, this.foldCase));
+  }
+
+  /**
+   * Every asset a bundler's glob names once resolved against a base, `candidate` being the
+   * pattern with its base written in. See `bundlerGlobRegExp`.
+   */
+  matchBundlerGlob(candidate: string, pattern: string, dot: boolean): readonly string[] {
+    const expression = bundlerGlobRegExp(candidate, pattern, dot, this.foldCase);
+    return expression === null ? [] : this.matchRegExp(expression);
+  }
+
+  private matchRegExp(expression: RegExp): readonly string[] {
     const matches: string[] = [];
-    const pattern = globRegex(pathWithHoles, false, this.foldCase);
     for (const assetPath of this.ordered) {
-      if (!pattern.test(assetPath)) continue;
+      if (!expression.test(assetPath)) continue;
       const native = this.byPath.get(assetPath);
       if (native !== undefined && !matches.includes(native)) matches.push(native);
     }
@@ -840,4 +944,201 @@ function globRegex(pathWithHoles: string, openBase = false, ignoreCase = openBas
     .join('[^/]*');
   const flags = ignoreCase ? 'i' : '';
   return new RegExp(openBase ? `^(?:.*/)?${escaped}$` : `^${escaped}$`, flags);
+}
+
+/**
+ * Whether a bundler's glob could name an asset from a base the run did not find, as
+ * `servedFromAnyRoot` asks it of a pattern with holes. The pattern, less its leading `./`,
+ * `../` and `/` and any alias token, has to match the end of the asset's path in whole
+ * segments. Case is ignored, as the audit's sweep ignores it.
+ *
+ * @param pattern A glob as written, such as `@/assets/*.{png,jpg}`.
+ * @param dot Whether its wildcards match a leading dot.
+ * @returns A test of an asset's POSIX path relative to the project root.
+ * @example
+ * const couldName = globFromAnyRoot('/src/img/*.png', false);
+ * couldName('apps/web/src/img/one.png'); // true
+ * couldName('apps/web/src/one.png'); // false: the pattern fixes `img/`
+ */
+export function globFromAnyRoot(pattern: string, dot: boolean): (relative: string) => boolean {
+  const fixed = pattern.replace(/^(?:\.{1,2}\/)+/, '').replace(/^\/+/, '');
+  const rest = /^[@~#$]/.test(fixed) ? fixed.slice(fixed.indexOf('/') + 1) : fixed;
+  const source = globSource(rest, dot);
+  if (source === null) return () => false;
+  const expression = new RegExp(`^(?:.*/)?${source}$`, 'i');
+  return (relative) => expression.test(relative);
+}
+
+/**
+ * A bundler's glob pattern resolved against a base, as an anchored regular expression. The
+ * text `candidate` shares with the end of `pattern` is the pattern's own and is read as glob
+ * syntax; what comes before it is the base, matched literally, as Vite escapes a base, so a
+ * folder named `[draft]` is no character class. `null` when `globSource` cannot read it.
+ */
+function bundlerGlobRegExp(
+  candidate: string,
+  pattern: string,
+  dot: boolean,
+  ignoreCase: boolean,
+): RegExp | null {
+  let shared = 0;
+  const most = Math.min(candidate.length, pattern.length);
+  while (
+    shared < most &&
+    candidate.charAt(candidate.length - 1 - shared) === pattern.charAt(pattern.length - 1 - shared)
+  ) {
+    shared += 1;
+  }
+  const base = candidate.slice(0, candidate.length - shared);
+  const source = globSource(candidate.slice(base.length), dot, base.endsWith('/'));
+  if (source === null) return null;
+  return new RegExp(`^${escapeRegExp(base)}${source}$`, ignoreCase ? 'i' : '');
+}
+
+/**
+ * A glob as the source of a regular expression, read as picomatch reads it, the matcher behind
+ * Vite's globbing. `*` and `?` stay inside one folder, a `**` segment crosses any number of
+ * folders, none included, `[...]` is a class (negated by `^` alone, as picomatch reads it) and
+ * `{a,b}` offers alternatives. With `dot` false a wildcard never matches a name's leading dot.
+ * A `**` that is not a whole segment may cross folders too, which picomatch allows in some
+ * positions: reading more than the bundler loads keeps an image, never loses one. `null` for
+ * what this does not read, such as an extglob (`@(a|b)`) or a range (`{1..3}`).
+ */
+function globSource(glob: string, dot: boolean, startsSegment = true): string | null {
+  let source = '';
+  // One entry for each brace still open: whether it offers alternatives.
+  const braces: boolean[] = [];
+  for (let index = 0; index < glob.length; index += 1) {
+    const segmentStart = index === 0 ? startsSegment : glob.charAt(index - 1) === '/';
+    const token = globToken(glob, index, { dot, segmentStart, braces });
+    if (token === null) return null;
+    source += token.source;
+    index = token.end;
+  }
+  return source;
+}
+
+interface GlobState {
+  readonly dot: boolean;
+  /** Whether the token starts a path segment, where a wildcard may not match a dot. */
+  readonly segmentStart: boolean;
+  readonly braces: boolean[];
+}
+
+/** One token's regular expression source, and the index of its last character. */
+interface GlobToken {
+  readonly source: string;
+  readonly end: number;
+}
+
+function globToken(glob: string, index: number, state: GlobState): GlobToken | null {
+  const char = glob.charAt(index);
+  switch (char) {
+    case '\\':
+      return index + 1 < glob.length
+        ? { source: escapeRegExp(glob.charAt(index + 1)), end: index + 1 }
+        : null;
+    case '(':
+    case ')':
+    case '|':
+      return null;
+    case '*':
+      return starToken(glob, index, state);
+    case '?':
+      return { source: `${noLeadingDot(state)}[^/]`, end: index };
+    case '[':
+      return classToken(glob, index);
+    case '{':
+      return braceToken(glob, index, state.braces);
+    case ',':
+      return { source: state.braces.at(-1) === true ? '|' : ',', end: index };
+    case '}':
+      return { source: state.braces.pop() === true ? ')' : '\\}', end: index };
+    default:
+      return { source: escapeRegExp(char), end: index };
+  }
+}
+
+function noLeadingDot(state: GlobState): string {
+  return state.dot || !state.segmentStart ? '' : '(?!\\.)';
+}
+
+function starToken(glob: string, index: number, state: GlobState): GlobToken {
+  let end = index;
+  while (glob.charAt(end + 1) === '*') end += 1;
+  if (end === index || !state.segmentStart) {
+    return { source: `${noLeadingDot(state)}[^/]*`, end };
+  }
+  const name = state.dot ? '[^/]*' : '(?!\\.)[^/]*';
+  const next = glob.charAt(end + 1);
+  if (next === '/') return { source: `(?:${name}/)*`, end: end + 1 };
+  if (next === '') return { source: `(?:${name}(?:/${name})*)?`, end };
+  return { source: `(?:${name}/)*${name}`, end };
+}
+
+function classToken(glob: string, index: number): GlobToken {
+  const close = glob.indexOf(']', index + 2);
+  if (close === -1) return { source: '\\[', end: index };
+  const body = glob.slice(index + 1, close);
+  const inClass = (text: string): string => text.replace(/[\\\]^[]/g, '\\$&');
+  if (body.startsWith('^')) return { source: `[^${inClass(body.slice(1))}/]`, end: close };
+  if (body.includes('-')) return { source: `[${inClass(body)}]`, end: close };
+  // picomatch also matches the bracket text itself, as a name may hold it.
+  return { source: `(?:${escapeRegExp(`[${body}]`)}|[${inClass(body)}])`, end: close };
+}
+
+function braceToken(glob: string, index: number, braces: boolean[]): GlobToken | null {
+  const close = matchingCloseBrace(glob, index);
+  if (close === -1) return { source: '\\{', end: index };
+  const body = glob.slice(index + 1, close);
+  if (/^(?:-?\d+|[A-Za-z])\.\.(?:-?\d+|[A-Za-z])(?:\.\.-?\d+)?$/.test(body)) return null;
+  const alternates = topLevelAlternatives(body).length > 1;
+  braces.push(alternates);
+  return { source: alternates ? '(?:' : '\\{', end: index };
+}
+
+/** The index of the `}` that closes the brace at `open`, or -1. */
+function matchingCloseBrace(glob: string, open: number): number {
+  let depth = 0;
+  for (let index = open; index < glob.length; index += 1) {
+    const char = glob.charAt(index);
+    if (char === '\\') index += 1;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+/** The index of the `{` whose brace `close` closes, or -1. */
+function matchingOpenBrace(glob: string, close: number): number {
+  for (let index = 0; index < close; index += 1) {
+    if (glob.charAt(index) === '{' && matchingCloseBrace(glob, index) === close) return index;
+  }
+  return -1;
+}
+
+/** A brace's body split at its commas, leaving any nested brace whole. */
+function topLevelAlternatives(body: string): readonly string[] {
+  const choices: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body.charAt(index);
+    if (char === '\\') index += 1;
+    else if (char === '{') depth += 1;
+    else if (char === '}') depth -= 1;
+    else if (char === ',' && depth === 0) {
+      choices.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  choices.push(body.slice(start));
+  return choices;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

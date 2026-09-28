@@ -924,6 +924,34 @@ describe('the public policy', () => {
       );
     });
 
+    it('keeps every original a glob matches, and says it is a glob the bundler expands', () => {
+      const glob = {
+        ...pattern('src/theme.ts', '/theme-*.png', [
+          'public/theme-light.png',
+          'public/theme-dark.png',
+        ]),
+        kind: 'import',
+        shape: 'js.import.meta.glob',
+        glob: { exclude: [], dot: false },
+      } as Reference;
+      const alone = replacing(theme, [glob]);
+      const withLiteral = replacing(theme, [
+        resolved('index.html', '/theme-light.png', 'public/theme-light.png'),
+        glob,
+      ]);
+
+      expect(alone.conversions).toEqual([]);
+      expect(reasonsByPath(alone)['public/theme-dark.png']).toContain(
+        '`src/theme.ts` reaches it only through `/theme-*.png`, a glob the bundler expands when it builds, which no run can rewrite',
+      );
+      expect(withLiteral.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+        ['public/theme-light.png', false],
+      ]);
+      expect(withLiteral.keptOriginals[0]?.reason).toContain(
+        'reaches it through `/theme-*.png`, a glob the bundler expands when it builds',
+      );
+    });
+
     it('keeps it when a literal naming it is rewritten but a pattern still needs it', () => {
       const plan = replacing(theme, [
         resolved('index.html', '/theme-light.png', 'public/theme-light.png'),

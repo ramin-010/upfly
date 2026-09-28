@@ -225,6 +225,7 @@ export {
 export type {
   Adapter,
   Asset,
+  BundlerGlob,
   Confidence,
   DiscoveryResult,
   Edit,

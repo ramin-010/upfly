@@ -349,6 +349,56 @@ describe('a construct Upfly could not read', () => {
   });
 });
 
+describe('a glob import', () => {
+  const unused = async (root: string) => {
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead' ? [finding.asset] : [],
+    );
+  };
+
+  it('links every image its pattern matches, so none of them is called unused', async () => {
+    const root = project({
+      'package.json': '{ "name": "gallery", "private": true }\n',
+      'src/gallery.js': "export const images = import.meta.glob('./img/*.png', { eager: true });\n",
+      'src/img/one.png': 'one, never decoded',
+      'src/img/two.png': 'two, never decoded',
+      'src/spare.png': 'a picture nothing loads, never decoded',
+    });
+
+    expect(await unused(root)).toEqual(['src/spare.png']);
+  });
+
+  it('hedges what a glob that matched nothing could name, rather than calling it unused', async () => {
+    // Vite reads `/` from the app's own folder, which this run cannot find, so the glob
+    // matches nothing from the project root and the image is only possibly unused.
+    const root = project({
+      'package.json': '{ "name": "workspace", "private": true }\n',
+      'apps/web/src/gallery.js': "export const images = import.meta.glob('/src/img/*.png');\n",
+      'apps/web/src/img/one.png': 'one, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([['possibly-dead', 'apps/web/src/img/one.png']]);
+  });
+});
+
 describe('the encode cap', () => {
   const partialPattern = fileURLToPath(
     new URL('../../../fixtures/partial-pattern', import.meta.url),

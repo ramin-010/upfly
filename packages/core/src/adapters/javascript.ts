@@ -1,8 +1,9 @@
 /**
  * The JavaScript, TypeScript and JSX adapter.
  *
- * Finds static `import`s, `require()`, dynamic `import()`, the bundler form
- * `new URL('./x.png', import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and
+ * Finds static `import`s, `require()`, dynamic `import()`, the bundler forms
+ * `new URL('./x.png', import.meta.url)` and `import.meta.glob('./img/*.png')`, JSX
+ * `src`/`srcSet`/`poster` on any element and
  * every attribute position the HTML adapter reads (`url-attributes.ts`), and `url()` inside
  * CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside those
  * constructs become speculative candidates. One that a construct declines, such as the value
@@ -16,6 +17,7 @@ import { parse } from '@babel/parser';
 import type {
   Node as BabelNode,
   BinaryExpression,
+  CallExpression,
   File,
   ImportDeclaration,
   ImportExpression,
@@ -28,7 +30,7 @@ import type {
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
+import type { Adapter, BundlerGlob, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
@@ -376,6 +378,8 @@ function collectFromNode(node: BabelNode, context: Context): void {
           'require()',
           'import',
         );
+      } else if (isImportMetaGlob(node)) {
+        collectFromImportMetaGlob(node, context);
       }
       return;
     case 'NewExpression':
@@ -857,6 +861,98 @@ function isRequireCall(node: BabelNode): boolean {
     node.callee.type === 'Identifier' &&
     node.callee.name === 'require' &&
     node.arguments.length > 0
+  );
+}
+
+/** Whether this is Vite's `import.meta.glob(...)`, with type arguments or without. */
+function isImportMetaGlob(node: CallExpression): boolean {
+  const { callee } = node;
+  return (
+    callee.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object.type === 'MetaProperty' &&
+    callee.object.meta.name === 'import' &&
+    callee.property.type === 'Identifier' &&
+    callee.property.name === 'glob'
+  );
+}
+
+/**
+ * Each pattern of an `import.meta.glob` call, read as Vite reads the call: one string or an
+ * array of them, where a `!` pattern takes files out of every other. Vite refuses a call that
+ * holds anything else, so such a call loads nothing and its strings are read as any string is.
+ */
+function collectFromImportMetaGlob(node: CallExpression, context: Context): void {
+  const [first, options] = node.arguments;
+  if (first === undefined) return;
+  const patterns: GlobPatternText[] = [];
+  for (const element of first.type === 'ArrayExpression' ? first.elements : [first]) {
+    // Vite skips an array's empty slot.
+    if (element === null) continue;
+    const pattern = globPatternText(element, context.text);
+    if (pattern === null) return;
+    patterns.push(pattern);
+  }
+
+  const glob: BundlerGlob = {
+    exclude: patterns.flatMap(({ value }) => (value.startsWith('!') ? [value.slice(1)] : [])),
+    dot: optionIsTrue(options, 'exhaustive'),
+  };
+  for (const { start, end, text, value } of patterns) {
+    context.handled.set(start, null);
+    if (value.startsWith('!')) continue;
+    // Vite globs the decoded value, which no range spells, so an escaped pattern is refused.
+    const escaped = text !== value;
+    context.references.push({
+      file: context.file,
+      start,
+      end,
+      rawPath: text,
+      kind: 'import',
+      shape: 'js.import.meta.glob',
+      ceiling: escaped ? 'unsafe' : 'medium',
+      asserted: true,
+      note: escaped
+        ? 'import.meta.glob(): the pattern contains escape sequences, so its text cannot be located exactly'
+        : 'import.meta.glob(): a glob the bundler expands when it builds; the resolver decides which assets it names',
+      ...(escaped ? {} : { glob }),
+    });
+  }
+}
+
+interface GlobPatternText {
+  readonly start: number;
+  readonly end: number;
+  /** The pattern as the file spells it. */
+  readonly text: string;
+  /** The pattern Vite reads: a string's decoded value, a template's raw text. */
+  readonly value: string;
+}
+
+/** A glob pattern Vite accepts: a string, or a template literal with no expression. */
+function globPatternText(element: BabelNode, text: string): GlobPatternText | null {
+  if (typeof element.start !== 'number' || typeof element.end !== 'number') return null;
+  const start = element.start + 1;
+  const end = element.end - 1;
+  const written = text.slice(start, end);
+  if (element.type === 'StringLiteral') return { start, end, text: written, value: element.value };
+  if (element.type === 'TemplateLiteral' && element.expressions.length === 0) {
+    return { start, end, text: written, value: written };
+  }
+  return null;
+}
+
+/** Whether an options object literal sets `name` to the literal `true`. */
+function optionIsTrue(options: BabelNode | undefined, name: string): boolean {
+  if (options?.type !== 'ObjectExpression') return false;
+  return options.properties.some(
+    (property) =>
+      property.type === 'ObjectProperty' &&
+      !property.computed &&
+      ((property.key.type === 'Identifier' && property.key.name === name) ||
+        (property.key.type === 'StringLiteral' && property.key.value === name)) &&
+      property.value.type === 'BooleanLiteral' &&
+      property.value.value,
   );
 }
 

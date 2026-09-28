@@ -312,6 +312,11 @@
       "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module. Vite reads it first, through its aliases before the module's folder and then as a package, so a name a package holds is out-of-scope and one found nowhere is broken."
     },
     {
+      "id": "js.import.meta.glob",
+      "label": "import.meta.glob('./img/*.png')",
+      "motivation": "Vite's glob import loads every file its patterns match: one string or an array of them, a `!` pattern leaving files out, `**` crossing folders and braces offering alternatives. Read as a plain string, `./img/*.png` names no file, and every image it loads was reported unused. Four instances: a string, `**`, braces through an alias, and an array with a negation."
+    },
+    {
       "id": "js.template.pattern",
       "label": "template literal, one unknown segment",
       "motivation": "partial-pattern. Standing for N files that all exist."
@@ -7808,6 +7813,77 @@
           "offset": 96,
           "line": 2,
           "column": 51
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/glob-imports.ts",
+      "entries": [
+        {
+          "raw": "../assets/badges/*.png",
+          "occurrence": 1,
+          "shape": "js.import.meta.glob",
+          "expect": "resolved-pattern",
+          "why": "Vite expands the glob from the module's folder into one import for each file it matches, so it names both badges. A glob is never rewritten, so `--replace` keeps both originals.",
+          "target": [
+            "apps/web/src/assets/badges/badge-1.png",
+            "apps/web/src/assets/badges/badge-2.png"
+          ],
+          "offset": 170,
+          "line": 4,
+          "column": 41
+        },
+        {
+          "raw": "../components/**/*.png",
+          "occurrence": 1,
+          "shape": "js.import.meta.glob",
+          "expect": "resolved-pattern",
+          "why": "`**` crosses any number of folders, none included, so the glob names the logo in the components folder and the strip three folders below it.",
+          "target": [
+            "apps/web/src/components/deep/gallery/thumbs/strip.png",
+            "apps/web/src/components/logo.png"
+          ],
+          "offset": 325,
+          "line": 7,
+          "column": 47
+        },
+        {
+          "raw": "@/assets/*.{png,jpg}",
+          "occurrence": 1,
+          "shape": "js.import.meta.glob",
+          "expect": "resolved-pattern",
+          "why": "Through the app's Vite alias @ (src/), with a brace for either format. A `*` stays inside one folder, so the badges a folder down are not named.",
+          "target": [
+            "apps/web/src/assets/chart.png",
+            "apps/web/src/assets/inline-logo.jpg"
+          ],
+          "offset": 528,
+          "line": 13,
+          "column": 63
+        },
+        {
+          "raw": "../assets/**/*.png",
+          "occurrence": 1,
+          "shape": "js.import.meta.glob",
+          "expect": "resolved-pattern",
+          "why": "The first pattern of an array. A `!` pattern removes what it matches from every pattern in the call, so the second badge is not named.",
+          "target": [
+            "apps/web/src/assets/badges/badge-1.png",
+            "apps/web/src/assets/chart.png"
+          ],
+          "offset": 656,
+          "line": 16,
+          "column": 45
+        },
+        {
+          "raw": "!**/badge-2.png",
+          "occurrence": 1,
+          "shape": "decoy.glob",
+          "expect": "discarded",
+          "why": "A negation names the file the call leaves out, not one it loads, so it is no reference of its own.",
+          "offset": 678,
+          "line": 16,
+          "column": 67
         }
       ]
     },

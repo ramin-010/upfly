@@ -247,6 +247,23 @@ export interface OptimizationPlan {
   readonly refusal: PlanRefusal | null;
 }
 
+/**
+ * Why a pattern's text cannot be repointed, as the start of a reason: a template is assembled
+ * at runtime, while a bundler's glob names its files by pattern when the project builds.
+ */
+export function patternCannotMove(reference: Reference): string {
+  return reference.glob === undefined
+    ? 'a template reference is assembled at runtime, so its text cannot be repointed'
+    : 'a glob names its files by pattern when the bundler builds, so its text cannot be repointed';
+}
+
+/** What a pattern's text is, and that no run rewrites it, for a reason that quotes it. */
+function unrewritable(reference: Reference): string {
+  return reference.glob === undefined
+    ? 'a path assembled at runtime that no run can rewrite'
+    : 'a glob the bundler expands when it builds, which no run can rewrite';
+}
+
 /** Every asset a pattern reference could match, as sorted absolute paths. */
 export function patternTargets(graph: Graph): readonly string[] {
   const targets = new Set<string>();
@@ -927,7 +944,7 @@ function declinePartialPatterns(
     if (unmeasured.length === 0) continue;
 
     const counted = notConverting(unmeasured.length, targets.length);
-    const reason = `a template reference is assembled at runtime, so its text cannot be repointed, and ${counted}`;
+    const reason = `${patternCannotMove(reference)}, and ${counted}`;
     declined.push({ path: relativePath(input.graph.root, reference.file), line: null, reason });
   }
 }
@@ -988,8 +1005,7 @@ function collectRewrite(reference: Reference, context: RewriteContext): Repointi
       context.declined.push({
         path: relativePath(context.root, reference.file),
         line: null,
-        reason:
-          'a template reference is assembled at runtime, so its text cannot be repointed even though every asset it matches converted',
+        reason: `${patternCannotMove(reference)} even though every asset it matches converted`,
       });
     }
     return null;
@@ -1079,7 +1095,7 @@ function usedByNoMove(node: AssetNode, input: PlanInput): string | null {
   const text = `\`${first.reference.rawPath}\`${more}`;
   const held =
     first.obstacle.kind === 'pattern'
-      ? `${where} reaches it only through ${text}, a path assembled at runtime that no run can rewrite`
+      ? `${where} reaches it only through ${text}, ${unrewritable(first.reference)}`
       : first.obstacle.kind === 'refused'
         ? `${where} names it as ${text}, and this run does not rewrite that reference: ${first.obstacle.why}`
         : `${where} names it as ${text}, which has no extension to change`;
@@ -1164,7 +1180,7 @@ function whyStillNeeded(
   const where = `\`${relativePath(root, first.file)}\``;
   const text = `\`${first.rawPath}\`${missed.length === 1 ? '' : ` (and ${missed.length - 1} more)`}`;
   return first.resolution === 'resolved-pattern'
-    ? `converted, but the original was kept: ${where} reaches it through ${text}, a path assembled at runtime that no run can rewrite — deleting the original would break it`
+    ? `converted, but the original was kept: ${where} reaches it through ${text}, ${unrewritable(first)} — deleting the original would break it`
     : `converted, but the original was kept: ${where} names it as ${text}, and this run does not rewrite that reference — deleting the original would break it`;
 }
 

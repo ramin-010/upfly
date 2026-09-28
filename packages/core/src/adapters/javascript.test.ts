@@ -1660,3 +1660,69 @@ describe('the note on a pattern', () => {
     expect(notes.join(' ')).not.toContain('exactly one asset');
   });
 });
+
+describe('import.meta.glob', () => {
+  const globs = (text: string) =>
+    find(text, '/project/src/gallery.ts').map(({ rawPath, shape, ceiling, kind, glob }) => ({
+      rawPath,
+      shape,
+      ceiling,
+      kind,
+      glob,
+    }));
+
+  it('reads each pattern of the call as a glob, in one string or an array', () => {
+    expect(globs("import.meta.glob('./img/*.png', { eager: true });")).toEqual([
+      {
+        rawPath: './img/*.png',
+        shape: 'js.import.meta.glob',
+        ceiling: 'medium',
+        kind: 'import',
+        glob: { exclude: [], dot: false },
+      },
+    ]);
+    expect(globs('import.meta.glob([`./a/*.png`, "./b/**/*.{png,jpg}"]);')).toEqual([
+      expect.objectContaining({ rawPath: './a/*.png', glob: { exclude: [], dot: false } }),
+      expect.objectContaining({ rawPath: './b/**/*.{png,jpg}' }),
+    ]);
+  });
+
+  it('carries a negation on every pattern of its call and reads nothing from it alone', () => {
+    const found = globs(
+      "import.meta.glob(['./img/*.png', '!./img/draft-*.png', './icons/*.svg']);",
+    );
+
+    expect(found.map((reference) => reference.rawPath)).toEqual(['./img/*.png', './icons/*.svg']);
+    for (const reference of found) {
+      expect(reference.glob).toEqual({ exclude: ['./img/draft-*.png'], dot: false });
+    }
+  });
+
+  it('matches names that start with a dot only when the call asks for every file', () => {
+    const [reference] = globs("import.meta.glob('./img/*.png', { exhaustive: true });");
+
+    expect(reference?.glob).toEqual({ exclude: [], dot: true });
+  });
+
+  it('reads the call with type arguments, as a TypeScript module writes it', () => {
+    expect(
+      globs("import.meta.glob<{ default: string }>('../assets/*{.png,.jpg}');").map(
+        (reference) => reference.rawPath,
+      ),
+    ).toEqual(['../assets/*{.png,.jpg}']);
+  });
+
+  it('leaves the strings of a call Vite refuses to be read as any string is', () => {
+    // Vite fails the build on a pattern that is not a literal, so the call loads nothing.
+    const found = globs("import.meta.glob(['./img/*.png', `./${dir}/logo.png`]);");
+
+    expect(found.every((reference) => reference.shape !== 'js.import.meta.glob')).toBe(true);
+  });
+
+  it('refuses a pattern written with an escape, whose text no range spells', () => {
+    const [reference] = globs("import.meta.glob('./img/caf\\u00e9-*.png');");
+
+    expect(reference).toMatchObject({ shape: 'js.import.meta.glob', ceiling: 'unsafe' });
+    expect(reference?.glob).toBeUndefined();
+  });
+});

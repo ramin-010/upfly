@@ -333,6 +333,17 @@ export const SHAPES = [
       'holds is `out-of-scope` and one found nowhere is `broken`.',
   },
   {
+    id: 'js.import.meta.glob',
+    label: "import.meta.glob('./img/*.png')",
+    emission: 'engine',
+    why:
+      "Vite's glob import, emitted by the JavaScript adapter once for each pattern the call " +
+      'names, one string or an array of them. Each is globbed as Vite globs it, from the ' +
+      "module's folder, the project root or an alias, and a `!` pattern removes what it " +
+      'matches from every pattern in the call. The glob links each asset it matches and is ' +
+      'never rewritten, so `--replace` keeps their originals.',
+  },
+  {
     id: 'js.template.pattern',
     label: 'template literal, one unknown segment',
     emission: 'engine',

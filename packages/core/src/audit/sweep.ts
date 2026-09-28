@@ -21,7 +21,7 @@ import type { Graph } from '../graph/graph.js';
 import { unreferencedAssets } from '../graph/graph.js';
 import { compareStrings, imageFilenameCandidates } from '../paths.js';
 import { provenPath } from '../resolve/reference.js';
-import { servedFromAnyRoot } from '../resolve/resolve.js';
+import { globFromAnyRoot, servedFromAnyRoot } from '../resolve/resolve.js';
 import { citationAt, lineOf, withSourceTexts } from '../scan/citation.js';
 import type { ReadFilePort, ScannedMention } from '../scan/scan.js';
 import type { Reference, ReferenceKind } from '../types.js';
@@ -232,7 +232,7 @@ async function sweepFiles(
  * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
  * tested against every candidate, as the resolver would glob it from whichever directory the
  * site serves: a root-relative one the run had no serving root to glob, one written through
- * an alias no rule maps, and one an adapter declined.
+ * an alias no rule maps, one an adapter declined, and a bundler's glob that matched nothing.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -255,6 +255,12 @@ async function sweepUnresolvedReferences(
     ...unglobbedHolePatterns(options.graph).map(
       (reference) =>
         [reference, servedFromAnyRoot(openBased(asGlobbedHoles(provenPath(reference))))] as const,
+    ),
+    // Last, so a glob is read in its own syntax whichever list above also holds it.
+    ...unknownTargetReferences(options.graph).flatMap((reference) =>
+      reference.glob === undefined
+        ? []
+        : [[reference, globFromAnyRoot(reference.rawPath, reference.glob.dot)] as const],
     ),
   ]);
   const assets = [...candidates.values()].flat();

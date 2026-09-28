@@ -184,6 +184,20 @@ alias, as rung 4b expands a literal one, and each expansion is globbed anchored,
 rung 4b tries them, until one names a file. Through an alias no rule covers, a pattern is
 `unresolved-alias`, as a literal path is at rung 6; a package-shaped one stays `dynamic`.
 
+A bundler's glob, each pattern given to `import.meta.glob`, reaches rung 2 the same way, but its
+text is glob syntax rather than a path with holes, so `RawReference.glob` marks it and the resolver
+reads it as picomatch, the matcher behind Vite's globbing, reads it: `*` and `?` stay in one
+folder, a `**` segment crosses any number, `[...]` is a class and `{a,b}` offers alternatives, and
+a wildcard skips a leading dot unless the call sets `exhaustive`. Its base is Vite's: `./` and `../`
+from the module's folder, anything unrooted through a declared alias, and `/` through the serving
+roots and then the project root, as any root-relative pattern is tried. The call's `!` patterns
+remove what they match from every pattern in the call. A folder in the base is matched literally,
+as Vite escapes it, so `[draft]/` is no class. Syntax this does not read (an extglob, a `{1..3}`
+range) leaves the pattern `dynamic` rather than misread, and a glob that can name only non-images,
+such as `./pages/*.vue`, is dropped as rung 3 drops a font. Where picomatch is inconsistent, a `**`
+that is not a whole segment, the glob reads more rather than less: an extra link keeps an original,
+a missing one calls a loaded image unused.
+
 **Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
 nearest first, then the project root. A monorepo has one `public/` per app (shadcn-ui has twelve),
 and a file under `apps/v4/` that writes `/images/hero.png` means `apps/v4/public/`. Resolving that
@@ -763,7 +777,9 @@ escaped string names what its escapes decode to.
 A pattern through an alias no rule maps is `unresolved-alias`, and only a rule could say which
 directory the alias stands for, so the sweep drops the alias, the first segment, and globs the
 rest the same way (`unmappedAliasPatterns`): with no config that maps `@/`,
-`` `@/img/badge-${n}.png` `` hedges `src/img/badge-1.png` and not `src/icons/badge-1.png`.
+`` `@/img/badge-${n}.png` `` hedges `src/img/badge-1.png` and not `src/icons/badge-1.png`. A
+bundler's glob that matched nothing is read in its own syntax the same way (`globFromAnyRoot`), its
+leading `./`, `../`, `/` and alias token dropped.
 
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real
@@ -814,7 +830,7 @@ produce exactly the silent corruption this design exists to prevent.
 | `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, a link preview's image in `<meta content>`, an image in `<a href>`, `<style>`, `style=""` | `parse5` |
-| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
+| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, `import.meta.glob(…)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | a one-pass scanner over masked text, reading destinations as CommonMark does; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 

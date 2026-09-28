@@ -113,6 +113,24 @@ export interface RawReference {
    * it, so it resolves `dynamic` whatever its text holds.
    */
   readonly unread?: true;
+  /**
+   * Set on a pattern a bundler expands into files when it builds, such as each pattern given
+   * to `import.meta.glob`. `rawPath` is then written in glob syntax (`*`, `**`, `?`, `[...]`,
+   * `{a,b}`) rather than as a path with holes, and the ceiling is `medium`: the resolver links
+   * every asset it matches, and nothing ever rewrites it.
+   */
+  readonly glob?: BundlerGlob;
+}
+
+/** What a bundler's glob call says about which files a pattern takes. */
+export interface BundlerGlob {
+  /**
+   * The call's `!` patterns, without the `!`. A file one of them matches is taken by no
+   * pattern in the call.
+   */
+  readonly exclude: readonly string[];
+  /** Whether a wildcard also matches a name that starts with a dot. */
+  readonly dot: boolean;
 }
 
 /**
