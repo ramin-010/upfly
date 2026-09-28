@@ -73,7 +73,16 @@ const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, 
 
 // Run 2 calls the production decision, never a copy of it. A build older than the
 // decision's source is a copy all the same, so it is refused.
-const DECISION = join(HERE, '..', '..', 'packages', 'core', 'dist', 'serving-root-decision.js');
+const DECISION = join(
+  HERE,
+  '..',
+  '..',
+  'packages',
+  'core',
+  'dist',
+  'resolve',
+  'serving-root-decision.js',
+);
 const DECISION_SOURCE = join(
   HERE,
   '..',
@@ -81,6 +90,7 @@ const DECISION_SOURCE = join(
   'packages',
   'core',
   'src',
+  'resolve',
   'serving-root-decision.ts',
 );
 if (!existsSync(DECISION) || statSync(DECISION).mtimeMs < statSync(DECISION_SOURCE).mtimeMs) {

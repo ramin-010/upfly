@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { Asset, RawReference, SourceFile, UnscannedFile } from '../types.js';
 import { decideServingRoots, looksLikeAsset } from './serving-root-decision.js';
-import type { Asset, RawReference, SourceFile, UnscannedFile } from './types.js';
 
 /** An absolute root that looks the same on both platforms, since the code makes it POSIX. */
 const ROOT = '/repo';

@@ -15,8 +15,8 @@
 import { basename, dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import { parseExpression } from '@babel/parser';
 import type * as t from '@babel/types';
-import { compareStrings, relativePath, toPosix } from './paths.js';
-import type { ReadFilePort } from './scan/scan.js';
+import { compareStrings, relativePath, toPosix } from '../paths.js';
+import type { ReadFilePort } from '../scan/scan.js';
 import { readViteAliases } from './vite-config.js';
 
 /** One alias mapping, anchored at an absolute directory. */

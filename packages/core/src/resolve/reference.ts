@@ -6,7 +6,7 @@
  * decides it.
  */
 
-import type { RawReference, Reference } from './types.js';
+import type { RawReference, Reference } from '../types.js';
 
 /**
  * Whether this reference points at one or more assets in the graph.

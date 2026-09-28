@@ -1,7 +1,7 @@
 import { type DefaultTreeAdapterMap, html, parse } from 'parse5';
 import { describe, expect, it, vi } from 'vitest';
 import { UpflyError } from '../errors.js';
-import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve/resolve.js';
 import type { RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
 import { markdownAdapter, maskInactiveRegions } from './markdown.js';

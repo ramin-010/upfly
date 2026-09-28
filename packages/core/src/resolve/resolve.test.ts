@@ -1,10 +1,10 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { toPosix } from '../paths.js';
+import type { Asset, RawReference, Reference } from '../types.js';
 import type { AliasMap } from './aliases.js';
-import { toPosix } from './paths.js';
 import { isLinked, linkedPaths } from './reference.js';
 import { CONVENTIONAL_SERVING_ROOTS, resolveReferences, servedFromAnyRoot } from './resolve.js';
-import type { Asset, RawReference, Reference } from './types.js';
 
 /**
  * Every rung of the resolver's ladder exists because some real syntax would otherwise be

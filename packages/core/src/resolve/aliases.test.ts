@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { toPosix } from '../paths.js';
 import { type AliasMap, expandAlias, loadAliases } from './aliases.js';
-import { toPosix } from './paths.js';
 
 const ROOT = resolve('/project');
 

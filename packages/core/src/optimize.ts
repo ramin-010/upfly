@@ -8,7 +8,6 @@
  * planner, so that each rule has one implementation.
  */
 
-import type { AliasMap } from './aliases.js';
 import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
 import { UpflyError } from './errors.js';
@@ -32,7 +31,8 @@ import {
   planOptimization,
 } from './plan.js';
 import type { AssetProbe, EncodeFormat, ImageProbe } from './probe.js';
-import type { ServingRoots } from './resolve.js';
+import type { AliasMap } from './resolve/aliases.js';
+import type { ServingRoots } from './resolve/resolve.js';
 import { hashText } from './scan/text-hash.js';
 import {
   type FileStore,

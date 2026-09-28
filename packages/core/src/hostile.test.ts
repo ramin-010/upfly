@@ -20,7 +20,7 @@ import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
 import { renderReport } from './report-human.js';
 import { buildReport } from './report.js';
-import { resolveReferences } from './resolve.js';
+import { resolveReferences } from './resolve/resolve.js';
 import { scanSources } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter } from './types.js';

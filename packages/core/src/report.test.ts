@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { NO_REFERENCE_TO_FIND, htmlAdapter } from './adapters/html.js';
-import type { AliasMap } from './aliases.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover/discover.js';
@@ -23,8 +22,9 @@ import {
   refusalReasonId,
 } from './report.js';
 import type { ClassificationBound, ReferenceEntry, Report } from './report.js';
-import { resolveReferences } from './resolve.js';
-import type { ServingRoots } from './resolve.js';
+import type { AliasMap } from './resolve/aliases.js';
+import { resolveReferences } from './resolve/resolve.js';
+import type { ServingRoots } from './resolve/resolve.js';
 import { scanSources } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';
 import type { Mention } from './sweep.js';

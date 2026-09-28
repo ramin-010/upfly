@@ -8,7 +8,7 @@
  */
 
 import type { Graph } from './graph.js';
-import { isLinked, provenPath } from './reference.js';
+import { isLinked, provenPath } from './resolve/reference.js';
 import type { Reference } from './types.js';
 
 /**

@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { UpflyError } from '../errors.js';
-import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve.js';
+import { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from '../resolve/resolve.js';
 import type { RawReference } from '../types.js';
 import { javaScriptParseOutcome, javascriptAdapter } from './javascript.js';
 

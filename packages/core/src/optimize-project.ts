@@ -23,7 +23,7 @@ import {
 import type { PublicPolicy } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import type { EncodeFormat } from './probe.js';
-import type { ServingRoots } from './resolve.js';
+import type { ServingRoots } from './resolve/resolve.js';
 import type { LockPorts } from './transaction.js';
 
 export interface OptimizeProjectInput {

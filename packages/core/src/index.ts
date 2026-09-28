@@ -117,7 +117,7 @@ export { LOCK_PATH, processIsAlive, readLockHolder } from './lock.js';
 export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
 export { createNodeFileStore } from './file-store-node.js';
 export { UpflyError } from './errors.js';
-export { isLinked, linkedPaths } from './reference.js';
+export { isLinked, linkedPaths } from './resolve/reference.js';
 export { buildGraph, unreferencedAssets } from './graph.js';
 export type { AssetNode, BuildGraphInput, Graph } from './graph.js';
 export { createSharpProbe } from './probe-sharp.js';
@@ -147,9 +147,9 @@ export type {
   SkippedItem,
   ReferenceEntry,
 } from './report.js';
-export { expandAlias, loadAliases } from './aliases.js';
-export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './aliases.js';
-export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve.js';
+export { expandAlias, loadAliases } from './resolve/aliases.js';
+export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './resolve/aliases.js';
+export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve/resolve.js';
 export {
   type InferServingRootsInput,
   type InferredServingRoots,
@@ -157,15 +157,22 @@ export {
   MIN_ROOT_RESOLUTION_RATE,
   type RootCandidateScore,
   inferServingRoots,
-} from './infer-serving-roots.js';
+} from './resolve/infer-serving-roots.js';
 export {
   CONVENTIONAL_SERVING_ROOT_NAMES,
   PROJECT_MARKERS,
   detectServingRoots,
-} from './serving-roots.js';
-export type { WalkedTree } from './serving-roots.js';
-export { decideServingRoots, isRootRelative, looksLikeAsset } from './serving-root-decision.js';
-export type { ServingRootDecision, ServingRootDecisionInput } from './serving-root-decision.js';
+} from './resolve/serving-roots.js';
+export type { WalkedTree } from './resolve/serving-roots.js';
+export {
+  decideServingRoots,
+  isRootRelative,
+  looksLikeAsset,
+} from './resolve/serving-root-decision.js';
+export type {
+  ServingRootDecision,
+  ServingRootDecisionInput,
+} from './resolve/serving-root-decision.js';
 export { runPipeline, servingRootsFor } from './pipeline.js';
 export type { PipelineInput, PipelineOutput, PipelineProgress } from './pipeline.js';
 export {
@@ -174,7 +181,7 @@ export {
   type ResolutionHealth,
   resolutionHealth,
 } from './resolution-health.js';
-export type { ResolveOptions, ServingRoots } from './resolve.js';
+export type { ResolveOptions, ServingRoots } from './resolve/resolve.js';
 export { scanSources } from './scan/scan.js';
 export type {
   ReadFilePort,

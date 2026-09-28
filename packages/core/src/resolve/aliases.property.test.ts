@@ -8,8 +8,8 @@
 import { posix, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { toPosix } from '../paths.js';
 import { expandAlias, loadAliases } from './aliases.js';
-import { toPosix } from './paths.js';
 
 const ROOT = toPosix(resolve('/project'));
 const ROUNDS = 200;

@@ -13,7 +13,6 @@
  */
 
 import { spell } from './adapters/reference-path.js';
-import type { AliasMap, AliasRule } from './aliases.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, relativePath, toPosix } from './paths.js';
@@ -26,8 +25,9 @@ import {
   collectEdit,
   plannedRewrite,
 } from './plan.js';
-import { isLinked, linkedPaths } from './reference.js';
-import type { ServingRoots } from './resolve.js';
+import type { AliasMap, AliasRule } from './resolve/aliases.js';
+import { isLinked, linkedPaths } from './resolve/reference.js';
+import type { ServingRoots } from './resolve/resolve.js';
 import type { Reference } from './types.js';
 
 /** One asset's path change. Both sides POSIX-relative to the project root. */

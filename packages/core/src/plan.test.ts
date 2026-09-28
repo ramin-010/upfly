@@ -1,10 +1,10 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AliasMap } from './aliases.js';
 import { buildGraph } from './graph.js';
 import { compareStrings, toPosix } from './paths.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
 import type { AssetProbe } from './probe.js';
+import type { AliasMap } from './resolve/aliases.js';
 import { SHAPES, whyFormatKept } from './shapes.js';
 import type { Asset, RawReference, Reference } from './types.js';
 

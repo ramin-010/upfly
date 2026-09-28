@@ -15,12 +15,12 @@ import {
   spellingsOf,
   splitPathSuffix,
   staticExtensionOf,
-} from './adapters/reference-path.js';
+} from '../adapters/reference-path.js';
+import { compareStrings, extensionOf, isImageExtension, toPosix } from '../paths.js';
+import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from '../types.js';
 import type { AliasMap } from './aliases.js';
 import { expandAlias } from './aliases.js';
-import { compareStrings, extensionOf, isImageExtension, toPosix } from './paths.js';
 import { provenPath } from './reference.js';
-import type { Asset, ExcludedRoot, RawReference, Reference, ResolvedVia } from './types.js';
 
 /**
  * The directories root-relative paths are served from, and whether the project declared

@@ -9,12 +9,12 @@ import { discover } from './discover/discover.js';
 import { buildGraph, unreferencedAssets } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';
-import { isLinked } from './reference.js';
 import { MINIMUM_ROOT_RELATIVE, resolutionHealth } from './resolution-health.js';
-import { resolveReferences } from './resolve.js';
+import { isLinked } from './resolve/reference.js';
+import { resolveReferences } from './resolve/resolve.js';
+import { detectServingRoots } from './resolve/serving-roots.js';
 import { scanSources } from './scan/scan.js';
 import type { ReadFilePort } from './scan/scan.js';
-import { detectServingRoots } from './serving-roots.js';
 import { sweepForMentions } from './sweep.js';
 import type { Adapter, Reference } from './types.js';
 

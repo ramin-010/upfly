@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { UnscannedFile } from '../types.js';
 import {
   CONVENTIONAL_SERVING_ROOT_NAMES,
   PROJECT_MARKERS,
   type WalkedTree,
   detectServingRoots,
 } from './serving-roots.js';
-import type { UnscannedFile } from './types.js';
 
 /**
  * The twelve `public/` directories of shadcn-ui at its pinned commit, as listed in

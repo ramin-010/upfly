@@ -11,9 +11,9 @@
  * file, and a rewrite would then act on that link.
  */
 
-import { compareStrings } from './paths.js';
+import { compareStrings } from '../paths.js';
+import type { DiscoveryResult } from '../types.js';
 import type { ServingRoots } from './resolve.js';
-import type { DiscoveryResult } from './types.js';
 
 /**
  * The directory names that conventionally hold a served URL space.

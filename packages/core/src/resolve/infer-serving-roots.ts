@@ -10,7 +10,7 @@
  * See "Inference: what the references resolve against" in ARCHITECTURE.md.
  */
 
-import { compareStrings } from './paths.js';
+import { compareStrings } from '../paths.js';
 
 /**
  * How many root-relative asset references a directory needs before its rate counts.

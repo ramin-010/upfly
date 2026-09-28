@@ -5,12 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import type { PathSpelling } from './adapters/reference-path.js';
-import { type AliasMap, expandAlias, loadAliases } from './aliases.js';
 import { discover } from './discover/discover.js';
 import { buildGraph } from './graph.js';
 import { toPosix } from './paths.js';
 import { type Move, planRelocation } from './relocate.js';
-import { resolveReferences } from './resolve.js';
+import { type AliasMap, expandAlias, loadAliases } from './resolve/aliases.js';
+import { resolveReferences } from './resolve/resolve.js';
 import { scanSources } from './scan/scan.js';
 import type { Asset, RawReference, Reference } from './types.js';
 

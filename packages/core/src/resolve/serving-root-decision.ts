@@ -8,11 +8,11 @@
  * reasoning is in ARCHITECTURE.md, under "Inference: what the references resolve against".
  */
 
+import { IMAGE_EXTENSIONS, compareStrings, toPosix } from '../paths.js';
+import type { RawReference } from '../types.js';
 import { type InferredServingRoots, inferServingRoots } from './infer-serving-roots.js';
-import { IMAGE_EXTENSIONS, compareStrings, toPosix } from './paths.js';
 import type { ServingRoots } from './resolve.js';
 import { type WalkedTree, detectServingRoots } from './serving-roots.js';
-import type { RawReference } from './types.js';
 
 const IMAGE_SUFFIXES = new Set(IMAGE_EXTENSIONS);
 

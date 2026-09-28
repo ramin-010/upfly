@@ -12,14 +12,14 @@
 
 import { isAbsolute, join } from 'node:path';
 import { splitPathSuffix } from './adapters/reference-path.js';
-import type { AliasMap } from './aliases.js';
 import type { AssetNode, Graph } from './graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
-import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
-import { type ServingRoots, resolveReferences } from './resolve.js';
+import type { AliasMap } from './resolve/aliases.js';
+import { isLinked, linkedPaths } from './resolve/reference.js';
+import { type ServingRoots, resolveReferences } from './resolve/resolve.js';
 import { whyFormatKept } from './shapes.js';
 import type { Asset, Edit, RawReference, Reference } from './types.js';
 
