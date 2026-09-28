@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Hit, triage } from './triage.js';
+import { type Hit, fencedLines, triage } from './triage.js';
 
 /**
  * Every rule in `triage.ts` removes an item from human review, so the direction that
@@ -14,7 +14,12 @@ import { type Hit, triage } from './triage.js';
 const CLAIMED = new Set(['.md', '.mdx', '.js', '.ts', '.tsx', '.json', '.html', '.css']);
 
 function hit(file: string, text: string, asset: string, line = 1): Hit {
-  return { asset, file, line, text };
+  return { asset, file, line, text, fenced: false };
+}
+
+/** A hit on a line that a fenced code block holds. */
+function fencedHit(file: string, text: string, asset: string): Hit {
+  return { ...hit(file, text, asset), fenced: true };
 }
 
 function explanationFor(input: Hit): string | null {
@@ -82,6 +87,19 @@ describe('triage of the hits the graph did not link', () => {
           hit('docs/pages/index.html', '<img src="../img/possum.jpg">', 'src/img/possum.jpg'),
         ),
       ).toContain('different file that shares a basename');
+    });
+
+    it('explains raw HTML inside a fenced code block as a documentation example', () => {
+      // `src/docs/plugins/image-webc.md:67`, inside an html fence.
+      expect(
+        explanationFor(
+          fencedHit(
+            'src/docs/plugins/image-webc.md',
+            '<img webc:is="eleventy-image" src="cat.jpg" alt="photo of my tabby cat">',
+            'src/img/mascots/cat.jpg',
+          ),
+        ),
+      ).toContain('documentation example');
     });
 
     it('explains a filename in a sentence', () => {
@@ -182,6 +200,27 @@ describe('triage of the hits the graph did not link', () => {
       },
     );
 
+    it('leaves raw HTML outside a fence alone, since the page renders it', () => {
+      // `src/docs/community.md:45`: the include writes the SVG into the page, so renaming
+      // the asset breaks the build.
+      expect(
+        explanationFor(
+          hit(
+            'src/docs/community.md',
+            '<a href="{{ config.kickstarterUrl }}" class="announcement-btn">{% include "components/ba-balloon.svg" %}Subscribe to the Build Awesome Kickstarter</a>',
+            'src/_includes/components/ba-balloon.svg',
+          ),
+        ),
+      ).toBeNull();
+    });
+
+    it.each([
+      ['a table row', 'guide.md', '| ![The hero](hero.png) | The page banner |'],
+      ['an MDX import', 'page.mdx', "import hero from './hero.png';"],
+    ])('leaves %s outside a fence alone', (_name, file, text) => {
+      expect(explanationFor(hit(file, text, 'hero.png'))).toBeNull();
+    });
+
     it('does not treat a matching path as a collision', () => {
       // The path in the line and the asset are the same file, reached through a
       // serving root. The collision rule must not fire on that.
@@ -194,6 +233,56 @@ describe('triage of the hits the graph did not link', () => {
       expect(
         explanationFor(hit('app.ts', 'const src = "hero.png"; // the banner', 'hero.png')),
       ).toBeNull();
+    });
+  });
+
+  describe('the lines a fenced code block holds', () => {
+    it('counts a backtick fence and a tilde fence, their fence lines included', () => {
+      const text = ['intro', '```html', '<img src="a.png">', '```', 'prose', '~~~', 'b.png', '~~~'];
+
+      expect([...fencedLines([...text, 'after'].join('\n'))]).toEqual([2, 3, 4, 6, 7, 8]);
+    });
+
+    it.each([
+      ['a run of the other character', ['````', '~~~~', 'a.png', '````']],
+      ['a shorter run', ['````', '```', 'a.png', '````']],
+      ['a run with text after it', ['```', '``` more', 'a.png', '```']],
+      ['a run indented four spaces', ['```', '    ```', 'a.png', '```']],
+    ])('does not close a fence with %s', (_name, lines) => {
+      expect([...fencedLines([...lines, 'after'].join('\n'))]).toEqual([1, 2, 3, 4]);
+    });
+
+    it('opens no backtick fence whose info string holds a backtick', () => {
+      // The last fence line opens a block that never closes, so nothing is held.
+      const text = ['``` a`b', 'a.png', '```', 'prose'].join('\n');
+
+      expect([...fencedLines(text)]).toEqual([]);
+    });
+
+    it('counts a fence indented under a list item when its lines keep the indent', () => {
+      // `src/content/docs/en/tutorial/1-setup/3.mdx:34` in astro-docs, a step's example.
+      const text = [
+        '1. Open the page:',
+        '',
+        '    ```astro',
+        '    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
+        '',
+        '    ```',
+        'after',
+      ];
+
+      expect([...fencedLines(text.join('\n'))]).toEqual([3, 4, 5, 6]);
+    });
+
+    it('holds nothing for a fence that never closes, or an indented one a line steps out of', () => {
+      // Neither is certain to be code: a stray fence line is often a typo, and a line that
+      // leaves the indent is a paragraph if the fence lines are indented code.
+      expect([...fencedLines(['```', 'a.png'].join('\n'))]).toEqual([]);
+      expect([...fencedLines(['    ```', 'a.png', '    ```'].join('\n'))]).toEqual([]);
+    });
+
+    it('reads a file with CR LF line endings', () => {
+      expect([...fencedLines('```\r\na.png\r\n```\r\n')]).toEqual([1, 2, 3]);
     });
   });
 

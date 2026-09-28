@@ -36,7 +36,7 @@ import {
 } from 'upfly-core';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
-import { type Triaged, triage } from './triage.js';
+import { type Triaged, fencedLines, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
@@ -504,6 +504,8 @@ async function falseNegativeSweep(
     if (text.length > 2_000_000) continue;
 
     pattern.lastIndex = 0;
+    // Read once a file has a hit, since most have none.
+    let fenced: ReadonlySet<number> | undefined;
     let match = pattern.exec(text);
     while (match !== null) {
       const token = match[0].toLowerCase();
@@ -512,13 +514,16 @@ async function falseNegativeSweep(
         if (linked.has(`${absolute}\u0000${absolute}`)) continue;
         if (linked.has(`${file}\u0000${absolute}`)) continue;
 
+        const line = lineOf(text, match.index);
+        fenced ??= fencedLines(text);
         unaccounted.push(
           triage(
             {
               asset,
               file: relative(root, file).replaceAll('\\', '/'),
-              line: lineOf(text, match.index),
+              line,
               text: lineText(text, match.index),
+              fenced: fenced.has(line),
             },
             claimed,
           ),

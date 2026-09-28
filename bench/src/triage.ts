@@ -18,6 +18,11 @@ export interface Hit {
   readonly file: string;
   readonly line: number;
   readonly text: string;
+  /**
+   * Whether a fenced code block holds the line (`fencedLines`). In Markdown that makes it an
+   * example shown to a reader; outside a fence the same line is live.
+   */
+  readonly fenced: boolean;
 }
 
 export interface Triaged extends Hit {
@@ -87,12 +92,88 @@ function explain(
     return 'a filename inside a sentence, not a reference';
   }
 
-  // A documentation example being shown to a reader rather than run. A heading is not one.
-  if (MARKDOWN.has(extension) && /^\s*(?:import\b|<|\||\$|npm\b|npx\b|pnpm\b)/.test(hit.text)) {
+  // A documentation example being shown to a reader rather than run, which only a fence
+  // makes it: outside one, raw HTML, a table row and an MDX import are all live. A heading
+  // is not one.
+  if (
+    MARKDOWN.has(extension) &&
+    hit.fenced &&
+    /^\s*(?:import\b|<|\||\$|npm\b|npx\b|pnpm\b)/.test(hit.text)
+  ) {
     return 'inside a documentation example, not a live reference';
   }
 
   return null;
+}
+
+/**
+ * The 1-based numbers of the lines that a Markdown file's fenced code blocks hold, their
+ * fence lines included.
+ *
+ * Read here rather than taken from the engine, so a masking mistake there cannot hide the
+ * reference it misses. A line counts only when a fence certainly holds it, so a fence that
+ * never closes holds nothing and its lines go to a person. A fence indented four spaces or
+ * more, as one under a list item is, counts only when a closing line follows beside its
+ * indent and every line between is blank or indented as far: read as indented code
+ * instead, those lines are code as well.
+ * https://spec.commonmark.org/0.31.2/#fenced-code-blocks
+ */
+export function fencedLines(text: string): ReadonlySet<number> {
+  const lines = text
+    .split('\n')
+    .map((written) => (written.endsWith('\r') ? written.slice(0, -1) : written));
+  const fenced = new Set<number>();
+  let index = 0;
+  while (index < lines.length) {
+    const opener = fenceLine(lines[index] ?? '');
+    const last = opener === null ? -1 : closingIndex(lines, index, opener);
+    if (last === -1) {
+      index += 1;
+      continue;
+    }
+    for (let number = index + 1; number <= last + 1; number += 1) fenced.add(number);
+    index = last + 1;
+  }
+  return fenced;
+}
+
+/** A line of three or more backticks or tildes: its indent, the run, and what follows it. */
+interface FenceLine {
+  readonly indent: number;
+  readonly run: string;
+  readonly info: string;
+}
+
+function fenceLine(line: string): FenceLine | null {
+  const match = /^( *)(`{3,}|~{3,})(.*)$/.exec(line);
+  if (match === null) return null;
+  const [, spaces = '', run = '', info = ''] = match;
+  // A backtick fence's info string may not hold a backtick: such a line is inline code.
+  if (run.startsWith('`') && info.includes('`')) return null;
+  return { indent: spaces.length, run, info };
+}
+
+/**
+ * The index of the line that closes the fence opened at `start`: the same character, a run
+ * at least as long and nothing after it. -1 when no line certainly does.
+ */
+function closingIndex(lines: readonly string[], start: number, opener: FenceLine): number {
+  const nested = opener.indent > 3;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const fence = fenceLine(line);
+    const closes =
+      fence !== null &&
+      fence.run[0] === opener.run[0] &&
+      fence.run.length >= opener.run.length &&
+      fence.info.trim() === '' &&
+      (nested ? Math.abs(fence.indent - opener.indent) <= 3 : fence.indent <= 3);
+    if (closes) return index;
+    if (nested && line.trim() !== '' && line.length - line.trimStart().length < opener.indent) {
+      return -1;
+    }
+  }
+  return -1;
 }
 
 /**
