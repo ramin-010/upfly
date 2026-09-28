@@ -120,10 +120,43 @@ describe('the script itself', () => {
     return repo;
   }
 
-  function run(repo: string) {
-    const result = spawnSync(process.execPath, [SCRIPT, '--root', repo], { encoding: 'utf8' });
+  function run(repo: string, ...extra: string[]) {
+    const result = spawnSync(process.execPath, [SCRIPT, '--root', repo, ...extra], {
+      encoding: 'utf8',
+    });
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   }
+
+  it('proves a field removed on purpose, and still fails anything else', () => {
+    const repo = repository();
+    const pruned = {
+      ...key(),
+      shapes: key().shapes.map(({ id, label, motivation }) => ({ id, label, motivation })),
+    };
+    writeFileSync(join(repo, KEY_FILE), JSON.stringify(pruned, null, 2));
+
+    const unasked = run(repo);
+    expect(unasked.status).toBe(1);
+    expect(unasked.output).toContain('fields differ');
+
+    const asked = run(repo, '--drop', 'shapes.*.spec');
+    expect(asked.status).toBe(0);
+    expect(asked.output).toContain('Removed as asked: shapes.*.spec 1.');
+    expect(asked.output).toContain('Every entry and every other field is identical.');
+
+    const relabelled = { ...pruned, shapes: [{ ...pruned.shapes[0], label: 'img src' }] };
+    writeFileSync(join(repo, KEY_FILE), JSON.stringify(relabelled, null, 2));
+    const alsoChanged = run(repo, '--drop', 'shapes.*.spec');
+    expect(alsoChanged.status).toBe(1);
+    expect(alsoChanged.output).toContain('shapes.0.label: "img@src" became "img src"');
+  });
+
+  it('fails a --drop that names no field', () => {
+    const repo = repository();
+    const result = run(repo, '--drop', 'shapes.*.nothing');
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('--drop shapes.*.nothing names no field in HEAD');
+  });
 
   it('passes reworded prose and fails a changed outcome', () => {
     const repo = repository();

@@ -6,8 +6,10 @@
  * identical, in the same order. Prose fields may be reworded but not added or removed, because
  * the key check reads their presence (a `knownGap`, an `absent` reason).
  *
- * Usage: `node tools/key-diff.mjs [--base <rev>] [--head <rev>] [--root <dir>]`. Without
- * `--head` the working tree is compared with `--base`, which defaults to `HEAD`.
+ * Usage: `node tools/key-diff.mjs [--base <rev>] [--head <rev>] [--root <dir>] [--drop <field>]`.
+ * Without `--head` the working tree is compared with `--base`, which defaults to `HEAD`.
+ * `--drop` (repeatable, a path with `*` for any index or key) proves a field was removed on
+ * purpose: it is deleted from the base before comparing, and counted.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -59,6 +61,42 @@ export function compareKeys(before, after) {
   compareEntries(before, after, problems);
   walk(before, after, [], problems, prose);
   return { problems, prose };
+}
+
+/**
+ * Deletes every field `pattern` names from `key`, in place, and counts the deletions.
+ *
+ * @param {Json} key
+ * @param {string} pattern a path such as `shapes.*.spec`, `*` standing for any array index or
+ *   object key before the last part, which names the field itself
+ * @returns {number}
+ */
+export function dropField(key, pattern) {
+  const parts = pattern.split('.');
+  const field = parts.pop() ?? '';
+  let count = 0;
+  /** @param {Json} node @param {number} depth */
+  const visit = (node, depth) => {
+    if (depth === parts.length) {
+      if (isObject(node) && Object.hasOwn(node, field)) {
+        delete node[field];
+        count += 1;
+      }
+      return;
+    }
+    const part = parts[depth];
+    if (isObject(node)) {
+      for (const [name, child] of Object.entries(node)) {
+        if (part === '*' || part === name) visit(child, depth + 1);
+      }
+    } else if (Array.isArray(node)) {
+      node.forEach((child, index) => {
+        if (part === '*' || part === String(index)) visit(child, depth + 1);
+      });
+    }
+  };
+  visit(key, 0);
+  return count;
 }
 
 /**
@@ -188,10 +226,10 @@ function fieldName(at) {
 }
 
 /**
- * @param {{ root: string, base: string, head: string | null }} options
+ * @param {{ root: string, base: string, head: string | null, drop?: readonly string[] }} options
  * @returns {{ exitCode: number, output: string }}
  */
-export function run({ root, base, head }) {
+export function run({ root, base, head, drop = [] }) {
   const git = (/** @type {string[]} */ args) =>
     execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const before = JSON.parse(git(['show', `${base}:${KEY_FILE}`]));
@@ -200,12 +238,21 @@ export function run({ root, base, head }) {
       ? readFileSync(path.join(root, KEY_FILE), 'utf8')
       : git(['show', `${head}:${KEY_FILE}`]),
   );
+  const dropped = drop.map((pattern) => ({ pattern, count: dropField(before, pattern) }));
   const { problems, prose } = compareKeys(before, after);
+  for (const { pattern, count } of dropped) {
+    if (count === 0) problems.push(`--drop ${pattern} names no field in ${base}`);
+  }
   /** @type {Record<string, number>} */
   const changed = {};
   for (const { field } of prose) changed[field] = (changed[field] ?? 0) + 1;
   const lines = [
     `Key diff: ${base} to ${head ?? 'the working tree'}, ${entryKeys(before).length} entries matched on path, raw, occurrence and shape.`,
+    ...(dropped.length === 0
+      ? []
+      : [
+          `Removed as asked: ${dropped.map(({ pattern, count }) => `${pattern} ${count}`).join(', ')}.`,
+        ]),
     `Prose changed: ${
       Object.entries(changed)
         .map(([field, n]) => `${field} ${n}`)
@@ -227,22 +274,25 @@ function total(counts) {
 
 /**
  * @param {readonly string[]} argv
- * @returns {{ root: string, base: string, head: string | null } | string}
+ * @returns {{ root: string, base: string, head: string | null, drop: string[] } | string}
  */
 export function parseArgs(argv) {
   let root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   let base = 'HEAD';
   /** @type {string | null} */
   let head = null;
+  /** @type {string[]} */
+  const drop = [];
   for (let i = 0; i < argv.length; i += 2) {
     const [arg, value] = [argv[i], argv[i + 1]];
     if (value === undefined) return `${arg} needs a value`;
     if (arg === '--base') base = value;
     else if (arg === '--head') head = value;
     else if (arg === '--root') root = path.resolve(value);
+    else if (arg === '--drop') drop.push(value);
     else return `unknown argument: ${arg}`;
   }
-  return { root, base, head };
+  return { root, base, head, drop };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
