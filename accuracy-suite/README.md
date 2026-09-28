@@ -1,173 +1,168 @@
-# The coverage tree
+# The accuracy suite
 
-A small repository where **the exact answer is known in advance** — every image, every
-reference to it, and **what outcome the engine should produce for each reference**.
-
-Built to [`notes/10-coverage-tree-spec.md`](../../notes/10-coverage-tree-spec.md), ruled as
-**R75** in `notes/05-build-plan.md` §5.
-
-```
-node tools/check-key.mjs              # does the key still describe the tree?
-node tools/check-key.mjs --strict     # ...and are there no unanswered questions? (passes)
-node tools/prove-can-fail.mjs         # is that check capable of failing at all?
-node tools/scan-occurrences.mjs       # authoring aid: every asset-shaped token, with positions
-node tools/stamp-positions.mjs        # refill derived offsets — READ THE DIFF, see below
-```
-
-## 🔴 Its output is a coverage matrix. It is never a score.
-
-Per reference shape, never per repository and never in total:
+A small repository whose answers are known in advance: every image in it, every reference to
+each image, and the outcome the engine should produce for each reference. Each expected answer
+was written down before the engine ran. The positions (byte offset, line, column) are stamped by
+a tool; the answers are not.
 
 ```
-img@srcset, w descriptors        8 of  9   ✗
-url() double-quoted             11 of 11   ✓
-a reference inside .vue          0 of  8   ✗  no reader
+pnpm accuracy:measure    # build, run the engine over tree/ twice, print the matrix
+pnpm accuracy:check      # does the key still describe the tree, with no open questions?
+pnpm accuracy:prove      # can that check fail? 18 damages, each must turn it red
+node accuracy-suite/tools/scan-occurrences.mjs   # authoring aid: every asset-shaped token
+node accuracy-suite/tools/stamp-positions.mjs    # refill derived positions; read its diff
 ```
 
-**There is no total, no percentage and no overall row**, and it must stay impossible to build
-one. That is not a stylistic preference — it is the property that stops a figure from this
-tree escaping into a README. A shape row names *where to add an adapter next* and catches a
-regression that drops `srcset` from 9 to 5; a single number does neither and invites misuse.
+## Its output is a matrix, never a score
 
-## 🔴 It does not replace the real repositories
+One row per reference shape, never per repository and never in total. From a run of
+`pnpm accuracy:measure` (the direction column cut where marked):
+
+```
+shape                          met/ exp  miss threw  gap stale  n/x  direction
+css.url.double                   7/   7     0    0    0    0    0
+html.img.srcset.w                8/   8     0    0    0    0    0
+unread.vue                       0/   8     0    0    8    0    0  gap [...]
+```
+
+There is no total, no percentage and no overall row, and it must stay impossible to build one:
+that is what stops a figure from this suite escaping into a claim about real projects. A row says
+where to add a reader next, and catches a regression that drops `srcset` from 8 to 5; a single
+number does neither.
+
+The rows fall into four populations, read separately and never added together: `claimed` (417
+entries in 69 rows, found against expected: the only population where a miss is a bug),
+`declined` (83 in 17: text that is not a live path, so claiming nothing is right), `unclaimed`
+(15 in 4: real files Upfly chooses not to index) and `gap` (47 in 8: constructs nothing reads
+yet, each with its reason in `knownGap`). The engine runs twice, once with the suite's stated
+configuration and once with none, and each run reports "claimed N of N" over every claimed entry.
+
+## It does not replace real repositories
 
 | instrument | the question it answers |
 |---|---|
-| **this tree** | *how well do we handle the shapes we KNOW about?* — exactly |
-| **real repositories** | *what shapes exist that nobody imagined?* — the only source of new ones |
+| this suite | how well does the engine handle the shapes we know about? Exactly. |
+| real repositories | what shapes exist that nobody imagined? The only source of new ones. |
 
-Every serious defect in this project came from the second: R26's spaced filenames, R49's
-twelve public directories, R72's reference in an unread file type. **A tree we build can only
-contain what somebody thought of.** Every shape in here is traceable to something that has
-already gone wrong, which is the most it can be.
+The serious defects in this project came from the second: filenames with spaces, a project with
+twelve public directories, a reference in a file type nothing read. A suite built by hand can
+only contain what somebody thought of; every shape in it can be traced to something that already
+went wrong.
 
 ## Layout
 
 ```
-coverage-tree/
-  key/coverage-key.json      THE ANSWER KEY — shapes, assets, and 432 references
-  tools/check-key.mjs        the self-check. Plain text and path arithmetic, nothing else
-  tools/prove-can-fail.mjs   18 deliberate mutations, each asserted to turn the check red
-  tools/stamp-positions.mjs  fills derived offsets; never touches an `expect`
-  tools/scan-occurrences.mjs authoring aid
-  tree/                      ← the repository under test. ONLY this is ever scanned
+accuracy-suite/
+  key/coverage-key.json       the answer key: 101 shapes, 80 assets, 562 references in 137 files
+  tools/check-key.mjs         the self-check: plain text and path arithmetic, no engine
+  tools/prove-can-fail.mjs    18 deliberate damages, each asserted to turn the check red
+  tools/measure.mjs           the engine over tree/, run twice, rendered as the matrix
+  tools/matrix.mjs, .d.mts    the matrix, and its types
+  tools/stamp-positions.mjs   fills derived positions; never touches an `expect`
+  tools/scan-occurrences.mjs  authoring aid
+  tree/                       the repository under test; only this is ever scanned
 ```
 
-**The key and the tools live OUTSIDE `tree/` on purpose.** The key contains every path string
-in the tree; if it sat inside, the engine would scan it and the answer key would become part
-of the answer.
+The key and the tools live outside `tree/` on purpose: the key holds every path string in the
+tree, so inside it the engine would scan the key and the answers would become part of the
+question.
 
 ### Inside `tree/`
 
 ```
-apps/web/       serving root #1 — apps/web/public
-apps/docs/      serving root #2 — apps/docs/public
-sites/root-served/   serving root #3 — the site's OWN directory (R63)
-legacy/         serving root #4 — legacy/public, with all its source in unread file types
-docs-examples/  🔴 a public/ that is NOT a serving root
-shared/         the alias target for ~/* and @img/*
+apps/web/              serving root apps/web/public
+apps/docs/             serving root apps/docs/public
+sites/root-served/     serving root: the site's own directory
+legacy/                serving root legacy/public, its sources in file types nothing reads
+sites/vitepress-docs/  serving root sites/vitepress-docs/docs/public
+docs-examples/         a public/ that is not a serving root
+shared/                the alias target for ~/* and @img/*
+sites/kit-app/, sites/nuxt-app/, sites/vue-app/   aliases through generated and real configs
 ```
 
-372 files, of which **270 are ordinary and reference-free** — so referenced files are a
-minority the way they are in real code (§4k.5). The filler averages ~2 KB per file rather
-than being stubs, because R19's warning is about **bytes**, not file count: `bench/`'s
-generator once had real code's file count with a thirtieth of its bytes and inverted two
-measured conclusions.
+505 files: 427 text and 78 binary. 290 of the text files are ordinary and hold no asset-shaped
+token, so referenced files are a minority, as they are in real code. The filler averages about
+1.9 KB a file rather than being stubs, because what distorts a measurement is bytes, not file
+count: a generated tree with real code's file count and a thirtieth of its bytes once inverted
+two measured conclusions.
 
-## `expect` is the IDEAL outcome, not today's behaviour
+## `expect` is the ideal outcome, not today's behaviour
 
-The seven outcomes are the engine's own. `expect` records **what a correct engine should
-produce**, independently of what this one does — so a `.vue` reference expects to be *found*,
-which is the only way the matrix can say **"0 of 8, no reader"** out loud instead of silently
-reporting nothing. Where today's engine is known to differ, `knownGap` says so and names the
-ruling (50 entries carry one).
+The outcomes are the engine's own. `expect` records what a correct engine should produce,
+independently of what this one does, so a `.vue` reference expects to be found, which is the only
+way the matrix can say "0 of 8, no reader" out loud instead of reporting nothing. Where today's
+engine is known to differ, `knownGap` says why (47 entries carry one).
 
-`discarded` means **"must not be treated as a live reference."** The spec used one word for
-two engine behaviours — a `url()` inside a comment is probably never collected at all, rather
-than collected and marked `discarded` — and the measuring harness accepts either. It must not
-accept resolved, broken, or rewritten. This is written down in the key's `expectSemantics`.
+`discarded` means "must not be treated as a live reference". A `url()` inside a comment is
+probably never collected at all rather than collected and marked `discarded`, and the harness
+accepts either; it must not accept resolved, broken or rewritten. The key's `expectSemantics`
+writes this down.
 
-**`UNDECIDED` is a first-class value and there are currently none.** Fourteen entries carried
-it until R78 ruled all five open questions on 2026-09-13; each now records the ruled outcome
-and, where today's engine will not produce it, a `knownGap` naming why. The value stays in the
-vocabulary because the next shape added from a real repository will need it: a wrong `expect`
-is worse than a missing one, since it makes a correct engine look broken or a broken one look
-correct. `--strict` fails on any that appear.
+`UNDECIDED` is a value the key allows, and none is used today. The next shape added from a real
+repository may need it: a wrong `expect` is worse than a missing one, since it makes a correct
+engine look broken or a broken one look correct. `--strict` fails on any that appear.
 
-## 🔴 The tree is read-only ground truth
+## The tree is read-only ground truth
 
-Any test that writes works on a **copy**. An `optimize --apply` run against the tree would
-change the files and silently invalidate the key — the hazard R52 guards for the pinned
-validation corpus. `prove-can-fail.mjs` already does this correctly: every mutation is applied
-to a copy in the system temp directory, and the real tree is never written to.
+Any test that writes works on a copy. An `optimize --apply` run against the tree would change the
+files and silently invalidate the key. `prove-can-fail.mjs` applies every damage to a copy in the
+system's temporary directory; the real tree is never written to.
 
-`.gitattributes` sets `* -text` for this whole directory. The key records **byte offsets**,
-and a line-ending conversion on checkout would shift every one of them — the self-check would
-then blame the tree for something git did on the way out of the object store.
+`.gitattributes` sets `* -text` for this whole directory. The key records byte offsets, and a
+line-ending conversion on checkout would shift every one of them; the self-check would then blame
+the tree for something git did.
 
-🔴 **A FORMATTER IS THE SAME HAZARD WEARING A DIFFERENT NAME. Never run
-`biome check --write` (or any formatter) over `tree/`.** It would normalise the quoting,
-re-indent the markup and tidy the deliberately malformed references — and those are not
-untidiness, they are the fixture's entire value. `url(/img/texture.png)` unquoted and
-`url('/img/photo.jpg')` quoted are two different shapes on purpose; a formatter makes them
-one and the row silently stops measuring anything. Byte offsets would shift with them.
+A formatter is the same hazard: never run `biome check --write`, or any formatter, over `tree/`
+or `key/`. It would normalise quoting, re-indent markup and tidy the deliberately malformed
+references, which are the fixture's whole value: `url(/img/texture.png)` unquoted and
+`url('/img/photo.jpg')` quoted are two shapes on purpose. `biome.json` therefore ignores `tree/`
+and `key/`, as it does `fixtures/`; `tools/` stays linted, because it is code this project runs.
 
-`biome.json` therefore ignores `tree/` and `key/` — fixture content and a generated file, the
-same category as `fixtures/`. ✅ **`tools/` stays linted**, because those four scripts are code
-this project runs. That split is **R81**, ruled 2026-09-14 after the tree's first push turned
-all six CI check cells red on 214 lint errors.
+## The weakest seam: the stamper
 
-## The weakest seam, named rather than hidden
+`stamp-positions.mjs` can turn a red check green without anybody re-reading what changed. Someone
+edits the tree, the self-check goes red, they re-run the stamper, and it goes green, and the key
+now describes a tree nobody re-examined.
 
-**`stamp-positions.mjs` can turn a red check green without anybody re-reading what changed.**
+Three things hold against it, and none is a guarantee:
 
-Somebody edits the tree, the self-check goes red, they re-run the stamper, and it goes green —
-and the key now describes a tree nobody re-examined. That is a drifted key wearing a passing
-check, which is precisely what R75 says a key does if you let it.
+1. The stamper prints every change it makes. Read the diff.
+2. It only ever moves positions. It cannot invent a reference, change an `expect` or add a shape.
+3. A new or deleted reference does not stamp away: it fails as an unaccounted occurrence or a
+   missing `raw`, and the stamper refuses to write.
 
-Three things hold against it, and none of them is a guarantee:
-
-1. The stamper **prints every change it makes** and says so loudly. Read the diff.
-2. It **only ever moves positions**. It cannot invent a reference, change an `expect`, or add
-   a shape — those fields are hand-written and stay hand-written.
-3. A *new or deleted* reference does not stamp away. It fails as an unaccounted occurrence or
-   a missing raw, and the stamper refuses to write at all.
-
-**What survives all three:** an existing reference whose `raw` was edited into a different but
-still-present string. The stamper will happily re-point it. If a `raw` moved by more than
-whitespace, the key needed a person.
+What survives all three: an existing reference whose `raw` was edited into a different string
+that is still present. The stamper re-points it. If a `raw` moved by more than whitespace, the
+key needs a person.
 
 ## How the key is maintained
 
-The JSON **is** the artifact and is edited by hand. It was bootstrapped from a one-shot
-authoring script, which was not kept: a second source of truth beside the key is a second
-thing to drift.
+The JSON is the artifact, written directly and never generated: a second source of truth beside
+it would be a second thing to drift. An entry sits under its file's group with `raw`,
+`occurrence`, `shape`, `expect`, `target` where it has one, and `why`. Adding one: write the
+entry, run `stamp-positions.mjs`, then `pnpm accuracy:check`.
 
-Adding a reference: add the entry with `file`, `raw`, `occurrence`, `shape`, `expect`,
-`target`, `why` — then `stamp-positions.mjs`, then `check-key.mjs`.
-
-`occurrence` is the **nth literal occurrence of that exact `raw` string in that file**, and it
-need not start at 1. When a raw is a substring of a longer path earlier in the file —
-`/img/avatar.png` inside `../../public/img/avatar.png`, `logo.png` inside four longer paths —
-the first standalone occurrence is legitimately number 3 or 5. Getting this one too low
-stamps a reference *inside* another one, where every other check still passes; the overlap
-rule exists for exactly that and caught it twice while this was being built.
+`occurrence` is the nth literal occurrence of that exact `raw` string in that file, and it need
+not start at 1. When a `raw` is a substring of a longer path earlier in the file
+(`/img/avatar.png` inside `../../public/img/avatar.png`, `logo.png` inside four longer paths),
+the first standalone occurrence is legitimately number 3 or 5. Getting it too low stamps a
+reference inside another one, where every other check still passes; the overlap rule exists for
+exactly that.
 
 ## What the self-check does not check
 
 Stated plainly, because a check whose limits are unstated is read as a guarantee:
 
-- **Only asset extensions are scanned.** A reference to a `.css` or `.ts` file added without
-  a key entry would not be caught. Six such references *are* keyed by hand, which the checker accepts because it verifies any listed raw at its offset whether or not the scan can see it.
-- **A token whose path is split by syntax is found short.** `/gallery/hero image.png` matches
-  as `image.png`, and `` `/theme-${mode}.png` `` as `.png`. Both are accounted for by
-  containment within the listed reference's span, which is correct but is a weaker statement
-  than an exact match.
-- **A path with no asset extension is invisible to it** — a directory reference, or an
-  extensionless URL.
-- **It says nothing about whether an `expect` is right.** It proves the key describes the
-  tree. Whether the tree's answers are the correct ones is a human judgement, and 14 of them
-  are openly marked as not yet made.
+- Only asset extensions are scanned. A reference to a `.css` or `.ts` file added without a key
+  entry would not be caught. 37 entries hold no asset-shaped token; the checker accepts them
+  because it verifies any listed `raw` at its offset whether or not the scan can see it.
+- A token whose path is split by syntax is found short. `/gallery/hero image.png` matches as
+  `image.png`, and `` `/theme-${mode}.png` `` as `.png`. Both are accounted for by containment
+  within the listed reference's span, which is correct but weaker than an exact match.
+- A path with no asset extension is invisible to it: a directory reference, or an extensionless
+  URL.
+- It says nothing about whether an `expect` is right. It proves the key describes the tree;
+  whether the tree's answers are the correct ones is a person's judgement.
 
 ## Measuring the engine against the tree
 
