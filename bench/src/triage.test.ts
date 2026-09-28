@@ -17,7 +17,6 @@ function hit(file: string, text: string, asset: string, line = 1): Hit {
   return { asset, file, line, text, fenced: false };
 }
 
-/** A hit on a line that a fenced code block holds. */
 function fencedHit(file: string, text: string, asset: string): Hit {
   return { ...hit(file, text, asset), fenced: true };
 }

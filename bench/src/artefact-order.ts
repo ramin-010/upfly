@@ -6,7 +6,6 @@
 import { compareStrings } from 'upfly-core';
 import type { Triaged } from './triage.js';
 
-/** Hits by file, then line, then asset. */
 export function byFileLineAsset(a: Triaged, b: Triaged): number {
   return compareStrings(a.file, b.file) || a.line - b.line || compareStrings(a.asset, b.asset);
 }

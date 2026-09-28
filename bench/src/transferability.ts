@@ -1,6 +1,6 @@
 /**
- * Lists the shapes that references in the validation repositories carry and the coverage
- * tree has no instance of: the tree's growth list, taken from real code.
+ * Lists the shapes that references in the validation repositories carry and the accuracy
+ * suite has no instance of: the suite's growth list, taken from real code.
  *
  * It does not measure how far the tree's results hold on real repositories. A reference can
  * only carry a shape the engine declares, and the engine's vocabulary is kept equal to the

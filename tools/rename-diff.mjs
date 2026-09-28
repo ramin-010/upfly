@@ -17,8 +17,8 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Whether `after` is `before` with the old folder name replaced by the new one wherever it is
- * a whole path segment: `'coverage-tree/key'` and `'../coverage-tree'` change, while
- * `coverage-tree:check` and `10-coverage-tree-spec.md` must stay as they are.
+ * a whole path segment: `'old-name/key'` and `'../old-name'` change, while `old-name:check`
+ * and `10-old-name-spec.md` must stay as they are.
  *
  * @param {string} before
  * @param {string} after

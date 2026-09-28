@@ -11,7 +11,7 @@ describe('the order the validation artefacts are written in', () => {
   const english = new Intl.Collator('en');
   const swedish = new Intl.Collator('sv', { caseFirst: 'upper' });
 
-  /** `items` sorted with every text comparison the runtime makes decided by `collator`. */
+  /** `items` sorted with every `localeCompare` call decided by `collator`. */
   function sortedUnder<T>(
     collator: Intl.Collator,
     items: readonly T[],

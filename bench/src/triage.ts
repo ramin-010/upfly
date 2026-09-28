@@ -42,7 +42,7 @@ const MARKDOWN = new Set(['.md', '.mdx', '.markdown']);
  * The names are the engine's own candidates (`imageFilenameCandidates`), so every name the
  * scan and the mention sweep can spell, one holding spaces or parentheses included, is
  * searched for here too. A pattern of its own would make this pass blind to exactly the
- * names those passes were fixed to read.
+ * names holding spaces or parentheses that those passes read.
  *
  * @param file POSIX-relative, as a hit reports it.
  * @param assetsNamed The assets a lowercased filename could be. The sweep leaves out those
