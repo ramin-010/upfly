@@ -825,7 +825,10 @@ and before the claims it was reported dead while the site used it. Both referenc
 asset and are never rewritten: the sites that fetch previews may not read a converted format, and a
 person following a link expects the format it names. A plain Markdown link, `[text](path)`, is the
 same thing written in Markdown, so it has its own shape, `md.link`, with the same rule, while an
-embed, `![alt](path)`, stays `md.image` and is repointed. The rule lives on the shape, as
+embed, `![alt](path)`, stays `md.image` and is repointed. A link definition, `[label]: path`, is
+repointed only when images alone use it: one that a plain reference link uses (`[text][label]`,
+`[label][]` or `[label]`) is `md.reference-definition.link`, with the link's rule, even where an
+image shares it. The rule lives on the shape, as
 `formatKept` in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what
 it does there. Because the shape carries the rule, it survives where another shape would otherwise take
 over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the

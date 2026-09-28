@@ -388,6 +388,11 @@
       "motivation": "Where a reference-style link actually keeps its path."
     },
     {
+      "id": "md.reference-definition.link",
+      "label": "[label]: path, used by a link",
+      "motivation": "A definition a plain link uses hands over the file itself, as the link does: linked, and never rewritten."
+    },
+    {
       "id": "md.raw-html",
       "label": "raw HTML inside markdown",
       "motivation": "Markdown hands it through untouched, so it is still HTML and still a reference."
@@ -7410,6 +7415,44 @@
           "offset": 150,
           "line": 6,
           "column": 22
+        }
+      ]
+    },
+    {
+      "path": "apps/docs/src/content/guide/download-definition.md",
+      "entries": [
+        {
+          "raw": "/img/hero.jpg",
+          "occurrence": 1,
+          "shape": "md.reference-definition.link",
+          "expect": "resolved",
+          "why": "A definition an image and a full reference link, `[text][hero]`, both use. Following the link hands over the file itself, so the definition is never rewritten, and the photo it names is used: /img/hero.jpg, which exists.",
+          "target": "apps/docs/public/img/hero.jpg",
+          "offset": 349,
+          "line": 16,
+          "column": 9
+        },
+        {
+          "raw": "/img/diagram.png",
+          "occurrence": 1,
+          "shape": "md.reference-definition.link",
+          "expect": "resolved",
+          "why": "A definition an image and a collapsed reference link, `[diagram][]`, both use: never rewritten, and /img/diagram.png, which exists, is used.",
+          "target": "apps/docs/public/img/diagram.png",
+          "offset": 374,
+          "line": 17,
+          "column": 12
+        },
+        {
+          "raw": "/img/avatar.png",
+          "occurrence": 1,
+          "shape": "md.reference-definition.link",
+          "expect": "resolved",
+          "why": "A definition only a shortcut reference link uses, `[avatar]`, whose label matches `[Avatar]` whatever its case: never rewritten, and /img/avatar.png, which exists, is used.",
+          "target": "apps/docs/public/img/avatar.png",
+          "offset": 401,
+          "line": 18,
+          "column": 11
         }
       ]
     },

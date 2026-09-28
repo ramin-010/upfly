@@ -337,6 +337,7 @@ describe('a reference whose shape keeps the format: a link preview, a link to an
       'js.jsx.meta.content.image',
       'js.jsx.a.href.image',
       'md.link',
+      'md.reference-definition.link',
     ]);
   });
 });

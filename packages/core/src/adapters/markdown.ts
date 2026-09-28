@@ -81,7 +81,7 @@ export const markdownAdapter: Adapter = defineAdapter({
     // in the `[label]: x.png` definition, reported once as `md.reference-definition`, so
     // the use site itself (`md.image.reference-style`) emits nothing.
     collectLinks(masked, file, references);
-    collectDefinitions(masked, file, references);
+    collectDefinitions(masked, file, references, labelsLinksUse(masked));
 
     // Markdown permits arbitrary HTML, so the HTML adapter reads the same masked
     // text. Its offsets are absolute, and the masked regions hold no tags.
@@ -454,9 +454,16 @@ function collectLinks(masked: string, file: string, references: RawReference[]):
   }
 }
 
-/** Every `[label]: destination`, a link reference definition. */
-function collectDefinitions(masked: string, file: string, references: RawReference[]): void {
-  DEFINITION_OPENER.lastIndex = 0;
+/**
+ * Every `[label]: destination`, a link reference definition. One whose label a plain link
+ * uses keeps its format, as the link does: following it hands over the file itself.
+ */
+function collectDefinitions(
+  masked: string,
+  file: string,
+  references: RawReference[],
+  linked: ReadonlySet<string>,
+): void {
   for (const match of masked.matchAll(DEFINITION_OPENER)) {
     // The destination may start on the next line. What follows it is not checked, so a
     // definition with a malformed title is still read.
@@ -464,8 +471,48 @@ function collectDefinitions(masked: string, file: string, references: RawReferen
     const destination = readDestination(masked, at);
     if (destination === null) continue;
     const { start, end } = destination;
-    addReference(masked.slice(start, end), start, file, references, 'md.reference-definition');
+    const label = match[0].slice(match[0].indexOf('[') + 1, match[0].lastIndexOf(']'));
+    const shape = linked.has(matchingLabel(label))
+      ? 'md.reference-definition.link'
+      : 'md.reference-definition';
+    addReference(masked.slice(start, end), start, file, references, shape);
   }
+}
+
+/**
+ * The labels plain reference links use: `[text][label]`, `[label][]` and `[label]`. An
+ * image's `![alt][label]` is not a link, the second bracket of a full or collapsed
+ * reference is its label rather than a link of its own, and a definition's `[label]:` is
+ * not a use.
+ */
+function labelsLinksUse(masked: string): ReadonlySet<string> {
+  const definitions = new Set(
+    [...masked.matchAll(DEFINITION_OPENER)].map(
+      (match) => (match.index ?? 0) + match[0].indexOf('['),
+    ),
+  );
+  const pairs = pairBrackets(masked);
+  const labelBrackets = new Set<number>();
+  const used = new Set<string>();
+  for (const [open, close] of [...pairs].sort((a, b) => a[0] - b[0])) {
+    if (labelBrackets.has(open) || definitions.has(open)) continue;
+    const image = masked.charAt(open - 1) === '!' && masked.charAt(open - 2) !== '\\';
+    const next = masked.charAt(close + 1);
+    if (next === '(') continue;
+    const labelClose = next === '[' ? pairs.get(close + 1) : undefined;
+    const label =
+      labelClose === undefined
+        ? masked.slice(open + 1, close)
+        : masked.slice(close + 2, labelClose) || masked.slice(open + 1, close);
+    if (labelClose !== undefined) labelBrackets.add(close + 1);
+    if (!image) used.add(matchingLabel(label));
+  }
+  return used;
+}
+
+/** A label as a reference matches it: letter case and runs of whitespace do not count. */
+function matchingLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**

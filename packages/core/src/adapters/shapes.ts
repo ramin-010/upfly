@@ -425,6 +425,16 @@ export const SHAPES = [
   },
   { id: 'md.reference-definition', label: '[label]: path', emission: 'engine' },
   {
+    id: 'md.reference-definition.link',
+    label: '[label]: path, used by a link',
+    emission: 'engine',
+    formatKept: LINK_FORMAT_KEPT,
+    why:
+      'A link definition that a plain reference link uses, written `[text][label]`, ' +
+      '`[label][]` or `[label]`. Following the link hands over the file itself, as `md.link` ' +
+      'does, so the definition is linked and never repointed, even where an image uses it too.',
+  },
+  {
     id: 'md.raw-html',
     label: 'raw HTML inside markdown',
     emission: 'engine',

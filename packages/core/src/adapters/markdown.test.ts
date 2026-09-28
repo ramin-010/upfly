@@ -606,6 +606,35 @@ describe('markdownAdapter', () => {
   });
 });
 
+describe('a link definition a plain link uses', () => {
+  const shapeOf = (text: string) =>
+    find(text).map((reference) => [reference.rawPath, reference.shape]);
+
+  it('keeps its format however the link is written, and whatever the label case', () => {
+    const text = [
+      '![Hero][hero] and [the full picture][hero].',
+      '![Diagram][diagram] and [diagram][].',
+      'The [avatar] too.',
+      '',
+      '[hero]: /img/hero.png',
+      '[diagram]: /img/diagram.png',
+      '[Avatar]: /img/avatar.png',
+    ].join('\n');
+
+    expect(shapeOf(text)).toEqual([
+      ['/img/hero.png', 'md.reference-definition.link'],
+      ['/img/diagram.png', 'md.reference-definition.link'],
+      ['/img/avatar.png', 'md.reference-definition.link'],
+    ]);
+  });
+
+  it('is rewritable when only images use it, since the label after an image is not a link', () => {
+    const text = ['![Hero][hero] and ![Hero again][hero]', '', '[hero]: /img/hero.png'].join('\n');
+
+    expect(shapeOf(text)).toEqual([['/img/hero.png', 'md.reference-definition']]);
+  });
+});
+
 describe('maskInactiveRegions', () => {
   it('preserves length exactly, so an offset into one indexes the other', () => {
     const text = ['prose `code` more', '', '```js', 'const x = 1;', '```', ''].join('\n');
