@@ -11,6 +11,7 @@
  */
 
 import { isAbsolute, join } from 'node:path';
+import { splitPathSuffix } from './adapters/reference-path.js';
 import type { AliasMap } from './aliases.js';
 import type { AssetNode, Graph } from './graph.js';
 import type { Declined } from './manifest.js';
@@ -413,9 +414,14 @@ function misdirectedConversions(
     assetsAfter(input.graph, repointed.conversions),
     onDisk,
   );
-  const writing = new Map(
-    repointed.conversions.map((conversion) => [conversion.target, conversion]),
-  );
+  const changes: Changes = {
+    writing: new Map(repointed.conversions.map((conversion) => [conversion.target, conversion])),
+    removing: new Map(
+      repointed.conversions
+        .filter((conversion) => conversion.replacesOriginal)
+        .map((conversion) => [conversion.asset, conversion]),
+    ),
+  };
 
   // The first miss for each conversion is named and the rest counted, as the kept-original
   // sentences do, so the reason stays one sentence and names a line to look at.
@@ -438,14 +444,9 @@ function misdirectedConversions(
       }
       continue;
     }
-    // A reference left as written may gain files, as a pattern gains a converted file beside
-    // those it matches, but it must not lose one it leads to now.
     const was = before.get(placeOf(reference)) ?? [];
-    const lost = was.find((path) => !reached.includes(path));
-    if (lost === undefined) continue;
-    for (const path of reached) {
-      const conversion = writing.get(path);
-      if (conversion !== undefined) miss(conversion.asset, reference, captured(lost, path));
+    for (const { conversion, outcome } of movedBy(reference, was, reached, changes)) {
+      miss(conversion.asset, reference, outcome);
     }
   }
 
@@ -458,16 +459,78 @@ function misdirectedConversions(
   return misdirected;
 }
 
+/** The files a plan writes and the originals it removes, each with its conversion. */
+interface Changes {
+  readonly writing: ReadonlyMap<string, PlannedConversion>;
+  readonly removing: ReadonlyMap<string, PlannedConversion>;
+}
+
+/**
+ * The conversions that move a reference the plan leaves as written off a file it leads to
+ * now, each with the sentence saying how. It may gain files, as a pattern gains a converted
+ * file beside those it matches, but must not lose one: to a file the plan writes that is
+ * found first, or because the plan removes the file.
+ */
+function movedBy(
+  reference: Reference,
+  was: readonly string[],
+  reached: readonly string[],
+  changes: Changes,
+): { conversion: PlannedConversion; outcome: string }[] {
+  const lost = was.filter((path) => !reached.includes(path));
+  const [first] = lost;
+  if (first === undefined) return [];
+  const written = reached.flatMap((path) => {
+    const conversion = changes.writing.get(path);
+    return conversion === undefined
+      ? []
+      : [{ conversion, outcome: captured(reference, first, path) }];
+  });
+  const removed = lost.flatMap((path) => {
+    const conversion = changes.removing.get(path);
+    return conversion === undefined
+      ? []
+      : [{ conversion, outcome: gone(reference, path, reached) }];
+  });
+  return [...written, ...removed];
+}
+
 /** What a rewritten reference would do instead of reaching its converted file. */
 function missedRewrite(replacement: string, reached: string | null): string {
   return reached === null
     ? `would become \`${replacement}\`, which names no file Upfly can find, so repointing the reference would break it.`
-    : `would become \`${replacement}\`, which reaches ${reached} first, so the reference would load that file instead. Rename one of the two images and run again.`;
+    : `would become \`${replacement}\`, which reaches ${reached} first${anyCase(replacement, reached)}, so the reference would load that file instead. Rename one of the two images and run again.`;
 }
 
 /** What a reference left as written would do once a converted file is found before its own. */
-function captured(lost: string, converted: string): string {
-  return `reaches ${lost}, and once this image converts it would reach ${converted} first, so the reference would load the converted image instead. Rename one of the two images and run again.`;
+function captured(reference: Reference, lost: string, converted: string): string {
+  return `reaches ${lost}, and once this image converts it would reach ${converted} first${anyCase(reference.rawPath, converted)}, so the reference would load the converted image instead. Rename one of the two images and run again.`;
+}
+
+/** What a reference left as written would do once the file it reaches now is removed. */
+function gone(reference: Reference, lost: string, reached: readonly string[]): string {
+  const [instead] = reached;
+  const reaches = `reaches ${lost}${anyCase(reference.rawPath, lost)}, and converting this image removes it`;
+  return instead === undefined
+    ? `${reaches}, so the reference would break.`
+    : `${reaches}, so the reference would load ${instead} instead. Rename one of the two images and run again.`;
+}
+
+/**
+ * The clause saying why a path reaches a file whose name, or a folder's name, it spells in
+ * another case, and nothing when it spells them as they are. The check finds a file whatever
+ * the case, as the collision check does, so a plan is the same on every platform.
+ */
+function anyCase(text: string, file: string): string {
+  const written = splitPathSuffix(text).path.split('/');
+  const found = file.split('/');
+  for (let back = 1; back <= Math.min(written.length, found.length); back += 1) {
+    const [spelled, named] = [written[written.length - back], found[found.length - back]];
+    if (spelled === named) continue;
+    if (spelled?.toLowerCase() !== named?.toLowerCase()) return '';
+    return ' on Windows and macOS, where a file is found whatever the case of its name';
+  }
+  return '';
 }
 
 /** The files each linked reference leads to, project-relative, keyed by `placeOf`. */
@@ -498,6 +561,9 @@ function leadsTo(
     servingRoots: input.servingRoots,
     ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
     ...(onDisk === undefined ? {} : { unindexed: onDisk }),
+    // Windows and macOS find a file whatever the case of its name. Folded on every platform,
+    // as the collision check folds, so a plan does not depend on where it runs.
+    foldCase: true,
     // The question is where a path leads among these files, which the disk as it stands
     // cannot answer.
     exists: () => false,
@@ -518,33 +584,43 @@ type UnindexedFiles = (absolutePath: string) => string | null;
 /**
  * The files inside the project that the walk did not index, such as those an ignore rule
  * excluded, found by listing each directory on the way to a path rather than by reading any
- * file. Undefined when the caller gave no way to list a directory. A walk image is never
- * answered here: the plan's own list says whether it is still there.
+ * file. Undefined when the caller gave no way to list a directory. A name matches whatever
+ * its case, as the resolver's folded index does. A walk image is never answered here: the
+ * plan's own list says whether it is still there.
  */
 function unindexedFiles(input: PlanInput): UnindexedFiles | undefined {
   const list = input.listDirectory;
   if (list === undefined) return undefined;
 
   const { root } = input.graph;
-  const indexed = new Set(input.graph.assets.map((node) => node.asset.relative));
-  // Many paths share their directories, so each is listed once.
+  const indexed = new Set(input.graph.assets.map((node) => node.asset.relative.toLowerCase()));
+  // Many paths share their directories, so each is listed once, in an order that does not
+  // depend on the filesystem.
   const listings = new Map<string, readonly string[]>();
   const names = (directory: string): readonly string[] => {
-    const known = listings.get(directory) ?? list(directory);
+    const known = listings.get(directory) ?? [...list(directory)].sort(compareStrings);
     listings.set(directory, known);
     return known;
+  };
+  // A folder can hold two names that differ only in case where the filesystem allows it,
+  // so each is followed until one leads to a file.
+  const find = (directory: string, segments: readonly string[]): string | null => {
+    const [segment, ...rest] = segments;
+    if (segment === undefined) {
+      return indexed.has(relativePath(root, directory).toLowerCase()) ? null : directory;
+    }
+    for (const name of names(directory)) {
+      if (name.toLowerCase() !== segment.toLowerCase()) continue;
+      const found = find(join(directory, name), rest);
+      if (found !== null) return found;
+    }
+    return null;
   };
 
   return (path) => {
     const relative = relativePath(root, path);
     const outside = relative === '..' || relative.startsWith('../') || isAbsolute(relative);
-    if (relative === '' || outside || indexed.has(relative)) return null;
-    let directory = root;
-    for (const segment of relative.split('/')) {
-      if (!names(directory).includes(segment)) return null;
-      directory = join(directory, segment);
-    }
-    return directory;
+    return relative === '' || outside ? null : find(root, relative.split('/'));
   };
 }
 

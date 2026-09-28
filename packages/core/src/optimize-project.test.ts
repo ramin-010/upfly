@@ -662,6 +662,58 @@ describe('a reference whose converted name reaches another file first', () => {
     );
   });
 
+  describe('a file whose name differs from the new one only in case', () => {
+    // Windows and macOS find a file whatever the case of its name, so on either a page asking
+    // for /img/logo.webp loads apps/web/public/img/Logo.webp. The plan must not depend on the
+    // platform it runs on, so it counts that file as the one the path reaches everywhere.
+    const page = [
+      'export const App = () => (',
+      '  <>',
+      '    <img src="/img/logo.png" alt="" />',
+      '    <img src="/img/texture.png" alt="" />',
+      '  </>',
+      ');',
+      '',
+    ].join('\n');
+
+    it.each([
+      ['its own name', 'apps/web/public/img/Logo.webp'],
+      ["its folder's name", 'apps/web/public/IMG/logo.webp'],
+    ])(
+      'keeps the page and the original when a nearer file differs only in %s',
+      async (_how, nearer) => {
+        const root = await project({ 'apps/web/src/App.tsx': page });
+        await picture(root, 'public/img/logo.png');
+        await picture(root, 'public/img/texture.png', 'texture.png');
+        await anotherPicture(root, nearer);
+
+        const { optimize } = await optimizeProject({
+          root,
+          declared: TWO_ROOTS,
+          format: 'webp',
+          publicPolicy: 'replace',
+          apply: true,
+        });
+
+        const after = await files(root);
+        expect({
+          page: await readFile(join(root, 'apps/web/src/App.tsx'), 'utf8'),
+          logo: after.filter((path) => path.startsWith('public/img/logo.')),
+          texture: after.filter((path) => path.startsWith('public/img/texture.')),
+        }).toEqual({
+          page: page.replace('/img/texture.png', '/img/texture.webp'),
+          logo: ['public/img/logo.png'],
+          texture: ['public/img/texture.webp'],
+        });
+        expect(optimize.plan.declined).toContainEqual({
+          path: 'public/img/logo.png',
+          line: null,
+          reason: expect.stringContaining(`reaches ${nearer} first`),
+        });
+      },
+    );
+  });
+
   describe('a reference the plan leaves as written', () => {
     // A converted file is new, so a page that goes on naming another image can find it
     // first: in a nearer website folder, or where an alias looks first.

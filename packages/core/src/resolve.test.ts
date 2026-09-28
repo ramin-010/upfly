@@ -1173,6 +1173,39 @@ describe('files outside the assets, for a caller that can find them', () => {
   });
 });
 
+describe('an index that folds case, for a caller asking what Windows and macOS would find', () => {
+  const options = {
+    root: ROOT,
+    assets: [asset('public/IMG/Logo.png'), asset('public/icons/Star.png')],
+    servingRoots: { dirs: ['public'], declared: true },
+    exists: NOTHING_EXISTS,
+  };
+
+  it('finds a file whose name and folder differ from the path only in case', () => {
+    const [folded] = resolveReferences([raw({ rawPath: '/img/logo.png', kind: 'attr' })], {
+      ...options,
+      foldCase: true,
+    });
+    const [exact] = resolveReferences([raw({ rawPath: '/img/logo.png', kind: 'attr' })], options);
+
+    expect(expectResolution(folded, 'resolved').resolvedPath).toBe(
+      join(ROOT, 'public/IMG/Logo.png'),
+    );
+    expect(exact?.resolution).toBe('broken');
+  });
+
+  it('matches a pattern whatever the case', () => {
+    const pattern = raw({ rawPath: '/ICONS/${name}.png', kind: 'attr', ceiling: 'medium' });
+    const [folded] = resolveReferences([pattern], { ...options, foldCase: true });
+    const [exact] = resolveReferences([pattern], options);
+
+    expect(linkedPaths(expectResolution(folded, 'resolved-pattern'))).toEqual([
+      join(ROOT, 'public/icons/Star.png'),
+    ]);
+    expect(exact?.resolution).toBe('dynamic');
+  });
+});
+
 /**
  * A `medium` ceiling on a SCSS or Less path helps only if the glob treats `#{…}` and
  * `@{…}` as holes, as it does `${…}`. Otherwise the path is matched literally, finds

@@ -1522,6 +1522,78 @@ describe('an asset whose converted name a reference would find elsewhere first',
     ]);
   });
 
+  describe('a name that differs only in case', () => {
+    // Windows and macOS find a file whatever the case of its name, so the check does too, on
+    // every platform, as the collision check does.
+    const CASE_BLIND = 'on Windows and macOS, where a file is found whatever the case of its name';
+
+    it('declines it when a nearer image differs from the new name only in case', () => {
+      const plan = planOptimization(
+        input({
+          assets: [asset('apps/web/public/img/Logo.webp'), asset('public/img/logo.png')],
+          references: [url(PAGE, '/img/logo.png', 'public/img/logo.png')],
+          servingRoots: TWO_ROOTS,
+          publicPolicy: 'replace',
+        }),
+      );
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.declined).toEqual([
+        {
+          path: 'public/img/logo.png',
+          line: null,
+          reason: `\`/img/logo.png\` in \`apps/web/src/App.tsx\` would become \`/img/logo.webp\`, which reaches apps/web/public/img/Logo.webp first ${CASE_BLIND}, so the reference would load that file instead. Rename one of the two images and run again.`,
+        },
+      ]);
+    });
+
+    it('declines it when a listing finds a nearer file in a folder named in another case', () => {
+      const listings = new Map([
+        [ROOT, ['apps']],
+        [join(ROOT, 'apps'), ['web']],
+        [join(ROOT, 'apps/web'), ['public']],
+        [join(ROOT, 'apps/web/public'), ['IMG']],
+        [join(ROOT, 'apps/web/public/IMG'), ['logo.webp']],
+      ]);
+      const plan = planOptimization(
+        input({
+          assets: [asset('public/img/logo.png')],
+          references: [url(PAGE, '/img/logo.png', 'public/img/logo.png')],
+          servingRoots: TWO_ROOTS,
+          listDirectory: (path) => listings.get(path) ?? [],
+        }),
+      );
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.declined.map((entry) => entry.reason)).toEqual([
+        expect.stringContaining(`reaches apps/web/public/IMG/logo.webp first ${CASE_BLIND},`),
+      ]);
+    });
+
+    it('declines a conversion that would remove the file a reference reaches only by folding case', () => {
+      const plan = planOptimization(
+        input({
+          assets: [asset('apps/web/public/img/Banner.png'), asset('public/img/banner.png')],
+          references: [
+            url(PAGE, '/img/banner.png', 'public/img/banner.png'),
+            url('apps/web/src/Other.tsx', '/img/Banner.png', 'apps/web/public/img/Banner.png'),
+          ],
+          probes: [probe('apps/web/public/img/Banner.png'), probe('public/img/banner.png', 20_000)],
+          servingRoots: TWO_ROOTS,
+          publicPolicy: 'replace',
+        }),
+      );
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.rewrites).toEqual([]);
+      expect(plan.declined).toContainEqual({
+        path: 'apps/web/public/img/Banner.png',
+        line: null,
+        reason: `\`/img/banner.png\` in \`apps/web/src/App.tsx\` reaches apps/web/public/img/Banner.png ${CASE_BLIND}, and converting this image removes it, so the reference would load public/img/banner.png instead. Rename one of the two images and run again.`,
+      });
+    });
+  });
+
   describe('a reference the plan leaves as written', () => {
     // A converted file is new, so a reference that goes on naming another file can find it
     // first. Every linked reference is resolved again, not only the rewritten ones.

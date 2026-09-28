@@ -225,7 +225,9 @@ A second port, `unindexed`, is optional and the pipeline never passes it, so the
 against the walk alone. It answers for a file that exists but is not an asset, and the resolver
 asks it wherever the index misses, in the order it looks, so the file a path reaches first is
 found wherever it lies. The planner passes it when it checks where references would lead once a
-plan is applied (see "The transaction"). A pattern is still matched against the assets only.
+plan is applied (see "The transaction"). A pattern is still matched against the assets only. For
+the same check the resolver can fold case (`foldCase`), finding a file as Windows and macOS do;
+the audit never asks it to.
 
 ### Ask `isLinked`, never `resolution === 'resolved'`
 
@@ -1565,7 +1567,8 @@ malformed XML, or too large for the XML parser) and 1 image past the pixel limit
 Windows and macOS fold case; Linux does not. `Reaktor.jpg` and `reaktor.png` convert to `Reaktor.webp`
 and `reaktor.webp`, which are two files on one platform in the CI matrix and one file on the other
 two. Every comparison here folds case when the question is *would these end up as the same file*: the
-planner when it groups conversions by target, and the transaction when `prepare` claims a path.
+planner when it groups conversions by target and when it checks where each reference would lead once
+a plan is applied, and the transaction when `prepare` claims a path.
 
 Folded on **every** platform, not only where the filesystem demands it. Folding everywhere costs a
 conversion on Linux that would have been safe there. Not folding means one repository gets a different
@@ -1715,8 +1718,15 @@ folder `--exclude` names still takes the page. `optimize` gives the planner a wa
 directory, and a file the walk did not index is found by listing each directory on the way to a
 place a path could lead, inside the project only. Only names are read, never a file, and the disk
 is only read. The resolver's optional `unindexed` port asks for it wherever its index misses, in
-the order it looks, and both sides of the comparison are read that way. A name that differs only
-in case is still another name to the check.
+the order it looks, and both sides of the comparison are read that way.
+
+The check folds case on every platform, as the collision check does (see "Two paths are the same
+file more often than they look"): on Windows and macOS `/img/logo.webp` loads a nearer `Logo.webp`,
+or a `logo.webp` in a folder named `IMG`, and a plan must not depend on where it runs. The
+resolver's index folds when asked (`foldCase`), and the directory listing matches names whatever
+their case. Both sides are read folded, so a reference that reaches an original only by folding
+case, and that the plan leaves as written, loses that file when the plan removes it; the
+conversion is withdrawn for that too. A decline whose match depends on case says so.
 
 The old-path text search (see "Moving an asset") then guards the references the graph never found,
 for a path written down literally. **The bound that remains:** a path assembled at runtime that the

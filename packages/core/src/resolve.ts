@@ -88,6 +88,12 @@ export interface ResolveOptions {
    * against `assets` only. Absent, only `assets` are found.
    */
   readonly unindexed?: (absolutePath: string) => string | null;
+  /**
+   * Whether an asset is found by a path that differs from its own only in case, as Windows
+   * and macOS find a file. Absent, case counts, as it does on Linux. `unindexed` is asked
+   * with the path as the reference spells it, and folds case itself if it has to.
+   */
+  readonly foldCase?: boolean;
 }
 
 /**
@@ -105,7 +111,7 @@ export function resolveReferences(
   options: ResolveOptions,
 ): Reference[] {
   const context: ResolveContext = {
-    index: new AssetIndex(options.assets, options.unindexed),
+    index: new AssetIndex(options.assets, options.unindexed, options.foldCase ?? false),
     root: options.root,
     publicDirs: options.servingRoots.dirs,
     excludedRoots: options.excludedRoots ?? [],
@@ -471,20 +477,33 @@ const HOLE = String.fromCharCode(0xe000);
  * Assets, indexed for the resolver's lookups.
  *
  * Paths are compared POSIX-normalised so that a reference resolved on Windows and
- * the same one resolved on Linux agree.
+ * the same one resolved on Linux agree, and lower-cased as well when case is folded.
  */
 class AssetIndex {
   private readonly byPath: ReadonlyMap<string, string>;
   private readonly ordered: readonly string[];
   private readonly unindexed: (path: string) => string | null;
+  private readonly foldCase: boolean;
 
-  /** @param unindexed see `ResolveOptions.unindexed` */
-  constructor(assets: readonly Asset[], unindexed?: (path: string) => string | null) {
+  /**
+   * @param unindexed see `ResolveOptions.unindexed`
+   * @param foldCase see `ResolveOptions.foldCase`
+   */
+  constructor(
+    assets: readonly Asset[],
+    unindexed: ((path: string) => string | null) | undefined,
+    foldCase: boolean,
+  ) {
+    this.foldCase = foldCase;
     const byPath = new Map<string, string>();
-    for (const asset of assets) byPath.set(toPosix(asset.path), asset.path);
+    for (const asset of assets) byPath.set(this.keyOf(toPosix(asset.path)), asset.path);
     this.byPath = byPath;
     this.ordered = [...byPath.keys()].sort(compareStrings);
     this.unindexed = unindexed ?? (() => null);
+  }
+
+  private keyOf(path: string): string {
+    return this.foldCase ? path.toLowerCase() : path;
   }
 
   /** The file a literal path names, or `null`. */
@@ -507,7 +526,7 @@ class AssetIndex {
    * candidates `lookup` builds.
    */
   lookupExact(path: string): string | null {
-    return this.byPath.get(path) ?? this.unindexed(path);
+    return this.byPath.get(this.keyOf(path)) ?? this.unindexed(path);
   }
 
   /**
@@ -533,7 +552,7 @@ class AssetIndex {
   /** Every asset an absolute POSIX path with holes names, anchored at both ends. */
   matchGlob(pathWithHoles: string): readonly string[] {
     const matches: string[] = [];
-    const pattern = globRegex(pathWithHoles);
+    const pattern = globRegex(pathWithHoles, false, this.foldCase);
     for (const assetPath of this.ordered) {
       if (!pattern.test(assetPath)) continue;
       const native = this.byPath.get(assetPath);
@@ -710,11 +729,13 @@ export function servedFromAnyRoot(pattern: string): (relative: string) => boolea
  * `` `/img/${name}.png` `` cannot reach into a subdirectory and pull in assets the
  * author never meant. Everything else is escaped literally. With `openBase`, any
  * directories may come before the path and case is ignored, for `servedFromAnyRoot`.
+ * `ignoreCase` ignores it with a fixed base too, for an index that folds case.
  */
-function globRegex(pathWithHoles: string, openBase = false): RegExp {
+function globRegex(pathWithHoles: string, openBase = false, ignoreCase = openBase): RegExp {
   const escaped = pathWithHoles
     .split(HOLE)
     .map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('[^/]*');
-  return openBase ? new RegExp(`^(?:.*/)?${escaped}$`, 'i') : new RegExp(`^${escaped}$`);
+  const flags = ignoreCase ? 'i' : '';
+  return new RegExp(openBase ? `^(?:.*/)?${escaped}$` : `^${escaped}$`, flags);
 }
