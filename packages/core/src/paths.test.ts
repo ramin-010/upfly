@@ -234,6 +234,17 @@ describe('imageFilenameCandidates', () => {
     expect(tokens('url(/img/hero.png)')).toEqual(['hero.png']);
   });
 
+  it('spells a name in letters beyond ASCII, as a file system allows', () => {
+    expect(tokens('See Zaječar (2).jpg and Poznań cover (3).png in the gallery.')).toEqual(
+      expect.arrayContaining(['Zaječar (2).jpg', 'Poznań cover (3).png']),
+    );
+    expect(tokens('<img src="/img/写真.png">')).toEqual(['写真.png']);
+    // A decomposed accent, as macOS writes one, and a letter outside the Basic Multilingual
+    // Plane, two UTF-16 code units long.
+    expect(tokens('"/img/cafe\u0301 menu.png"')).toContain('cafe\u0301 menu.png');
+    expect(tokens('"/img/\u{10437}\u{10436}.png"')).toEqual(['\u{10437}\u{10436}.png']);
+  });
+
   it('does not walk further left than the longest file name', () => {
     // No common file system allows a name over 255 characters. The bound also keeps a long
     // run from being walked again for every extension in it.

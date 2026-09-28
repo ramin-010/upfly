@@ -423,6 +423,20 @@ describe('the name search', () => {
 
     expect(await unusedKinds(root)).toEqual([['possibly-dead', 'img/vue photo.png']]);
   });
+
+  it('hedges an image whose name holds letters beyond ASCII, named in prose', async () => {
+    const root = project({
+      'package.json': '{ "name": "site", "private": true }\n',
+      'notes.md': 'See Zaječar (2).jpg and Poznań cover (3).png in the gallery.\n',
+      'img/Zaječar (2).jpg': 'a photo, never decoded',
+      'img/Poznań cover (3).png': 'a cover, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([
+      ['possibly-dead', 'img/Poznań cover (3).png'],
+      ['possibly-dead', 'img/Zaječar (2).jpg'],
+    ]);
+  });
 });
 
 describe('the encode cap', () => {

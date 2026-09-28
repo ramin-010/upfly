@@ -711,7 +711,12 @@ file name with no slash, which has the shape of a UI label (see "What counts as 
 string").
 
 A name is found with the spaces and parentheses it holds, though the filename token stops at
-both. From each token the search walks left over up to six space-separated words, so
+both, and in any script: `Zaječar (2).jpg` and `Рисунок3.png` are found whole, not as
+`ar (2).jpg` and `3.png`. Every pass starts at an image extension, which a literal search finds
+fast, and walks left by code point over letters, digits and combining marks of any script and
+`_@.-`; a pattern with that class in front of the extension retried it from every letter of every
+word and ran several times slower. From each token the search walks left over up to six
+space-separated words, so
 `Firing Practice.webp` is found whole. A second pass starts at each image extension and walks
 left for names that hold parentheses in balanced pairs: `hero (1).png` is the name a browser
 gives a second download of `hero.png`. The pass is separate because parentheses in the token

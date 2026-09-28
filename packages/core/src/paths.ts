@@ -105,22 +105,23 @@ const EXTENSION_ALTERNATION = IMAGE_EXTENSIONS.map((extension) =>
 ).join('|');
 
 /**
- * Matches a filename-shaped token ending in a tracked image extension.
- *
- * Built from `IMAGE_EXTENSIONS` so adding a format needs no change in the callers. The
- * character class excludes `/`, so `{{ site.url }}/img/hero.png` yields `hero.png` and
- * nothing longer. It excludes spaces too: a pattern that crosses them backtracks at every
- * word boundary and ran 1.7 to 5 times slower, on a scan over every byte of every unread
- * file. `imageFilenameCandidates` extends leftwards from each match instead.
+ * The characters a filename token holds: a letter or digit in any script, a combining mark (an
+ * accent written decomposed, as macOS writes one), and `_`, `@`, `.` and `-`. Read with the
+ * `u` flag; `\w` would not do, since it is ASCII alone with that flag or without it. No `/`,
+ * so `{{ site.url }}/img/hero.png` yields `hero.png` and nothing longer, and no space, which
+ * the walk over ` word` runs adds instead.
+ */
+const FILENAME_CLASS = '[\\p{L}\\p{M}\\p{N}_@.\\-]';
+
+/**
+ * Matches a tracked image extension where a name ends: `.png` in `hero (1).png`. Every pass
+ * starts from one and walks left, since a pattern with a class this wide in front of the
+ * extension would retry it from every letter of every word, several times slower on a scan
+ * over every byte of every unread file.
  *
  * A fresh `RegExp` per call: a `g`-flagged literal carries `lastIndex` between uses,
  * which would make results depend on what was scanned before them.
  */
-export function imageFilenamePattern(): RegExp {
-  return new RegExp(`[\\w@.\\-]+\\.(?:${EXTENSION_ALTERNATION})\\b`, 'gi');
-}
-
-/** Matches a tracked image extension where a name ends: `.png` in `hero (1).png`. */
 function extensionPattern(): RegExp {
   return new RegExp(`\\.(?:${EXTENSION_ALTERNATION})\\b`, 'gi');
 }
@@ -131,19 +132,52 @@ function extensionPattern(): RegExp {
  */
 const MAX_SPACED_WORDS = 6;
 
-/** The characters `imageFilenamePattern` allows inside a filename token. */
-const FILENAME_CHARACTER = /[\w@.\-]/;
+/** One character a filename token holds, a surrogate pair included. */
+const FILENAME_CHARACTER = new RegExp(`^${FILENAME_CLASS}$`, 'u');
+
+function isFilenameCharacter(character: string): boolean {
+  return FILENAME_CHARACTER.test(character);
+}
+
+/**
+ * How many code units the character that ends at `index` takes when `allowed` accepts it: two
+ * for one outside the Basic Multilingual Plane, which UTF-16 writes as a surrogate pair, one
+ * for any other, and none when it is refused or nothing comes before `index`.
+ */
+function widthBefore(text: string, index: number, allowed: (character: string) => boolean): number {
+  const code = text.charCodeAt(index - 1);
+  if (code >= 0xdc00 && code <= 0xdfff && index >= 2 && allowed(text.slice(index - 2, index))) {
+    return 2;
+  }
+  return index >= 1 && allowed(text.charAt(index - 1)) ? 1 : 0;
+}
+
+/** Where the run of characters `allowed` accepts that ends at `index` starts, not below `floor`. */
+function runStart(
+  text: string,
+  index: number,
+  allowed: (character: string) => boolean,
+  floor = 0,
+): number {
+  let start = index;
+  let width = widthBefore(text, start, allowed);
+  while (width > 0 && start - width >= floor) {
+    start -= width;
+    width = widthBefore(text, start, allowed);
+  }
+  return start;
+}
 
 /**
  * Every basename an image-looking token in `text` could be naming, with its offset.
  *
- * `imageFilenamePattern` cannot cross a space, so on its own it sees `Firing Practice.webp`
- * only as `Practice.webp`, and an asset with a space in its name would be reported `dead`
- * while its name appears in the text. So from each match this walks left over ` word` runs
- * and yields every step: `Practice.webp`, then `Firing Practice.webp`. Yielding each step,
- * not only the longest, keeps shorter matches working: the prose `Remove workspace.png`
- * must still match an asset named `workspace.png`. The names holding parentheses follow,
- * from a second pass (`namesHoldingParentheses`).
+ * A token stops at a space, so on its own it sees `Firing Practice.webp` only as
+ * `Practice.webp`, and an asset with a space in its name would be reported `dead` while its
+ * name appears in the text. So from each token this walks left over ` word` runs and yields
+ * every step: `Practice.webp`, then `Firing Practice.webp`. Yielding each step, not only the
+ * longest, keeps shorter matches working: the prose `Remove workspace.png` must still match
+ * an asset named `workspace.png`. A name is read in any script. Names holding parentheses
+ * (`namesHoldingParentheses`), then percent-encoded ones, follow from the same extension.
  *
  * It lives here, and is exported, because every pass that looks for a name (`scan.ts`,
  * `sweep.ts`, a search for the names they missed) must ask the same question.
@@ -155,34 +189,43 @@ const FILENAME_CHARACTER = /[\w@.\-]/;
  * // ['photo.png', 'team photo.png']
  */
 export function* imageFilenameCandidates(text: string): Generator<[token: string, offset: number]> {
-  const pattern = imageFilenamePattern();
-  let match = pattern.exec(text);
-  while (match !== null) {
-    const end = match.index + match[0].length;
-    yield [match[0], match.index];
-
-    let start = match.index;
-    for (let word = 0; word < MAX_SPACED_WORDS; word += 1) {
-      if (text[start - 1] !== ' ') break;
-
-      let candidate = start - 1;
-      while (candidate > 0 && FILENAME_CHARACTER.test(text[candidate - 1] ?? '')) candidate -= 1;
-      // A space with nothing filename-shaped before it is not part of a filename.
-      if (candidate === start - 1) break;
-
-      start = candidate;
-      yield [text.slice(start, end), start];
-    }
-    match = pattern.exec(text);
-  }
-
   const extensions = extensionPattern();
   let extension = extensions.exec(text);
   while (extension !== null) {
     const end = extension.index + extension[0].length;
+    yield* spacedNames(text, extension.index, end);
     yield* namesHoldingParentheses(text, extension.index, end);
     yield* percentEncodedNames(text, extension.index, end);
     extension = extensions.exec(text);
+  }
+}
+
+/**
+ * The token that ends at the extension starting at `dot`, then each name that takes in one
+ * more space-separated word to its left, up to `MAX_SPACED_WORDS`. A token longer than any
+ * name a file system allows yields nothing.
+ */
+function* spacedNames(
+  text: string,
+  dot: number,
+  end: number,
+): Generator<[token: string, offset: number]> {
+  const floor = Math.max(0, end - MAX_NAME_LENGTH);
+  let start = runStart(text, dot, isFilenameCharacter, floor);
+  if (start === dot || (start === floor && widthBefore(text, start, isFilenameCharacter) > 0)) {
+    return;
+  }
+  yield [text.slice(start, end), start];
+
+  for (let word = 0; word < MAX_SPACED_WORDS; word += 1) {
+    if (text[start - 1] !== ' ') break;
+
+    const candidate = runStart(text, start - 1, isFilenameCharacter);
+    // A space with nothing filename-shaped before it is not part of a filename.
+    if (candidate === start - 1) break;
+
+    start = candidate;
+    yield [text.slice(start, end), start];
   }
 }
 
@@ -205,10 +248,7 @@ function* percentEncodedNames(
   end: number,
 ): Generator<[token: string, offset: number]> {
   const floor = Math.max(0, end - MAX_ENCODED_LENGTH);
-  let start = dot;
-  while (start > floor && (text[start - 1] === '%' || isNameCharacter(text[start - 1] ?? ''))) {
-    start -= 1;
-  }
+  const start = runStart(text, dot, isEncodedNameCharacter, floor);
   if (!text.slice(start, dot).includes('%')) return;
 
   const starts = [start];
@@ -227,6 +267,10 @@ function* percentEncodedNames(
   }
 }
 
+function isEncodedNameCharacter(character: string): boolean {
+  return character === '%' || isNameCharacter(character);
+}
+
 function percentDecoded(text: string): string | null {
   try {
     return decodeURIComponent(text);
@@ -243,8 +287,8 @@ function isNameCharacter(character: string): boolean {
  * The names holding parentheses that end at the extension starting at `dot`, shortest first,
  * such as `hero (1).png`, the name a browser gives a second download of `hero.png`.
  *
- * A separate pass, because parentheses in `imageFilenamePattern` would change what it finds:
- * its match in `url(hero.png)` would be `url(hero.png`. Here only an extension starts a walk.
+ * A separate pass, because parentheses in a token would change what it finds: the token in
+ * `url(hero.png)` would be `url(hero.png`. Here only balanced parentheses stay in a name.
  */
 function* namesHoldingParentheses(
   text: string,
@@ -266,12 +310,14 @@ function* startsOfNames(text: string, dot: number, end: number): Generator<numbe
   let start = dot;
   for (let word = 0; word <= MAX_SPACED_WORDS; word += 1) {
     const wordEnd = start;
-    while (start > floor && isNameCharacter(text[start - 1] ?? '')) {
-      start -= 1;
-      if (text[start] === '(') yield start + 1;
+    start = runStart(text, wordEnd, isNameCharacter, floor);
+    for (let index = wordEnd - 1; index >= start; index -= 1) {
+      if (text[index] === '(') yield index + 1;
     }
     // An empty word is not part of a name; a run cut at the floor is longer than any name.
-    if (start === wordEnd || (start === floor && isNameCharacter(text[start - 1] ?? ''))) return;
+    if (start === wordEnd || (start === floor && widthBefore(text, start, isNameCharacter) > 0)) {
+      return;
+    }
     yield start;
     if (text[start - 1] !== ' ') return;
     start -= 1;
