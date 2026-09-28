@@ -296,52 +296,65 @@ function viteAliasValue(
   return object;
 }
 
+const VITE_CONFIG = `${ROOT}/vite.config.ts`;
+const VITE_IMPORTER = `${ROOT}/src/main.ts`;
+
+/** One round: every import drawn from the keys, asked of Upfly and of Vite. */
+async function viteRound(round: number): Promise<{
+  readonly skipped: readonly unknown[];
+  readonly mapped: number;
+  readonly found: readonly object[];
+}> {
+  const random = seeded(round);
+  const entries = viteEntries(random);
+  const form = random() < 0.5 ? 'object' : 'array';
+  const text = viteConfigText(entries, form);
+  const map = await loadAliases({
+    root: ROOT,
+    files: [{ path: VITE_CONFIG, relative: 'vite.config.ts' }],
+    readFile: async () => text,
+    isFile: (path) => toPosix(path) === VITE_CONFIG,
+  });
+
+  const resolved = await resolveConfig(
+    {
+      configFile: false,
+      root: ROOT,
+      logLevel: 'silent',
+      resolve: { alias: viteAliasValue(entries, form) },
+    },
+    'build',
+  );
+  const environment = new BuildEnvironment('client', resolved);
+  const resolveId = createIdResolver(resolved);
+  const ids = VITE_FINDS.flatMap((find) => VITE_TAILS.map((tail) => `${find}${tail}`));
+  let mapped = 0;
+  const found: object[] = [];
+  for (const id of ids) {
+    const vite = await resolveId(environment, id, VITE_IMPORTER, true);
+    if (vite !== undefined) mapped += 1;
+    const expected = vite === undefined ? [] : [toPosix(resolve(vite))];
+    const upfly = expandAlias(map, id, VITE_IMPORTER);
+    if (JSON.stringify(upfly) !== JSON.stringify(expected)) {
+      found.push({ round, id, vite: expected, upfly, config: text });
+    }
+  }
+  return { skipped: map.skipped, mapped, found };
+}
+
 describe('loadAliases against Vite', () => {
   it(
     'gives the path Vite rewrites each import to, and no candidate where no Vite alias matches',
     async () => {
-      const config = `${ROOT}/vite.config.ts`;
-      const importer = `${ROOT}/src/main.ts`;
-      let probes = 0;
       let mapped = 0;
       const found: object[] = [];
       for (let round = 0; round < ROUNDS; round++) {
-        const random = seeded(round);
-        const entries = viteEntries(random);
-        const form = random() < 0.5 ? 'object' : 'array';
-        const text = viteConfigText(entries, form);
-        const map = await loadAliases({
-          root: ROOT,
-          files: [{ path: config, relative: 'vite.config.ts' }],
-          readFile: async () => text,
-          isFile: (path) => toPosix(path) === config,
-        });
-        expect(map.skipped).toEqual([]);
-
-        const resolved = await resolveConfig(
-          {
-            configFile: false,
-            root: ROOT,
-            logLevel: 'silent',
-            resolve: { alias: viteAliasValue(entries, form) },
-          },
-          'build',
-        );
-        const environment = new BuildEnvironment('client', resolved);
-        const resolveId = createIdResolver(resolved);
-        for (const find of VITE_FINDS) {
-          for (const tail of VITE_TAILS) {
-            const id = `${find}${tail}`;
-            probes += 1;
-            const vite = await resolveId(environment, id, importer, true);
-            if (vite !== undefined) mapped += 1;
-            const expected = vite === undefined ? [] : [toPosix(resolve(vite))];
-            const upfly = expandAlias(map, id, importer);
-            if (JSON.stringify(upfly) === JSON.stringify(expected)) continue;
-            found.push({ round, id, vite: expected, upfly, config: text });
-          }
-        }
+        const result = await viteRound(round);
+        expect(result.skipped).toEqual([]);
+        mapped += result.mapped;
+        found.push(...result.found);
       }
+      const probes = ROUNDS * VITE_FINDS.length * VITE_TAILS.length;
 
       // A generator that stopped producing mapped paths would pass with nothing checked.
       expect(mapped).toBeGreaterThan(ROUNDS);
