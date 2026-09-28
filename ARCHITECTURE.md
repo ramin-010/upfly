@@ -1298,7 +1298,11 @@ Two details that are easy to get wrong:
 - **Reported paths are POSIX-separated and relative to the root**, normalised in exactly one
   place. Ordering uses a code-unit comparator, never `localeCompare`, which is locale-dependent,
   so the same repository would produce differently ordered reports on two machines and the
-  byte-identical-report rule would quietly become false.
+  byte-identical-report rule would quietly become false. For the same reason an extension is
+  read as `path.posix.extname` reads it on every platform, by the resolver, the planner,
+  discovery, the adapters and the probe alike: with the platform's own `extname`, the Markdown
+  destination `img/hero\.png` would show no extension on Windows and `.png` on Linux, and
+  the plan would rewrite it on one machine only.
 - **`.upflyignore` is matched with the `ignore` package, and a directory must be tested with a
   trailing slash.** Given a `build/` rule, `ignores('build')` is `false` and `ignores('build/')`
   is `true`. Get that wrong and the walker descends into every ignored directory without ever

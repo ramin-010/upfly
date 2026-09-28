@@ -10,7 +10,7 @@
  * 2. Ordering is by code unit, never by locale. See `compareStrings`.
  */
 
-import { extname, relative, sep } from 'node:path';
+import { posix, relative, sep } from 'node:path';
 
 /**
  * Image extensions the engine treats as assets, lowercase and dot-prefixed.
@@ -64,9 +64,14 @@ export function relativePath(root: string, absolute: string): string {
   return toPosix(relative(root, absolute));
 }
 
-/** Lowercase extension including the leading dot, or `''` if there is none. */
+/**
+ * Lowercase extension including the leading dot, or `''` if there is none, read as
+ * `path.posix.extname` reads it on every platform. A reference such as `img/hero\.png` is
+ * text, not a native path: its backslash never ends a folder, so no plan differs by machine. A
+ * native path passed here names a file found by its extension, so its separators change nothing.
+ */
 export function extensionOf(filePath: string): string {
-  return extname(filePath).toLowerCase();
+  return posix.extname(filePath).toLowerCase();
 }
 
 /** Whether an extension (as returned by `extensionOf`) names an image format. */

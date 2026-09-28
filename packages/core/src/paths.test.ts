@@ -1,4 +1,4 @@
-import { sep } from 'node:path';
+import { posix, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   IMAGE_EXTENSIONS,
@@ -57,6 +57,14 @@ describe('extensionOf', () => {
     ['weird.name.WebP', '.webp'],
   ])('%s -> %s', (input, expected) => {
     expect(extensionOf(input)).toBe(expected);
+  });
+
+  it('reads a backslash as part of a name, the same on every platform', () => {
+    // Only `/` ends a folder here. Were a backslash a separator on Windows alone, a reference
+    // such as `img/hero\.png` would show `.png` on Linux and nothing on Windows.
+    const written = ['img/hero\\.png', 'hero\\.png', 'img\\hero.PNG', 'a\\b', '.\\logo.svg'];
+    for (const path of written) expect(extensionOf(path)).toBe(posix.extname(path).toLowerCase());
+    expect(extensionOf('img/hero\\.png')).toBe('.png');
   });
 });
 

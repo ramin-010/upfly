@@ -99,6 +99,34 @@ function input(
   };
 }
 
+describe('a path holding a backslash', () => {
+  it('swaps the extension after an escaped dot in a Markdown destination, as on every platform', () => {
+    const rawPath = 'img/hero\\.png';
+    const plan = planOptimization(
+      input({
+        assets: [asset('img/hero.png')],
+        references: [
+          resolved('page.md', rawPath, 'img/hero.png', { kind: 'md', shape: 'md.image' }),
+        ],
+      }),
+    );
+
+    expect(plan.rewrites).toEqual([
+      {
+        file: 'page.md',
+        edits: [
+          {
+            start: 10,
+            end: 10 + rawPath.length,
+            replacement: 'img/hero\\.webp',
+            expected: rawPath,
+          },
+        ],
+      },
+    ]);
+  });
+});
+
 describe('the ordinary case', () => {
   it('converts a linked asset and repoints the reference that names it', () => {
     const plan = planOptimization(
