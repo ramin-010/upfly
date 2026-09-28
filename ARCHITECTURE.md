@@ -2125,6 +2125,24 @@ The promise is that the run's changes are the only ones a reviewer has to look a
 | `packages/cli` | `upfly` | argument parsing, human/JSON output, exit codes, git safety. |
 | `packages/vscode` | `upfly-vscode` | the editor surface (not yet written). |
 
+`packages/core/src` is grouped by pipeline stage. At the top, `index.ts` is the public entry,
+`pipeline.ts` (`runPipeline`) and `optimize-project.ts` (`optimizeProject`) wire the stages, and
+`types.ts`, `errors.ts`, `paths.ts` and `format.ts` are shared by all of them. A test sits beside
+the code it tests; the tests that run the whole engine sit at the top.
+
+| Folder | Holds |
+|---|---|
+| `adapters/` | one reader per file type, their shared rewrite, and `shapes.ts`, the reference shapes |
+| `discover/` | the walk |
+| `scan/` | each file read by its adapter, the check that skips a parse, line citations, the text hash |
+| `resolve/` | the resolver, `isLinked`, aliases, serving roots |
+| `graph/` | the graph, and what went unread |
+| `probe/` | image measurement, and the sharp implementation of it |
+| `audit/` | the findings, the mention sweep, duplicates, framework conventions, resolution health |
+| `plan/` | the conversion and move planners, and the two checks a move runs |
+| `write/` | `optimize`, the transaction, the manifest, the lock, the file store, `applyEdits` |
+| `report/` | the JSON report and its human renderer |
+
 `fixtures/` holds small but real projects per framework, each with a `build` script. `bench`'s
 `fixture-build` runs `optimize --apply` against copies of them and then builds them and checks
 every link: if a build breaks, the reference detection was wrong. With `--cli` it does the same
