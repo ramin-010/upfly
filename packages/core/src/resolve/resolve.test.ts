@@ -1462,6 +1462,19 @@ describe('rung 4b: a declared alias, in every spelling the path could be read in
     expect(found && 'spelling' in found ? found.spelling : undefined).toBe('percent-encoded');
   });
 
+  it.each([
+    ['percent-encoded', '%7E/assets/logo.png', 'css-url'],
+    ['escaped in Markdown', '\\~/assets/logo.png', 'md'],
+  ] as const)('reads an alias whose first character is %s', (_how, rawPath, kind) => {
+    // `%7E/…` decodes, and Markdown's `\~/…` reads, as `~/…`: the alias question is asked of
+    // each spelling, not only of the text as written.
+    const found = throughAlias(rawPath, kind);
+    expect(found?.resolution).toBe('resolved');
+    expect(found && isLinked(found) ? linkedPaths(found) : []).toEqual([
+      join(ROOT, 'src/assets/logo.png'),
+    ]);
+  });
+
   it('reads a Markdown escape through the alias, which only a Markdown kind allows', () => {
     const found = throughAlias('~/assets/my\\_photo.png', 'md');
     expect(found?.resolution).toBe('resolved');

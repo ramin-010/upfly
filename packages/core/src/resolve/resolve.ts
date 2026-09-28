@@ -218,7 +218,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 4b. An alias the project declares. Tried after the literal lookup, so a real file
   //     at the written path always wins over a mapping that happens to match.
-  const viaAlias = resolveThroughAlias(path, spellings, raw, context);
+  const viaAlias = resolveThroughAlias(spellings, raw, context);
   if (viaAlias !== null) return viaAlias;
 
   // 5. Points at a real file we deliberately do not index, in any spelling.
@@ -227,7 +227,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
 
   // 6. Alias-shaped and no declared alias matched. `unresolved-alias` is a final outcome,
   //    not pending work: it means no rule maps this path.
-  if (isAliasShaped(path, raw.kind)) {
+  if (aliasShapedIn(spellings, raw.kind)) {
     // 6b. A package specifier is not an alias. It names a file inside `node_modules`,
     //     which the walk prunes, so it is known and known not to be an indexed asset.
     if (isPackageSpecifier(path, raw.kind)) {
@@ -282,7 +282,7 @@ function outOfScope(
     ...spellings.flatMap(({ path: spelled }) =>
       candidatePaths(spelled, raw, context.root, context.publicDirs).map(({ path: at }) => at),
     ),
-    ...(isAliasShaped(path, raw.kind)
+    ...(aliasShapedIn(spellings, raw.kind)
       ? spellings.flatMap(({ path: spelled }) => expandAlias(context.aliases, spelled, raw.file))
       : []),
   ];
@@ -351,16 +351,15 @@ function unlinked(
  * Rung 4b: expand a declared alias and look the result up, in every spelling rung 4 asks
  * about, literal first, recording the spelling that matched as rung 4 does. Separate from
  * `resolveOne` because an alias can expand to several candidates, a loop the ladder's
- * sequence of single tests should not carry. Whether the path is alias-shaped is read from
- * the path as written: an alias is a prefix the project declares.
+ * sequence of single tests should not carry. Whether the path is alias-shaped is asked of
+ * every spelling, since an encoding or an escape can hide an alias's first character.
  */
 function resolveThroughAlias(
-  path: string,
   spellings: readonly { readonly spelling: PathSpelling; readonly path: string }[],
   raw: RawReference,
   context: ResolveContext,
 ): Reference | null {
-  if (!isAliasShaped(path, raw.kind)) return null;
+  if (!aliasShapedIn(spellings, raw.kind)) return null;
 
   for (const { spelling, path: spelled } of spellings) {
     for (const candidate of expandAlias(context.aliases, spelled, raw.file)) {
@@ -468,6 +467,17 @@ function isAliasShaped(path: string, kind: RawReference['kind']): boolean {
   if (path.startsWith('@') || path.startsWith('~') || path.startsWith('#')) return true;
   if (kind !== 'import') return false;
   return !path.startsWith('.') && !path.startsWith('/') && !isDrivePath(path);
+}
+
+/**
+ * Whether any spelling of a path is written against an alias: `%7E/…` decodes, and
+ * Markdown's `\~/…` reads, as `~/…`.
+ */
+function aliasShapedIn(
+  spellings: readonly { readonly path: string }[],
+  kind: RawReference['kind'],
+): boolean {
+  return spellings.some(({ path }) => isAliasShaped(path, kind));
 }
 
 /** Stands in for an interpolation (`${…}`, `#{…}` or `@{…}`) while a template is globbed. */
