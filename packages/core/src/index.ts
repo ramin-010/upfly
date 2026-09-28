@@ -36,8 +36,8 @@ export {
   DEFAULT_IGNORED_DIRECTORIES,
   IGNORE_FILE_NAME,
   discover,
-} from './discover.js';
-export type { DiscoverOptions } from './discover.js';
+} from './discover/discover.js';
+export type { DiscoverOptions } from './discover/discover.js';
 export { applyEdits, invertEdits, validateEdits } from './edits.js';
 export {
   MANIFEST_PATH,

@@ -17,7 +17,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { discover } from './discover.js';
+import { discover } from './discover/discover.js';
 import { IMAGE_EXTENSIONS, toPosix } from './paths.js';
 import { scanSources } from './scan.js';
 import type { Adapter } from './types.js';

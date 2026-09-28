@@ -5,7 +5,7 @@
  */
 
 import { readdirSync } from 'node:fs';
-import { listExcludedFiles } from './discover.js';
+import { listExcludedFiles } from './discover/discover.js';
 import { createNodeFileStore } from './file-store-node.js';
 import {
   type OptimizeInput,

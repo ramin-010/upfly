@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { audit } from './audit.js';
-import { discover } from './discover.js';
+import { discover } from './discover/discover.js';
 import { findDuplicates, hashCandidates } from './duplicates.js';
 import { buildGraph } from './graph.js';
 import type { Asset } from './types.js';

@@ -14,8 +14,8 @@ import type { Dirent } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
-import { UpflyError } from './errors.js';
-import { compareStrings, extensionOf, isImageExtension, relativePath } from './paths.js';
+import { UpflyError } from '../errors.js';
+import { compareStrings, extensionOf, isImageExtension, relativePath } from '../paths.js';
 import type {
   Adapter,
   Asset,
@@ -24,7 +24,7 @@ import type {
   SkippedEntry,
   SourceFile,
   UnscannedFile,
-} from './types.js';
+} from '../types.js';
 
 /**
  * What each directory pruned by name holds, which is the reason a report gives for it. A

@@ -13,7 +13,7 @@ import { NO_REFERENCE_TO_FIND } from './adapters/html.js';
 import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
 import type { AliasMap } from './aliases.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
-import { excludedByRule } from './discover.js';
+import { excludedByRule } from './discover/discover.js';
 import { formatBytes, plural } from './format.js';
 import type { Graph } from './graph.js';
 import type { Declined } from './manifest.js';

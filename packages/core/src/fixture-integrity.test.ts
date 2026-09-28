@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
-import { discover } from './discover.js';
+import { discover } from './discover/discover.js';
 import { extensionOf, isImageExtension } from './paths.js';
 import type { Adapter } from './types.js';
 

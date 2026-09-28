@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { audit } from './audit.js';
-import { discover } from './discover.js';
+import { discover } from './discover/discover.js';
 import { buildGraph } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';

@@ -3,9 +3,9 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { UpflyError } from '../errors.js';
+import type { Adapter } from '../types.js';
 import { discover, listExcludedFiles } from './discover.js';
-import { UpflyError } from './errors.js';
-import type { Adapter } from './types.js';
 
 /**
  * `discover` is one of the few modules that touch the disk, so it is tested against a

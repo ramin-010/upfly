@@ -17,7 +17,7 @@ import { defaultAdapters } from './adapters/default-adapters.js';
 import { type AliasMap, loadAliases } from './aliases.js';
 import { type AuditResult, audit } from './audit.js';
 import { detectConventionRoots } from './conventions.js';
-import { discover } from './discover.js';
+import { discover } from './discover/discover.js';
 import { hashCandidates } from './duplicates.js';
 import { type Graph, buildGraph } from './graph.js';
 import { createSharpProbe } from './probe-sharp.js';
