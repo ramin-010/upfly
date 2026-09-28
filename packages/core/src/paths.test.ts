@@ -206,7 +206,7 @@ describe('imageFilenameCandidates', () => {
   });
 
   it('adds nothing for parentheses around a path, such as `url(/a/hero.png)`', () => {
-    // The control: a name without parentheses is found exactly as before.
+    // The control: a name without parentheses is found as the plain pattern finds it.
     expect(tokens('url(/a/hero.png)')).toEqual(['hero.png']);
     expect(tokens('url(hero.png)')).toEqual(['hero.png']);
     expect(tokens('(see hero.png)')).toEqual(['hero.png', 'see hero.png']);

@@ -1852,7 +1852,7 @@ describe('the order of a plan', () => {
       ),
     });
 
-  /** The plan, with every text comparison the runtime makes decided by `collator`. */
+  /** The plan, with every `localeCompare` call decided by `collator`. */
   function planUnder(collator: Intl.Collator) {
     const spy = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (
       this: unknown,

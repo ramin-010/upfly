@@ -1589,8 +1589,8 @@ describe('buildReport', () => {
         ],
         values: null,
       });
-      // The counts that were already there keep their meaning: a declined value is not a
-      // reference, so only the guess that named nothing is discarded.
+      // A declined value is not a reference, so the counts leave it out: only the guess
+      // that named nothing is discarded.
       expect(summary.references).toBe(2);
       expect(references.byResolution.discarded).toBe(1);
       expect(references.discardedCount).toBe(1);
@@ -2947,7 +2947,7 @@ describe('the public-dir caveat counts what the report lists', () => {
     expect(caveat?.count).toBe(listed);
   });
 
-  it('reads correctly at a count of one', () => {
+  it('has no plural wording at a count of one', () => {
     const caveat = reportWithDeadPublicAssets().caveats.find(
       (entry) => entry.code === 'public-dir-dead',
     );
