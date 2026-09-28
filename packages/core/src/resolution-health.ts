@@ -7,7 +7,7 @@
  * See "When the serving root cannot be found at all" in ARCHITECTURE.md.
  */
 
-import type { Graph } from './graph.js';
+import type { Graph } from './graph/graph.js';
 import { isLinked, provenPath } from './resolve/reference.js';
 import type { Reference } from './types.js';
 

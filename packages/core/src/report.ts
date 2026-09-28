@@ -14,7 +14,8 @@ import { interpolationChunks, templateExpressionReason } from './adapters/refere
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit.js';
 import { excludedByRule } from './discover/discover.js';
 import { formatBytes, plural } from './format.js';
-import type { Graph } from './graph.js';
+import type { Graph } from './graph/graph.js';
+import { countExtensions, groupUnscanned } from './graph/unscanned.js';
 import type { Declined } from './manifest.js';
 import {
   compareStrings,
@@ -38,7 +39,6 @@ import type {
   ResolvedVia,
   UnscannedExtension,
 } from './types.js';
-import { countExtensions, groupUnscanned } from './unscanned.js';
 
 /**
  * The report's schema version, carried in `Report.version`.

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover } from './discover/discover.js';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { type PublicPolicy, patternTargets, planOptimization } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { probeAssets } from './probe.js';

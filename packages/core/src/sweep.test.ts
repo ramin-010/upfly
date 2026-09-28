@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { javascriptAdapter } from './adapters/javascript.js';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { scanSources } from './scan/scan.js';
 import type { ReadFilePort } from './scan/scan.js';
 import { sweepForMentions } from './sweep.js';

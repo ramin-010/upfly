@@ -8,11 +8,11 @@
  * links every asset it matched. See "The graph" in ARCHITECTURE.md.
  */
 
-import { UpflyError } from './errors.js';
-import { compareStrings, relativePath } from './paths.js';
-import { linkedPaths } from './resolve/reference.js';
-import type { ScannedText } from './scan/scan.js';
-import type { Asset, Reference, Resolution, UnscannedExtension, UnscannedFile } from './types.js';
+import { UpflyError } from '../errors.js';
+import { compareStrings, relativePath } from '../paths.js';
+import { linkedPaths } from '../resolve/reference.js';
+import type { ScannedText } from '../scan/scan.js';
+import type { Asset, Reference, Resolution, UnscannedExtension, UnscannedFile } from '../types.js';
 import { countExtensions } from './unscanned.js';
 
 /** One asset and every reference that points at it. */

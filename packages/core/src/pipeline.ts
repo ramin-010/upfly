@@ -18,7 +18,7 @@ import { type AuditResult, audit } from './audit.js';
 import { detectConventionRoots } from './conventions.js';
 import { discover } from './discover/discover.js';
 import { hashCandidates } from './duplicates.js';
-import { type Graph, buildGraph } from './graph.js';
+import { type Graph, buildGraph } from './graph/graph.js';
 import { createSharpProbe } from './probe-sharp.js';
 import { type AssetProbe, type ProbeDiagnostic, type ProbeOptions, probeAssets } from './probe.js';
 import { type AliasMap, loadAliases } from './resolve/aliases.js';

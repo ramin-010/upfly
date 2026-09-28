@@ -118,8 +118,8 @@ export type { LockHandle, LockHolder, ProcessLiveness } from './lock.js';
 export { createNodeFileStore } from './file-store-node.js';
 export { UpflyError } from './errors.js';
 export { isLinked, linkedPaths } from './resolve/reference.js';
-export { buildGraph, unreferencedAssets } from './graph.js';
-export type { AssetNode, BuildGraphInput, Graph } from './graph.js';
+export { buildGraph, unreferencedAssets } from './graph/graph.js';
+export type { AssetNode, BuildGraphInput, Graph } from './graph/graph.js';
 export { createSharpProbe } from './probe-sharp.js';
 export { DEFAULT_ENCODE_QUALITY, probeAssets } from './probe.js';
 export type {

@@ -13,7 +13,7 @@
  */
 
 import { spell } from './adapters/reference-path.js';
-import type { Graph } from './graph.js';
+import type { Graph } from './graph/graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, relativePath, toPosix } from './paths.js';
 import { servingRootOf } from './plan.js';

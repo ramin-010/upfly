@@ -15,8 +15,8 @@
 import type { ConventionLink, ConventionRoot } from './conventions.js';
 import { conventionLinkFor } from './conventions.js';
 import { findDuplicates } from './duplicates.js';
-import type { Graph } from './graph.js';
-import { unreferencedAssets } from './graph.js';
+import type { Graph } from './graph/graph.js';
+import { unreferencedAssets } from './graph/graph.js';
 import { compareStrings } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';
 import {

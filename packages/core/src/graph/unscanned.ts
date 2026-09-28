@@ -4,8 +4,8 @@
  * once: a second copy would drift, and both would still look correct.
  */
 
-import { compareStrings } from './paths.js';
-import type { UnscannedExtension, UnscannedFile } from './types.js';
+import { compareStrings } from '../paths.js';
+import type { UnscannedExtension, UnscannedFile } from '../types.js';
 
 /**
  * Extensions whose contents are not text.

@@ -8,7 +8,7 @@ import { NO_REFERENCE_TO_FIND, htmlAdapter } from './adapters/html.js';
 import { audit } from './audit.js';
 import type { Finding } from './audit.js';
 import { discover } from './discover/discover.js';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { toPosix } from './paths.js';
 import { MENTION_SURVIVES } from './plan.js';
 import { createSharpProbe } from './probe-sharp.js';

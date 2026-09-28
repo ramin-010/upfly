@@ -10,10 +10,10 @@
  */
 
 import { plural } from './format.js';
-import type { Graph } from './graph.js';
+import type { Graph } from './graph/graph.js';
+import { couldHideAReference, countExtensions } from './graph/unscanned.js';
 import { compareStrings } from './paths.js';
 import type { ExcludedRoot, UnscannedExtension, UnscannedFile } from './types.js';
-import { couldHideAReference, countExtensions } from './unscanned.js';
 
 /** How many entries of a list are named before it is summarised. */
 const NAMED_LIMIT = 5;

@@ -17,8 +17,8 @@ import {
   splitPathSuffix,
 } from './adapters/reference-path.js';
 import { formatBytes } from './format.js';
-import type { Graph } from './graph.js';
-import { unreferencedAssets } from './graph.js';
+import type { Graph } from './graph/graph.js';
+import { unreferencedAssets } from './graph/graph.js';
 import { compareStrings, imageFilenameCandidates } from './paths.js';
 import { patternsWithoutServingRoot, withheldReferences } from './resolution-health.js';
 import { provenPath } from './resolve/reference.js';

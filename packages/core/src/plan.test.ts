@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { compareStrings, toPosix } from './paths.js';
 import { type PlanInput, patternTargets, planOptimization } from './plan.js';
 import type { AssetProbe } from './probe.js';

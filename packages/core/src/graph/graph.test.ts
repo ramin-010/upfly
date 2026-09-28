@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { Asset, RawReference, Reference, UnscannedFile } from '../types.js';
 import { buildGraph, unreferencedAssets } from './graph.js';
-import type { Asset, RawReference, Reference, UnscannedFile } from './types.js';
 
 /**
  * The graph is pure, so these tests build references by hand rather than running the

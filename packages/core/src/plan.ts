@@ -12,7 +12,7 @@
 
 import { isAbsolute, join } from 'node:path';
 import { splitPathSuffix } from './adapters/reference-path.js';
-import type { AssetNode, Graph } from './graph.js';
+import type { AssetNode, Graph } from './graph/graph.js';
 import type { Declined } from './manifest.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from './paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from './probe.js';

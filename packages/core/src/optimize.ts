@@ -11,7 +11,7 @@
 import type { AuditResult } from './audit.js';
 import { applyEdits } from './edits.js';
 import { UpflyError } from './errors.js';
-import type { Graph } from './graph.js';
+import type { Graph } from './graph/graph.js';
 import { acquireLock } from './lock.js';
 import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
 import {

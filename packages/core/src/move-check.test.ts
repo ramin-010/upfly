@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { checkMoveRegression } from './move-check.js';
 import type { Asset, ExcludedRoot, RawReference, Reference, UnscannedFile } from './types.js';
 

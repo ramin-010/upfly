@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import type { PathSpelling } from './adapters/reference-path.js';
 import { discover } from './discover/discover.js';
-import { buildGraph } from './graph.js';
+import { buildGraph } from './graph/graph.js';
 import { toPosix } from './paths.js';
 import { type Move, planRelocation } from './relocate.js';
 import { type AliasMap, expandAlias, loadAliases } from './resolve/aliases.js';
