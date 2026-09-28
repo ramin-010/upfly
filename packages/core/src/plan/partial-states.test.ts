@@ -3,14 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultAdapters } from './adapters/default-adapters.js';
-import { discover } from './discover/discover.js';
-import { buildGraph } from './graph/graph.js';
+import { defaultAdapters } from '../adapters/default-adapters.js';
+import { discover } from '../discover/discover.js';
+import { buildGraph } from '../graph/graph.js';
+import { createSharpProbe } from '../probe/probe-sharp.js';
+import { probeAssets } from '../probe/probe.js';
+import { resolveReferences } from '../resolve/resolve.js';
+import { scanSources } from '../scan/scan.js';
 import { type PublicPolicy, patternTargets, planOptimization } from './plan.js';
-import { createSharpProbe } from './probe/probe-sharp.js';
-import { probeAssets } from './probe/probe.js';
-import { resolveReferences } from './resolve/resolve.js';
-import { scanSources } from './scan/scan.js';
 
 /**
  * Planning a tree that is half working, which real repositories rarely are.
@@ -24,7 +24,7 @@ import { scanSources } from './scan/scan.js';
  * convert fails because its bytes are not an image, not because a test double says so.
  */
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/partial-pattern');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures/partial-pattern');
 
 /** The serving root this tree declares. `public/` is served; `src/` is bundled. */
 const SERVING_ROOTS = { declared: true, dirs: ['public'] } as const;

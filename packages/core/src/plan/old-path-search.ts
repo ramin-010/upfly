@@ -11,8 +11,8 @@
  * See "Moving an asset" in ARCHITECTURE.md.
  */
 
-import { plural } from './format.js';
-import { compareStrings } from './paths.js';
+import { plural } from '../format.js';
+import { compareStrings } from '../paths.js';
 
 /** One occurrence of an old path that survived the move. */
 export interface Survivor {

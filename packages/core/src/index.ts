@@ -69,24 +69,30 @@ export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './shapes.js';
 export type { ShapeDeclaration, ShapeEmission } from './shapes.js';
 export { findDuplicates, hashCandidates } from './audit/duplicates.js';
 export type { DuplicateSet } from './audit/duplicates.js';
-export { isUnderPublicDir, patternTargets, planOptimization } from './plan.js';
-export { moveOperationsFor, planRelocation } from './relocate.js';
-export type { Move, RefusalCode, RefusedMove, RelocateInput, RelocationPlan } from './relocate.js';
+export { isUnderPublicDir, patternTargets, planOptimization } from './plan/plan.js';
+export { moveOperationsFor, planRelocation } from './plan/relocate.js';
+export type {
+  Move,
+  RefusalCode,
+  RefusedMove,
+  RelocateInput,
+  RelocationPlan,
+} from './plan/relocate.js';
 
 // A move's regression count and the limit of that count, as one value, so the count
 // never reaches a user without its limit.
-export { checkMoveRegression } from './move-check.js';
-export type { MoveCheckInput, MoveCoverageLimit, MoveRegressionReport } from './move-check.js';
+export { checkMoveRegression } from './plan/move-check.js';
+export type { MoveCheckInput, MoveCoverageLimit, MoveRegressionReport } from './plan/move-check.js';
 
 // The independent check on a move: it searches text for the old path and never reads a
 // graph, so it cannot share the graph's blind spots.
-export { findSurvivingPaths, spellingsFor } from './old-path-search.js';
+export { findSurvivingPaths, spellingsFor } from './plan/old-path-search.js';
 export type {
   OldPathSearchInput,
   OldPathSearchResult,
   Survivor,
   Unsearchable,
-} from './old-path-search.js';
+} from './plan/old-path-search.js';
 export { alwaysMeasureFor, newRunId, optimize } from './optimize.js';
 export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './optimize.js';
 export { optimizeProject } from './optimize-project.js';
@@ -99,7 +105,7 @@ export type {
   PlannedRewrite,
   PublicPolicy,
   RootLinkPolicy,
-} from './plan.js';
+} from './plan/plan.js';
 export { commit, inspect, prepare, readManifest, revert } from './transaction.js';
 export type {
   FileStore,

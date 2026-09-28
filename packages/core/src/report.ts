@@ -26,7 +26,7 @@ import {
   relativePath,
   toPosix,
 } from './paths.js';
-import { MENTION_SURVIVES } from './plan.js';
+import { MENTION_SURVIVES } from './plan/plan.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './probe/probe.js';
 import type { AliasMap } from './resolve/aliases.js';
 import { isLinked, provenPath } from './resolve/reference.js';

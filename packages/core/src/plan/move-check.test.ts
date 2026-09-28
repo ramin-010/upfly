@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph } from './graph/graph.js';
+import { buildGraph } from '../graph/graph.js';
+import type { Asset, ExcludedRoot, RawReference, Reference, UnscannedFile } from '../types.js';
 import { checkMoveRegression } from './move-check.js';
-import type { Asset, ExcludedRoot, RawReference, Reference, UnscannedFile } from './types.js';
 
 /**
  * The disclosure that travels with a move's regression count.

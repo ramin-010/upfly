@@ -3,16 +3,16 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultAdapters } from './adapters/default-adapters.js';
-import type { PathSpelling } from './adapters/reference-path.js';
-import { discover } from './discover/discover.js';
-import { buildGraph } from './graph/graph.js';
-import { toPosix } from './paths.js';
+import { defaultAdapters } from '../adapters/default-adapters.js';
+import type { PathSpelling } from '../adapters/reference-path.js';
+import { discover } from '../discover/discover.js';
+import { buildGraph } from '../graph/graph.js';
+import { toPosix } from '../paths.js';
+import { type AliasMap, expandAlias, loadAliases } from '../resolve/aliases.js';
+import { resolveReferences } from '../resolve/resolve.js';
+import { scanSources } from '../scan/scan.js';
+import type { Asset, RawReference, Reference } from '../types.js';
 import { type Move, planRelocation } from './relocate.js';
-import { type AliasMap, expandAlias, loadAliases } from './resolve/aliases.js';
-import { resolveReferences } from './resolve/resolve.js';
-import { scanSources } from './scan/scan.js';
-import type { Asset, RawReference, Reference } from './types.js';
 
 /**
  * `relocate`: moving an asset and repointing what names it.
@@ -24,7 +24,10 @@ import type { Asset, RawReference, Reference } from './types.js';
  * directory would test the fixtures rather than the arithmetic.
  */
 
-const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/partial-pattern');
+const FIXTURE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../fixtures/partial-pattern',
+);
 const SERVING = { declared: true, dirs: ['public'] } as const;
 const NO_ALIASES: AliasMap = { rules: [], skipped: [] };
 

@@ -20,7 +20,7 @@ import {
   runPipeline,
   servingRootsFor,
 } from './pipeline.js';
-import type { PublicPolicy } from './plan.js';
+import type { PublicPolicy } from './plan/plan.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import type { EncodeFormat } from './probe/probe.js';
 import type { ServingRoots } from './resolve/resolve.js';

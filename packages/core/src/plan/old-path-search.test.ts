@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { compareStrings } from '../paths.js';
 import { findSurvivingPaths, spellingsFor } from './old-path-search.js';
-import { compareStrings } from './paths.js';
 
 /**
  * Searching for an old path without asking the graph.

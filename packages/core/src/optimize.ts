@@ -14,13 +14,13 @@ import { UpflyError } from './errors.js';
 import type { Graph } from './graph/graph.js';
 import { acquireLock } from './lock.js';
 import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
+import { compareStrings } from './paths.js';
 import {
   type Survivor,
   type Unsearchable,
   findSurvivingPaths,
   spellingsFor,
-} from './old-path-search.js';
-import { compareStrings } from './paths.js';
+} from './plan/old-path-search.js';
 import {
   type OptimizationPlan,
   type PlanRefusal,
@@ -29,7 +29,7 @@ import {
   type RootLinkPolicy,
   patternTargets,
   planOptimization,
-} from './plan.js';
+} from './plan/plan.js';
 import type { AssetProbe, EncodeFormat, ImageProbe } from './probe/probe.js';
 import type { AliasMap } from './resolve/aliases.js';
 import type { ServingRoots } from './resolve/resolve.js';
