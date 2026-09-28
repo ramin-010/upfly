@@ -9,7 +9,7 @@ import { compareSources } from './token-diff.mjs';
 const SCRIPT = fileURLToPath(new URL('./token-diff.mjs', import.meta.url));
 const SOURCE = 'packages/demo/src/demo.ts';
 const TEST = 'packages/demo/src/demo.test.ts';
-const SHAPES = 'packages/core/src/shapes.ts';
+const SHAPES = 'packages/core/src/adapters/shapes.ts';
 const BENCH = 'bench/src/report.ts';
 
 function kinds(before: string, after: string, file = SOURCE) {

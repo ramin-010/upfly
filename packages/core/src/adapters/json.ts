@@ -12,10 +12,10 @@
  */
 
 import { extensionOf } from '../paths.js';
-import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { isExternalUrl, splitPathSuffix } from './reference-path.js';
+import type { ShapeId } from './shapes.js';
 
 /** A JSON string literal, including its quotes. */
 const STRING = /"(?:[^"\\]|\\.)*"/dg;

@@ -1094,7 +1094,7 @@ matrix (`accuracy-suite/tools/matrix.mjs`) prints one row per shape and no total
 figure can be quoted out of context.
 
 The accuracy suite's answer key, `accuracy-suite/key/coverage-key.json`, defines the vocabulary, and
-`packages/core/src/shapes.ts` holds a second copy as `SHAPES`, which the engine exports. Neither can
+`packages/core/src/adapters/shapes.ts` holds a second copy as `SHAPES`, which the engine exports. Neither can
 import the other. The key's checker, `check-key.mjs`, imports only `node:` modules and files beside
 it, so the key is never certified by the engine it measures, and a shipped package must not depend
 on a test fixture. `shapes.reconcile.test.ts` fails when the copies differ in either direction, and

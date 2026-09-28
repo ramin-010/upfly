@@ -13,7 +13,6 @@
 
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { UpflyError } from '../errors.js';
-import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -29,6 +28,7 @@ import {
   templateExpressionReason,
   urlWithin,
 } from './reference-path.js';
+import { type ShapeId, whyFormatKept } from './shapes.js';
 import { urlPosition } from './url-attributes.js';
 
 type ParsedNode = DefaultTreeAdapterMap['node'];

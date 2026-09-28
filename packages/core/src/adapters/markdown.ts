@@ -11,7 +11,6 @@
 
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
@@ -26,6 +25,7 @@ import {
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
+import { type ShapeId, whyFormatKept } from './shapes.js';
 
 /**
  * Where a template hole starts, in any syntax in `TEMPLATE_HOLES`, tested at one position.

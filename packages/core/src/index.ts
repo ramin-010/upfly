@@ -65,8 +65,8 @@ export type {
   MoveOperation,
   Operation,
 } from './write/manifest.js';
-export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './shapes.js';
-export type { ShapeDeclaration, ShapeEmission } from './shapes.js';
+export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './adapters/shapes.js';
+export type { ShapeDeclaration, ShapeEmission } from './adapters/shapes.js';
 export { findDuplicates, hashCandidates } from './audit/duplicates.js';
 export type { DuplicateSet } from './audit/duplicates.js';
 export { isUnderPublicDir, patternTargets, planOptimization } from './plan/plan.js';

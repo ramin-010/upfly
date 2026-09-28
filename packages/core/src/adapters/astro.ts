@@ -13,11 +13,11 @@
  * half blanked, so every offset it returns already indexes the `.astro` file.
  */
 
-import { whyFormatKept } from '../shapes.js';
 import type { RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences } from './javascript.js';
+import { whyFormatKept } from './shapes.js';
 
 /**
  * The frontmatter fence, if the file opens with one.

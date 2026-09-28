@@ -28,7 +28,6 @@ import type {
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import { type ShapeId, whyFormatKept } from '../shapes.js';
 import type { Adapter, Confidence, RawReference, ReferenceKind } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
@@ -47,6 +46,7 @@ import {
   staticExtensionOf,
   urlWithin,
 } from './reference-path.js';
+import { type ShapeId, whyFormatKept } from './shapes.js';
 import { urlPosition } from './url-attributes.js';
 
 /**

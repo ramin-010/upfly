@@ -10,8 +10,8 @@
  */
 
 import { isImageExtension } from '../paths.js';
-import type { ShapeId } from '../shapes.js';
 import { spellingsOf, staticExtensionOf } from './reference-path.js';
+import type { ShapeId } from './shapes.js';
 
 /** What a claim may read of the element whose attribute it judges. */
 export interface ClaimedElement {

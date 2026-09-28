@@ -10,7 +10,7 @@
  */
 
 import type { PathSpelling } from './adapters/reference-path.js';
-import type { ShapeId } from './shapes.js';
+import type { ShapeId } from './adapters/shapes.js';
 
 /** How certain we are that rewriting a reference is safe. */
 export type Confidence =

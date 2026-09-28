@@ -13,7 +13,6 @@ import scssParser from 'postcss-scss';
 import valueParser, { type Node as ValueNode } from 'postcss-value-parser';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import type { ShapeId } from '../shapes.js';
 import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
@@ -26,6 +25,7 @@ import {
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
+import type { ShapeId } from './shapes.js';
 
 /**
  * Dialect parsers, by extension.

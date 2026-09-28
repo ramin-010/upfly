@@ -40,7 +40,7 @@ export const KIND_LABELS = /** @type {const} */ ({
 });
 
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
-const SHAPES_FILE = 'packages/core/src/shapes.ts';
+const SHAPES_FILE = 'packages/core/src/adapters/shapes.ts';
 const SHAPE_TYPE = 'ShapeDeclaration';
 const BENCH_SOURCE = /^bench\/src\/(?!.*\.test\.[cm]?[jt]s$)/;
 

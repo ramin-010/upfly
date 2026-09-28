@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { IMAGE_EXTENSIONS } from '../paths.js';
-import { whyFormatKept } from '../shapes.js';
 import type { RawReference } from '../types.js';
 import { htmlAdapter } from './html.js';
 import { javascriptAdapter } from './javascript.js';
+import { whyFormatKept } from './shapes.js';
 import {
   type ClaimedElement,
   URL_POSITIONS,
