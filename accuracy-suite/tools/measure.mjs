@@ -20,7 +20,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   NON_DEFECT_KINDS,
-  blindSpots,
   buildMatrix,
   claimedPopulation,
   renderMatrix,
@@ -286,7 +285,6 @@ if (defects > 0) {
 process.stdout.write(
   '\n✅ Run 1: every keyed entry matched its expected outcome, or carries a knownGap.\n',
 );
-for (const spot of blindSpots()) void spot; // rendered above; kept reachable for the linter
 
 function posix(path) {
   return path.replace(/\\/g, '/');

@@ -138,9 +138,6 @@ export interface Observation {
 /** Which engine outcomes satisfy one `expect` value. `absent` means nothing was emitted. */
 export const ACCEPTS: Readonly<Record<string, readonly string[]>>;
 
-/** Outcomes that must never satisfy an expect that also accepts silence. */
-export const NEVER_ACCEPTABLE_AS_SILENCE: readonly string[];
-
 /** Finding kinds reported for visibility and never counted against the run. */
 export const NON_DEFECT_KINDS: readonly string[];
 

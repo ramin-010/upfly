@@ -29,12 +29,6 @@ export const ACCEPTS = {
   'out-of-scope': ['out-of-scope', 'absent'],
 };
 
-/**
- * Outcomes that must never satisfy `discarded` or `out-of-scope`, the two expects that also
- * accept silence. `coverage-matrix.test.ts` checks that the matrix refuses each of them.
- */
-export const NEVER_ACCEPTABLE_AS_SILENCE = ['resolved', 'resolved-pattern', 'broken'];
-
 /** Byte offset to UTF-16 code-unit offset: the key counts bytes, the engine code units. */
 export function toCodeUnits(bytes, byteOffset) {
   return bytes.subarray(0, byteOffset).toString('utf8').length;

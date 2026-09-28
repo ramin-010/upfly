@@ -280,17 +280,16 @@ if (baseline.status !== 0) {
       const output = `${result.stdout}${result.stderr}`;
 
       const wentRed = result.status !== 0;
-      const saidWhy = testCase.expectExitOnly || output.includes(testCase.expect);
+      const saidWhy = output.includes(testCase.expect);
 
       if (wentRed && saidWhy) {
         process.stdout.write(`  RED   ${testCase.name}\n`);
       } else {
         failures += 1;
         process.stdout.write(`  MISS  ${testCase.name}\n`);
-        const expectation = testCase.expectExitOnly
-          ? ''
-          : `, expected to say ${JSON.stringify(testCase.expect)}`;
-        process.stdout.write(`        exit ${result.status}${expectation}\n`);
+        process.stdout.write(
+          `        exit ${result.status}, expected to say ${JSON.stringify(testCase.expect)}\n`,
+        );
         if (!wentRed) process.stdout.write('        🔴 THE CHECKER STAYED GREEN ON DAMAGE.\n');
       }
     } finally {

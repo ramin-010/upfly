@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /** Byte offset of the nth (1-based) literal occurrence of `raw` in `buf`. */
