@@ -794,6 +794,14 @@ a page and in a component. JSX keeps one rule of its own beside the list: `src`,
 `<img>`. The JSX reader decides each attribute at the element: it is read or declined, and a value
 that a claim reading the value's text cannot judge whole is judged path by path (below).
 
+A value is read as a page's is, too. A string or template in a JSX attribute, and the first
+argument of `new URL(…, import.meta.url)`, are URLs, so each is read without the C0 controls and
+spaces around it, and one with a tab or line break inside stays `unsafe` with a note saying why:
+the rule `urlWithin` in `reference-path.ts` gives both adapters (see "Character references in HTML
+attributes"). The claim that reads a value's text reads it the same way, so a line break before the
+closing quote hides no link to an image. An `import` or `require()` specifier is not a URL, and
+module resolution strips nothing, so it is read as written.
+
 Two more claims make the list read what a page names only in its head or in a link. A `<meta
 content>` names a link preview's image when its `property` or `name` is `og:image`,
 `og:image:url`, `og:image:secure_url`, `twitter:image`, `twitter:image:src` or

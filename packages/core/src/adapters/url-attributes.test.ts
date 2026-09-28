@@ -37,8 +37,9 @@ function nameOf(position: UrlPosition): string {
   return `${position.tag} ${position.attribute}`;
 }
 
-function markup(position: UrlPosition): string {
-  const value = position.html === 'srcset' ? '/img/a.png 1x, /img/b.png 2x' : '/img/a.png';
+function markup(position: UrlPosition, around = ''): string {
+  const url = position.html === 'srcset' ? '/img/a.png 1x, /img/b.png 2x' : '/img/a.png';
+  const value = `${around}${url}${around}`;
   const extra = typeof position.html === 'function' ? CLAIMING[nameOf(position)] : undefined;
   const claim = extra === undefined || extra === '' ? '' : ` ${extra}`;
   const element = `<${WRITTEN[position.tag] ?? position.tag}${claim} ${position.attribute}="${value}" />`;
@@ -54,6 +55,19 @@ describe('every position in the shared list', () => {
     'reads %s in a page and in a component at the same offsets',
     (_name, position) => {
       const text = markup(position);
+      const page = htmlAdapter.findReferences({ file: '/project/page.html', text });
+      const component = javascriptAdapter.findReferences({ file: '/project/Page.jsx', text });
+
+      expect(located(page).length).toBeGreaterThan(0);
+      expect(located(component)).toEqual(located(page));
+    },
+  );
+
+  it.each(URL_POSITIONS.map((position) => [nameOf(position), position] as const))(
+    'reads %s with whitespace around the value in a page and in a component alike',
+    (_name, position) => {
+      // A browser strips the C0 controls and spaces around a URL before it reads it.
+      const text = markup(position, '\n  ');
       const page = htmlAdapter.findReferences({ file: '/project/page.html', text });
       const component = javascriptAdapter.findReferences({ file: '/project/Page.jsx', text });
 

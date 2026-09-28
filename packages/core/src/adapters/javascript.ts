@@ -35,6 +35,7 @@ import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
   NOT_GLOBBABLE_REASON,
+  URL_LINE_BREAK_REASON,
   assembledPathIsGlobbable,
   interpolationChunks,
   isDrivePath,
@@ -44,6 +45,7 @@ import {
   provablyNotAFile,
   splitPathSuffix,
   staticExtensionOf,
+  urlWithin,
 } from './reference-path.js';
 import { urlPosition } from './url-attributes.js';
 
@@ -997,13 +999,14 @@ function jsxStringValue(value: JSXAttribute['value']): string | undefined {
 /**
  * A JSX value as the static text a claim reads, each unknown part written `${}`: a string,
  * or a template literal. `null` for anything else, a `+` chain or a choice included, since
- * no one text stands for it.
+ * no one text stands for it. The text leaves out the whitespace around the value, as the URL
+ * parser does (`urlWithin`), so a line break before the closing quote hides no extension.
  */
 function jsxValueText(value: JSXAttribute['value'], context: Context): string | null {
   const text = jsxStringValue(value);
-  if (text !== undefined) return text;
+  if (text !== undefined) return urlWithin(text, 0).text;
   if (value?.type === 'JSXExpressionContainer' && value.expression.type === 'TemplateLiteral') {
-    return templateChunks(value.expression, context).chunks.join(HOLE);
+    return urlWithin(templateChunks(value.expression, context).chunks.join(HOLE), 0).text;
   }
   return null;
 }
@@ -1366,7 +1369,35 @@ function addLiteralReference(
     return;
   }
 
-  addReference({ context, start, end, rawPath: raw, kind, shape, ceiling, note: description });
+  // A URL, in a JSX attribute or given to `new URL`, is read as the URL parser reads it: the
+  // range covers the URL without the whitespace around it, which a rewrite leaves in place. A
+  // module specifier is not a URL, and module resolution strips nothing.
+  const url = kind === 'attr' ? urlWithin(raw, start) : { text: raw, start, end };
+  // The parser also removes a tab or line break inside a URL, so no range spells what it reads.
+  if (kind === 'attr' && /[\t\n\r]/.test(url.text)) {
+    addReference({
+      context,
+      start: url.start,
+      end: url.end,
+      rawPath: url.text,
+      kind,
+      shape,
+      ceiling: 'unsafe',
+      note: `${description}: ${URL_LINE_BREAK_REASON}`,
+      skipPathChecks: true,
+    });
+    return;
+  }
+  addReference({
+    context,
+    start: url.start,
+    end: url.end,
+    rawPath: url.text,
+    kind,
+    shape,
+    ceiling,
+    note: description,
+  });
 }
 
 /**
@@ -1390,21 +1421,50 @@ function addTemplateReference(
   if (flattened === null) return;
 
   const hasExpressions = template.expressions.length > 0;
-  const raw = context.text.slice(flattened.start, flattened.start + flattened.text.length);
+  // A URL is read as `addLiteralReference` reads one. The flattened text writes each hole as a
+  // comment, so a line break inside `${…}` is not one inside the URL.
+  const isUrl = kind === 'attr';
+  const url = isUrl
+    ? urlWithin(flattened.text, flattened.start)
+    : {
+        text: flattened.text,
+        start: flattened.start,
+        end: flattened.start + flattened.text.length,
+      };
+  const raw = context.text.slice(url.start, url.end);
   // The ceiling is what the resolver reads: it globs `medium`, refuses `unsafe`, and never
   // looks at `shape`. So the glob rule has to set the ceiling here; `templateShape` alone
   // would change only the label. The chunks are the traced ones, so
   // `${ASSET_BASE}/${name}.png` is judged as the `/gallery/${name}.png` the text proves,
   // and that path travels as `assembledPath` because `rawPath` must stay the source text.
   const { chunks, traced } = templateChunks(template, context);
+  const assembled = isUrl ? urlWithin(chunks.join(HOLE), 0).text : chunks.join(HOLE);
+  const proven = traced ? { assembledPath: assembled } : {};
+  if (isUrl && /[\t\n\r]/.test(url.text)) {
+    addReference({
+      context,
+      start: url.start,
+      end: url.end,
+      rawPath: raw,
+      ...proven,
+      kind,
+      shape,
+      ceiling: 'unsafe',
+      note: `${description}: ${URL_LINE_BREAK_REASON}`,
+      skipPathChecks: true,
+      asserted,
+      decline,
+    });
+    return;
+  }
   const globbable = hasExpressions && assembledPathIsGlobbable(chunks);
 
   addReference({
     context,
-    start: flattened.start,
-    end: flattened.start + raw.length,
+    start: url.start,
+    end: url.end,
     rawPath: raw,
-    ...(traced ? { assembledPath: chunks.join(HOLE) } : {}),
+    ...proven,
     kind,
     shape,
     ceiling: globbable ? 'medium' : hasExpressions ? 'unsafe' : 'high',

@@ -180,6 +180,108 @@ describe('javascriptAdapter', () => {
         ['logo.png', 'resolved'],
       ]);
     });
+
+    it('links a name with whitespace around it to the file beside the module', () => {
+      // The URL constructor strips the C0 controls and spaces at either end of its argument.
+      expect(outcomes("new URL(' logo.png', import.meta.url);", ['src/logo.png'])).toEqual([
+        ['logo.png', 'resolved'],
+      ]);
+      expect(outcomes('new URL(`logo.png `, import.meta.url);', ['src/logo.png'])).toEqual([
+        ['logo.png', 'resolved'],
+      ]);
+    });
+  });
+
+  describe('whitespace around a URL', () => {
+    // A browser reads a JSX attribute's value as a URL, and the URL parser strips the C0
+    // controls and spaces at either end of a URL and removes every tab and line break inside.
+    it('reads a src whose value ends with a line break, and ranges over the URL alone', () => {
+      const source = '<img alt="" src="/img/a.png\n" />';
+
+      expect(find(source).map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/a.png', 'high'],
+      ]);
+      expect(slices(source)).toEqual(['/img/a.png']);
+    });
+
+    it('reads a src whose value starts with a space, or a line break and spaces', () => {
+      for (const source of ['<img src=" /img/a.png" />', '<img src="\n      /img/a.png" />']) {
+        expect(slices(source), source).toEqual(['/img/a.png']);
+      }
+    });
+
+    it('reads a string in braces and a template with no holes the same way', () => {
+      const source = [
+        '<img src={" /img/a.png "} />;',
+        '<video poster={`\n  /img/poster.png\n`} />;',
+      ].join('\n');
+
+      expect(paths(source)).toEqual(['/img/a.png', '/img/poster.png']);
+      expect(slices(source)).toEqual(['/img/a.png', '/img/poster.png']);
+    });
+
+    it('reads a template with a hole the same way, so it is still matched as a pattern', () => {
+      const source = 'export const A = ({ name }) => <img src={`/img/${name}.png\n`} />;';
+
+      expect(find(source).map((reference) => [reference.rawPath, reference.ceiling])).toEqual([
+        ['/img/${name}.png', 'medium'],
+      ]);
+    });
+
+    it('reads a path assembled from a same-file constant the same way', () => {
+      const source = "const DIR = '/img';\nexport const A = () => <img src={`${DIR}/a.png\n`} />;";
+
+      expect(find(source).map((reference) => reference.assembledPath)).toEqual(['/img/a.png']);
+    });
+
+    it('reads a link to an image whose value ends with a line break', () => {
+      // The link's claim reads the value's text, where the line break hid the extension.
+      const source = '<a href="/img/full.png\n">full size</a>';
+
+      expect(find(source).map((reference) => [reference.rawPath, reference.shape])).toEqual([
+        ['/img/full.png', 'js.jsx.a.href.image'],
+      ]);
+    });
+
+    it('rewrites the URL and leaves the whitespace around it in place', () => {
+      const source = '<img src="\n  /img/a.png\n" />';
+      const [reference] = find(source);
+      const rewritten = javascriptAdapter.rewrite({
+        text: source,
+        edits: [
+          { start: reference?.start ?? 0, end: reference?.end ?? 0, replacement: '/img/a.webp' },
+        ],
+      });
+
+      expect(rewritten).toBe('<img src="\n  /img/a.webp\n" />');
+    });
+
+    it('keeps a URL with a tab or line break inside it unsafe, and says why', () => {
+      const sources = [
+        '<img src="/img/\na.png" />',
+        '<img src="/img/\ta.png" />',
+        "new URL('c\t.png', import.meta.url);",
+        'new URL(`c\n.png`, import.meta.url);',
+      ];
+      for (const source of sources) {
+        const references = find(source);
+
+        expect(
+          references.map((reference) => reference.ceiling),
+          source,
+        ).toEqual(['unsafe']);
+        expect(references[0]?.note, source).toContain('tab or line break');
+      }
+    });
+
+    it('finds nothing in a value that is only whitespace, or another host with some around it', () => {
+      expect(find('<img src=" \n " />')).toEqual([]);
+      expect(find('<img src="\n  https://cdn.example.com/a.png" />')).toEqual([]);
+    });
+
+    it('leaves an import specifier as written, since module resolution strips nothing', () => {
+      expect(paths("import logo from ' ./logo.png';")).toEqual([' ./logo.png']);
+    });
   });
 
   describe('TypeScript', () => {

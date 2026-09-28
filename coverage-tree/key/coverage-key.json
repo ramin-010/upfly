@@ -8027,6 +8027,70 @@
           "column": 38
         }
       ]
+    },
+    {
+      "path": "apps/web/src/components/BannerImage.tsx",
+      "entries": [
+        {
+          "raw": "/img/banner.png",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute",
+          "expect": "resolved",
+          "why": "The value ends with a line break, because the closing quote sits on the next line. A browser strips the whitespace around a URL before it loads it, so this is the banner. Read with the line break, the path's extension is not an image's, and the reference is dropped with no report line.",
+          "target": "apps/web/public/img/banner.png",
+          "offset": 267,
+          "line": 9,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/TeamPhoto.tsx",
+      "entries": [
+        {
+          "raw": "/img/team.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.attribute",
+          "expect": "resolved",
+          "why": "The value starts with a space typed after the opening quote. A browser strips it before it loads the URL, so this is the team photo. Looked up with the space, the path names nothing, and a working image is reported as a broken reference.",
+          "target": "apps/web/public/img/team.jpg",
+          "offset": 208,
+          "line": 6,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/PosterLink.tsx",
+      "entries": [
+        {
+          "raw": "/media/poster.jpg",
+          "occurrence": 1,
+          "shape": "js.jsx.a.href.image",
+          "expect": "resolved",
+          "why": "A link to the full-size poster whose value ends with a line break, because the closing quote sits on the next line. A browser strips it from the link's URL, so this links the poster. Judged with the line break, the link's extension is not an image's, and the link is dropped with no report line.",
+          "target": "apps/web/public/media/poster.jpg",
+          "offset": 272,
+          "line": 9,
+          "column": 13
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/logo-url-padded.ts",
+      "entries": [
+        {
+          "raw": "logo.png",
+          "occurrence": 1,
+          "shape": "js.new-url",
+          "expect": "resolved",
+          "why": "A name given to new URL with import.meta.url as its base, with a space typed before it. The URL constructor strips the whitespace around a URL, so this is the logo beside the module. Looked up with the space, it names nothing, and a working image is reported as a broken reference.",
+          "target": "apps/web/src/components/logo.png",
+          "offset": 151,
+          "line": 3,
+          "column": 40
+        }
+      ]
     }
   ]
 }

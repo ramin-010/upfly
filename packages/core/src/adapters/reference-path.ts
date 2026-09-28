@@ -55,6 +55,30 @@ export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
 }
 
 /**
+ * A URL's text and range within a value, without the C0 controls and spaces at either end,
+ * which the URL parser strips before it reads a URL. The parser also removes every tab and
+ * line break inside a URL, which leaves no range that spells what it reads, so an adapter
+ * keeps such a reference `unsafe` with `URL_LINE_BREAK_REASON`.
+ * https://url.spec.whatwg.org/#concept-basic-url-parser
+ *
+ * @param valueStart The value's offset in the file, so the range is an offset in the file too.
+ */
+export function urlWithin(
+  value: string,
+  valueStart: number,
+): { readonly text: string; readonly start: number; readonly end: number } {
+  let from = 0;
+  let to = value.length;
+  while (from < to && value.charCodeAt(from) <= 0x20) from += 1;
+  while (to > from && value.charCodeAt(to - 1) <= 0x20) to -= 1;
+  return { text: value.slice(from, to), start: valueStart + from, end: valueStart + to };
+}
+
+/** Why a URL with a tab or line break inside it is `unsafe`, worded for the report. */
+export const URL_LINE_BREAK_REASON =
+  'contains a tab or line break, which a browser removes from a URL, so the path text cannot be located exactly';
+
+/**
  * One way of writing a hole in a path: text that a template engine, a preprocessor or a
  * template literal replaces before the path is used.
  */

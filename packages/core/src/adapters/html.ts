@@ -18,6 +18,7 @@ import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import {
+  URL_LINE_BREAK_REASON,
   decodeCharacterReferencesWithMap,
   holdsUndecodableCharacterReference,
   isExternalUrl,
@@ -26,6 +27,7 @@ import {
   spellingsOf,
   splitPathSuffix,
   templateExpressionReason,
+  urlWithin,
 } from './reference-path.js';
 import { urlPosition } from './url-attributes.js';
 
@@ -55,22 +57,6 @@ function srcsetShape(tagName: string, descriptor: string, candidateCount: number
  */
 function asTheParserReads(text: string): string {
   return text.replace(/\r\n?/g, '\n');
-}
-
-/**
- * A single URL's text and range within an attribute value, without the C0 controls and
- * spaces at either end, which the URL parser strips before it reads a URL.
- * https://url.spec.whatwg.org/#concept-basic-url-parser
- */
-function urlWithin(
-  value: string,
-  valueStart: number,
-): { readonly text: string; readonly start: number; readonly end: number } {
-  let from = 0;
-  let to = value.length;
-  while (from < to && value.charCodeAt(from) <= 0x20) from += 1;
-  while (to > from && value.charCodeAt(to - 1) <= 0x20) to -= 1;
-  return { text: value.slice(from, to), start: valueStart + from, end: valueStart + to };
 }
 
 /**
@@ -739,7 +725,7 @@ function addUrlWithLineBreakReference(
     shape,
     ceiling: 'unsafe',
     asserted: true,
-    note: 'contains a tab or line break, which a browser removes from a URL, so the path text cannot be located exactly',
+    note: URL_LINE_BREAK_REASON,
   });
 }
 
