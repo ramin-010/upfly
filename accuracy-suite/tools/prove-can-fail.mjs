@@ -94,17 +94,19 @@ const cases = [
     name: 'a target names a file that does not exist',
     damage: (root) =>
       editKey(root, (key) => {
-        const entry = findEntry(key, (e) => e.expect === 'resolved');
+        // A non-relative entry, so path arithmetic has nothing to say about the new target.
+        const entry = findEntry(key, (e) => e.expect === 'resolved' && !/^\.{1,2}\//.test(e.raw));
         entry.target = 'apps/web/public/no-such-file.png';
       }),
     expect: 'neither a listed asset nor a file in the tree',
   },
   {
-    name: 'a resolved entry loses its target',
+    name: 'a resolved-pattern entry loses its target',
     damage: (root) =>
       editKey(root, (key) => {
         removeField(
-          findEntry(key, (e) => e.expect === 'resolved'),
+          // A resolved one would also break "exactly one target"; a pattern may name several.
+          findEntry(key, (e) => e.expect === 'resolved-pattern'),
           'target',
         );
       }),
@@ -114,7 +116,9 @@ const cases = [
     name: 'an expect value is not one of the seven outcomes',
     damage: (root) =>
       editKey(root, (key) => {
-        findEntry(key, (e) => e.expect === 'resolved').expect = 'probably-fine';
+        // An entry with no target, so "must not carry a target" stays quiet.
+        findEntry(key, (e) => e.target === undefined && e.expect !== 'UNDECIDED').expect =
+          'probably-fine';
       }),
     expect: 'unknown expect',
   },
@@ -141,6 +145,11 @@ const cases = [
         const entry = group.entries.find((e) => e.raw === '/srcset/');
         entry.occurrence = 1;
         entry.offset -= 633;
+        // Restamped for the new offset, so only the overlap is wrong.
+        Object.assign(
+          entry,
+          positionOf(readFileSync(join(root, 'tree', group.path)), entry.offset),
+        );
       }),
     expect: 'overlap',
   },
@@ -232,6 +241,19 @@ function editKey(root, mutate) {
   const key = JSON.parse(readFileSync(path, 'utf8'));
   mutate(key);
   writeFileSync(path, `${JSON.stringify(key, null, 2)}\n`);
+}
+
+/** The 1-based line and column of a byte offset, as the key records them. */
+function positionOf(bytes, offset) {
+  let line = 1;
+  let lineStart = 0;
+  for (let i = 0; i < offset; i += 1) {
+    if (bytes[i] === 0x0a) {
+      line += 1;
+      lineStart = i + 1;
+    }
+  }
+  return { line, column: offset - lineStart + 1 };
 }
 
 function findEntry(key, predicate) {
