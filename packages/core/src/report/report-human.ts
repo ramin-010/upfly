@@ -10,11 +10,11 @@
  * pluralises only the noun it is handed, so a verb beside it goes wrong at one.
  */
 
-import { staticExtensionOf } from './adapters/reference-path.js';
-import type { Finding, OversizeDimension } from './audit/audit.js';
-import type { MentionSource } from './audit/sweep.js';
-import { formatBytes as bytes } from './format.js';
-import { compareStrings, isImageExtension } from './paths.js';
+import { staticExtensionOf } from '../adapters/reference-path.js';
+import type { Finding, OversizeDimension } from '../audit/audit.js';
+import type { MentionSource } from '../audit/sweep.js';
+import { formatBytes as bytes } from '../format.js';
+import { compareStrings, isImageExtension } from '../paths.js';
 import type { ReferenceEntry, Report, SkipStage, SkippedItem } from './report.js';
 
 /** Render the report as plain text. */

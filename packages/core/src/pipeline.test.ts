@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { toPosix } from './paths.js';
 import { type PipelineProgress, runPipeline, servingRootsFor } from './pipeline.js';
-import { buildReport } from './report.js';
+import { buildReport } from './report/report.js';
 
 const roots: string[] = [];
 afterEach(() => {

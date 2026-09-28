@@ -140,8 +140,8 @@ export type {
   ProbeSkipCode,
 } from './probe/probe.js';
 export { formatBytes } from './format.js';
-export { renderReport } from './report-human.js';
-export { REPORT_SCHEMA_VERSION, buildReport } from './report.js';
+export { renderReport } from './report/report-human.js';
+export { REPORT_SCHEMA_VERSION, buildReport } from './report/report.js';
 export type {
   Caveat,
   CoverageReport,
@@ -152,7 +152,7 @@ export type {
   SkipStage,
   SkippedItem,
   ReferenceEntry,
-} from './report.js';
+} from './report/report.js';
 export { expandAlias, loadAliases } from './resolve/aliases.js';
 export type { AliasMap, AliasRule, AliasSkip, LoadAliasesOptions } from './resolve/aliases.js';
 export { CONVENTIONAL_SERVING_ROOTS, resolveReferences } from './resolve/resolve.js';

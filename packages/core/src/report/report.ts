@@ -9,14 +9,14 @@
  * ARCHITECTURE.md.
  */
 
-import { NO_REFERENCE_TO_FIND } from './adapters/html.js';
-import { interpolationChunks, templateExpressionReason } from './adapters/reference-path.js';
-import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from './audit/audit.js';
-import type { Mention, SweepResult } from './audit/sweep.js';
-import { excludedByRule } from './discover/discover.js';
-import { formatBytes, plural } from './format.js';
-import type { Graph } from './graph/graph.js';
-import { countExtensions, groupUnscanned } from './graph/unscanned.js';
+import { NO_REFERENCE_TO_FIND } from '../adapters/html.js';
+import { interpolationChunks, templateExpressionReason } from '../adapters/reference-path.js';
+import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from '../audit/audit.js';
+import type { Mention, SweepResult } from '../audit/sweep.js';
+import { excludedByRule } from '../discover/discover.js';
+import { formatBytes, plural } from '../format.js';
+import type { Graph } from '../graph/graph.js';
+import { countExtensions, groupUnscanned } from '../graph/unscanned.js';
 import {
   compareStrings,
   extensionOf,
@@ -24,12 +24,12 @@ import {
   isVectorExtension,
   relativePath,
   toPosix,
-} from './paths.js';
-import { MENTION_SURVIVES } from './plan/plan.js';
-import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from './probe/probe.js';
-import type { AliasMap } from './resolve/aliases.js';
-import { isLinked, provenPath } from './resolve/reference.js';
-import type { ServingRoots } from './resolve/resolve.js';
+} from '../paths.js';
+import { MENTION_SURVIVES } from '../plan/plan.js';
+import type { AssetProbe, EncodeFormat, EncodeSetting, ProbeSkipCode } from '../probe/probe.js';
+import type { AliasMap } from '../resolve/aliases.js';
+import { isLinked, provenPath } from '../resolve/reference.js';
+import type { ServingRoots } from '../resolve/resolve.js';
 import type {
   Confidence,
   DiscoveryResult,
@@ -37,8 +37,8 @@ import type {
   Resolution,
   ResolvedVia,
   UnscannedExtension,
-} from './types.js';
-import type { Declined } from './write/manifest.js';
+} from '../types.js';
+import type { Declined } from '../write/manifest.js';
 
 /**
  * The report's schema version, carried in `Report.version`.

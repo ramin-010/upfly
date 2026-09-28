@@ -3,19 +3,25 @@ import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { defaultAdapters } from './adapters/default-adapters.js';
-import { NO_REFERENCE_TO_FIND, htmlAdapter } from './adapters/html.js';
-import { audit } from './audit/audit.js';
-import type { Finding } from './audit/audit.js';
-import { sweepForMentions } from './audit/sweep.js';
-import type { Mention } from './audit/sweep.js';
-import { discover } from './discover/discover.js';
-import { buildGraph } from './graph/graph.js';
-import { toPosix } from './paths.js';
-import { MENTION_SURVIVES } from './plan/plan.js';
-import { createSharpProbe } from './probe/probe-sharp.js';
-import { probeAssets } from './probe/probe.js';
-import type { AssetProbe } from './probe/probe.js';
+import { defaultAdapters } from '../adapters/default-adapters.js';
+import { NO_REFERENCE_TO_FIND, htmlAdapter } from '../adapters/html.js';
+import { audit } from '../audit/audit.js';
+import type { Finding } from '../audit/audit.js';
+import { sweepForMentions } from '../audit/sweep.js';
+import type { Mention } from '../audit/sweep.js';
+import { discover } from '../discover/discover.js';
+import { buildGraph } from '../graph/graph.js';
+import { toPosix } from '../paths.js';
+import { MENTION_SURVIVES } from '../plan/plan.js';
+import { createSharpProbe } from '../probe/probe-sharp.js';
+import { probeAssets } from '../probe/probe.js';
+import type { AssetProbe } from '../probe/probe.js';
+import type { AliasMap } from '../resolve/aliases.js';
+import { resolveReferences } from '../resolve/resolve.js';
+import type { ServingRoots } from '../resolve/resolve.js';
+import { scanSources } from '../scan/scan.js';
+import type { ExcludedRoot, Reference, UnscannedFile } from '../types.js';
+import type { Adapter } from '../types.js';
 import { renderReport } from './report-human.js';
 import {
   REPORT_SCHEMA_VERSION,
@@ -24,12 +30,6 @@ import {
   refusalReasonId,
 } from './report.js';
 import type { ClassificationBound, ReferenceEntry, Report } from './report.js';
-import type { AliasMap } from './resolve/aliases.js';
-import { resolveReferences } from './resolve/resolve.js';
-import type { ServingRoots } from './resolve/resolve.js';
-import { scanSources } from './scan/scan.js';
-import type { ExcludedRoot, Reference, UnscannedFile } from './types.js';
-import type { Adapter } from './types.js';
 
 /**
  * The report's JSON is public API, so it is snapshot-tested over real fixture trees: a
@@ -42,7 +42,7 @@ import type { Adapter } from './types.js';
  * input by hand.
  */
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures');
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures');
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
 const PUBLIC_DIRS: Record<string, string> = {
