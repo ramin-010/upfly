@@ -42,21 +42,21 @@ Upfly audit
 [...]
 Examined and not converted
 
-  4 images, 93.4 KB, each with its reason (use --include-declined to list them)
+  10 images, 682.2 KB, each with its reason (use --include-declined to list them)
 [...]
 Plan
 
-  Convert to WebP: 25 images, 5.7 MB now and 1.4 MB after
+  Convert to WebP: 19 images, 5.1 MB now and 1.3 MB after
 [...]
     src/blog/six-million.jpg → src/blog/six-million.webp  2.2 MB → 489.8 KB
 [...]
-  Update references: 18 references in 13 files
+  Update references: 19 references in 14 files
 [...]
-Written as run 20260925T204012-4af6: 25 files created, 13 changed, 0 removed. `upfly undo` puts them all back.
-Committed as 609a4057f0a6, one commit holding exactly those files. `git revert 609a4057f0a6` undoes it.
+Written as run 20260928T181455-64ab: 19 files created, 14 changed, 0 removed. `upfly undo` puts them all back.
+Committed as a89774d6a0bb, one commit holding exactly those files. `git revert a89774d6a0bb` undoes it.
 ```
 
-Saying what it could not follow is what makes the 18 references it did rewrite trustworthy.
+Saying what it could not follow is what makes the 19 references it did rewrite trustworthy.
 
 **Undo is real.** Dry-run is the default. `--apply` refuses to run on a dirty git tree.
 `--commit` writes exactly one commit, so `git revert` undoes everything and your normal code
