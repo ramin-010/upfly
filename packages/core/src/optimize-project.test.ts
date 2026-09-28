@@ -596,26 +596,15 @@ describe('a reference whose converted name reaches another file first', () => {
 
   it.each([
     [
-      'a longer alias key',
+      'an exact alias key',
       {
         'tsconfig.json':
-          '{ "compilerOptions": { "paths": { "@/*": ["./src/*"], "@/img/*": ["./assets/img/*"] } } }\n',
+          '{ "compilerOptions": { "paths": { "@/*": ["./src/*"], "@/img/hero.webp": ["./assets/img/hero.webp"] } } }\n',
         'src/App.tsx': IMPORT,
       },
       'src/App.tsx',
       'src/img/hero.png',
       'assets/img/hero.webp',
-    ],
-    [
-      "the nearest config's alias",
-      {
-        'tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./shared/*"] } } }\n',
-        'apps/web/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }\n',
-        'apps/web/src/App.tsx': IMPORT,
-      },
-      'apps/web/src/App.tsx',
-      'shared/img/hero.png',
-      'apps/web/src/img/hero.webp',
     ],
     [
       "an alias's earlier target",

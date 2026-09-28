@@ -185,8 +185,8 @@ async function disagreements(
     const keys = Object.keys(options.paths ?? {});
     const from = `${folder}/main.ts`;
     for (const specifier of specifiers) {
-      // Only where TypeScript uses `paths`: past them it looks in `node_modules`, and Upfly
-      // in a parent folder's config, which is a different question.
+      // Only where TypeScript uses `paths`: past them it looks through `baseUrl` and in
+      // `node_modules`, which `expandAlias` does not model.
       const mapped = keys.some((key) =>
         key.endsWith('*') ? specifier.startsWith(key.slice(0, -1)) : specifier === key,
       );

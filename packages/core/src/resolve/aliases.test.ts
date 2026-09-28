@@ -99,7 +99,7 @@ describe('loadAliases: tsconfig', () => {
         '{ "compilerOptions": { "paths": { "@*": ["./star/*"], "@": ["./exact"] } } }',
     });
 
-    expect(expandAlias(map, '@', from('a.ts'))).toEqual([from('exact'), from('star')]);
+    expect(expandAlias(map, '@', from('a.ts'))).toEqual([from('exact')]);
   });
 
   it('follows a relative extends chain', async () => {
@@ -535,11 +535,25 @@ describe('expandAlias: scope', () => {
       'apps/web/tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }',
     });
 
-    // TypeScript reads only the nearest config, so the app's own `@/*` answers; the root's
-    // longer key stays behind it as a fallback.
+    // TypeScript reads only the nearest config, so the app's own `@/*` answers, and the
+    // root's longer key is no fallback: where the app's file is missing, the import is
+    // unresolved in TypeScript too.
     expect(expandAlias(map, '@/components/x.png', from('apps/web/src/a.ts'))).toEqual([
       from('apps/web/src/components/x.png'),
-      from('shared/components/x.png'),
+    ]);
+  });
+
+  it('takes the longest matching key alone, with its targets in order, as TypeScript does', async () => {
+    const map = await load({
+      'tsconfig.json':
+        '{ "compilerOptions": { "paths": { "@/img/*": ["./src/images/*", "./assets/*"], "@/*": ["./src/*"] } } }',
+    });
+
+    // A missing `src/images/logo.png` leaves the import unresolved in TypeScript; the
+    // shorter `@/*` would link `src/img/logo.png`, a file the import never loads.
+    expect(expandAlias(map, '@/img/logo.png', from('src/main.ts'))).toEqual([
+      from('src/images/logo.png'),
+      from('assets/logo.png'),
     ]);
   });
 

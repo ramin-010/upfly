@@ -534,9 +534,11 @@ this against Vite's own alias resolution, over alias sections drawn at random.
 The tsconfig rules follow, nearest config first and, within one config, in TypeScript's order: an
 exact key, then the longest prefix. So wherever the nearest config maps a path, the first candidate
 is the file TypeScript resolves, which the same test file checks against TypeScript's own resolver
-over configs drawn at random. Three differences from TypeScript remain: every matching rule is
-tried, where TypeScript takes one pattern; a config in a parent folder is a fallback, where
-TypeScript uses only the nearest; and `include`, `files` and `references` are not read.
+over configs drawn at random. As in TypeScript, only the nearest config's rules apply and only
+the best key's targets are candidates: a path they miss is `unresolved-alias`, never a link
+through a shorter key or a parent folder's config to a file the import does not load. One
+difference remains: `include`, `files` and `references` are not read, so the nearest config is
+the one nearest by folder.
 
 **A package specifier is not an alias** (rung 6b). `@11ty/logo/img/logo.png` names a file inside
 `node_modules`, which the walk prunes, so no alias configuration will ever resolve it; it is

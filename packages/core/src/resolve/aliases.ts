@@ -179,42 +179,37 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 }
 
 /**
- * Expand an alias-shaped path into candidate absolute POSIX paths, in the order
- * `matchingRules` gives. Returns `[]` when no rule applies, and the resolver then reports the
- * path as `unresolved-alias` rather than `broken`.
+ * Expand an alias-shaped path into candidate absolute POSIX paths: the targets of the rule
+ * `matchingRule` chooses, in order. Returns `[]` when no rule applies, and the resolver then
+ * reports the path as `unresolved-alias` rather than `broken`.
  */
 export function expandAlias(map: AliasMap, rawPath: string, fromFile: string): readonly string[] {
-  return matchingRules(map, rawPath, fromFile).flatMap((rule) => expandRule(rule, rawPath));
+  const rule = matchingRule(map, rawPath, fromFile);
+  return rule === null ? [] : expandRule(rule, rawPath);
 }
 
 /**
- * The rules that map `rawPath` written in `fromFile`, in the order they are tried. A Vite
- * alias that matches is the only rule, since Vite loads what its first matching alias names
- * and tries nothing after it, and only the nearest Vite config's aliases apply. Otherwise the
- * tsconfig rules: the nearest config's first, then each parent folder's as a fallback.
+ * The one rule that maps `rawPath` written in `fromFile`, chosen as the tool that applies it
+ * chooses, or `null`. A file is built by its nearest Vite config and typed by its nearest
+ * tsconfig, so only those two configs' rules apply, Vite's first. Vite takes the first alias
+ * it declares that matches and tries nothing after it; TypeScript takes an exact key, else the
+ * longest matching prefix, and tries only that key's targets. No other rule is a fallback: a
+ * path those targets miss is unresolved for the tool too.
  */
-export function matchingRules(
-  map: AliasMap,
-  rawPath: string,
-  fromFile: string,
-): readonly AliasRule[] {
+export function matchingRule(map: AliasMap, rawPath: string, fromFile: string): AliasRule | null {
   const from = toPosix(fromFile);
-  const out: AliasRule[] = [];
-  // The folder of the nearest Vite config: a file is built by that project alone.
-  let viteScope: string | null = null;
+  // The folder of the nearest config of each tool, taken from the first rule in scope, since
+  // the rules come nearest config first.
+  const nearest: Record<AliasRule['tool'], string | null> = { vite: null, typescript: null };
 
   for (const rule of map.rules) {
     if (!from.startsWith(`${rule.scope}/`) && from !== rule.scope) continue;
-    if (rule.tool === 'vite') {
-      viteScope ??= rule.scope;
-      if (rule.scope !== viteScope) continue;
-    }
+    nearest[rule.tool] ??= rule.scope;
+    if (rule.scope !== nearest[rule.tool]) continue;
     const matches = rule.wildcard ? rawPath.startsWith(rule.prefix) : rawPath === rule.prefix;
-    if (!matches) continue;
-    if (rule.tool === 'vite') return [rule];
-    out.push(rule);
+    if (matches) return rule;
   }
-  return out;
+  return null;
 }
 
 /** The paths a rule that matches `rawPath` expands it to. */
