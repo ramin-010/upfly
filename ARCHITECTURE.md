@@ -673,9 +673,12 @@ reason instead of a ceiling that leads to a lookup. That holds only while some r
 ends in an image extension: as written or as CommonMark reads it, where an unknown name stays
 text, each also percent-decoded. `/wiki/AT&T;` shows none, so it names no image whatever `&T;`
 meant; it is kept like any other link, and the resolver drops it. The HTML adapter refuses the same
-character-reference paths, extension or not, and also any whose decoded spelling differs from
-parse5's reading of the attribute, as when a legacy name such as `&copy` is written without its
-semicolon: parse5 still decodes it before a `.`, and our decoder does not.
+character-reference paths, and also any whose decoded spelling differs from parse5's reading of the
+attribute, as when a legacy name such as `&copy` is written without its semicolon: parse5 still
+decodes it before a `.`, and our decoder does not. It too refuses one only while some reading ends
+in an image extension, as written or as parse5 reads it, each also percent-decoded
+(`attributeCouldNameAnImage`): `/avatar/AT&amp;T&x;` is kept like any other value, and the
+resolver drops it.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
@@ -2136,7 +2139,8 @@ Resolution accuracy, answered over answered plus missed, can be computed from
 The default is the unflattering one. Whether an answer exists is the engine's own judgement, so a
 reference counts as `correctly-refused` only when a property from the closed list `REFUSAL_REASONS`
 holds for it: a path assembled at render time, a target outside what Upfly acts on, or a style
-attribute the adapter could not read that holds no url-taking function. Each is a fact about the
+attribute the adapter could not read that holds no url-taking function once parse5 has decoded it
+(`url&#40;` is one). Each is a fact about the
 reference, never "the engine cannot handle it". Everything else is `missed-with-an-answer`, including
 an alias that no config the engine can read declares, since a bundler config it did not read may
 well resolve it. Adding a reason moves references from missed to correctly refused and raises the

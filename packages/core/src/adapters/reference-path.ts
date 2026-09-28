@@ -614,6 +614,20 @@ export function markdownDestinationCouldNameAnImage(path: string): boolean {
 }
 
 /**
+ * Whether some reading of an attribute's URL ends in an image extension: the source text or
+ * parse5's value, each also percent-decoded. The HTML adapter refuses a path it cannot read
+ * only while one does, as `markdownDestinationCouldNameAnImage` lets the Markdown adapter.
+ */
+export function attributeCouldNameAnImage(written: string, parserValue: string): boolean {
+  return [written, parserValue].some((reading) => {
+    const { path } = splitPathSuffix(reading);
+    return [path, decodePercent(path)].some(
+      (spelled) => spelled !== null && isImageExtension(extensionOf(spelled)),
+    );
+  });
+}
+
+/**
  * The text with percent-escapes resolved, or `null` when it is not valid percent-encoding.
  * `decodeURIComponent` throws on a lone `%` or a bad pair, and `100%` in a style attribute
  * reaches here.

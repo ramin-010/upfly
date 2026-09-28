@@ -18,6 +18,7 @@ import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import {
   URL_LINE_BREAK_REASON,
+  attributeCouldNameAnImage,
   decodeCharacterReferencesWithMap,
   holdsUndecodableCharacterReference,
   isExternalUrl,
@@ -221,6 +222,12 @@ function collectFromAttribute(input: {
       return;
     }
     const parsed = asTheUrlParserReads(decodedValue);
+    // Refused only while some reading could name an image: `/avatar/AT&amp;T&x;` names none,
+    // whatever `&x;` means, so it is kept as any other value is, and the resolver drops it.
+    if (!attributeCouldNameAnImage(url.text, parsed)) {
+      addAttributeReference(url.text, url.start, context, shape);
+      return;
+    }
     addCharacterReferenceReference(url.text, parsed, url, context, charrefShape(shape));
   };
 
@@ -231,7 +238,7 @@ function collectFromAttribute(input: {
       // attribute. A value that starts with a space slips past that test, so a test of
       // this branch needs one that does not.
       if (collectFromEscapedStyleAttribute(raw, decodedValue, start, context)) return;
-      addStyleAttributeRefusal(raw, { start, end }, context);
+      addStyleAttributeRefusal(raw, decodedValue, { start, end }, context);
       return;
     }
     collectFromStyleAttribute(raw, start, positionFrom(context.text, location, start), context);
@@ -415,6 +422,7 @@ function addStyleElementRefusal(
  */
 function addStyleAttributeRefusal(
   css: string,
+  parserValue: string,
   range: { start: number; end: number },
   context: Context,
 ): void {
@@ -428,7 +436,8 @@ function addStyleAttributeRefusal(
     ceiling: 'unsafe',
     asserted: false,
     unread: true,
-    note: `the style attribute contains HTML character references, so its CSS cannot be handed to the parser with offsets that hold${describeUrlFunction(css)}`,
+    // Asked of parse5's value, the CSS a browser reads: `url&#40;` is a `url(` there.
+    note: `the style attribute contains HTML character references, so its CSS cannot be handed to the parser with offsets that hold${describeUrlFunction(parserValue)}`,
   });
 }
 

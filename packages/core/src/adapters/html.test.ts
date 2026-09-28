@@ -412,6 +412,16 @@ describe('htmlAdapter', () => {
         expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
         expect(references[0]?.note).toContain(NO_REFERENCE_TO_FIND);
       });
+
+      it('decides that note on the CSS a browser reads, its references decoded', () => {
+        // `url&#40;` is `url(` once decoded, so this style loads `/img/a.png`.
+        const references = find(
+          '<div style="background: url&#40;/img/a.png&#41;; content: &eacut;"></div>',
+        );
+
+        expect(references.map((reference) => reference.shape)).toEqual(['html.style.attribute']);
+        expect(references[0]?.note).toMatch(/a reference may be hidden/);
+      });
     });
   });
 
@@ -730,6 +740,16 @@ describe('htmlAdapter', () => {
 
         expect([reference?.shape, reference?.ceiling], source).toEqual(['path.charref', 'unsafe']);
       }
+    });
+
+    it('keeps a value no reading of which names an image as any other, for the resolver to drop', () => {
+      // No reading of `/avatar/AT&amp;T&x;` ends in an image extension, whatever `&x;` means.
+      const [reference] = find('<img src="/avatar/AT&amp;T&x;">');
+      expect([reference?.shape, reference?.ceiling]).toEqual(['html.img.src', 'high']);
+
+      // One that could name an image is still refused: parse5 reads the legacy `&eacute` here.
+      const [image] = find('<img src="/img/caf&eacute.png">');
+      expect([image?.shape, image?.ceiling]).toEqual(['path.charref', 'unsafe']);
     });
 
     it('finds nothing in a value that is only whitespace, or another host with some around it', () => {
