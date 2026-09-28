@@ -1484,6 +1484,84 @@ describe('an asset whose converted name a reference would find elsewhere first',
       expect.stringContaining('which reaches apps/web/public/img/logo.webp first'),
     ]);
   });
+
+  describe('a reference the plan leaves as written', () => {
+    // A converted file is new, so a reference that goes on naming another file can find it
+    // first. Every linked reference is resolved again, not only the rewritten ones.
+    const OTHER = 'apps/web/src/Other.tsx';
+
+    it('declines the conversion whose file it would find first, naming the file it reaches now', () => {
+      const plan = planOptimization(
+        input({
+          assets: [
+            asset('apps/web/public/img/banner.png'),
+            asset('apps/web/public/img/texture.png'),
+            asset('public/img/banner.webp'),
+          ],
+          references: [
+            url(PAGE, '/img/banner.webp', 'public/img/banner.webp'),
+            url(OTHER, '/img/banner.png', 'apps/web/public/img/banner.png'),
+            url(OTHER, '/img/texture.png', 'apps/web/public/img/texture.png', 100),
+          ],
+          servingRoots: TWO_ROOTS,
+        }),
+      );
+
+      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual([
+        'apps/web/public/img/texture.png',
+      ]);
+      expect(plan.rewrites.map((rewrite) => rewrite.edits.map((edit) => edit.replacement))).toEqual(
+        [['/img/texture.webp']],
+      );
+      expect(plan.declined).toEqual([
+        {
+          path: 'apps/web/public/img/banner.png',
+          line: null,
+          reason:
+            '`/img/banner.webp` in `apps/web/src/App.tsx` reaches public/img/banner.webp, and once this image converts it would reach apps/web/public/img/banner.webp first, so the reference would load the converted image instead. Rename one of the two images and run again.',
+        },
+      ]);
+    });
+
+    it('declines a conversion whose file would move a pattern to a nearer serving root', () => {
+      const icons = {
+        ...pattern(PAGE, '/img/icon-${name}.webp', ['public/img/icon-a.webp']),
+        resolvedVia: 'serving-root',
+      } as Reference;
+      const plan = planOptimization(
+        input({
+          assets: [asset('apps/web/public/img/icon-b.png'), asset('public/img/icon-a.webp')],
+          references: [icons, url(OTHER, '/img/icon-b.png', 'apps/web/public/img/icon-b.png')],
+          servingRoots: TWO_ROOTS,
+        }),
+      );
+
+      expect(plan.conversions).toEqual([]);
+      expect(plan.declined).toContainEqual({
+        path: 'apps/web/public/img/icon-b.png',
+        line: null,
+        reason:
+          '`/img/icon-${name}.webp` in `apps/web/src/App.tsx` reaches public/img/icon-a.webp, and once this image converts it would reach apps/web/public/img/icon-b.webp first, so the reference would load the converted image instead. Rename one of the two images and run again.',
+      });
+    });
+
+    it('lets a converted file join the files a pattern already matches beside it', () => {
+      const plan = planOptimization(
+        input({
+          assets: [asset('public/img/a.png')],
+          references: [
+            { ...pattern(PAGE, '/img/${name}', ['public/img/a.png']), resolvedVia: 'serving-root' },
+            url(OTHER, '/img/a.png', 'public/img/a.png'),
+          ] as Reference[],
+          servingRoots: TWO_ROOTS,
+        }),
+      );
+
+      expect(plan.conversions.map((conversion) => conversion.asset)).toEqual(['public/img/a.png']);
+      // Only the sentence every pattern gets: its text is a template, so it is never rewritten.
+      expect(plan.declined.map((entry) => entry.path)).toEqual(['apps/web/src/App.tsx']);
+    });
+  });
 });
 
 describe('two assets whose converted names differ only in case', () => {

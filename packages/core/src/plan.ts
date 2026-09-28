@@ -19,7 +19,7 @@ import { isLinked, linkedPaths } from './reference.js';
 import { resolutionHealth } from './resolution-health.js';
 import { type ServingRoots, resolveReferences } from './resolve.js';
 import { whyFormatKept } from './shapes.js';
-import type { Asset, Edit, Reference } from './types.js';
+import type { Asset, Edit, RawReference, Reference } from './types.js';
 
 /** What happens to the original when a public asset is converted. */
 export type PublicPolicy =
@@ -288,18 +288,23 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
   // pattern's decline would count the wrong targets as not converting.
   for (const asset of vetoCollisions(input, converting, declined)) converting.delete(asset);
 
-  // Where a rewritten path leads depends on every file the plan writes and removes, so it
-  // is checked on a whole plan. Withdrawing a conversion changes those files and drops its
+  // Where a reference leads depends on every file the plan writes and removes, so it is
+  // checked on a whole plan. Withdrawing a conversion changes those files and drops its
   // rewrites, so the plan is made again without it until the check withdraws nothing.
+  const before = leadsTo(
+    input,
+    input.graph.references.filter(isLinked),
+    input.graph.assets.map((node) => node.asset),
+  );
   let repointed = repoint(input, converting, relativeOf);
-  let misdirected = misdirectedConversions(input, repointed);
+  let misdirected = misdirectedConversions(input, repointed, before);
   while (misdirected.size > 0) {
     for (const [asset, reason] of misdirected) {
       converting.delete(asset);
       declined.push({ path: asset, line: null, reason });
     }
     repointed = repoint(input, converting, relativeOf);
-    misdirected = misdirectedConversions(input, repointed);
+    misdirected = misdirectedConversions(input, repointed, before);
   }
   declined.push(...repointed.declined);
 
@@ -371,65 +376,121 @@ function repoint(
 }
 
 /**
- * The conversions one of whose rewritten paths would reach a file other than the converted
- * one, each with the sentence saying where it would lead.
+ * The conversions that would change where a reference leads, each with the sentence saying
+ * where it would lead instead.
  *
- * A rewrite changes only the extension, and from the file holding it the new name can reach
- * a file the old one never did: one of that name in a nearer serving root, or one an alias
- * rule or target tried earlier maps to. So each new path is resolved as the resolver will
- * read it once the plan is applied: from its own file, among the files the plan leaves, with
- * the run's serving roots and aliases. See "The transaction" in ARCHITECTURE.md.
+ * A rewritten reference has to lead to its converted file, and every other linked reference
+ * to the files it leads to now. From the file holding it, a new name can reach a file the old
+ * one never did, in a nearer serving root or where an alias looks first, and a converted file
+ * is new, so a reference left as written can find it first in the same places. So every
+ * linked reference is resolved as it will read once the plan is applied: from its own file,
+ * among the files the plan leaves. See "The transaction" in ARCHITECTURE.md.
  */
-function misdirectedConversions(input: PlanInput, repointed: Repointed): Map<string, string> {
-  const misdirected = new Map<string, string>();
-  const moves = [...repointed.rewritten];
-  if (moves.length === 0) return misdirected;
-
-  const answers = resolveReferences(
-    moves.map(([reference, { replacement }]) => ({ ...reference, rawPath: replacement })),
-    {
-      root: input.graph.root,
-      assets: assetsAfter(input.graph, repointed.conversions),
-      servingRoots: input.servingRoots,
-      ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
-      // The question is where the path leads among the files the plan leaves, which the
-      // disk as it stands cannot answer.
-      exists: () => false,
-    },
+function misdirectedConversions(
+  input: PlanInput,
+  repointed: Repointed,
+  before: Destinations,
+): Map<string, string> {
+  const linked = input.graph.references.filter(isLinked);
+  const asLeft = (reference: Reference): RawReference => {
+    const repointing = repointed.rewritten.get(reference);
+    return repointing === undefined ? reference : { ...reference, rawPath: repointing.replacement };
+  };
+  const after = leadsTo(input, linked.map(asLeft), assetsAfter(input.graph, repointed.conversions));
+  const writing = new Map(
+    repointed.conversions.map((conversion) => [conversion.target, conversion]),
   );
-  // A path that names no image is left out of the answers, so each is found by where its
-  // reference sits: a file and an offset, which no two edits of a plan share.
-  const answerAt = new Map(answers.map((answer) => [`${answer.file}\n${answer.start}`, answer]));
 
   // The first miss for each conversion is named and the rest counted, as the kept-original
   // sentences do, so the reason stays one sentence and names a line to look at.
   const misses = new Map<string, { reference: Reference; outcome: string; count: number }>();
-  for (const [reference, { replacement, conversion }] of moves) {
-    const answer = answerAt.get(`${reference.file}\n${reference.start}`);
-    const reached =
-      answer?.resolution === 'resolved'
-        ? relativePath(input.graph.root, answer.resolvedPath)
-        : null;
-    if (reached === conversion.target) continue;
+  const miss = (asset: string, reference: Reference, outcome: string): void => {
+    const first = misses.get(asset);
+    misses.set(
+      asset,
+      first === undefined ? { reference, outcome, count: 1 } : { ...first, count: first.count + 1 },
+    );
+  };
 
-    const miss = misses.get(conversion.asset);
-    if (miss !== undefined) {
-      misses.set(conversion.asset, { ...miss, count: miss.count + 1 });
+  for (const reference of linked) {
+    const reached = after.get(placeOf(asLeft(reference))) ?? [];
+    const repointing = repointed.rewritten.get(reference);
+    if (repointing !== undefined) {
+      const [lands = null] = reached;
+      if (lands !== repointing.conversion.target) {
+        miss(repointing.conversion.asset, reference, missedRewrite(repointing.replacement, lands));
+      }
       continue;
     }
-    const outcome =
-      reached === null
-        ? `would become \`${replacement}\`, which names no file Upfly can find, so repointing the reference would break it.`
-        : `would become \`${replacement}\`, which reaches ${reached} first, so the reference would load that file instead. Rename one of the two images and run again.`;
-    misses.set(conversion.asset, { reference, outcome, count: 1 });
+    // A reference left as written may gain files, as a pattern gains a converted file beside
+    // those it matches, but it must not lose one it leads to now.
+    const was = before.get(placeOf(reference)) ?? [];
+    const lost = was.find((path) => !reached.includes(path));
+    if (lost === undefined) continue;
+    for (const path of reached) {
+      const conversion = writing.get(path);
+      if (conversion !== undefined) miss(conversion.asset, reference, captured(lost, path));
+    }
   }
 
+  const misdirected = new Map<string, string>();
   for (const [asset, { reference, outcome, count }] of misses) {
     const where = `\`${reference.rawPath}\` in \`${relativePath(input.graph.root, reference.file)}\``;
     const more = count === 1 ? '' : ` (and ${count - 1} more)`;
     misdirected.set(asset, `${where}${more} ${outcome}`);
   }
   return misdirected;
+}
+
+/** What a rewritten reference would do instead of reaching its converted file. */
+function missedRewrite(replacement: string, reached: string | null): string {
+  return reached === null
+    ? `would become \`${replacement}\`, which names no file Upfly can find, so repointing the reference would break it.`
+    : `would become \`${replacement}\`, which reaches ${reached} first, so the reference would load that file instead. Rename one of the two images and run again.`;
+}
+
+/** What a reference left as written would do once a converted file is found before its own. */
+function captured(lost: string, converted: string): string {
+  return `reaches ${lost}, and once this image converts it would reach ${converted} first, so the reference would load the converted image instead. Rename one of the two images and run again.`;
+}
+
+/** The files each linked reference leads to, project-relative, keyed by `placeOf`. */
+type Destinations = ReadonlyMap<string, readonly string[]>;
+
+/**
+ * Where a reference sits and what it says, the key its answer is found by. With the text in
+ * it, two references at one offset share a key only when they name the same path.
+ */
+function placeOf(reference: RawReference): string {
+  return `${reference.file}\n${reference.start}\n${reference.rawPath}`;
+}
+
+/**
+ * Where each of these references leads among `files`: the one file a literal reaches, or
+ * every file a pattern matches.
+ */
+function leadsTo(
+  input: PlanInput,
+  references: readonly RawReference[],
+  files: readonly Asset[],
+): Destinations {
+  const answers = resolveReferences(references, {
+    root: input.graph.root,
+    assets: files,
+    servingRoots: input.servingRoots,
+    ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
+    // The question is where a path leads among these files, which the disk as it stands
+    // cannot answer.
+    exists: () => false,
+  });
+  // A path that names no image is left out of the answers, so each is found by where its
+  // reference sits.
+  return new Map(
+    answers.map((answer) => [
+      placeOf(answer),
+      linkedPaths(answer).map((path) => relativePath(input.graph.root, path)),
+    ]),
+  );
 }
 
 /**

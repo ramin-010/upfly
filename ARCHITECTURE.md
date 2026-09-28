@@ -1684,18 +1684,26 @@ once its one asset converts; a pattern, the only reference that links several as
 The deletion half runs last and does not rely on the first: it keeps the original of an asset
 nothing links to on its own account, so loosening the conversion half can never delete a file.
 
-**A repointed reference has to lead to the converted file.** A rewrite changes only the
-extension, and from the file that holds it the new name can reach a file the old name never did:
-an image of that name in a nearer serving root, or one that an alias rule or target tried earlier
-maps to. The collision check looks only at the converted file's own path. So once a plan's
-rewrites are chosen, each new path is resolved again from its own file, against the files the
-plan leaves (every converted file added, every original it removes gone) and with the run's
-serving roots and aliases. A conversion one of whose rewrites would reach anything else is
-withdrawn, and its decline names the file that rewrite would reach, so under `replace` its
-original stays. Withdrawing a conversion changes those files and drops its rewrites, so the plan
-is made again without it until the check withdraws nothing. The check sees what the resolver
-sees: a file the walk excluded is not among the assets, and a name that differs only in case is
-another name.
+**A plan must not change where a reference leads.** A repointed reference has to lead to the
+converted file, and every other linked reference to the files it leads to now. A rewrite changes
+only the extension, and from the file that holds it the new name can reach a file the old name
+never did: an image of that name in a nearer serving root, or one that an alias rule or target
+tried earlier maps to. A converted file is new, so a reference the plan leaves as written can
+find it in the same places before the file it names now: `/img/banner.webp` on a page that
+`apps/web/public` serves first would load a `banner.webp` converted there instead of
+`public/img/banner.webp`. The collision check looks only at the converted file's own path. So
+once a plan's rewrites are chosen, every linked reference is resolved again from its own file,
+with its new text where the plan rewrites it, against the files the plan leaves (every converted
+file added, every original it removes gone) and with the run's serving roots and aliases, and
+compared with where it leads now. A literal has to lead to the same file, or to its converted
+file when rewritten; a pattern may gain a converted file beside those it matches but must not
+lose one. A conversion that breaks this is withdrawn: one of whose rewrites would reach anything
+else, with a decline naming the file that rewrite would reach, or whose new file a reference left
+as written would reach first, with a decline naming that reference and the file it reaches now.
+Under `replace` its original stays. Withdrawing a conversion changes those files and drops its
+rewrites, so the plan is made again without it until the check withdraws nothing. The check sees
+what the resolver sees: a file the walk excluded is not among the assets, and a name that differs
+only in case is another name.
 
 The old-path text search (see "Moving an asset") then guards the references the graph never found,
 for a path written down literally. **The bound that remains:** a path assembled at runtime that the

@@ -8,7 +8,12 @@ import { MANIFEST_PATH } from './manifest.js';
 import { optimizeProject } from './optimize-project.js';
 import type { OptimizeProgress } from './optimize.js';
 import { relativePath } from './paths.js';
-import type { PipelineOutput, PipelineProgress } from './pipeline.js';
+import {
+  type PipelineOutput,
+  type PipelineProgress,
+  runPipeline,
+  servingRootsFor,
+} from './pipeline.js';
 
 /** The plain HTML fixture: real images, relative references, no build step. */
 const PLAIN_HTML = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/plain-html');
@@ -596,6 +601,110 @@ describe('a reference whose converted name reaches another file first', () => {
       });
     },
   );
+
+  describe('a reference the plan leaves as written', () => {
+    // A converted file is new, so a page that goes on naming another image can find it
+    // first: in a nearer website folder, or where an alias looks first.
+    const TWO_ROOTS = { dirs: ['public', 'apps/web/public'], declared: true };
+
+    /** The project-relative asset the reference with this text in `file` links, or null. */
+    function linkedFrom(pipeline: PipelineOutput, file: string, rawPath: string): string | null {
+      const reference = pipeline.graph.references.find(
+        (entry) =>
+          entry.rawPath === rawPath && relativePath(pipeline.graph.root, entry.file) === file,
+      );
+      return reference?.resolution === 'resolved'
+        ? relativePath(pipeline.graph.root, reference.resolvedPath)
+        : null;
+    }
+
+    it('still shows its picture after a run that would have converted another image to a nearer file of its name', async () => {
+      const other = [
+        'export const Other = () => (',
+        '  <>',
+        '    <img src="/img/banner.png" alt="" />',
+        '    <img src="/img/texture.png" alt="" />',
+        '  </>',
+        ');',
+        '',
+      ].join('\n');
+      const root = await project({
+        'apps/web/src/App.tsx': 'export const App = () => <img src="/img/banner.webp" alt="" />;\n',
+        'apps/web/src/Other.tsx': other,
+      });
+      await anotherPicture(root, 'public/img/banner.webp');
+      await picture(root, 'apps/web/public/img/banner.png');
+      await picture(root, 'apps/web/public/img/texture.png', 'texture.png');
+
+      const { pipeline, optimize } = await optimizeProject({
+        root,
+        declared: TWO_ROOTS,
+        format: 'webp',
+        publicPolicy: 'keep-original',
+        apply: true,
+      });
+
+      expect(linkedFrom(pipeline, 'apps/web/src/App.tsx', '/img/banner.webp')).toBe(
+        'public/img/banner.webp',
+      );
+      // Read back through the engine, as the next run would read it.
+      const after = await runPipeline({
+        root,
+        servingRoots: servingRootsFor(TWO_ROOTS),
+        publicDirs: (servingRoots) => servingRoots.dirs,
+        probeOptions: null,
+      });
+      expect({
+        page: linkedFrom(after, 'apps/web/src/App.tsx', '/img/banner.webp'),
+        other: await readFile(join(root, 'apps/web/src/Other.tsx'), 'utf8'),
+        served: (await files(root)).filter((path) => path.startsWith('apps/web/public/')),
+      }).toEqual({
+        page: 'public/img/banner.webp',
+        other: other.replace('/img/texture.png', '/img/texture.webp'),
+        served: [
+          'apps/web/public/img/banner.png',
+          'apps/web/public/img/texture.png',
+          'apps/web/public/img/texture.webp',
+        ],
+      });
+      expect(optimize.plan.declined).toContainEqual({
+        path: 'apps/web/public/img/banner.png',
+        line: null,
+        reason: expect.stringContaining(
+          'reaches public/img/banner.webp, and once this image converts it would reach apps/web/public/img/banner.webp first',
+        ),
+      });
+    });
+
+    it('keeps leading where it does when an alias would find the converted file of another import first', async () => {
+      const root = await project({
+        'tsconfig.json':
+          '{ "compilerOptions": { "paths": { "@/*": ["./src/*", "./shared/*"] } } }\n',
+        'src/App.tsx': `import hero from '@/img/hero.webp';\nexport const App = () => <img src={hero} alt="" />;\n`,
+        'src/Other.tsx': IMPORT,
+      });
+      await anotherPicture(root, 'shared/img/hero.webp');
+      await picture(root, 'src/img/hero.png');
+
+      const { pipeline, optimize } = await optimizeProject({
+        root,
+        format: 'webp',
+        publicPolicy: 'keep-original',
+        apply: false,
+      });
+
+      expect(linkedBy(pipeline, '@/img/hero.webp')).toBe('shared/img/hero.webp');
+      expect(optimize.plan.conversions).toEqual([]);
+      expect(optimize.plan.rewrites).toEqual([]);
+      expect(optimize.plan.declined).toContainEqual({
+        path: 'src/img/hero.png',
+        line: null,
+        reason: expect.stringContaining(
+          'reaches shared/img/hero.webp, and once this image converts it would reach src/img/hero.webp first',
+        ),
+      });
+    });
+  });
 });
 
 describe('an animated PNG', () => {
