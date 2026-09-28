@@ -12,7 +12,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { type AuditResult, audit } from './audit/audit.js';
 import { detectConventionRoots } from './audit/conventions.js';
@@ -194,6 +194,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
   const sweep = await sweepForMentions({
     graph,
     readFile: readFileText,
+    sizeOf: async (path) => (await stat(path)).size,
     // Read only when the cheaper two sources leave something unexplained.
     scannedMentions: scanned.mentions,
     publicDirs,

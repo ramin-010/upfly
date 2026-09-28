@@ -730,7 +730,10 @@ The sweep reads three things: files **no adapter claimed**, the raw path of ever
 while each file's text was already in memory, so no source file is read twice. That last one
 covers a name that parses fine and yields no reference, such as `{ file: 'My Logo.png' }`, a spaced
 file name with no slash, which has the shape of a UI label (see "What counts as a path-shaped
-string").
+string"). Of the files no adapter claimed, a known binary type (a video, a font, an archive) is
+never read, since it holds no text and the report already counts it as binary, and any other is
+read only when its size on disk, asked first, is within the limit (2 MiB, bytes against bytes);
+a larger one is skipped with that reason rather than read whole.
 
 A name is found with the spaces and parentheses it holds, though the filename token stops at
 both, and in any script: `Zaječar (2).jpg` and `Рисунок3.png` are found whole, not as

@@ -20,6 +20,7 @@ import {
 import { formatBytes } from '../format.js';
 import type { Graph } from '../graph/graph.js';
 import { unreferencedAssets } from '../graph/graph.js';
+import { isBinaryExtension } from '../graph/unscanned.js';
 import { compareStrings, imageFilenameCandidates } from '../paths.js';
 import { provenPath } from '../resolve/reference.js';
 import { globFromAnyRoot, servedFromAnyRoot } from '../resolve/resolve.js';
@@ -101,14 +102,18 @@ export interface SweepOptions {
    */
   readonly publicDirs?: readonly string[];
   /**
-   * Largest file the sweep will search, measured by the length of its text. Defaults to
-   * 2 MiB.
+   * Largest file the sweep will search, in bytes. Defaults to 2 MiB.
    *
-   * The unread set is mostly templates and config, but it can also hold fonts, video and
-   * archives. A larger file is skipped with a reason, because a silent skip would turn a
-   * hedge back into a confident `dead`.
+   * The unread set is mostly templates and config, but it can also hold video and archives,
+   * whose known binary types are never read. A larger file is skipped with a reason, because
+   * a silent skip would turn a hedge back into a confident `dead`.
    */
   readonly maxBytes?: number;
+  /**
+   * A file's size in bytes, asked before its text is read, so a file past `maxBytes` is never
+   * read at all. Without it, the text is read and its UTF-8 bytes counted.
+   */
+  readonly sizeOf?: (absolutePath: string) => Promise<number>;
 }
 
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
@@ -178,9 +183,43 @@ function candidateBasenames(graph: Graph): ReadonlyMap<string, readonly string[]
   return byBasename;
 }
 
+/**
+ * A file's text, or why the sweep does not search it: `null` for a known binary type, which
+ * holds no text and which the report already counts among the binary files no adapter reads,
+ * and a skip with its reason for a file past the limit or one that could not be read. Bytes
+ * are compared with bytes, asked of `sizeOf` before the read when there is one.
+ */
+async function textToSearch(
+  file: { readonly path: string; readonly relative: string; readonly extension?: string },
+  options: SweepOptions,
+  maxBytes: number,
+): Promise<string | SweepSkip | null> {
+  if (file.extension !== undefined && isBinaryExtension(file.extension)) return null;
+  const tooLarge: SweepSkip = {
+    relative: file.relative,
+    // Human scale, since the report prints this verbatim. `formatBytes` rather than fixed
+    // megabytes, which would print a small limit as `0 MB`.
+    reason: `larger than the ${formatBytes(maxBytes)} limit for searching a file's text`,
+  };
+  try {
+    if (options.sizeOf !== undefined && (await options.sizeOf(file.path)) > maxBytes) {
+      return tooLarge;
+    }
+    const text = await options.readFile(file.path);
+    const counted = options.sizeOf === undefined && Buffer.byteLength(text, 'utf8') > maxBytes;
+    return counted ? tooLarge : text;
+  } catch (error) {
+    return { relative: file.relative, reason: describe(error) };
+  }
+}
+
 /** Read a set of files and record every candidate basename they name. */
 async function sweepFiles(
-  files: readonly { readonly path: string; readonly relative: string }[],
+  files: readonly {
+    readonly path: string;
+    readonly relative: string;
+    readonly extension?: string;
+  }[],
   source: MentionSource,
   options: SweepOptions,
   candidates: ReadonlyMap<string, readonly string[]>,
@@ -190,21 +229,10 @@ async function sweepFiles(
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
   for (const file of files) {
-    let text: string;
-    try {
-      text = await options.readFile(file.path);
-    } catch (error) {
-      skipped.push({ relative: file.relative, reason: describe(error) });
-      continue;
-    }
-
-    if (text.length > maxBytes) {
-      skipped.push({
-        relative: file.relative,
-        // Human scale, since the report prints this verbatim. `formatBytes` rather than
-        // fixed megabytes, which would print a small limit as `0 MB`.
-        reason: `larger than the ${formatBytes(maxBytes)} limit for searching a file's text`,
-      });
+    const text = await textToSearch(file, options, maxBytes);
+    if (text === null) continue;
+    if (typeof text !== 'string') {
+      skipped.push(text);
       continue;
     }
 

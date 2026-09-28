@@ -100,6 +100,11 @@ export function couldHideAReference(
   );
 }
 
+/** Whether an extension (as `extensionOf` returns it) names a known binary format. */
+export function isBinaryExtension(extension: string): boolean {
+  return BINARY_EXTENSIONS.has(extension);
+}
+
 /**
  * Unread files counted by extension, sorted by extension. The graph counts every unread
  * file, parse failures included; the move check counts a subset without them, since it

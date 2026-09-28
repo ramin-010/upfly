@@ -833,22 +833,73 @@ describe('sweepForMentions', () => {
     it('skips a file past the size limit, with a reason', async () => {
       const graph = graphOf({
         assets: [asset('hero.png')],
-        unscannedFiles: [unscanned('promo.mp4')],
+        unscannedFiles: [unscanned('promo.yaml')],
       });
 
       const result = await sweepForMentions({
         graph,
-        readFile: files({ '/repo/promo.mp4': `${'x'.repeat(500)}hero.png` }),
+        readFile: files({ '/repo/promo.yaml': `${'x'.repeat(500)}hero.png` }),
         maxBytes: 100,
       });
 
       expect(result.mentions.size).toBe(0);
       expect(result.skipped).toEqual([
         {
-          relative: 'promo.mp4',
+          relative: 'promo.yaml',
           reason: "larger than the 100 B limit for searching a file's text",
         },
       ]);
+    });
+
+    it("asks a file's size before reading it, and compares bytes with bytes", async () => {
+      // 60 accented letters and a name: 69 characters, but 129 bytes, past a 100-byte limit.
+      const contents: Record<string, string> = {
+        '/repo/big.yaml': 'hero.png',
+        '/repo/accents.yaml': `${'é'.repeat(60)} hero.png`,
+      };
+      const graph = graphOf({
+        assets: [asset('hero.png')],
+        unscannedFiles: [unscanned('big.yaml'), unscanned('accents.yaml')],
+      });
+      const read: string[] = [];
+      const readFile: ReadFilePort = async (path) => {
+        read.push(path);
+        return contents[path] ?? '';
+      };
+
+      const sized = await sweepForMentions({
+        graph,
+        readFile,
+        sizeOf: async (path) =>
+          path === '/repo/big.yaml' ? 1_000_000_000 : Buffer.byteLength(contents[path] ?? ''),
+        maxBytes: 100,
+      });
+      expect(read).toEqual([]);
+      expect(sized.skipped.map((skip) => skip.relative)).toEqual(['accents.yaml', 'big.yaml']);
+
+      // With no size to ask, the text is read and its bytes counted.
+      const unsized = await sweepForMentions({ graph, readFile, maxBytes: 100 });
+      expect(unsized.skipped.map((skip) => skip.relative)).toEqual(['accents.yaml']);
+    });
+
+    it('never reads a known binary type, which holds no text to search', async () => {
+      const graph = graphOf({
+        assets: [asset('hero.png')],
+        unscannedFiles: [unscanned('promo.mp4'), unscanned('font.woff2')],
+      });
+      const read: string[] = [];
+
+      const result = await sweepForMentions({
+        graph,
+        readFile: async (path) => {
+          read.push(path);
+          return 'hero.png';
+        },
+      });
+
+      expect(read).toEqual([]);
+      expect(result.mentions.size).toBe(0);
+      expect(result.skipped).toEqual([]);
     });
   });
 
