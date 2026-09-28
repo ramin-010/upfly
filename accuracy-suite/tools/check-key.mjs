@@ -54,7 +54,7 @@ function arg(name, fallback) {
 
 const here = resolve(process.argv[1], '..', '..');
 const root = resolve(arg('--root', join(here, 'tree')));
-const keyPath = resolve(arg('--key', join(here, 'key', 'coverage-key.json')));
+const keyPath = resolve(arg('--key', join(here, 'key', 'answer-key.json')));
 const strict = process.argv.includes('--strict');
 const quiet = process.argv.includes('--quiet');
 

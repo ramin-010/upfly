@@ -1093,7 +1093,7 @@ happened to it; its shape says what it is, so outcomes can be counted per constr
 matrix (`accuracy-suite/tools/matrix.mjs`) prints one row per shape and no total, so no single
 figure can be quoted out of context.
 
-The accuracy suite's answer key, `accuracy-suite/key/coverage-key.json`, defines the vocabulary, and
+The accuracy suite's answer key, `accuracy-suite/key/answer-key.json`, defines the vocabulary, and
 `packages/core/src/adapters/shapes.ts` holds a second copy as `SHAPES`, which the engine exports. Neither can
 import the other. The key's checker, `check-key.mjs`, imports only `node:` modules and files beside
 it, so the key is never certified by the engine it measures, and a shipped package must not depend

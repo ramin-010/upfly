@@ -54,7 +54,7 @@ Sources were fetched at `width=2400` through `Special:FilePath`, because two of 
 originals are over 20 MB.
 
 **The full table of 59 photographs — path, source, dimensions, byte size and hash — is in
-[`key/coverage-key.json`](key/coverage-key.json) under `assets`**, and the self-check verifies
+[`key/answer-key.json`](key/answer-key.json) under `assets`**, and the self-check verifies
 every size and hash against the file on disk. It is not duplicated here, because a table
 maintained in two places is a table that disagrees with itself.
 

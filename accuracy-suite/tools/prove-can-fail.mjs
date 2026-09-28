@@ -76,7 +76,7 @@ const cases = [
   {
     name: 'an asset listed in the key is deleted from the tree',
     damage: (root) => {
-      const key = JSON.parse(readFileSync(join(root, 'key/coverage-key.json'), 'utf8'));
+      const key = JSON.parse(readFileSync(join(root, 'key/answer-key.json'), 'utf8'));
       rmSync(join(root, 'tree', key.assets[0].path));
     },
     expect: 'listed but not on disk',
@@ -237,7 +237,7 @@ function removeField(object, field) {
 }
 
 function editKey(root, mutate) {
-  const path = join(root, 'key/coverage-key.json');
+  const path = join(root, 'key/answer-key.json');
   const key = JSON.parse(readFileSync(path, 'utf8'));
   mutate(key);
   writeFileSync(path, `${JSON.stringify(key, null, 2)}\n`);

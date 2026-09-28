@@ -53,7 +53,7 @@ went wrong.
 
 ```
 accuracy-suite/
-  key/coverage-key.json       the answer key: 101 shapes, 80 assets, 562 references in 137 files
+  key/answer-key.json       the answer key: 101 shapes, 80 assets, 562 references in 137 files
   tools/check-key.mjs         the self-check: plain text and path arithmetic, no engine
   tools/prove-can-fail.mjs    18 deliberate damages, each asserted to turn the check red
   tools/measure.mjs           the engine over tree/, run twice, rendered as the matrix

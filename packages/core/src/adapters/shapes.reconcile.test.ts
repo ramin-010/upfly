@@ -20,7 +20,7 @@ import {
 } from './shapes.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const KEY_PATH = join(HERE, '..', '..', '..', '..', 'accuracy-suite', 'key', 'coverage-key.json');
+const KEY_PATH = join(HERE, '..', '..', '..', '..', 'accuracy-suite', 'key', 'answer-key.json');
 
 interface KeyShape {
   readonly id: string;

@@ -36,7 +36,7 @@ function arg(name, fallback) {
 }
 
 const root = resolve(arg('--root', join(TREE_ROOT, 'tree')));
-const keyPath = resolve(arg('--key', join(TREE_ROOT, 'key', 'coverage-key.json')));
+const keyPath = resolve(arg('--key', join(TREE_ROOT, 'key', 'answer-key.json')));
 
 // ---- the key check -------------------------------------------------------------
 if (process.argv.includes('--skip-strict')) {

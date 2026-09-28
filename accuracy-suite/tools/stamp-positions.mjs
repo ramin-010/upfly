@@ -112,7 +112,7 @@ function stampReferences(key, root, changes, errors) {
 function main() {
   const here = resolve(process.argv[1], '..', '..');
   const root = resolve(arg('--root', join(here, 'tree')));
-  const keyPath = resolve(arg('--key', join(here, 'key', 'coverage-key.json')));
+  const keyPath = resolve(arg('--key', join(here, 'key', 'answer-key.json')));
   const dryRun = process.argv.includes('--check');
 
   const key = JSON.parse(readFileSync(keyPath, 'utf8'));
