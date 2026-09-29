@@ -1571,7 +1571,10 @@ shows sideways, and under `--replace` the original, which showed correctly, is d
 reports the size as shown too, so `oversized` names the side that is too long as a viewer sees it.
 
 An embedded colour profile whose primaries are sRGB's is converted through and dropped, as sharp
-does by default, so an ordinary photo pays nothing for it. Any other RGB profile, Display P3 and
+does by default, so an ordinary photo pays nothing for it. sRGB is named as the target
+(`withIccProfile('srgb', { attach: false })`): left to the default, a 16-bit image ends in another
+space's numbers once the profile is dropped, and pure red was written as 234, 51, 34; for any other
+image the bytes are the same. Any other RGB profile, Display P3 and
 wider, is kept with the numbers it describes (sharp's `keepIccProfile`): converting through it into
 sRGB would bring its most saturated colours inside sRGB, and a wide-gamut screen would show them
 duller than the original. The kept profile costs its own bytes, about half a kilobyte for Display P3,

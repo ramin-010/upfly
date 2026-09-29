@@ -533,6 +533,37 @@ describe('a converted image looks like the original', () => {
     },
   );
 
+  it.each(['webp', 'avif'] as const)(
+    'keeps the colours of a 16-bit image whose profile is sRGB, as %s',
+    async (format) => {
+      // Converted without a target, libvips turns a 16-bit sRGB image into another space's
+      // numbers and the profile is then dropped: pure red was written as 234, 51, 34.
+      const { default: sharp } = await import('sharp');
+      const red = Buffer.alloc(32 * 32 * 3);
+      for (let index = 0; index < red.length; index += 3) red.set([255, 0, 0], index);
+      const path = join(temp, `deep-srgb-${format}.png`);
+      await sharp(red, { raw: { width: 32, height: 32, channels: 3 } })
+        .withIccProfile('srgb')
+        .toColourspace('rgb16')
+        .png()
+        .toFile(path);
+      const destination = join(temp, `deep-srgb.${format}`);
+
+      const measured = await probe.encodedBytes({ path, format, animated: false });
+      const written = await probe.encodeToFile({ path, format, animated: false, destination });
+
+      const shown = [
+        ...(await sharp(destination, { ignoreIcc: true }).raw().toBuffer()).subarray(0, 3),
+      ];
+      expect((await sharp(path).metadata()).depth).toBe('ushort');
+      expect((await sharp(destination).metadata()).icc).toBeUndefined();
+      expect(shown.every((value, index) => Math.abs(value - (index === 0 ? 255 : 0)) <= 3)).toBe(
+        true,
+      );
+      expect(written).toBe(measured);
+    },
+  );
+
   it('converts a CMYK photo into sRGB, since WebP and AVIF hold only RGB', async () => {
     const { default: sharp } = await import('sharp');
     const source = await profiledRed('cmyk.jpg', 'cmyk');

@@ -66,6 +66,10 @@ export async function createSharpProbe(
     });
     // Without this, sharp converts through the embedded profile into sRGB and drops it.
     if (keepsProfile((await pipeline.metadata()).icc)) pipeline.keepIccProfile();
+    // Converted with no target named, a 16-bit image ends in another space's numbers once its
+    // profile is dropped, and its colours come out duller; for any other image this writes
+    // the same bytes.
+    else pipeline.withIccProfile('srgb', { attach: false });
     switch (format) {
       case 'webp':
         // sharp ignores `quality` when `lossless` is set, so the two are never passed
