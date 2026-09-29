@@ -23,7 +23,7 @@ import { unreferencedAssets } from '../graph/graph.js';
 import { isBinaryExtension } from '../graph/unscanned.js';
 import { compareStrings, imageFilenameCandidates } from '../paths.js';
 import { provenPath } from '../resolve/reference.js';
-import { globFromAnyRoot, servedFromAnyRoot } from '../resolve/resolve.js';
+import { contextCouldTake, globFromAnyRoot, servedFromAnyRoot } from '../resolve/resolve.js';
 import { citationAt, lineOf, withSourceTexts } from '../scan/citation.js';
 import type { ReadFilePort, ScannedMention } from '../scan/scan.js';
 import type { Reference } from '../types.js';
@@ -261,8 +261,8 @@ async function sweepFiles(
  * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
  * tested against every candidate, as the resolver would glob it from whichever directory the
  * site serves: a root-relative one the run had no serving root to glob, a relative one that
- * matched nothing, one written through an alias no rule maps, one an adapter declined, and a
- * bundler's glob that matched nothing.
+ * matched nothing, one written through an alias no rule maps, one an adapter declined, a
+ * bundler's glob that matched nothing, and a bundler's context that linked nothing.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
@@ -294,11 +294,17 @@ async function sweepUnresolvedReferences(
         ? [[reference, spelledThroughReplacement(provenPath(reference))] as const]
         : [],
     ),
-    // Last, so a glob is read in its own syntax whichever list above also holds it.
+    // Last, so a glob is read in its own syntax, and a context by what it could take from its
+    // directory, whichever list above also holds it.
     ...unknownTargetReferences(options.graph).flatMap((reference) =>
       reference.glob === undefined
         ? []
         : [[reference, globFromAnyRoot(provenPath(reference), reference.glob.dot)] as const],
+    ),
+    ...unknownTargetReferences(options.graph).flatMap((reference) =>
+      reference.bundlerContext === undefined
+        ? []
+        : [[reference, contextCouldTake(reference, options.graph.root)] as const],
     ),
   ]);
   const assets = [...candidates.values()].flat();
@@ -435,11 +441,12 @@ function declinedPatterns(graph: Graph): readonly Reference[] {
  * The relative patterns that matched nothing. A script builds a path the browser reads from the
  * folder of the page that loads it, which the resolver does not know, so like a declined pattern
  * what it names is unknown rather than absent. A bare name in an import is a package, not a
- * relative path, and a glob is read in its own syntax.
+ * relative path, and a glob or a context is read in its own way.
  */
 function unmatchedRelativePatterns(graph: Graph): readonly Reference[] {
   return graph.byResolution.dynamic.filter((reference) => {
     if (reference.ceiling !== 'medium' || reference.glob !== undefined) return false;
+    if (reference.bundlerContext !== undefined) return false;
     const path = provenPath(reference);
     if (path.startsWith('./') || path.startsWith('../')) return true;
     return reference.kind !== 'import' && !/^[/@~#$]/.test(path);

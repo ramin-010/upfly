@@ -980,6 +980,31 @@ describe('the public policy', () => {
       );
     });
 
+    it('keeps every original a context loads, and says the bundler loads it from a directory', () => {
+      const loaded = {
+        ...pattern('src/theme.js', '../public', [
+          'public/theme-light.png',
+          'public/theme-dark.png',
+        ]),
+        kind: 'import',
+        shape: 'js.require.context',
+        bundlerContext: { recursive: false, filter: { source: '^\\./theme-', flags: '' } },
+      } as Reference;
+      const alone = replacing(theme, [loaded]);
+      const withLiteral = replacing(theme, [
+        resolved('index.html', '/theme-light.png', 'public/theme-light.png'),
+        loaded,
+      ]);
+
+      expect(alone.conversions).toEqual([]);
+      expect(reasonsByPath(alone)['public/theme-dark.png']).toContain(
+        '`src/theme.js` reaches it only through `../public`, a directory the bundler loads files from when it builds, which no run can rewrite',
+      );
+      expect(withLiteral.keptOriginals[0]?.reason).toContain(
+        'reaches it through `../public`, a directory the bundler loads files from when it builds',
+      );
+    });
+
     it('keeps it when a literal naming it is rewritten but a pattern still needs it', () => {
       const plan = replacing(theme, [
         resolved('index.html', '/theme-light.png', 'public/theme-light.png'),

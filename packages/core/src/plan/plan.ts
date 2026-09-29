@@ -249,19 +249,28 @@ export interface OptimizationPlan {
 
 /**
  * Why a pattern's text cannot be repointed, as the start of a reason: a template is assembled
- * at runtime, while a bundler's glob names its files by pattern when the project builds.
+ * at runtime, while a bundler's glob names its files by pattern when the project builds, and a
+ * bundler's context by a directory and a filter.
  */
 export function patternCannotMove(reference: Reference): string {
-  return reference.glob === undefined
-    ? 'a template reference is assembled at runtime, so its text cannot be repointed'
-    : 'a glob names its files by pattern when the bundler builds, so its text cannot be repointed';
+  if (reference.glob !== undefined) {
+    return 'a glob names its files by pattern when the bundler builds, so its text cannot be repointed';
+  }
+  if (reference.bundlerContext !== undefined) {
+    return 'a context names its files by directory and filter when the bundler builds, so its text cannot be repointed';
+  }
+  return 'a template reference is assembled at runtime, so its text cannot be repointed';
 }
 
 /** What a pattern's text is, and that no run rewrites it, for a reason that quotes it. */
 function unrewritable(reference: Reference): string {
-  return reference.glob === undefined
-    ? 'a path assembled at runtime that no run can rewrite'
-    : 'a glob the bundler expands when it builds, which no run can rewrite';
+  if (reference.glob !== undefined) {
+    return 'a glob the bundler expands when it builds, which no run can rewrite';
+  }
+  if (reference.bundlerContext !== undefined) {
+    return 'a directory the bundler loads files from when it builds, which no run can rewrite';
+  }
+  return 'a path assembled at runtime that no run can rewrite';
 }
 
 /** Every asset a pattern reference could match, as sorted absolute paths. */

@@ -365,6 +365,19 @@ export const SHAPES = [
       'never rewritten, so `--replace` keeps their originals.',
   },
   {
+    id: 'js.require.context',
+    label: "require.context('./img', true, /\\.png$/)",
+    emission: 'engine',
+    why:
+      "webpack's `require.context`, emitted by the JavaScript adapter at the call's directory. " +
+      'When the directory is a string, the second argument a boolean and the third a regular ' +
+      "expression, each written as a literal, the directory is read from the module's folder, " +
+      'and every asset under it, in that folder alone or in every folder below, whose path from ' +
+      'it (`./sub/a.png`) the expression matches is linked and never rewritten. A call written ' +
+      'any other way is refused, and the images under a literal directory are hedged rather ' +
+      'than called unused.',
+  },
+  {
     id: 'js.template.pattern',
     label: 'template literal, one unknown segment',
     emission: 'engine',

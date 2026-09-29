@@ -2,8 +2,8 @@
  * The JavaScript, TypeScript and JSX adapter.
  *
  * Finds static `import`s, `require()`, dynamic `import()`, the bundler forms
- * `new URL('./x.png', import.meta.url)` and `import.meta.glob('./img/*.png')`, JSX
- * `src`/`srcSet`/`poster` on any element and
+ * `new URL('./x.png', import.meta.url)`, `import.meta.glob('./img/*.png')` and
+ * `require.context('./img')`, JSX `src`/`srcSet`/`poster` on any element and
  * every attribute position the HTML adapter reads (`url-attributes.ts`), and `url()` inside
  * CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside those
  * constructs become speculative candidates. One that a construct declines, such as the value
@@ -30,7 +30,14 @@ import type {
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
 import { extensionOf } from '../paths.js';
-import type { Adapter, BundlerGlob, Confidence, RawReference, ReferenceKind } from '../types.js';
+import type {
+  Adapter,
+  BundlerContext,
+  BundlerGlob,
+  Confidence,
+  RawReference,
+  ReferenceKind,
+} from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
@@ -394,6 +401,8 @@ function collectFromNode(node: BabelNode, context: Context): void {
         );
       } else if (isImportMetaGlob(node)) {
         collectFromImportMetaGlob(node, context);
+      } else if (isRequireContext(node)) {
+        collectFromRequireContext(node, context);
       }
       return;
     case 'NewExpression':
@@ -944,11 +953,11 @@ function isImportMetaGlob(node: CallExpression): boolean {
 function collectFromImportMetaGlob(node: CallExpression, context: Context): void {
   const [first, options] = node.arguments;
   if (first === undefined) return;
-  const patterns: GlobPatternText[] = [];
+  const patterns: BundlerLiteral[] = [];
   for (const element of first.type === 'ArrayExpression' ? first.elements : [first]) {
     // Vite skips an array's empty slot.
     if (element === null) continue;
-    const pattern = globPatternText(element, context.text);
+    const pattern = bundlerLiteral(element, context.text);
     if (pattern === null) return;
     patterns.push(pattern);
   }
@@ -981,17 +990,20 @@ function collectFromImportMetaGlob(node: CallExpression, context: Context): void
   }
 }
 
-interface GlobPatternText {
+interface BundlerLiteral {
   readonly start: number;
   readonly end: number;
-  /** The pattern as the file spells it. */
+  /** The text as the file spells it. */
   readonly text: string;
-  /** The pattern Vite reads: a string's decoded value, a template's raw text. */
+  /** The text the bundler reads: a string's decoded value, a template's raw text. */
   readonly value: string;
 }
 
-/** A glob pattern Vite accepts: a string, or a template literal with no expression. */
-function globPatternText(element: BabelNode, text: string): GlobPatternText | null {
+/**
+ * A string a bundler reads as it builds, a glob pattern or a context's directory: a string
+ * literal, or a template literal with no expression.
+ */
+function bundlerLiteral(element: BabelNode, text: string): BundlerLiteral | null {
   if (typeof element.start !== 'number' || typeof element.end !== 'number') return null;
   const start = element.start + 1;
   const end = element.end - 1;
@@ -1015,6 +1027,91 @@ function optionIsTrue(options: BabelNode | undefined, name: string): boolean {
       property.value.type === 'BooleanLiteral' &&
       property.value.value,
   );
+}
+
+/** Whether this is webpack's `require.context(...)`. */
+function isRequireContext(node: CallExpression): boolean {
+  const { callee } = node;
+  return (
+    callee.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object.type === 'Identifier' &&
+    callee.object.name === 'require' &&
+    callee.property.type === 'Identifier' &&
+    callee.property.name === 'context'
+  );
+}
+
+/** Why a context call written with anything but literals is refused. */
+const UNKNOWN_UNTIL_BUILT = 'so which files the bundler loads is known only when it builds';
+
+/**
+ * webpack's `require.context(directory, recursive, filter)`, read as webpack reads it: only
+ * when it can work out a string, a boolean and a regular expression as it builds. A call
+ * written with literals is a directory the resolver lists. Any other is refused, and a literal
+ * directory travels with it, so what the call could take is hedged. The fourth argument
+ * changes how the files load, not which.
+ */
+function collectFromRequireContext(node: CallExpression, context: Context): void {
+  const [directory, recursive, filter] = node.arguments;
+  if (directory === undefined) return;
+  const written = bundlerLiteral(directory, context.text);
+  if (written === null) {
+    collectUnreadContextDirectory(directory, context);
+    return;
+  }
+
+  context.handled.set(written.start, null);
+  const bundlerContext: BundlerContext = {
+    recursive: recursive?.type === 'BooleanLiteral' ? recursive.value : true,
+    ...(filter?.type === 'RegExpLiteral'
+      ? { filter: { source: filter.pattern, flags: filter.flags } }
+      : {}),
+  };
+  // webpack reads the decoded directory, which no range spells, as Vite reads a glob.
+  const escaped = written.text !== written.value;
+  const refusal = escaped
+    ? 'the directory contains escape sequences, so its text cannot be located exactly'
+    : recursive !== undefined && recursive.type !== 'BooleanLiteral'
+      ? `the second argument is not written as true or false, ${UNKNOWN_UNTIL_BUILT}`
+      : filter !== undefined && filter.type !== 'RegExpLiteral'
+        ? `the filter is not written as a regular expression literal, ${UNKNOWN_UNTIL_BUILT}`
+        : null;
+  context.references.push({
+    file: context.file,
+    start: written.start,
+    end: written.end,
+    rawPath: written.text,
+    ...(escaped ? { assembledPath: written.value } : {}),
+    kind: 'import',
+    shape: 'js.require.context',
+    ceiling: refusal === null ? 'medium' : 'unsafe',
+    asserted: true,
+    note: `require.context(): ${refusal ?? 'a directory the bundler loads files from when it builds; the resolver decides which assets it names'}`,
+    bundlerContext,
+  });
+}
+
+/**
+ * A context whose directory is not a literal, reported as the argument's text. No one
+ * directory stands for it, so it is refused whole and no folder's images are hedged by it.
+ */
+function collectUnreadContextDirectory(directory: BabelNode, context: Context): void {
+  if (typeof directory.start !== 'number' || typeof directory.end !== 'number') return;
+  // The template is the call's argument, not a guess of its own.
+  if (directory.type === 'TemplateLiteral') context.handled.set(directory.start + 1, null);
+  context.references.push({
+    file: context.file,
+    start: directory.start,
+    end: directory.end,
+    rawPath: context.text.slice(directory.start, directory.end),
+    kind: 'import',
+    shape: 'js.require.context',
+    ceiling: 'unsafe',
+    asserted: true,
+    unread: true,
+    note: `require.context(): the directory is not written as a string, ${UNKNOWN_UNTIL_BUILT}`,
+  });
 }
 
 /**

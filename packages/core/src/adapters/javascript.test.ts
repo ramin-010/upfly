@@ -1750,3 +1750,99 @@ describe('import.meta.glob', () => {
     });
   });
 });
+
+describe("webpack's require.context", () => {
+  const contexts = (text: string) =>
+    find(text, '/project/src/icons.js').map(
+      ({ rawPath, shape, ceiling, kind, bundlerContext }) => ({
+        rawPath,
+        shape,
+        ceiling,
+        kind,
+        bundlerContext,
+      }),
+    );
+
+  it('reads a call written with literals as its directory, whether it recurses and its filter', () => {
+    const text = "export const icons = require.context('./icons', false, /\\.png$/i);";
+    const [reference] = find(text, '/project/src/icons.js');
+
+    expect(contexts(text)).toEqual([
+      {
+        rawPath: './icons',
+        shape: 'js.require.context',
+        ceiling: 'medium',
+        kind: 'import',
+        bundlerContext: { recursive: false, filter: { source: '\\.png$', flags: 'i' } },
+      },
+    ]);
+    expect(text.slice(reference?.start, reference?.end)).toBe('./icons');
+  });
+
+  it("takes webpack's defaults for the arguments a call leaves out, and ignores its mode", () => {
+    expect(contexts('require.context(`../img`);')).toEqual([
+      expect.objectContaining({
+        rawPath: '../img',
+        ceiling: 'medium',
+        bundlerContext: { recursive: true },
+      }),
+    ]);
+    expect(contexts("require.context('./img', true, /x/, 'lazy');")).toEqual([
+      expect.objectContaining({
+        ceiling: 'medium',
+        bundlerContext: { recursive: true, filter: { source: 'x', flags: '' } },
+      }),
+    ]);
+  });
+
+  it('refuses a call it cannot read whole, and keeps a literal directory with what it could read', () => {
+    expect(
+      contexts("require.context('./a', deep, /x/); require.context('./b', false, filter);"),
+    ).toEqual([
+      expect.objectContaining({
+        rawPath: './a',
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: true, filter: { source: 'x', flags: '' } },
+      }),
+      expect.objectContaining({
+        rawPath: './b',
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: false },
+      }),
+    ]);
+  });
+
+  it('refuses a directory that is not a literal as the text of its argument, naming no folder', () => {
+    // The template is the call's argument, so it is not guessed at as a path of its own too.
+    for (const directory of ['themeFolder()', '`./img/${name}.png`']) {
+      const found = find(`require.context(${directory}, false, /x/);`, '/project/src/icons.js');
+
+      expect(found).toEqual([
+        expect.objectContaining({
+          rawPath: directory,
+          shape: 'js.require.context',
+          ceiling: 'unsafe',
+          unread: true,
+        }),
+      ]);
+      expect(found[0]).not.toHaveProperty('bundlerContext');
+    }
+  });
+
+  it('refuses a directory written with an escape, and keeps what it decodes to', () => {
+    const [reference] = find("require.context('./caf\\u00e9', false);", '/project/src/a.js');
+
+    expect(reference).toMatchObject({
+      rawPath: './caf\\u00e9',
+      assembledPath: './café',
+      shape: 'js.require.context',
+      ceiling: 'unsafe',
+      bundlerContext: { recursive: false },
+    });
+  });
+
+  it('reads nothing from a call with no directory, or from another member of require', () => {
+    expect(contexts('require.context();')).toEqual([]);
+    expect(contexts("require.resolve('./icons');")).toEqual([]);
+  });
+});

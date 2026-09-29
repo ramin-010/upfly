@@ -1,10 +1,15 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from '../paths.js';
-import type { Asset, RawReference, Reference } from '../types.js';
+import type { Asset, BundlerContext, RawReference, Reference } from '../types.js';
 import { type AliasMap, loadAliases } from './aliases.js';
 import { isLinked, linkedPaths } from './reference.js';
-import { CONVENTIONAL_SERVING_ROOTS, resolveReferences, servedFromAnyRoot } from './resolve.js';
+import {
+  CONVENTIONAL_SERVING_ROOTS,
+  contextCouldTake,
+  resolveReferences,
+  servedFromAnyRoot,
+} from './resolve.js';
 
 /**
  * Every rung of the resolver's ladder exists because some real syntax would otherwise be
@@ -1955,5 +1960,183 @@ describe("rung 2: a bundler's glob, read as Vite globs it", () => {
   it('refuses syntax it does not read rather than misreading it', () => {
     expect(globbed('./img/@(one|two).png')).toBe('dynamic');
     expect(globbed('./img/{1..3}.png')).toBe('dynamic');
+  });
+});
+
+describe("rung 2: a bundler's context, listed as webpack lists it", () => {
+  const assets = [
+    'src/icons/one.png',
+    'src/icons/two.jpg',
+    'src/icons/Three.PNG',
+    'src/icons/.hidden.png',
+    'src/icons/old/four.png',
+    'src/icons/.cache/stale.png',
+    'src/other/five.png',
+  ].map(asset);
+
+  /** The project-relative paths a context written in `src/app.js` links, or its outcome. */
+  function listed(
+    directory: string,
+    bundlerContext: BundlerContext,
+    options: { ceiling?: 'medium' | 'unsafe'; foldCase?: boolean } = {},
+  ): readonly string[] | string {
+    const [reference] = resolveReferences(
+      [
+        raw({
+          rawPath: directory,
+          file: join(ROOT, 'src/app.js'),
+          shape: 'js.require.context',
+          ceiling: options.ceiling ?? 'medium',
+          bundlerContext,
+        }),
+      ],
+      {
+        root: ROOT,
+        assets,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        exists: NOTHING_EXISTS,
+        foldCase: options.foldCase ?? false,
+      },
+    );
+    if (reference === undefined) return 'dropped';
+    if (!isLinked(reference)) return reference.resolution;
+    return linkedPaths(reference).map((path) => toPosix(path).slice(toPosix(ROOT).length + 1));
+  }
+
+  const png = { source: '\\.png$', flags: '' };
+
+  it.each([
+    [
+      'the folder alone when the call does not recurse',
+      './icons',
+      { recursive: false },
+      ['src/icons/Three.PNG', 'src/icons/one.png', 'src/icons/two.jpg'],
+    ],
+    [
+      'every folder below when it does',
+      './icons',
+      { recursive: true },
+      ['src/icons/Three.PNG', 'src/icons/old/four.png', 'src/icons/one.png', 'src/icons/two.jpg'],
+    ],
+    [
+      'only the files the expression matches',
+      './icons/',
+      { recursive: false, filter: png },
+      ['src/icons/one.png'],
+    ],
+    [
+      'a match in any case under the i flag',
+      './icons',
+      { recursive: true, filter: { source: '\\.png$', flags: 'i' } },
+      ['src/icons/Three.PNG', 'src/icons/old/four.png', 'src/icons/one.png'],
+    ],
+    [
+      'a path the expression reads from ./, the folder below included',
+      '../src/icons',
+      { recursive: true, filter: { source: '^\\./old/', flags: '' } },
+      ['src/icons/old/four.png'],
+    ],
+    [
+      "the module's own folder",
+      '.',
+      { recursive: true, filter: { source: '^\\./other/', flags: '' } },
+      ['src/other/five.png'],
+    ],
+  ])('links %s', (_, directory, bundlerContext, matched) => {
+    expect(listed(directory, bundlerContext)).toEqual(matched);
+  });
+
+  it('reads a filter with the g flag as if each file were the first it tested', () => {
+    // The flag makes `test` resume where the last match ended, which would skip `one.png`.
+    expect(
+      listed('./icons', { recursive: true, filter: { source: '\\.png$', flags: 'g' } }),
+    ).toEqual(['src/icons/old/four.png', 'src/icons/one.png']);
+  });
+
+  it('reads the directory as webpack reads the request, without inline loaders or a query', () => {
+    expect(listed('./icons?inline', { recursive: false, filter: png })).toEqual([
+      'src/icons/one.png',
+    ]);
+    expect(listed('!!raw-loader!./icons', { recursive: false, filter: png })).toEqual([
+      'src/icons/one.png',
+    ]);
+  });
+
+  it('never lists a file or folder whose name starts with a dot, as webpack does not', () => {
+    expect(
+      listed('./icons', { recursive: true, filter: { source: 'hidden|stale', flags: '' } }),
+    ).toBe('dynamic');
+  });
+
+  it('is dynamic when it takes nothing, or when its expression cannot be built', () => {
+    expect(listed('./photos', { recursive: true })).toBe('dynamic');
+    expect(listed('./icons', { recursive: true, filter: { source: '\\.gif$', flags: '' } })).toBe(
+      'dynamic',
+    );
+    expect(listed('./icons', { recursive: true, filter: { source: '(', flags: '' } })).toBe(
+      'dynamic',
+    );
+  });
+
+  it("leaves a directory not written from the module's folder unresolved, as an unmapped alias is", () => {
+    expect(listed('@/icons', { recursive: true })).toBe('unresolved-alias');
+    expect(listed('icons', { recursive: true })).toBe('dynamic');
+    expect(listed('/src/icons', { recursive: true })).toBe('dynamic');
+  });
+
+  it('keeps a call it could not read whole dynamic, whatever its directory is named', () => {
+    expect(listed('./icons', { recursive: true }, { ceiling: 'unsafe' })).toBe('dynamic');
+    expect(listed('./sprites.v2', { recursive: true }, { ceiling: 'unsafe' })).toBe('dynamic');
+  });
+
+  it('finds the folder in any case where the file system ignores case, and filters the name on disk', () => {
+    expect(
+      listed(
+        './ICONS',
+        { recursive: false, filter: { source: 'Three', flags: '' } },
+        { foldCase: true },
+      ),
+    ).toEqual(['src/icons/Three.PNG']);
+  });
+});
+
+describe("what a bundler's context could take, for the name search", () => {
+  const call = (directory: string, bundlerContext: BundlerContext): RawReference =>
+    raw({
+      rawPath: directory,
+      file: join(ROOT, 'src/app.js'),
+      shape: 'js.require.context',
+      ceiling: 'unsafe',
+      bundlerContext,
+    });
+
+  it("reads a directory written from the module's folder from there, in any case", () => {
+    const couldTake = contextCouldTake(call('./icons', { recursive: false }), ROOT);
+
+    expect(couldTake('src/icons/one.png')).toBe(true);
+    expect(couldTake('src/Icons/one.png')).toBe(true);
+    expect(couldTake('src/icons/old/two.png')).toBe(false);
+    expect(couldTake('lib/icons/one.png')).toBe(false);
+  });
+
+  it('reads any other directory as a folder anywhere on the path, after its alias token', () => {
+    const couldTake = contextCouldTake(
+      call('@/assets/icons', { recursive: true, filter: { source: '\\.png$', flags: '' } }),
+      ROOT,
+    );
+
+    expect(couldTake('src/assets/icons/one.png')).toBe(true);
+    expect(couldTake('src/assets/icons/old/two.png')).toBe(true);
+    expect(couldTake('src/assets/icons/two.jpg')).toBe(false);
+    expect(couldTake('src/icons/one.png')).toBe(false);
+  });
+
+  it('takes every file under the directory when its expression cannot be built', () => {
+    const couldTake = contextCouldTake(
+      call('./icons', { recursive: true, filter: { source: '(', flags: '' } }),
+      ROOT,
+    );
+
+    expect(couldTake('src/icons/old/a.gif')).toBe(true);
   });
 });

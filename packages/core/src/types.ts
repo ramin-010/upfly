@@ -120,6 +120,13 @@ export interface RawReference {
    * every asset it matches, and nothing ever rewrites it.
    */
   readonly glob?: BundlerGlob;
+  /**
+   * Set on a directory a bundler loads files from when it builds, such as the one given to
+   * webpack's `require.context`. `rawPath` is then the directory. With a `medium` ceiling the
+   * resolver links every asset under it that the call takes, and nothing ever rewrites it; an
+   * `unsafe` one is a call that could not be read whole, and what it could take is hedged.
+   */
+  readonly bundlerContext?: BundlerContext;
 }
 
 /** What a bundler's glob call says about which files a pattern takes. */
@@ -131,6 +138,24 @@ export interface BundlerGlob {
   readonly exclude: readonly string[];
   /** Whether a wildcard also matches a name that starts with a dot. */
   readonly dot: boolean;
+}
+
+/**
+ * What a bundler's context call says about which files under its directory it takes, as
+ * webpack reads `require.context(directory, recursive, filter)`.
+ */
+export interface BundlerContext {
+  /**
+   * Whether files in the folders below the directory are taken too: webpack's default, and
+   * the reading of an argument the adapter could not read.
+   */
+  readonly recursive: boolean;
+  /**
+   * The regular expression a file's path from the directory, written with a leading `./`
+   * such as `./sub/a.png`, has to match, as its `source` and `flags`. Absent when the call
+   * gives none, or gives one the adapter could not read: every file is then one it takes.
+   */
+  readonly filter?: { readonly source: string; readonly flags: string };
 }
 
 /**

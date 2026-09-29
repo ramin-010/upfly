@@ -22,10 +22,12 @@ import {
   compareStrings,
   extensionOf,
   isImageExtension,
+  relativePath,
   toPosix,
 } from '../paths.js';
 import type {
   Asset,
+  BundlerContext,
   BundlerGlob,
   ExcludedRoot,
   RawReference,
@@ -179,6 +181,8 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    path, so what follows its last dot is no extension that could rule it out.
   if (raw.unread === true) return unlinked(raw, 'dynamic');
   if (raw.ceiling === 'unsafe') {
+    // A context's directory is no file, so what follows its last dot rules nothing out.
+    if (raw.bundlerContext !== undefined) return unlinked(raw, 'dynamic');
     // A glob's extension can be a brace, `*.{png,jpg}`, which only the glob reading sees.
     const notAnAsset =
       raw.glob === undefined ? provablyNotAnAsset(raw) : globNamesNoImage(provenPath(raw));
@@ -189,8 +193,12 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    text proves (`provenPath`): the text of a `+` chain, or of a template with a
   //    same-file constant written in, is not the path it builds.
   if (raw.ceiling === 'medium') {
-    // A bundler's glob is written in glob syntax, which the holes below do not read.
+    // A bundler's glob is written in glob syntax, and a context names a directory: the
+    // holes below read neither.
     if (raw.glob !== undefined) return resolveGlob(raw, raw.glob, context);
+    if (raw.bundlerContext !== undefined) {
+      return resolveBundlerContext(raw, raw.bundlerContext, context);
+    }
     const pattern = provenPath(raw);
     const written = index.matchPattern(pattern, raw, root, publicDirs);
     // Then through a declared alias, as rung 4b reads a literal path, so a file at the
@@ -624,6 +632,136 @@ function globMatches(
   return { matches: [], via: 'file' };
 }
 
+/**
+ * Rung 2 for a bundler's context: every asset under the directory that the call takes, as
+ * webpack lists `require.context` (see `contextTakes`). Only a directory written from the
+ * module's folder is listed. Any other goes through webpack's own resolution, which Upfly does
+ * not read, so it is left unresolved as a pattern through an unmapped alias is. Nothing taken,
+ * or an expression that cannot be built, is `dynamic`, never `broken`.
+ */
+function resolveBundlerContext(
+  raw: RawReference,
+  bundlerContext: BundlerContext,
+  context: ResolveContext,
+): Reference {
+  const directory = contextDirectory(raw);
+  if (!isRelativeRequest(directory)) {
+    return unlinked(
+      raw,
+      throughUnmappedAlias(directory, raw, context) ? 'unresolved-alias' : 'dynamic',
+    );
+  }
+  const filter = contextFilter(bundlerContext);
+  if (filter === undefined) return unlinked(raw, 'dynamic');
+  const base = toPosix(resolvePath(dirname(raw.file), directory));
+  const [first, ...rest] = context.index.under(base, (fromDirectory) =>
+    contextTakes(bundlerContext.recursive, filter, fromDirectory),
+  );
+  if (first === undefined) return unlinked(raw, 'dynamic');
+  return {
+    ...raw,
+    resolution: 'resolved-pattern',
+    confidence: 'medium',
+    resolvedPaths: [first, ...rest],
+    resolvedVia: 'file',
+  };
+}
+
+/**
+ * The directory a context's request names, as webpack reads the request: any inline loaders,
+ * up to the last `!`, and any query or fragment are not part of it.
+ */
+function contextDirectory(reference: RawReference): string {
+  const request = provenPath(reference);
+  return splitPathSuffix(request.slice(request.lastIndexOf('!') + 1)).path;
+}
+
+/** Whether a request is relative as webpack's resolver reads one: `.`, `..`, `./…`, `../…`. */
+function isRelativeRequest(request: string): boolean {
+  return /^\.\.?(?:\/|$)/.test(request);
+}
+
+/**
+ * A context's regular expression: `null` when the call gives none, which takes every file, and
+ * `undefined` when it cannot be built here, such as one that uses a flag this Node does not know.
+ */
+function contextFilter(bundlerContext: BundlerContext): RegExp | null | undefined {
+  const { filter } = bundlerContext;
+  if (filter === undefined) return null;
+  try {
+    return new RegExp(filter.source, filter.flags);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a context takes a file, given its path from the context's directory, as webpack lists
+ * one: never a file or folder whose name starts with a dot, a file below the directory's own
+ * folder only when the call recurses, and only a path the expression matches once written with
+ * a leading `./`, such as `./sub/a.png`.
+ */
+function contextTakes(recursive: boolean, filter: RegExp | null, fromDirectory: string): boolean {
+  const segments = fromDirectory.split('/');
+  if (segments.some((segment) => segment.startsWith('.'))) return false;
+  if (!recursive && segments.length > 1) return false;
+  if (filter === null) return true;
+  // A `g` or `y` flag would start each test where the last match ended.
+  filter.lastIndex = 0;
+  return filter.test(`./${fromDirectory}`);
+}
+
+/**
+ * Whether a bundler's context could take an asset, for the audit's sweep to hedge by when the
+ * resolver linked nothing. A directory written from the module's folder is read from there.
+ * Any other could stand for a folder anywhere, so its segments after any leading `/` and alias
+ * token have to name some folder on the asset's path. Case is ignored, as the sweep ignores
+ * it, and an expression that cannot be built leaves every file one the call could take.
+ *
+ * @param reference A reference whose `bundlerContext` is set, its `rawPath` the directory.
+ * @param root The project root.
+ * @returns A test of an asset's POSIX path relative to the project root.
+ * @example
+ * // `require.context('./icons', false, filter)` in `src/app.js`
+ * const couldTake = contextCouldTake(reference, root);
+ * couldTake('src/icons/one.png'); // true
+ * couldTake('src/icons/old/two.png'); // false: the call does not recurse
+ */
+export function contextCouldTake(
+  reference: RawReference,
+  root: string,
+): (relative: string) => boolean {
+  const bundlerContext = reference.bundlerContext ?? { recursive: true };
+  const filter = contextFilter(bundlerContext) ?? null;
+  const takes = (fromDirectory: string): boolean =>
+    contextTakes(bundlerContext.recursive, filter, fromDirectory);
+  const directory = contextDirectory(reference);
+  if (isRelativeRequest(directory)) {
+    const base = relativePath(root, resolvePath(dirname(reference.file), directory)).toLowerCase();
+    return (asset) =>
+      base === ''
+        ? takes(asset)
+        : asset.toLowerCase().startsWith(`${base}/`) && takes(asset.slice(base.length + 1));
+  }
+  const fixed = directory.replace(/^\/+/, '').replace(/\/+$/, '');
+  const segments = fixed === '' ? [] : fixed.split('/');
+  const folder = (/^[@~#$]/.test(fixed) ? segments.slice(1) : segments).join('/').toLowerCase();
+  return (asset) => {
+    const lower = asset.toLowerCase();
+    // Each folder on the asset's path could be the one the directory stands for.
+    for (let start = 0; ; ) {
+      if (folder === '') {
+        if (takes(asset.slice(start))) return true;
+      } else if (lower.startsWith(`${folder}/`, start)) {
+        if (takes(asset.slice(start + folder.length + 1))) return true;
+      }
+      const slash = lower.indexOf('/', start);
+      if (slash === -1) return false;
+      start = slash + 1;
+    }
+  };
+}
+
 /** A `/` pattern read from the root the nearest Vite config serves the file from, if any. */
 function fromViteRoot(pattern: string, raw: RawReference, context: ResolveContext): Candidate[] {
   const root = pattern.startsWith('/') ? viteRootOf(context.aliases, raw.file) : null;
@@ -834,6 +972,24 @@ class AssetIndex {
   matchBundlerGlob(candidate: string, pattern: string, dot: boolean): readonly string[] {
     const expression = bundlerGlobRegExp(candidate, pattern, dot, this.foldCase);
     return expression === null ? [] : this.matchRegExp(expression);
+  }
+
+  /**
+   * Every asset under an absolute POSIX directory whose path from it `takes` accepts, for a
+   * bundler's context. The path is read from the asset's own spelling, so an index that folds
+   * case still hands `takes` the name as it is on disk.
+   */
+  under(directory: string, takes: (fromDirectory: string) => boolean): readonly string[] {
+    const prefix = this.keyOf(`${directory.replace(/\/+$/, '')}/`);
+    const depth = prefix.split('/').length - 1;
+    const matches: string[] = [];
+    for (const key of this.ordered) {
+      if (!key.startsWith(prefix)) continue;
+      const native = this.byPath.get(key);
+      if (native === undefined) continue;
+      if (takes(toPosix(native).split('/').slice(depth).join('/'))) matches.push(native);
+    }
+    return matches;
   }
 
   private matchRegExp(expression: RegExp): readonly string[] {

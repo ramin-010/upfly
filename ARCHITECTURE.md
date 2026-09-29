@@ -174,7 +174,8 @@ Rung 1 drops an `unsafe` path whose text shows an extension that is not an image
 `{{ page.data }}.json`. A construct an adapter could not read (`RawReference.unread`: a style
 attribute or `<style>` block whose CSS does not parse, a CSS-in-JS template) is text rather than a
 path, so what follows its last dot is no extension: it is always `dynamic`, which is how its
-refusal reaches the report.
+refusal reaches the report. So is a refused bundler's context: its text names a directory, whose
+last dot rules out nothing.
 
 Two outcomes deserve their own note.
 
@@ -205,6 +206,25 @@ range) leaves the pattern `dynamic` rather than misread, and a glob that can nam
 such as `./pages/*.vue`, is dropped as rung 3 drops a font. Where picomatch is inconsistent, a `**`
 that is not a whole segment, the glob reads more rather than less: an extra link keeps an original,
 a missing one calls a loaded image unused.
+
+A bundler's context, the directory given to webpack's `require.context(directory, recursive,
+filter)`, reaches rung 2 marked by `RawReference.bundlerContext`, which carries whether the call
+recurses and its regular expression. webpack reads such a call only when it can work out each
+argument as it builds, so the adapter reads it only when the directory is a string, the second
+argument a boolean and the third a regular expression, each written as a literal; any other call
+is `unsafe`, and its directory, when that is a literal, still travels for the sweep. The resolver
+lists the directory from the module's folder, as webpack resolves a relative request, setting
+aside any inline loaders and query as webpack does, and links every asset under it, in that
+folder alone or in every folder below, whose path from it, written `./sub/a.png`, the expression
+matches, skipping any name that starts with a dot, as webpack's
+listing skips it. The expression is built once per reference: one that cannot be built here
+leaves the reference `dynamic`, as does a context that takes nothing. A directory not written
+from the module's folder goes through webpack's `resolve.alias` and `resolve.modules`, which
+Upfly does not read, so it is `dynamic`, or `unresolved-alias` when it is alias-shaped and no
+declared rule maps it. The links are `resolved-pattern`, so nothing rewrites them and `--replace`
+keeps every original. webpack also offers the expression other spellings of a path, such as the
+path without an extension that `resolve.extensions` lists, which its defaults never do for an
+image; Upfly tests only the `./` spelling.
 
 **Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
 nearest first, then the project root. A monorepo has one `public/` per app (shadcn-ui has twelve),
@@ -854,7 +874,12 @@ directory the alias stands for, so the sweep drops the alias, the first segment,
 rest the same way (`unmappedAliasPatterns`): with no config that maps `@/`,
 `` `@/img/badge-${n}.png` `` hedges `src/img/badge-1.png` and not `src/icons/badge-1.png`. A
 bundler's glob that matched nothing is read in its own syntax the same way (`globFromAnyRoot`), its
-leading `./`, `../`, `/` and alias token dropped.
+leading `./`, `../`, `/` and alias token dropped. A bundler's context that linked nothing is read
+by what it could take (`contextCouldTake`). A call refused for an argument that is not a literal
+takes that argument's widest reading, every folder below and every file, so
+`require.context('./icons', true, filter)` hedges each image under `icons/` rather than calling it
+dead. A directory written from the module's folder is read from there; any other could stand for
+a folder anywhere, so its segments after any alias token have to name a folder on the asset's path.
 
 Two things belong in that swept text for reasons that are not obvious. **An SVG is both an asset
 and a container**: `<image href>`, `<use href>` and a `<style>` block inside one are all real
@@ -905,7 +930,7 @@ produce exactly the silent corruption this design exists to prevent.
 | `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, a link preview's image in `<meta content>`, an image in `<a href>`, `<style>`, `style=""` | `parse5` |
-| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, `import.meta.glob(…)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
+| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, `import.meta.glob(…)`, webpack's `require.context(…)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | a one-pass scanner over masked text, reading destinations as CommonMark does; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 

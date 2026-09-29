@@ -399,6 +399,52 @@ describe('a glob import', () => {
   });
 });
 
+describe("webpack's require.context", () => {
+  const unusedKinds = async (root: string) => {
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead'
+        ? [[finding.kind, finding.asset]]
+        : [],
+    );
+  };
+
+  it('links every image a context loads, so none of them is called unused', async () => {
+    const root = project({
+      'package.json': '{ "name": "icons", "private": true }\n',
+      'src/icons.js': "export const icons = require.context('./icons', false, /\\.png$/);\n",
+      'src/icons/one.png': 'one, never decoded',
+      'src/icons/two.png': 'two, never decoded',
+      'src/icons/old/three.png': 'a folder down, which the call does not list, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([['dead', 'src/icons/old/three.png']]);
+  });
+
+  it('hedges what a context it cannot read could load, rather than calling it unused', async () => {
+    // webpack reads the filter only if the build can work it out, so any image under the
+    // folder may be loaded; one outside it is still unused.
+    const root = project({
+      'package.json': '{ "name": "icons", "private": true }\n',
+      'src/icons.js': "export const icons = require.context('./icons', true, filter);\n",
+      'src/icons/one.png': 'one, never decoded',
+      'src/icons/old/two.png': 'two, never decoded',
+      'src/spare.png': 'a picture nothing loads, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([
+      ['dead', 'src/spare.png'],
+      ['possibly-dead', 'src/icons/old/two.png'],
+      ['possibly-dead', 'src/icons/one.png'],
+    ]);
+  });
+});
+
 describe('the name search', () => {
   const unusedKinds = async (root: string) => {
     const output = await runPipeline({
