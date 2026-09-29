@@ -160,9 +160,9 @@ function render(
   if (limit.readDifferently) {
     lines.push(
       '',
-      `    🔴 The two sides did not read the same number of files: ${limit.unreadBefore} went unread`,
-      `       before and ${limit.unreadAfter} after. Part of the difference between the counts may`,
-      '       be coverage rather than this move, so the comparison is not like-for-like.',
+      `    The two sides did not read the same number of files: ${limit.unreadBefore} went unread`,
+      `    before and ${limit.unreadAfter} after. Part of the difference between the counts may`,
+      '    be coverage rather than this move, so the comparison is not like-for-like.',
     );
   }
 
@@ -176,13 +176,13 @@ function render(
 function verdict(brokenBefore: number, brokenAfter: number, regressed: boolean): string {
   if (regressed) {
     const added = brokenAfter - brokenBefore;
-    return `🔴 REGRESSION: ${plural(added, 'reference')} Upfly can parse broke in this move`;
+    return `regression: ${plural(added, 'reference')} Upfly can parse broke in this move`;
   }
 
   // Fewer than before is not a success to claim: the move did not repair anything, so
   // something else changed and a reader should be told rather than reassured.
   if (brokenAfter < brokenBefore) {
-    return `⚠️ ${plural(brokenBefore - brokenAfter, 'reference')} fewer than before; a move repairs nothing, so this needs explaining`;
+    return `${plural(brokenBefore - brokenAfter, 'reference')} fewer than before; a move repairs nothing, so this needs explaining`;
   }
 
   return 'no new broken references among those Upfly can parse';
@@ -229,7 +229,7 @@ function parseFailedLines(limit: MoveCoverageLimit): string[] {
   if (limit.parseFailed.length === 0) return [];
 
   const lines = [
-    `    - ${plural(limit.parseFailed.length, 'file')} of a type Upfly DOES read could not be parsed, so no`,
+    `    - ${plural(limit.parseFailed.length, 'file')} of a type Upfly reads could not be parsed, so no`,
     '      reference in them was seen and none could be rewritten. This is the likeliest',
     '      place a break is hiding, and unlike the types above it is usually fixable:',
   ];

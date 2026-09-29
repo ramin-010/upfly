@@ -143,7 +143,7 @@ describe('a move’s regression count, and what it cannot see', () => {
     });
 
     expect(check.regressed).toBe(true);
-    expect(rendered(check)).toContain('REGRESSION');
+    expect(rendered(check)).toContain('regression:');
     expect(rendered(check)).toContain('3 references Upfly can parse broke in this move');
 
     // Assert the bullets, not the heading: `render` pushes `What that count cannot see`
@@ -173,7 +173,7 @@ describe('a move’s regression count, and what it cannot see', () => {
 
     expect(check.limit.parseFailed.map((entry) => entry.relative)).toEqual(['bratislava.html']);
     const text = rendered(check);
-    expect(text).toContain('of a type Upfly DOES read could not be parsed');
+    expect(text).toContain('of a type Upfly reads could not be parsed');
     // Named individually with the parser's complaint: unlike an unread type, this is one
     // file a person can open.
     expect(text).toContain('bratislava.html: invalid css syntax at line 16, column 5');
