@@ -96,7 +96,11 @@ export type {
 export { alwaysMeasureFor, newRunId, optimize } from './write/optimize.js';
 export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './write/optimize.js';
 export { optimizeProject } from './optimize-project.js';
-export type { OptimizeProjectInput, OptimizeProjectResult } from './optimize-project.js';
+export type {
+  OnlyImages,
+  OptimizeProjectInput,
+  OptimizeProjectResult,
+} from './optimize-project.js';
 export type {
   OptimizationPlan,
   PlanInput,

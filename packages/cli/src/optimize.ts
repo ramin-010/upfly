@@ -83,8 +83,25 @@ export async function runOptimize(options: OptimizeOptions, io: Io): Promise<Exi
     commit = committed;
   }
 
-  write(options, io, result, { policy, git, commit, notes: notes(options, git, unfinished) });
+  write(options, io, result, {
+    policy,
+    git,
+    commit,
+    notes: [...notes(options, git, unfinished), ...onlyNotes(result)],
+  });
   return EXIT_CODES.OK;
+}
+
+/** How many images `--only` left out, and each pattern that named none, on every run. */
+function onlyNotes(result: OptimizeProjectResult): string[] {
+  if (result.only === undefined) return [];
+  const total = result.pipeline.graph.assets.length;
+  const named = result.only.images.length;
+  const left = total - named;
+  return [
+    `--only named ${named} of ${count(total, 'image')}; the other ${left} ${left === 1 ? 'was' : 'were'} not measured, and none of them converts.`,
+    ...result.only.unmatched.map((pattern) => `--only ${pattern} named no image in the project.`),
+  ];
 }
 
 /** The project directory and its settings, or why the command cannot use them. */
@@ -126,6 +143,7 @@ async function carryOut(
       publicPolicy: policy,
       apply: options.apply,
       extraIgnores: [...(settings.exclude ?? []), ...options.exclude],
+      ...(options.only === null ? {} : { only: { patterns: options.only } }),
       onProgress: (event) => progress.update(event),
       // Decided on the finished plan, so that a commit that could not hold every file the
       // run writes stops the run before it writes any.
@@ -397,6 +415,7 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
         run.manifest === null ? null : { id: run.manifest.runId, ...writtenByKind(run.manifest) },
       commit: outcome.commit,
       repository,
+      only: result.only ?? null,
       notes: outcome.notes,
       report,
     });

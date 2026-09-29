@@ -344,6 +344,77 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
   });
 });
 
+describe('upfly optimize --only', () => {
+  it('plans only the images it names, reading the whole project, and says how many it left', () => {
+    const root = standalone();
+
+    const run = upfly(['optimize', root, '--only', 'images/logo.png']);
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain(
+      [
+        '  Convert to WebP: 1 image, 7.2 KB now and 850 B after',
+        '    images/logo.png → images/logo.webp  7.2 KB → 850 B',
+        '  Update references: 1 reference in 1 file',
+        '    index.html  1 reference',
+      ].join('\n'),
+    );
+    expect(run.stdout).toContain(
+      'Note: --only named 1 of 11 images; the other 10 were not measured, and none of them converts.',
+    );
+  });
+
+  it('takes patterns in .gitignore syntax, repeated, and names one that matches no image', () => {
+    const root = standalone();
+
+    const run = upfly(['optimize', root, '--only', '*.jpg', '--only', 'images/nope.png', '--json']);
+    const final = result(run.stdout) as {
+      plan: { conversions: { asset: string }[] };
+      only: unknown;
+      notes: string[];
+    };
+
+    expect(run.status).toBe(0);
+    expect(final.plan.conversions.map((c) => c.asset)).toEqual([
+      'images/hero.jpg',
+      'images/hero@2x.jpg',
+      'images/team.jpg',
+    ]);
+    expect(final.only).toEqual({
+      images: ['images/hero.jpg', 'images/hero@2x.jpg', 'images/team.jpg'],
+      unmatched: ['images/nope.png'],
+    });
+    expect(final.notes).toContain('--only images/nope.png named no image in the project.');
+  });
+
+  it('writes only that image and its references, and under --replace removes it only once they moved', () => {
+    const root = standalone();
+
+    const run = upfly([
+      'optimize',
+      root,
+      '--only',
+      'images/logo.png',
+      '--replace',
+      '--public',
+      '.',
+      '--apply',
+      '--json',
+    ]);
+
+    expect(run.status, run.stderr).toBe(0);
+    expect(result(run.stdout)).toMatchObject({
+      run: { created: ['images/logo.webp'], changed: ['index.html'], removed: ['images/logo.png'] },
+    });
+    const changed = git(root, 'status', '--porcelain', '--untracked-files=all')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.includes('.upfly'))
+      .sort();
+    expect(changed).toEqual(['?? images/logo.webp', 'D images/logo.png', 'M index.html']);
+  });
+});
+
 describe('upfly optimize and the network', () => {
   it('opens no connection and resolves no name while it writes and commits', () => {
     const root = standalone();

@@ -65,6 +65,9 @@ Options:
   --replace              Remove each original once no file Upfly reads still names it.
                          Without it, originals are kept beside the converted file
   --format <webp|avif>   The format to convert to (default webp)
+  --only <pattern>       Convert only the matching images, in .gitignore syntax relative to
+                         the project, such as images/logo.png or *.jpg; repeatable. The
+                         whole project is still read, as on any run
   --public <dir>         A folder the site is served from, such as public; repeat it for
                          several, and use . for the project root itself
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable

@@ -5,6 +5,7 @@
  */
 
 import { readdirSync } from 'node:fs';
+import ignore from 'ignore';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { discover, listExcludedFiles } from './discover/discover.js';
 import {
@@ -48,19 +49,35 @@ export interface OptimizeProjectInput {
   /** The clock the manifest's times come from. */
   readonly now?: () => string;
   readonly lock?: LockPorts;
+  /**
+   * The images the run may convert, when not every one. The whole project is still read, so
+   * every reference is known and every other rule holds; the rest are never measured, and
+   * an image that is not measured never converts.
+   */
+  readonly only?: OnlyImages;
+}
+
+/** Images named by exact path, by pattern, or both. */
+export interface OnlyImages {
+  /** POSIX paths relative to the project, each naming one image exactly. */
+  readonly paths?: readonly string[];
+  /** Patterns in `.gitignore` syntax, relative to the project, as `extraIgnores` takes them. */
+  readonly patterns?: readonly string[];
 }
 
 export interface OptimizeProjectResult {
   /** What the plan was made from: the graph, audit and measurements a report is built on. */
   readonly pipeline: PipelineOutput;
   readonly optimize: OptimizeResult;
+  /** With `only`: the images it named, sorted, and each path or pattern that named none. */
+  readonly only?: { readonly images: readonly string[]; readonly unmatched: readonly string[] };
 }
 
 /**
  * Plans the optimization of the project at `root` and, when `apply` is true, carries it out.
  *
- * Every image is measured, with no cap: an image converts only on a measured saving, so a
- * cap would leave every image past it unconverted.
+ * Every image is measured, or every one `only` names, with no cap: an image converts only on
+ * a measured saving, so a cap would leave every image past it unconverted.
  *
  * @param input the project, the format and policy, and whether to write
  * @returns the pipeline's output and the run's result, whose plan is the same on a dry run
@@ -68,11 +85,13 @@ export interface OptimizeProjectResult {
  * transaction's other codes when the tree changed under the run
  */
 export async function optimizeProject(input: OptimizeProjectInput): Promise<OptimizeProjectResult> {
+  const only = input.only === undefined ? undefined : namedBy(input.only);
   const pipeline = await runPipeline({
     root: input.root,
     servingRoots: servingRootsFor(input.declared),
     publicDirs: (servingRoots) => servingRoots.dirs,
     probeOptions: { formats: [input.format] },
+    ...(only === undefined ? {} : { measureOnly: only }),
     ...(input.extraIgnores === undefined ? {} : { extraIgnores: input.extraIgnores }),
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
   });
@@ -107,7 +126,28 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
     ...(input.beforeWrite === undefined ? {} : { beforeWrite: input.beforeWrite }),
   });
-  return { pipeline, optimize: result };
+  if (input.only === undefined || only === undefined) return { pipeline, optimize: result };
+  const images = pipeline.graph.assets.map((node) => node.asset.relative);
+  return {
+    pipeline,
+    optimize: result,
+    only: {
+      images: images.filter(only),
+      unmatched: [
+        ...(input.only.paths ?? []).filter((path) => !images.includes(path)),
+        ...(input.only.patterns ?? []).filter(
+          (pattern) => !images.some(namedBy({ patterns: [pattern] })),
+        ),
+      ],
+    },
+  };
+}
+
+/** Whether an image's POSIX-relative path is one `only` names. */
+function namedBy(only: OnlyImages): (relative: string) => boolean {
+  const paths = new Set(only.paths ?? []);
+  const patterns = ignore().add([...(only.patterns ?? [])]);
+  return (relative) => paths.has(relative) || patterns.ignores(relative);
 }
 
 /**

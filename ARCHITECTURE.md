@@ -2304,6 +2304,14 @@ names, so a broken reference whose file name matches a deleted file is kept wher
 Everything the verdict leaves out is counted in a sentence: findings outside the change, unused
 images over the limit, files that could not be read, and references whose file cannot be known.
 
+**`optimize --only` limits what converts, never what is read.** A scope that limits reading is
+how an excluded page ends up naming a deleted original, so `optimizeProject`'s `only` (exact
+paths, or patterns in `.gitignore` syntax) reaches the pipeline as `measureOnly`: every file is
+walked, read and resolved, and only the named images are measured. An image that is not measured
+never converts, and every other rule holds unchanged, so under `--replace` an original still goes
+only when every reference to it moved. The result names the images matched and each path or
+pattern that matched none, and the CLI says both.
+
 **`init` writes down the decision a run would make.** It calls `decideServingRoots` inside the
 pipeline, as every run without declared folders does, and writes `upfly.config.json` with the
 schema, the folders and the format, giving each folder's reason: the project file a detected

@@ -238,6 +238,75 @@ describe('an original that a page the run excludes still shows', () => {
   });
 });
 
+describe('only some images', () => {
+  it('measures and converts only the images a pattern or a path names, and says what named none', async () => {
+    const root = await copy();
+
+    const byPattern = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: false,
+      only: { patterns: ['images/logo.png', '*.jpg', 'images/nope.png'] },
+    });
+    const byPath = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: false,
+      only: { paths: ['images/inline.png', 'images/missing.png', 'hero.jpg'] },
+    });
+
+    const named = ['images/hero.jpg', 'images/hero@2x.jpg', 'images/logo.png', 'images/team.jpg'];
+    expect(byPattern.optimize.plan.conversions.map((c) => c.asset)).toEqual(named);
+    expect(byPattern.pipeline.probes?.map((probe) => probe.relative).sort()).toEqual(named);
+    expect(byPattern.only).toEqual({ images: named, unmatched: ['images/nope.png'] });
+    // A path is a path: `hero.jpg` names the file at the project root, which does not exist.
+    expect(byPath.optimize.plan.conversions.map((c) => c.asset)).toEqual(['images/inline.png']);
+    expect(byPath.only).toEqual({
+      images: ['images/inline.png'],
+      unmatched: ['images/missing.png', 'hero.jpg'],
+    });
+  });
+
+  it('removes an original under replace only when every reference to it moved, as without it', async () => {
+    const root = await copy();
+    await writeFile(join(root, 'notes.md'), '[the logo, as a download](images/logo.png)\n');
+
+    const { optimize } = await optimizeProject({
+      root,
+      declared: { dirs: [''], declared: true },
+      format: 'webp',
+      publicPolicy: 'replace',
+      apply: false,
+      only: { patterns: ['images/logo.png', 'images/team.jpg'] },
+    });
+
+    const conversions = optimize.plan.conversions.map((c) => [c.asset, c.replacesOriginal]);
+    expect(conversions).toEqual([
+      ['images/logo.png', false],
+      ['images/team.jpg', true],
+    ]);
+  });
+
+  it('reads the whole project all the same, so every reference is known', async () => {
+    const root = await copy();
+
+    const { pipeline } = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: false,
+      only: { paths: ['images/logo.png'] },
+    });
+
+    expect(pipeline.graph.assets).toHaveLength(11);
+    expect(pipeline.references.some((reference) => reference.rawPath.includes('texture'))).toBe(
+      true,
+    );
+  });
+});
+
 describe('a path that ends in a slash', () => {
   // A browser asks for `images/team.jpg/`, which a static server does not serve as the
   // picture. `path.extname` reads `.jpg` there all the same, ignoring the slash.

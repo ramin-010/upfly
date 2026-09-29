@@ -54,6 +54,8 @@ export interface OptimizeOptions extends CommonOptions, ScopeOptions, ReportOpti
   readonly allowDirty: boolean;
   /** `--include-declined`: list each image the plan examined and did not convert. */
   readonly includeDeclined: boolean;
+  /** Patterns from `--only`, in `.gitignore` syntax, or `null` when every image may convert. */
+  readonly only: readonly string[] | null;
 }
 
 export interface UndoOptions extends CommonOptions {
@@ -133,6 +135,7 @@ const OPTIMIZE = {
   format: { type: 'string' },
   'allow-dirty': { type: 'boolean' },
   'include-declined': { type: 'boolean' },
+  only: { type: 'string', multiple: true },
 } as const;
 
 const CHECK = {
@@ -292,6 +295,7 @@ function parseOptimize(args: readonly string[]): Parsed {
       includeDeclined: values['include-declined'] === true,
       includeDiscarded: values['include-discarded'] === true,
       includeUnusedSvg: values['include-unused-svg'] === true,
+      only: values.only === undefined ? null : [...values.only],
       ...scope,
     },
   };

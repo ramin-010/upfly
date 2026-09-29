@@ -60,6 +60,11 @@ export interface PipelineInput {
    * presence of probes as "was probed".
    */
   readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure' | 'onDiagnostic'> | null;
+  /**
+   * Which images to measure, by POSIX-relative path; every image when absent. The rest are
+   * still walked, read for references and audited, only never measured.
+   */
+  readonly measureOnly?: (relative: string) => boolean;
   /** More paths to leave out, in `.gitignore` syntax, on top of the project's `.upflyignore`. */
   readonly extraIgnores?: readonly string[];
   /** Called as each stage finishes, with what it counted, so a caller can show progress. */
@@ -204,7 +209,9 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     input.probeOptions === null
       ? undefined
       : await probeAssets(
-          graph.assets.map((node) => node.asset),
+          graph.assets
+            .map((node) => node.asset)
+            .filter((asset) => input.measureOnly?.(asset.relative) ?? true),
           {
             probe: await createSharpProbe(),
             ...input.probeOptions,
