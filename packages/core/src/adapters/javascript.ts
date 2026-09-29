@@ -2,12 +2,12 @@
  * The JavaScript, TypeScript and JSX adapter.
  *
  * Finds static `import`s, `require()`, dynamic `import()`, the bundler forms
- * `new URL('./x.png', import.meta.url)`, `import.meta.glob('./img/*.png')` and
- * `require.context('./img')`, JSX `src`/`srcSet`/`poster` on any element and every attribute
- * position the HTML adapter reads (`url-attributes.ts`), and `url()` inside CSS-in-JS template
- * literals. Path-shaped strings, templates and `+` chains outside those constructs become
- * speculative candidates. One that a construct declines, such as the value of a JSX attribute that
- * names no file, is returned marked `declined` with the reason.
+ * `new URL('./x.png', import.meta.url)`, `import.meta.glob('./img/*.png')`,
+ * `require.context('./img')` and `import.meta.webpackContext('./img')`, JSX `src`/`srcSet`/`poster`
+ * on any element and every attribute position the HTML adapter reads (`url-attributes.ts`), and
+ * `url()` inside CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside
+ * those constructs become speculative candidates. One that a construct declines, such as the value
+ * of a JSX attribute that names no file, is returned marked `declined` with the reason.
  *
  * It parses with `@babel/parser`, never a regular expression: a regex would find
  * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
@@ -399,10 +399,12 @@ function collectFromNode(node: BabelNode, context: Context): void {
           'require()',
           'import',
         );
-      } else if (isImportMetaGlob(node)) {
+      } else if (isImportMetaCall(node, 'glob')) {
         collectFromImportMetaGlob(node, context);
       } else if (isRequireContext(node)) {
         collectFromRequireContext(node, context);
+      } else if (isImportMetaCall(node, 'webpackContext')) {
+        collectFromWebpackContext(node, context);
       }
       return;
     case 'NewExpression':
@@ -933,8 +935,11 @@ function isRequireCall(node: BabelNode): boolean {
   );
 }
 
-/** Whether this is Vite's `import.meta.glob(...)`, with type arguments or without. */
-function isImportMetaGlob(node: CallExpression): boolean {
+/**
+ * Whether this calls `import.meta.<name>(...)`, such as Vite's `import.meta.glob`, with type
+ * arguments or without.
+ */
+function isImportMetaCall(node: CallExpression, name: 'glob' | 'webpackContext'): boolean {
   const { callee } = node;
   return (
     callee.type === 'MemberExpression' &&
@@ -942,7 +947,7 @@ function isImportMetaGlob(node: CallExpression): boolean {
     callee.object.type === 'MetaProperty' &&
     callee.object.meta.name === 'import' &&
     callee.property.type === 'Identifier' &&
-    callee.property.name === 'glob'
+    callee.property.name === name
   );
 }
 
@@ -1046,38 +1051,145 @@ function isRequireContext(node: CallExpression): boolean {
 /** Why a context call written with anything but literals is refused. */
 const UNKNOWN_UNTIL_BUILT = 'so which files the bundler loads is known only when it builds';
 
+/** Why an `import.meta.webpackContext` call whose options webpack cannot parse is refused. */
+const OPTIONS_NOT_READ =
+  'the options are not written as an object literal of plain names and values, the only form webpack reads';
+
+/** What a call to one of webpack's context forms says about the files under its directory. */
+interface ContextCall {
+  readonly shape: 'js.require.context' | 'js.import.meta.webpackContext';
+  /** The call as a reference's note names it. */
+  readonly callee: string;
+  readonly bundlerContext: BundlerContext;
+  /** Why the call is refused for anything but its directory, or `null` when it is read whole. */
+  readonly refusal: string | null;
+}
+
 /**
  * webpack's `require.context(directory, recursive, filter)`, read as webpack reads it: only
- * when it can work out a string, a boolean and a regular expression as it builds. A call
- * written with literals is a directory the resolver lists. Any other is refused, and a literal
- * directory travels with it, so what the call could take is hedged. The fourth argument
- * changes how the files load, not which.
+ * when it can work out a string, a boolean and a regular expression as it builds. The fourth
+ * argument changes how the files load, not which.
  */
 function collectFromRequireContext(node: CallExpression, context: Context): void {
   const [directory, recursive, filter] = node.arguments;
+  collectFromContextCall(directory, context, {
+    shape: 'js.require.context',
+    callee: 'require.context()',
+    bundlerContext: {
+      recursive: recursive?.type === 'BooleanLiteral' ? recursive.value : true,
+      ...(filter?.type === 'RegExpLiteral'
+        ? { filter: { source: filter.pattern, flags: filter.flags } }
+        : {}),
+    },
+    refusal:
+      recursive !== undefined && recursive.type !== 'BooleanLiteral'
+        ? `the second argument is not written as true or false, ${UNKNOWN_UNTIL_BUILT}`
+        : filter !== undefined && filter.type !== 'RegExpLiteral'
+          ? `the filter is not written as a regular expression literal, ${UNKNOWN_UNTIL_BUILT}`
+          : null,
+  });
+}
+
+/**
+ * webpack's `import.meta.webpackContext(directory, options)`, the ES module form of
+ * `require.context`: its `recursive` and `regExp` options decide the files as that call's
+ * second and third arguments do, and the others change how the files load, not which.
+ */
+function collectFromWebpackContext(node: CallExpression, context: Context): void {
+  const [directory, options] = node.arguments;
+  collectFromContextCall(directory, context, {
+    shape: 'js.import.meta.webpackContext',
+    callee: 'import.meta.webpackContext()',
+    ...webpackContextOptions(options),
+  });
+}
+
+/**
+ * What `import.meta.webpackContext`'s options say about the files it takes. An option not
+ * read takes its widest reading, as a refused `require.context` argument does, and options
+ * webpack cannot parse at all are read as none: every folder below, and every file.
+ */
+function webpackContextOptions(
+  options: BabelNode | undefined,
+): Pick<ContextCall, 'bundlerContext' | 'refusal'> {
+  const named = options === undefined ? [] : namedOptions(options);
+  if (named === null) return { bundlerContext: { recursive: true }, refusal: OPTIONS_NOT_READ };
+  let recursive = true;
+  let filter: BundlerContext['filter'];
+  let refusal: string | null = null;
+  for (const { name, value } of named) {
+    if (name === 'recursive') recursive = value.type === 'BooleanLiteral' ? value.value : true;
+    if (name === 'regExp') {
+      filter =
+        value.type === 'RegExpLiteral' ? { source: value.pattern, flags: value.flags } : undefined;
+    }
+    refusal ??= contextOptionRefusal(name, value);
+  }
+  return { bundlerContext: { recursive, ...(filter === undefined ? {} : { filter }) }, refusal };
+}
+
+/**
+ * An options object literal as its `name: value` pairs, or `null` when it is anything else,
+ * which webpack does not parse: a spread or a computed name could set any option.
+ */
+function namedOptions(
+  options: BabelNode,
+): readonly { readonly name: string; readonly value: BabelNode }[] | null {
+  if (options.type !== 'ObjectExpression') return null;
+  const named = options.properties.flatMap((property) =>
+    property.type === 'ObjectProperty' && !property.computed && property.key.type === 'Identifier'
+      ? [{ name: property.key.name, value: property.value }]
+      : [],
+  );
+  return named.length === options.properties.length ? named : null;
+}
+
+/**
+ * Why one of `import.meta.webpackContext`'s options refuses the call, or `null`. webpack
+ * matches `include` and `exclude` against each file's absolute path as the system writes it,
+ * so what they keep changes with where and on which system the project is built.
+ */
+function contextOptionRefusal(name: string, value: BabelNode): string | null {
+  switch (name) {
+    case 'recursive':
+      return value.type === 'BooleanLiteral'
+        ? null
+        : `the \`recursive\` option is not written as true or false, ${UNKNOWN_UNTIL_BUILT}`;
+    case 'regExp':
+      return value.type === 'RegExpLiteral'
+        ? null
+        : `the \`regExp\` option is not written as a regular expression literal, ${UNKNOWN_UNTIL_BUILT}`;
+    case 'include':
+    case 'exclude':
+      return `the \`${name}\` option is matched against each file's absolute path, which depends on where the project is built, ${UNKNOWN_UNTIL_BUILT}`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * A context call's directory, as a reference. A call written with literals is a directory the
+ * resolver lists. Any other is refused, and a literal directory travels with what the call
+ * could read, so what it could take is hedged.
+ */
+function collectFromContextCall(
+  directory: BabelNode | undefined,
+  context: Context,
+  call: ContextCall,
+): void {
   if (directory === undefined) return;
   const written = bundlerLiteral(directory, context.text);
   if (written === null) {
-    collectUnreadContextDirectory(directory, context);
+    collectUnreadContextDirectory(directory, context, call);
     return;
   }
 
   context.handled.set(written.start, null);
-  const bundlerContext: BundlerContext = {
-    recursive: recursive?.type === 'BooleanLiteral' ? recursive.value : true,
-    ...(filter?.type === 'RegExpLiteral'
-      ? { filter: { source: filter.pattern, flags: filter.flags } }
-      : {}),
-  };
   // webpack reads the decoded directory, which no range spells, as Vite reads a glob.
   const escaped = written.text !== written.value;
   const refusal = escaped
     ? 'the directory contains escape sequences, so its text cannot be located exactly'
-    : recursive !== undefined && recursive.type !== 'BooleanLiteral'
-      ? `the second argument is not written as true or false, ${UNKNOWN_UNTIL_BUILT}`
-      : filter !== undefined && filter.type !== 'RegExpLiteral'
-        ? `the filter is not written as a regular expression literal, ${UNKNOWN_UNTIL_BUILT}`
-        : null;
+    : call.refusal;
   context.references.push({
     file: context.file,
     start: written.start,
@@ -1085,11 +1197,11 @@ function collectFromRequireContext(node: CallExpression, context: Context): void
     rawPath: written.text,
     ...(escaped ? { assembledPath: written.value } : {}),
     kind: 'import',
-    shape: 'js.require.context',
+    shape: call.shape,
     ceiling: refusal === null ? 'medium' : 'unsafe',
     asserted: true,
-    note: `require.context(): ${refusal ?? 'a directory the bundler loads files from when it builds; the resolver decides which assets it names'}`,
-    bundlerContext,
+    note: `${call.callee}: ${refusal ?? 'a directory the bundler loads files from when it builds; the resolver decides which assets it names'}`,
+    bundlerContext: call.bundlerContext,
   });
 }
 
@@ -1097,7 +1209,11 @@ function collectFromRequireContext(node: CallExpression, context: Context): void
  * A context whose directory is not a literal, reported as the argument's text. No one
  * directory stands for it, so it is refused whole and no folder's images are hedged by it.
  */
-function collectUnreadContextDirectory(directory: BabelNode, context: Context): void {
+function collectUnreadContextDirectory(
+  directory: BabelNode,
+  context: Context,
+  call: ContextCall,
+): void {
   if (typeof directory.start !== 'number' || typeof directory.end !== 'number') return;
   // The template is the call's argument, not a guess of its own.
   if (directory.type === 'TemplateLiteral') context.handled.set(directory.start + 1, null);
@@ -1107,11 +1223,11 @@ function collectUnreadContextDirectory(directory: BabelNode, context: Context): 
     end: directory.end,
     rawPath: context.text.slice(directory.start, directory.end),
     kind: 'import',
-    shape: 'js.require.context',
+    shape: call.shape,
     ceiling: 'unsafe',
     asserted: true,
     unread: true,
-    note: `require.context(): the directory is not written as a string, ${UNKNOWN_UNTIL_BUILT}`,
+    note: `${call.callee}: the directory is not written as a string, ${UNKNOWN_UNTIL_BUILT}`,
   });
 }
 

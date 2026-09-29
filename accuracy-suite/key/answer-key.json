@@ -332,6 +332,11 @@
       "motivation": "webpack's context bundles every file under a folder whose path from it, written from `./`, a regular expression matches: that folder alone or every folder below it, as the second argument says. Read as a plain string, the folder names no file, and every image it bundles would be reported unused. Four instances: one folder only, the folder alone with webpack's defaults, an expression that leaves some images out, and an expression only the build can work out."
     },
     {
+      "id": "js.import.meta.webpackContext",
+      "label": "import.meta.webpackContext('./img', { regExp: /\\.png$/ })",
+      "motivation": "webpack's `import.meta.webpackContext`, the ES module form of `require.context`, bundles every file under a folder whose path from it, written from `./`, the `regExp` option matches: that folder alone or every folder below it, as the `recursive` option says. Its other options change how the files load, not which. Read as a plain string, the folder names no file, and every image it bundles would be reported unused. Four instances: one folder only, options that change only how the files load, an expression that leaves some images out, and an expression only the build can work out."
+    },
+    {
       "id": "js.template.pattern",
       "label": "template literal, one unknown segment",
       "motivation": "partial-pattern. Standing for N files that all exist."
@@ -8040,6 +8045,65 @@
           "offset": 670,
           "line": 14,
           "column": 33
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/lib/webpack-context.mjs",
+      "entries": [
+        {
+          "raw": "../assets",
+          "occurrence": 1,
+          "shape": "js.import.meta.webpackContext",
+          "expect": "resolved-pattern",
+          "why": "webpack reads the folder from the module's own and, `recursive` being false, lists that folder alone, taking each file whose path from it, such as `./chart.png`, the `regExp` option matches: the chart and the logo, not the badges a folder down. A context is never rewritten, so `--replace` keeps both originals.",
+          "target": [
+            "apps/web/src/assets/chart.png",
+            "apps/web/src/assets/inline-logo.jpg"
+          ],
+          "offset": 299,
+          "line": 5,
+          "column": 48
+        },
+        {
+          "raw": "../assets",
+          "occurrence": 2,
+          "shape": "js.import.meta.webpackContext",
+          "expect": "resolved-pattern",
+          "why": "`mode` and `chunkName` change how the files load, not which, so the call takes webpack's defaults: every folder below, and an expression that matches every file, so all four images under it are bundled.",
+          "target": [
+            "apps/web/src/assets/badges/badge-1.png",
+            "apps/web/src/assets/badges/badge-2.png",
+            "apps/web/src/assets/chart.png",
+            "apps/web/src/assets/inline-logo.jpg"
+          ],
+          "offset": 503,
+          "line": 11,
+          "column": 55
+        },
+        {
+          "raw": "../assets",
+          "occurrence": 3,
+          "shape": "js.import.meta.webpackContext",
+          "expect": "resolved-pattern",
+          "why": "The directory is a template with no hole, which webpack reads as a string. The expression is tested against each file's path from the folder, written from `./`, and `recursive` keeps its default, so one anchored at `./badges/` takes the two badges a folder down and leaves out the chart and the logo.",
+          "target": [
+            "apps/web/src/assets/badges/badge-1.png",
+            "apps/web/src/assets/badges/badge-2.png"
+          ],
+          "offset": 692,
+          "line": 17,
+          "column": 51
+        },
+        {
+          "raw": "../components",
+          "occurrence": 1,
+          "shape": "js.import.meta.webpackContext",
+          "expect": "dynamic",
+          "why": "The expression is built from an environment variable, which webpack reads only if the build can work it out, so which files the call bundles is unknown. The reference is refused, never linked, and the images under the folder are hedged rather than called unused.",
+          "offset": 868,
+          "line": 20,
+          "column": 51
         }
       ]
     },

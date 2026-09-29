@@ -1846,3 +1846,119 @@ describe("webpack's require.context", () => {
     expect(contexts("require.resolve('./icons');")).toEqual([]);
   });
 });
+
+describe("webpack's import.meta.webpackContext", () => {
+  const contexts = (text: string) =>
+    find(text, '/project/src/icons.js').map(
+      ({ rawPath, shape, ceiling, kind, bundlerContext }) => ({
+        rawPath,
+        shape,
+        ceiling,
+        kind,
+        bundlerContext,
+      }),
+    );
+
+  it('reads a call written with literals as its directory and the options that decide its files', () => {
+    const text =
+      "export const icons = import.meta.webpackContext('./icons', { recursive: false, regExp: /\\.png$/i, mode: 'lazy' });";
+    const [reference] = find(text, '/project/src/icons.js');
+
+    expect(contexts(text)).toEqual([
+      {
+        rawPath: './icons',
+        shape: 'js.import.meta.webpackContext',
+        ceiling: 'medium',
+        kind: 'import',
+        bundlerContext: { recursive: false, filter: { source: '\\.png$', flags: 'i' } },
+      },
+    ]);
+    expect(text.slice(reference?.start, reference?.end)).toBe('./icons');
+  });
+
+  it("takes webpack's defaults for the options a call leaves out, and ignores how it loads", () => {
+    expect(contexts('import.meta.webpackContext(`../img`);')).toEqual([
+      expect.objectContaining({
+        rawPath: '../img',
+        ceiling: 'medium',
+        bundlerContext: { recursive: true },
+      }),
+    ]);
+    expect(
+      contexts("import.meta.webpackContext('./img', { chunkName: 'icons', prefetch: true });"),
+    ).toEqual([
+      expect.objectContaining({ ceiling: 'medium', bundlerContext: { recursive: true } }),
+    ]);
+  });
+
+  it('refuses an option that decides the files and is not a literal, and keeps the others', () => {
+    expect(
+      contexts(
+        "import.meta.webpackContext('./a', { recursive: deep, regExp: /x/ }); import.meta.webpackContext('./b', { recursive: false, regExp: filter });",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        rawPath: './a',
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: true, filter: { source: 'x', flags: '' } },
+      }),
+      expect.objectContaining({
+        rawPath: './b',
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: false },
+      }),
+    ]);
+  });
+
+  it('refuses a call that sets include or exclude, which webpack matches against absolute paths', () => {
+    for (const option of ['include', 'exclude']) {
+      const [reference] = find(
+        `import.meta.webpackContext('./icons', { recursive: false, ${option}: /x/ });`,
+        '/project/src/icons.js',
+      );
+
+      expect(reference).toMatchObject({
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: false },
+        note: `import.meta.webpackContext(): the \`${option}\` option is matched against each file's absolute path, which depends on where the project is built, so which files the bundler loads is known only when it builds`,
+      });
+    }
+  });
+
+  it('refuses options webpack cannot parse, and reads them as taking every file', () => {
+    for (const options of ['options', '{ ...shared, recursive: false }', "{ 'regExp': /x/ }"]) {
+      const [reference] = find(
+        `import.meta.webpackContext('./icons', ${options});`,
+        '/project/src/icons.js',
+      );
+
+      expect(reference).toMatchObject({
+        ceiling: 'unsafe',
+        bundlerContext: { recursive: true },
+        note: 'import.meta.webpackContext(): the options are not written as an object literal of plain names and values, the only form webpack reads',
+      });
+      expect(reference?.bundlerContext).not.toHaveProperty('filter');
+    }
+  });
+
+  it('refuses a directory that is not a literal as the text of its argument, naming no folder', () => {
+    const found = find(
+      'import.meta.webpackContext(folder, { recursive: false });',
+      '/project/src/icons.js',
+    );
+
+    expect(found).toEqual([
+      expect.objectContaining({
+        rawPath: 'folder',
+        shape: 'js.import.meta.webpackContext',
+        ceiling: 'unsafe',
+        unread: true,
+      }),
+    ]);
+    expect(found[0]).not.toHaveProperty('bundlerContext');
+  });
+
+  it('reads nothing from a call with no directory', () => {
+    expect(contexts('import.meta.webpackContext();')).toEqual([]);
+  });
+});

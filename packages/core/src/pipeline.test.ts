@@ -445,6 +445,54 @@ describe("webpack's require.context", () => {
   });
 });
 
+describe("webpack's import.meta.webpackContext", () => {
+  const unusedKinds = async (root: string) => {
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead'
+        ? [[finding.kind, finding.asset]]
+        : [],
+    );
+  };
+
+  it('links every image the call loads, so none of them is called unused', async () => {
+    const root = project({
+      'package.json': '{ "name": "icons", "private": true }\n',
+      'src/icons.js':
+        "export const icons = import.meta.webpackContext('./icons', { recursive: false, regExp: /\\.png$/ });\n",
+      'src/icons/one.png': 'one, never decoded',
+      'src/icons/two.png': 'two, never decoded',
+      'src/icons/old/three.png': 'a folder down, which the call does not list, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([['dead', 'src/icons/old/three.png']]);
+  });
+
+  it('hedges what a call it cannot read could load, rather than calling it unused', async () => {
+    // webpack tests `exclude` against each file's absolute path, which depends on where the
+    // project is built, so any image under the folder may be loaded; one outside it is unused.
+    const root = project({
+      'package.json': '{ "name": "icons", "private": true }\n',
+      'src/icons.js':
+        "export const icons = import.meta.webpackContext('./icons', { exclude: /\\.test\\./ });\n",
+      'src/icons/one.png': 'one, never decoded',
+      'src/icons/old/two.png': 'two, never decoded',
+      'src/spare.png': 'a picture nothing loads, never decoded',
+    });
+
+    expect(await unusedKinds(root)).toEqual([
+      ['dead', 'src/spare.png'],
+      ['possibly-dead', 'src/icons/old/two.png'],
+      ['possibly-dead', 'src/icons/one.png'],
+    ]);
+  });
+});
+
 describe('the name search', () => {
   const unusedKinds = async (root: string) => {
     const output = await runPipeline({

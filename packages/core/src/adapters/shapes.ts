@@ -380,6 +380,19 @@ export const SHAPES = [
       'than called unused.',
   },
   {
+    id: 'js.import.meta.webpackContext',
+    label: "import.meta.webpackContext('./img', { regExp: /\\.png$/ })",
+    emission: 'engine',
+    why:
+      "webpack's `import.meta.webpackContext`, the ES module form of `require.context`, " +
+      "emitted by the JavaScript adapter at the call's directory. Its `recursive` and `regExp` " +
+      "options stand for that call's second and third arguments and are read the same way, " +
+      'while its other options change how the files load, not which. A call that sets ' +
+      '`include` or `exclude`, which webpack matches against absolute paths, or is written ' +
+      'any other way is refused, and the images under a literal directory are hedged rather ' +
+      'than called unused.',
+  },
+  {
     id: 'js.template.pattern',
     label: 'template literal, one unknown segment',
     emission: 'engine',

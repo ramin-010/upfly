@@ -226,6 +226,17 @@ keeps every original. webpack also offers the expression other spellings of a pa
 path without an extension that `resolve.extensions` lists, which its defaults never do for an
 image; Upfly tests only the `./` spelling.
 
+`import.meta.webpackContext(directory, options)`, the ES module form of the same call in webpack
+5.70 and later, is read the same way under its own shape. Its `recursive` and `regExp` options
+stand for the second and third arguments, and the options that change how the files load rather
+than which, such as `mode` and `chunkName`, are ignored. webpack parses the options only as an
+object literal of plain names and values, so options written any other way are refused and read
+as none. It matches `include` against each file's absolute path and `exclude` against each file's
+and folder's, as the system spells them, with backslashes on Windows, so what they keep changes
+with where and on which system the project is built: a call that sets either is `unsafe`, and the
+sweep reads it as if they were absent. Upfly reads a call with a third argument, or with an option name webpack does not know,
+as if neither were there, though webpack loads nothing from such a call; that can only link more.
+
 **Root-relative paths try every serving root that is an *ancestor* of the referencing file**,
 nearest first, then the project root. A monorepo has one `public/` per app (shadcn-ui has twelve),
 and a file under `apps/v4/` that writes `/images/hero.png` means `apps/v4/public/`. Resolving that
@@ -881,8 +892,8 @@ rest the same way (`unmappedAliasPatterns`): with no config that maps `@/`,
 `` `@/img/badge-${n}.png` `` hedges `src/img/badge-1.png` and not `src/icons/badge-1.png`. A
 bundler's glob that matched nothing is read in its own syntax the same way (`globFromAnyRoot`), its
 leading `./`, `../`, `/` and alias token dropped. A bundler's context that linked nothing is read
-by what it could take (`contextCouldTake`). A call refused for an argument that is not a literal
-takes that argument's widest reading, every folder below and every file, so
+by what it could take (`contextCouldTake`). A call refused for an argument or option that is not
+a literal takes its widest reading, every folder below and every file, so
 `require.context('./icons', true, filter)` hedges each image under `icons/` rather than calling it
 dead. A directory written from the module's folder is read from there; any other could stand for
 a folder anywhere, so its segments after any alias token have to name a folder on the asset's path.
@@ -936,7 +947,7 @@ produce exactly the silent corruption this design exists to prevent.
 | `astro` | `.astro` | the frontmatter fence as TypeScript **and** the template body as HTML | delegates to `javascript` + `html` |
 | `css` | `.css .scss .less` | `url()`, `image-set()` | `postcss` + `postcss-value-parser` |
 | `html` | `.html .htm` | `src`, `srcset`, `poster`, `<source>`, `<audio>`, `<track>`, `<embed>`, `<input>`, `<object data>`, inline SVG `<image>` and `<feImage>`, icon and preloaded-image `<link>`, a link preview's image in `<meta content>`, an image in `<a href>`, `<style>`, `style=""` | `parse5` |
-| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, `import.meta.glob(…)`, webpack's `require.context(…)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
+| `javascript` | `.js .jsx .mjs .cjs .ts .tsx .mts .cts` | `import`, `require()`, `import()`, `new URL(…, import.meta.url)`, `import.meta.glob(…)`, webpack's `require.context(…)` and `import.meta.webpackContext(…)`, JSX `src`/`srcSet`/`poster` on any element and every position the HTML adapter reads, CSS-in-JS | `@babel/parser` |
 | `markdown` | `.md .mdx .markdown` | `![]()`, `[]()`, link reference definitions, raw HTML, and in `.mdx` the top-level `import`/`export` blocks | a one-pass scanner over masked text, reading destinations as CommonMark does; delegates raw HTML to `html` and MDX's ESM to `javascript` |
 | `json` | `.json .webmanifest` | every path-shaped string **value**, as a speculative candidate | regex |
 

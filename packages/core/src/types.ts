@@ -131,9 +131,10 @@ export interface RawReference {
   readonly glob?: BundlerGlob;
   /**
    * Set on a directory a bundler loads files from when it builds, such as the one given to
-   * webpack's `require.context`. `rawPath` is then the directory. With a `medium` ceiling the
-   * resolver links every asset under it that the call takes, and nothing ever rewrites it; an
-   * `unsafe` one is a call that could not be read whole, and what it could take is hedged.
+   * webpack's `require.context` or `import.meta.webpackContext`. `rawPath` is then the
+   * directory. With a `medium` ceiling the resolver links every asset under it that the call
+   * takes, and nothing ever rewrites it; an `unsafe` one is a call that could not be read
+   * whole, and what it could take is hedged.
    */
   readonly bundlerContext?: BundlerContext;
 }
@@ -151,12 +152,13 @@ export interface BundlerGlob {
 
 /**
  * What a bundler's context call says about which files under its directory it takes, as
- * webpack reads `require.context(directory, recursive, filter)`.
+ * webpack reads `require.context(directory, recursive, filter)`, or the `recursive` and
+ * `regExp` options of `import.meta.webpackContext(directory, options)`.
  */
 export interface BundlerContext {
   /**
    * Whether files in the folders below the directory are taken too: webpack's default, and
-   * the reading of an argument the adapter could not read.
+   * the reading of an argument or option the adapter could not read.
    */
   readonly recursive: boolean;
   /**
