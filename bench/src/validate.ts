@@ -36,6 +36,7 @@ import {
 } from 'upfly-core';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
+import { assetPathUnder, searchableText } from './sweep-files.js';
 import { type Triaged, hitsIn, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
 
@@ -491,18 +492,13 @@ async function falseNegativeSweep(
     const extension = file.slice(file.lastIndexOf('.')).toLowerCase();
     if (IMAGE_EXTENSIONS.includes(extension)) continue;
 
-    let text: string;
-    try {
-      text = await readFile(file, 'utf8');
-    } catch {
-      continue;
-    }
-    if (text.length > 2_000_000) continue;
+    const text = await searchableText(file);
+    if (text === undefined) continue;
 
     // The assets a name could be, less those the graph already links from this file.
     const unlinked = (name: string): readonly string[] =>
       (assetsByBasename.get(name) ?? []).filter((asset) => {
-        const absolute = join(root, asset.replaceAll('/', '\\'));
+        const absolute = assetPathUnder(root, asset);
         return (
           !linked.has(`${absolute}\u0000${absolute}`) && !linked.has(`${file}\u0000${absolute}`)
         );
