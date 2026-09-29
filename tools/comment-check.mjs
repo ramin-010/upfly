@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 /**
- * @typedef {'internal-reference' | 'em-dash' | 'emphasis' | 'emoji' | 'long-comment' | 'output-reference'} Rule
+ * @typedef {'internal-reference' | 'em-dash' | 'emphasis' | 'emoji' | 'long-comment'
+ *   | 'output-reference' | 'output-em-dash' | 'output-emoji'} Rule
  * @typedef {{ rule: Rule, line: number, count: number, text: string }} Finding
  * @typedef {Partial<Record<Rule, number>>} Counts
  * @typedef {{ pos: number, end: number, kind: ts.CommentKind }} CommentRange
@@ -31,7 +32,10 @@ export const RULES = /** @type {const} */ ({
   'long-comment':
     'lines past the tenth in one comment block, not counting @param, @returns, @throws or @example sections. A design note belongs in ARCHITECTURE.md with a one-line pointer',
   'output-reference':
-    'an internal reference in a string a package ships. Users read these; write the fact itself',
+    'an internal reference in a string a package ships or a bench tool prints. People read these; write the fact itself',
+  'output-em-dash':
+    'an em dash in a string a package ships or a bench tool prints. Use a comma, a colon, or two sentences',
+  'output-emoji': 'an emoji in a string a package ships or a bench tool prints',
 });
 
 /** @type {readonly Rule[]} */
@@ -49,7 +53,9 @@ const SKIPPED_DIRS = new Set(['node_modules', 'dist', '__snapshots__']);
 export const URL_PATTERN = /\bhttps?:\/\/[^\s)>\]'"`]+/g;
 export const INTERNAL_REFERENCE = new RegExp(
   [
-    String.raw`\bR\d+\b`,
+    // A ruling number may end in a letter, or a hyphen and a letter; one that runs on into more
+    // digits after the letter is a name.
+    String.raw`\bR\d+(?:-?[a-z])?\b`,
     '§',
     String.raw`\b(?:B\d{1,2}|C[1-4][ab]?)\b`,
     String.raw`\bnotes\/`,
@@ -60,7 +66,13 @@ export const INTERNAL_REFERENCE = new RegExp(
   'g',
 );
 const EM_DASH = /—/g;
-const EMOJI = /\p{Extended_Pictographic}/gu;
+// Arrows that Unicode also counts as pictographs are text unless written in emoji form, with
+// U+FE0F after them; a keycap is a digit, `#` or `*` with U+20E3. U+FFFD is no pictograph.
+const ARROWS = String.raw`\u{2190}-\u{21FF}\u{27A1}\u{2934}\u{2935}\u{2B05}-\u{2B07}`;
+const EMOJI = new RegExp(
+  String.raw`(?![${ARROWS}])\p{Extended_Pictographic}|[${ARROWS}]\u{FE0F}|[0-9#*]\u{FE0F}?\u{20E3}`,
+  'gu',
+);
 // Bold and italics with either marker. A marker touching a word character, a slash or
 // another marker does not count, which keeps `a*b`, `src/**/*.ts` and `snake_case` out.
 const EMPHASIS = [
@@ -128,14 +140,17 @@ export function analyseSource(text, file) {
       `a comment block of ${prose} lines, ${prose - MAX_COMMENT_LINES} past the limit`,
     );
   }
-  if (isShipped(file)) {
+  if (printsText(file)) {
     for (const literal of stringLiterals(sourceFile)) {
+      const line = lineOf(literal.getStart(sourceFile));
       add(
         'output-reference',
-        lineOf(literal.getStart(sourceFile)),
+        line,
         matches(literal.text.replace(URL_PATTERN, ' '), INTERNAL_REFERENCE),
         literal.text,
       );
+      add('output-em-dash', line, matches(literal.text, EM_DASH), literal.text);
+      add('output-emoji', line, matches(literal.text, EMOJI), literal.text);
     }
   }
   return findings.sort((a, b) => a.line - b.line);
@@ -406,9 +421,12 @@ function matches(text, pattern) {
   return text.match(pattern)?.length ?? 0;
 }
 
-/** A package's own source, which ships, as opposed to its tests. @param {string} file */
-function isShipped(file) {
-  return /^packages\/[^/]+\/src\//.test(file) && !/\.test\.[cm]?[jt]s$/.test(file);
+/**
+ * A file whose strings people read: a package's own source, which ships, and a bench tool's,
+ * which prints and writes the measurements. A test's strings are its data. @param {string} file
+ */
+function printsText(file) {
+  return /^(?:packages\/[^/]+\/src|bench\/src)\//.test(file) && !/\.test\.[cm]?[jt]s$/.test(file);
 }
 
 /** @param {number} n @param {string} noun */

@@ -552,7 +552,7 @@ async function writeReport(
     );
   }
 
-  const out = resolve('../../notes/validation/encode-quality.md');
+  const out = resolve('..', '..', 'notes', 'validation', 'encode-quality.md');
   await writeFile(out, `${lines.join('\n')}\n`, 'utf8');
   stdout.write(`\nWrote ${out}\n`);
 }

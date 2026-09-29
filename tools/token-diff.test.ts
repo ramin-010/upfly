@@ -217,6 +217,10 @@ describe('the four allowed kinds', () => {
     expect(kinds(before, after, BENCH)).toEqual(['bench-string', 'bench-string']);
   });
 
+  it('a bench string that held a ruling number with a letter is kind (c) too', () => {
+    expect(kinds("log('as R76b ruled');", "log('as ruled');", BENCH)).toEqual(['bench-string']);
+  });
+
   it('each replaced token is judged alone, so an allowed one cannot carry its neighbour', () => {
     const before = "log('unscanned (R86)' + n);";
     expect(kinds(before, "log('unscanned' - n);", BENCH)).toEqual(['bench-string', 'code']);

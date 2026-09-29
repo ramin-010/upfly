@@ -1140,7 +1140,7 @@ async function writeReport(
     lines.push('', '## Baseline failures', '', ...baselineFailures.map((f) => `- ${f}`));
   }
 
-  const out = resolve(FIXTURES_ROOT, '../../notes/validation/fixture-build.md');
+  const out = resolve(FIXTURES_ROOT, '..', '..', 'notes', 'validation', 'fixture-build.md');
   await writeFile(out, `${lines.join('\n')}\n`, 'utf8');
   stdout.write(`\nWrote ${relative(process.cwd(), out)}\n`);
 }

@@ -837,7 +837,9 @@ function isTestData(file) {
 
 /** @param {string} text */
 function hasReference(text) {
-  return (text.replace(URL_PATTERN, ' ').match(INTERNAL_REFERENCE)?.length ?? 0) > 0;
+  // An escape such as `\n` is two characters of source, and would hide a reference after it.
+  const read = text.replace(URL_PATTERN, ' ').replace(/\\[bfnrtv0]/g, ' ');
+  return (read.match(INTERNAL_REFERENCE)?.length ?? 0) > 0;
 }
 
 /** @param {string} root @param {readonly string[]} args */
