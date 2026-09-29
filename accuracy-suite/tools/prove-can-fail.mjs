@@ -1,13 +1,15 @@
 /**
  * Proves the self-check can fail. A check that has never failed is not known to work, so
  * each class of damage `check-key.mjs` claims to catch is applied here, and the check must
- * go red and say why.
+ * go red and say why. A case marked `tool: 'measure'` damages what `measure.mjs` judges
+ * instead, and the measurement must go red.
  *
  * Every mutation is applied to a copy in the system temp directory. The tree is read-only
  * ground truth, and anything that writes works on a copy.
  *
  * Usage: node tools/prove-can-fail.mjs [--keep]
  * `--keep` leaves each damaged copy in place and prints its path.
+ * It needs `pnpm build`, which `pnpm accuracy:prove` runs first.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -222,6 +224,25 @@ const cases = [
       }),
     expect: 'at least two candidate outcomes',
   },
+  // The run with no configuration publishes a figure too, so a miss there alone must fail the
+  // measurement. The key declares one serving root fewer, and the four references that root
+  // serves expect what the engine finds without it: the declared run agrees with the damaged
+  // key, and the run that detects the root on its own does not.
+  {
+    name: 'a miss in the run with no configuration, and none in the declared run',
+    tool: 'measure',
+    damage: (root) =>
+      editKey(root, (key) => {
+        key.servingRoots = key.servingRoots.filter((dir) => dir.path !== 'sites/root-served');
+        const page = key.files.find((group) => group.path === 'sites/root-served/index.html');
+        for (const entry of page.entries) {
+          if (entry.expect !== 'resolved' || !entry.raw.startsWith('/img/')) continue;
+          entry.expect = 'broken';
+          removeField(entry, 'target');
+        }
+      }),
+    expect: '0 finding(s) in run 1 and',
+  },
 ];
 
 /**
@@ -269,17 +290,37 @@ function run(root, args = []) {
   });
 }
 
+/**
+ * The engine measured against a copy's tree and key. It is this directory's `measure.mjs`, not
+ * the copy's: the script finds the built engine beside itself, and a copy has none beside it.
+ */
+function measure(root) {
+  return spawnSync(
+    process.execPath,
+    [
+      join(here, 'tools/measure.mjs'),
+      '--root',
+      join(root, 'tree'),
+      '--key',
+      join(root, 'key/answer-key.json'),
+    ],
+    { encoding: 'utf8' },
+  );
+}
+
 /* ------------------------------------------------------------------------------------- */
 
 const baseline = run(here);
-if (baseline.status !== 0) {
+const measured = measure(here);
+if (baseline.status !== 0 || measured.status !== 0) {
   process.stdout.write(
-    'The undamaged tree does not pass its own check, so nothing here would mean anything.\n',
+    'The undamaged tree does not pass its own check and measurement, so nothing here would mean anything.\n',
   );
-  process.stdout.write(baseline.stdout);
+  process.stdout.write(baseline.status !== 0 ? baseline.stdout : measured.stdout);
+  process.stderr.write(measured.stderr);
   process.exitCode = 1;
 } else {
-  process.stdout.write('baseline: the undamaged tree passes\n\n');
+  process.stdout.write('baseline: the undamaged tree passes its check and its measurement\n\n');
 
   let failures = 0;
   for (const testCase of cases) {
@@ -298,7 +339,7 @@ if (baseline.status !== 0) {
         process.stdout.write(`        the mutation itself failed: ${error.message}\n`);
         continue;
       }
-      const result = run(root, testCase.args ?? []);
+      const result = testCase.tool === 'measure' ? measure(root) : run(root, testCase.args ?? []);
       const output = `${result.stdout}${result.stderr}`;
 
       const wentRed = result.status !== 0;

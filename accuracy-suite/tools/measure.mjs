@@ -279,21 +279,22 @@ function missLines(misses) {
   });
 }
 
-// Exit non-zero on anything run 1 reports as a defect, so this can fail a build as well as
-// report. An open knownGap is not a defect; a stale one is, because the gap closed and the
-// record still claims it. Run 2's misses do not fail the command: each is already a named
-// line in the result, and a check that is red by design gets routed around. A stale gap in
-// run 2 does, because run 2 is the run that can retire a detection gap.
-const defects =
-  run1.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length +
-  run1.unkeyed.length +
-  run2.findings.filter((item) => item.kind === 'stale-known-gap').length;
-if (defects > 0) {
-  process.stdout.write(`\n${defects} finding(s) above. Read them; they are not a score.\n`);
+// Exit non-zero on anything either run reports as a defect, so this can fail a build as well
+// as report. An open knownGap is not a defect; a stale one is, because the gap closed and the
+// record still claims it. Run 2 is held as run 1 is: its figure is published too, and a
+// published figure nothing holds can drop unseen.
+const defectsIn = (run) =>
+  run.findings.filter((item) => !NON_DEFECT_KINDS.includes(item.kind)).length + run.unkeyed.length;
+const defects1 = defectsIn(run1);
+const defects2 = defectsIn(run2);
+if (defects1 + defects2 > 0) {
+  process.stdout.write(
+    `\n${defects1} finding(s) in run 1 and ${defects2} in run 2 above. Read them; they are not a score.\n`,
+  );
   process.exit(1);
 }
 process.stdout.write(
-  '\nRun 1: every keyed entry matched its expected outcome, or carries a knownGap.\n',
+  '\nBoth runs: every keyed entry matched its expected outcome, or carries a knownGap.\n',
 );
 
 function posix(path) {

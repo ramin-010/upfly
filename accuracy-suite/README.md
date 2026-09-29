@@ -8,7 +8,7 @@ a tool; the answers are not.
 ```
 pnpm accuracy:measure    # build, run the engine over tree/ twice, print the matrix
 pnpm accuracy:check      # does the key still describe the tree, with no open questions?
-pnpm accuracy:prove      # can that check fail? 18 damages, each must turn it red
+pnpm accuracy:prove      # can the check and the measurement fail? 19 damages, each must turn one red
 node accuracy-suite/tools/scan-occurrences.mjs   # authoring aid: every asset-shaped token
 node accuracy-suite/tools/stamp-positions.mjs    # refill derived positions; read its diff
 ```
@@ -55,7 +55,7 @@ went wrong.
 accuracy-suite/
   key/answer-key.json         the answer key: 101 shapes, 80 assets, 562 references in 137 files
   tools/check-key.mjs         the self-check: plain text and path arithmetic, no engine
-  tools/prove-can-fail.mjs    18 deliberate damages, each asserted to turn the check red
+  tools/prove-can-fail.mjs    19 deliberate damages, each asserted to turn a check red
   tools/measure.mjs           the engine over tree/, run twice, rendered as the matrix
   tools/matrix.mjs, .d.mts    the matrix, and its types
   tools/stamp-positions.mjs   fills derived positions; never touches an `expect`
@@ -172,8 +172,9 @@ uses the serving roots the answer key declares. The second declares nothing and 
 declares none. Each run reports its own figure for the claimed population, and the two are never
 added together: a figure that blends two configurations describes neither. Nothing is measured
 until `check-key.mjs --strict` passes, since a key that disagrees with the tree would measure the
-disagreement rather than the engine. The command fails on any defect in the first run and on a
-stale gap in the second; the second run's other misses are listed by name and do not fail it.
+disagreement rather than the engine. The command fails on any defect in either run: a miss that
+is not a keyed gap for that run, a stale gap, or an unkeyed emission. The second run's figure is
+published too, and a published figure nothing holds can drop unseen.
 
 The judging is in `matrix.mjs`, which imports nothing, not the engine and not `node:fs`. The key
 and the engine's observations are both arguments, so `coverage-matrix.test.ts` can feed it damaged
