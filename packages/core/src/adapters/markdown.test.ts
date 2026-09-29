@@ -118,6 +118,21 @@ describe('markdownAdapter', () => {
         'md.raw-html',
       ]);
     });
+
+    it('names CSS in a <style> element apart from CSS in a style attribute', () => {
+      // The shape picks the decoder, and a browser decodes character references only in the
+      // attribute.
+      const source = [
+        '<style>.a { background: url(/img/a.png) }</style>',
+        '',
+        '<div style="background: url(/img/b.png)"></div>',
+      ].join('\n');
+      const found = markdownAdapter.findReferences({ file: '/docs/page.md', text: source });
+      expect(found.map(({ rawPath, shape }) => [rawPath, shape])).toEqual([
+        ['/img/a.png', 'md.style-element'],
+        ['/img/b.png', 'md.style-attribute'],
+      ]);
+    });
   });
 
   describe('never mistakes documentation for a reference', () => {
@@ -521,7 +536,7 @@ describe('markdownAdapter', () => {
         '\n  a { color: ; ;; }} unclosed\n',
         './two.png',
       ]);
-      expect(references[1]).toMatchObject({ unread: true, shape: 'md.style-attribute' });
+      expect(references[1]).toMatchObject({ unread: true, shape: 'md.style-element' });
     });
 
     it('keeps the references it already found when the HTML hand-off throws', () => {

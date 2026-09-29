@@ -350,6 +350,7 @@ describe('spellingsOf', () => {
     const asWritten = [
       'css-url',
       { kind: 'css-url', shape: 'html.style.element' },
+      { kind: 'css-url', shape: 'md.style-element' },
       { kind: 'attr', shape: 'js.new-url' },
       'import',
       'string',

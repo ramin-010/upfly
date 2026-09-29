@@ -679,15 +679,16 @@ reading context (`characterReferencesReadIn`). An HTML parser decodes an attribu
 a style attribute and a JSX attribute's string, and CommonMark decodes a link destination's names
 the same way, so `![](caf&eacute;.png)` names `café.png`, as `<img src="caf&eacute;.png">` does. A
 `.css` file, a `<style>` body, a `new URL` name, JavaScript and JSON decode none: in a stylesheet
-`url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. (Inside Markdown a `<style>`
-element's CSS takes the style attribute's shape, so it is decoded as one.) The two decoders read a
-number differently. HTML reads any number of digits, so `&#00000065;` is `A`, and a number from
-128 to 159 through the Windows-1252 table, as parse5 does with the table of its `entities`
-dependency, so `&#128;uro.png` names `€uro.png`, not a C1 control. CommonMark (0.31.2, section
-2.5) reads at most seven decimal or six hexadecimal digits, so a longer number is text, and keeps
-a number's own code point. Both read zero, a surrogate or a number past U+10FFFF as U+FFFD.
-Anything else written like a reference, such as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`,
-and text it rejects, such as `100%`, is treated the same way.
+`url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. A `<style>` body inside Markdown
+is read the same way: its CSS takes a shape of its own, `md.style-element`, rather than the style
+attribute's, since the shape picks the decoder. The two decoders read a number differently. HTML
+reads any number of digits, so `&#00000065;` is `A`, and a number from 128 to 159 through the
+Windows-1252 table, as parse5 does with the table of its `entities` dependency, so `&#128;uro.png`
+names `€uro.png`, not a C1 control. CommonMark (0.31.2, section 2.5) reads at most seven decimal or
+six hexadecimal digits, so a longer number is text, and keeps a number's own code point. Both read
+zero, a surrogate or a number past U+10FFFF as U+FFFD. Anything else written like a reference, such
+as the misspelled `&eacut;`, stops the decoder. Percent-decoding uses `decodeURIComponent`, and text
+it rejects, such as `100%`, is treated the same way.
 
 In a Markdown destination a backslash before an ASCII punctuation character is an escape, and
 CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names

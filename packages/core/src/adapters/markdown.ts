@@ -395,16 +395,19 @@ function previousNonSpace(text: string, at: number): number {
  *
  * The host decides the shape. What would break these references is Markdown handing its
  * raw HTML over and masking the inactive regions, not `<img src>` parsing, which the HTML
- * adapter's own shapes cover. CSS from a `<style>` element maps to `md.style-attribute`
- * too: no Markdown `<style>` element has turned up in the accuracy suite or a validation
- * repository to fill a row of its own.
+ * adapter's own shapes cover. CSS from a `<style>` element keeps a shape apart from a style
+ * attribute's, because the shape picks the decoder, and a browser decodes character
+ * references only in the attribute.
  */
 function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference {
   // A link preview or a link to an image keeps its shape in any host, because the shape is
   // where the planner reads that it is never rewritten.
   if (whyFormatKept(reference.shape) !== null) return reference;
-  if (reference.shape === 'html.style.attribute' || reference.shape === 'html.style.element') {
+  if (reference.shape === 'html.style.attribute') {
     return { ...reference, shape: 'md.style-attribute' };
+  }
+  if (reference.shape === 'html.style.element') {
+    return { ...reference, shape: 'md.style-element' };
   }
   // MDX's components are JSX, not raw HTML, even though the same scanner finds them:
   // what would take them out is MDX's own handling, and `.md` has no JSX to lose.

@@ -19,12 +19,12 @@ import { buildFileText } from './generate.js';
 const markdown = defaultAdapters.find((adapter) => adapter.id === 'markdown');
 
 /**
- * The three shapes `asMarkdownShape` stamps on a reference the HTML adapter found.
+ * The four shapes `asMarkdownShape` stamps on a reference the HTML adapter found.
  *
  * Every one of them is reachable only through the parse5 pass: Markdown's own regexes
  * match `![alt](path)` and `[label]: path`, so nothing here can come from them.
  */
-const HTML_BORN = new Set(['md.raw-html', 'mdx.jsx', 'md.style-attribute']);
+const HTML_BORN = new Set(['md.raw-html', 'mdx.jsx', 'md.style-attribute', 'md.style-element']);
 
 /** The generator's PRNG, copied here so the sample is reproducible run to run. */
 function rng(seed: number): () => number {

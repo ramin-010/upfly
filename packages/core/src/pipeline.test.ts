@@ -530,6 +530,41 @@ describe('a refused path hedges what it could name', () => {
   });
 });
 
+describe('a <style> element inside Markdown', () => {
+  const cafe = `caf${String.fromCodePoint(0xe9)}.png`;
+  const findings = async (images: Record<string, string>) => {
+    const output = await runPipeline({
+      root: project({
+        'package.json': '{ "name": "site", "private": true }\n',
+        'note.md': '# A note\n\n<style>.a { background: url(caf&eacute;.png) }</style>\n',
+        ...images,
+      }),
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'broken'
+        ? [[finding.kind, finding.rawPath]]
+        : finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+    );
+  };
+
+  it('asks for a name spelled with a character reference as written, as in an HTML page', async () => {
+    // A browser decodes no character reference inside `<style>`, wherever the element sits,
+    // while it decodes the CSS of a style attribute.
+    expect(
+      await findings({ 'caf&eacute;.png': 'the name as written', [cafe]: 'the decoded name' }),
+    ).toEqual([['dead', cafe]]);
+    expect(await findings({ [cafe]: 'the decoded name' })).toEqual([
+      ['broken', 'caf&eacute;.png'],
+      ['dead', cafe],
+    ]);
+  });
+});
+
 describe('a backslash as a folder separator', () => {
   it('refuses one Markdown keeps and an encoded one, and hedges the images they name', async () => {
     // Most Markdown renderers write `img\team.png` as `img%5Cteam.png`, and a browser keeps

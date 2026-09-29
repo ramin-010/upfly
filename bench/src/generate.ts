@@ -525,7 +525,7 @@ function sourceText(
       // `[label]: path`, so the `<img src>` and the `background-image` below are found
       // only by the parse5 pass, and skipping it would lose them. `.md` stamps the tag
       // `md.raw-html`, `.mdx` stamps it `mdx.jsx`, and the style attribute is
-      // `md.style-attribute`, so all three HTML-born shapes appear.
+      // `md.style-attribute`, so every HTML-born shape but a `<style>` element's appears.
       //
       // Outside a fence, because fenced markup is masked before parse5 sees it.
       head.push(

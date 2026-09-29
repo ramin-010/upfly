@@ -816,6 +816,16 @@ export const SHAPES = [
       'tree tests the HTML version (`html.svg.*`) but has no JSX instance, so nothing ' +
       'measures this one.',
   },
+  {
+    id: 'md.style-element',
+    label: 'a <style> element inside markdown',
+    emission: 'engine',
+    why:
+      'A `url()` in CSS inside a `<style>` element in a markdown file. It is apart from ' +
+      '`md.style-attribute` because a browser decodes no character reference inside ' +
+      '`<style>` and does decode those in a style attribute, and the shape is what tells the ' +
+      'resolver which. The accuracy suite keys no reference in one, so nothing measures it.',
+  },
 ] as const satisfies readonly ShapeDeclaration[];
 
 /**
@@ -837,6 +847,7 @@ export const UNTESTED_SHAPE_IDS: readonly string[] = [
   'js.import.dynamic',
   'js.jsx.srcset',
   'js.jsx.svg',
+  'md.style-element',
 ];
 
 export function shapeById(id: string): ShapeDeclaration | undefined {
