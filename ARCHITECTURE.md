@@ -1351,7 +1351,9 @@ Two details that are easy to get wrong:
   read as `path.posix.extname` reads it on every platform, by the resolver, the planner,
   discovery, the adapters and the probe alike: with the platform's own `extname`, the Markdown
   destination `img/hero\.png` would show no extension on Windows and `.png` on Linux, and
-  the plan would rewrite it on one machine only.
+  the plan would rewrite it on one machine only. A path that ends in `/` has none: `extname`
+  ignores the slash and reads `img/hero.png/` as a `.png` no server sends for it, which a plan
+  would rewrite to `img/hero..webp`.
 - **`.upflyignore` is matched with the `ignore` package, and a directory must be tested with a
   trailing slash.** Given a `build/` rule, `ignores('build')` is `false` and `ignores('build/')`
   is `true`. Get that wrong and the walker descends into every ignored directory without ever

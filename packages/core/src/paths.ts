@@ -71,6 +71,9 @@ export function relativePath(root: string, absolute: string): string {
  * native path passed here names a file found by its extension, so its separators change nothing.
  */
 export function extensionOf(filePath: string): string {
+  // A path that ends in `/` names a folder. `extname` ignores the slash, and would read
+  // `img/hero.png/` as a picture no server sends for it, and a plan would write `img/hero..webp`.
+  if (filePath.endsWith('/')) return '';
   return posix.extname(filePath).toLowerCase();
 }
 

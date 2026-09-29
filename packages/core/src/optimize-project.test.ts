@@ -238,6 +238,32 @@ describe('an original that a page the run excludes still shows', () => {
   });
 });
 
+describe('a path that ends in a slash', () => {
+  // A browser asks for `images/team.jpg/`, which a static server does not serve as the
+  // picture. `path.extname` reads `.jpg` there all the same, ignoring the slash.
+  const planned = async () => {
+    const root = await copy();
+    await writeFile(join(root, 'notes.md'), '![Team](images/team.jpg/)\n');
+    await writeFile(join(root, 'wide.css'), '.team { background: url(images/team.jpg/); }\n');
+    return optimizeProject({ root, format: 'webp', publicPolicy: 'keep-original', apply: false });
+  };
+
+  it('names a folder, so it links nothing', async () => {
+    const { pipeline } = await planned();
+
+    const slashed = pipeline.references.filter((reference) => reference.rawPath.endsWith('/'));
+    expect(slashed.map((reference) => reference.resolution)).toEqual([]);
+  });
+
+  it('is never planned as a name with two dots before its new extension', async () => {
+    // Read as a picture, the path would be declined as becoming `images/team..webp`, and would
+    // decline the picture with it.
+    const { optimize } = await planned();
+
+    expect(JSON.stringify(optimize.plan)).not.toContain('..webp');
+  });
+});
+
 describe('a page that is not UTF-8', () => {
   it('keeps its bytes: its reference is declined with the reason, and the rest of the run goes on', async () => {
     const root = await copy();

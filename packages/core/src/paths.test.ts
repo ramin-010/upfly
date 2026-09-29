@@ -66,6 +66,13 @@ describe('extensionOf', () => {
     for (const path of written) expect(extensionOf(path)).toBe(posix.extname(path).toLowerCase());
     expect(extensionOf('img/hero\\.png')).toBe('.png');
   });
+
+  it('reads no extension in a path that ends in a slash, which names a folder', () => {
+    // `path.extname` ignores a trailing slash and reads `.png` in each of these.
+    for (const path of ['img/hero.png/', 'hero.png/', 'img/hero.png//']) {
+      expect(extensionOf(path), path).toBe('');
+    }
+  });
 });
 
 describe('isImageExtension', () => {
