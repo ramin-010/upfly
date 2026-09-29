@@ -13,7 +13,7 @@
  */
 
 import { join } from 'node:path';
-import { spell } from '../adapters/reference-path.js';
+import { spell, spellingsOf } from '../adapters/reference-path.js';
 import type { Graph } from '../graph/graph.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from '../paths.js';
 import { type AliasMap, type AliasRule, matchingRule } from '../resolve/aliases.js';
@@ -409,7 +409,7 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
     const targets = linkedPaths(reference).map((path) => toPosix(relativePath(root, path)));
     if (!targets.includes(move.from)) continue;
 
-    const rule = aliasRuleFor(reference.rawPath, toPosix(reference.file), input.aliases);
+    const rule = aliasRuleFor(reference, input.aliases);
     if (rule === null) continue;
     if (aliasTextFor(rule, move.to, root) !== null) continue;
 
@@ -419,15 +419,22 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
 }
 
 /**
- * The alias rule this reference goes through, or `null` when it is not aliased.
+ * The alias rule the resolver linked this reference through, or `null` when it linked it
+ * another way.
  *
  * The rule is the one `expandAlias` expands, so scope is checked as well as the prefix: a
  * rule applies only to references from inside the directory its config governs. Matching the
  * prefix alone would re-spell a `~/` reference through an alias the resolver never used,
- * producing text that looks right and reaches nothing.
+ * producing text that looks right and reaches nothing. An alias link is recorded as
+ * `serving-root`, so a relative link whose text a rule also matches keeps its relative form,
+ * and the rule is asked of the spelling the lookup matched, so `%7E/` is read as `~/`.
  */
-function aliasRuleFor(rawPath: string, file: string, aliases: AliasMap): AliasRule | null {
-  return matchingRule(aliases, rawPath, file);
+function aliasRuleFor(reference: Reference, aliases: AliasMap): AliasRule | null {
+  if (!isLinked(reference) || reference.resolvedVia !== 'serving-root') return null;
+  const path = pathPartOf(reference.rawPath);
+  const spelling = reference.resolution === 'resolved' ? (reference.spelling ?? 'literal') : null;
+  const read = spellingsOf(path, reference).find((candidate) => candidate.spelling === spelling);
+  return matchingRule(aliases, read?.path ?? path, toPosix(reference.file));
 }
 
 /** The aliased spelling of a new path under this rule, or `null` if it has none. */
@@ -562,12 +569,12 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
     reference.resolution === 'resolved' ? (reference.spelling ?? 'literal') : 'literal';
   const asWritten = (target: string): string => spell(target, spelling, reference);
 
-  const rule = aliasRuleFor(path, toPosix(reference.file), input.aliases);
+  const rule = aliasRuleFor(reference, input.aliases);
   if (rule !== null) {
     const aliased = aliasTextFor(rule, move.to, input.graph.root);
     if (aliased === null) return null;
-    // Only what follows the alias is spelled: the prefix is the project's own text, and
-    // `@/` encoded is `%40/`, which no alias matches.
+    // Only what follows the alias is spelled: the prefix is written as the rule writes it,
+    // whatever spelling hid it in the old text.
     return `${rule.prefix}${asWritten(aliased.slice(rule.prefix.length))}${suffix}`;
   }
 

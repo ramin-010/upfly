@@ -368,6 +368,8 @@ describe('relocate, and how a path is re-spelled', () => {
           file: 'src/App.astro',
           rawPath: '~/assets/houston.png',
           target: 'src/assets/houston.png',
+          via: 'serving-root',
+          kind: 'import',
         },
       ],
     });
@@ -460,6 +462,7 @@ describe('relocate, and how a path is re-spelled', () => {
           file: 'src/App.astro',
           rawPath: '@/assets/hero%20image.png',
           target: 'src/assets/hero image.png',
+          via: 'serving-root',
           spelling: 'percent-encoded',
         },
       ],
@@ -513,6 +516,75 @@ describe('relocate, and how a path is re-spelled', () => {
     );
 
     expect(text).toBe('img/logo.png');
+  });
+
+  it('re-derives a relative link whose text an alias also matches, as the resolver linked it', () => {
+    // A file at the written path wins over an alias, so `~/logo.png` here is the folder `~`
+    // beside the page. Read as the alias, the move would be refused as out of its reach.
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '~/',
+          targets: [`${REPO}/src`],
+          wildcard: true,
+          scope: REPO,
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      skipped: [],
+    };
+    const graph = graphFor({
+      assets: ['lib/~/logo.png'],
+      references: [{ file: 'lib/App.jsx', rawPath: '~/logo.png', target: 'lib/~/logo.png' }],
+    });
+
+    const { plan, text } = replacementFor(
+      graph,
+      { from: 'lib/~/logo.png', to: 'lib/~/img/logo.png' },
+      { aliases },
+    );
+
+    expect(plan.refused).toEqual([]);
+    expect(text).toBe('~/img/logo.png');
+  });
+
+  it('re-spells an alias written encoded at its start through the rule the resolver read', () => {
+    // `%7E/` decodes to `~/`, and the resolver asks the alias question of that spelling.
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '~/',
+          targets: [`${REPO}/src`],
+          wildcard: true,
+          scope: REPO,
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      skipped: [],
+    };
+    const graph = graphFor({
+      assets: ['src/assets/x.png'],
+      references: [
+        {
+          file: 'src/page.html',
+          rawPath: '%7E/assets/x.png',
+          target: 'src/assets/x.png',
+          via: 'serving-root',
+          spelling: 'percent-encoded',
+        },
+      ],
+    });
+
+    const { plan, text } = replacementFor(
+      graph,
+      { from: 'src/assets/x.png', to: 'src/img/x.png' },
+      { aliases },
+    );
+
+    expect(plan.declined).toEqual([]);
+    expect(text).toBe('~/img/x.png');
   });
 
   it('re-spells through a key with text after its *, and refuses a name the key cannot hold', () => {
@@ -578,6 +650,8 @@ describe('relocate, and how a path is re-spelled', () => {
           file: 'src/App.astro',
           rawPath: '~/assets/houston.png',
           target: 'src/assets/houston.png',
+          via: 'serving-root',
+          kind: 'import',
         },
       ],
     });

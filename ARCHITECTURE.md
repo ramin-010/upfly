@@ -1932,10 +1932,13 @@ each is committed as a copy in step 2 and a removal in step 4, and `revert` undo
 
 A repointed reference keeps the form it was written in, as seen from the file that holds it. A
 root-relative URL stays root-relative, read from the deepest serving root that holds the new path,
-as the planner reads a converted file's URL, a relative path is re-derived from the referencing file's
-directory, an aliased import keeps its alias, a leading `./` stays when the original had one, and a
-percent-encoded name stays encoded. A diff in which `./` comes and goes is one nobody can review, and
-a raw space written into a URL breaks it.
+as the planner reads a converted file's URL, and a relative path is re-derived from the referencing
+file's directory. A reference the resolver linked through an alias keeps the alias, found as the
+resolver found it: only an alias link counts, which the graph records as `serving-root`, so a
+relative link whose text an alias also matches stays relative, and the rule is asked of the
+spelling the lookup matched, so `%7E/assets/x.png` is read as `~/assets/x.png`. A leading `./`
+stays when the original had one, and a percent-encoded name stays encoded. A diff in which `./`
+comes and goes is one nobody can review, and a raw space written into a URL breaks it.
 
 ### What a move refuses
 
