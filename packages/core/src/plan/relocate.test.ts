@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { cssAdapter } from '../adapters/css.js';
 import { defaultAdapters } from '../adapters/default-adapters.js';
+import { htmlAdapter } from '../adapters/html.js';
 import { markdownAdapter } from '../adapters/markdown.js';
 import type { PathSpelling } from '../adapters/reference-path.js';
 import { discover } from '../discover/discover.js';
@@ -928,6 +930,101 @@ function seeded(seed: number): () => number {
  * the resolver as a later run would read it. The page is rewritten for real, so a name that
  * ends a destination early, or decodes to another name, is caught where a user would meet it.
  */
+describe('relocate, and a new name read back by the syntax that holds it', () => {
+  // The check after the plan reads a new text with the resolver, which never splits a srcset
+  // or ends a url() early, so a name the syntax cannot hold has to be caught where it is written.
+  const ROOT = REPO;
+  const NAMES = ['new name.png', 'new (1).png', 'new,one.png', "o'clock.png", 'plain.png'];
+  const OTHER: Asset = {
+    path: `${ROOT}/public/img/other.png`,
+    relative: 'public/img/other.png',
+    extension: '.png',
+    bytes: 1_000,
+  };
+  /**
+   * Each page, and what its syntax cannot hold. Upfly's own readers are lenient where a browser
+   * is not: CSS ends an unquoted url() at whitespace, a quote or a parenthesis, and a srcset URL
+   * ends at whitespace or a comma.
+   */
+  const PAGES = [
+    {
+      what: 'a srcset candidate',
+      file: `${ROOT}/index.html`,
+      adapter: htmlAdapter,
+      text: '<img srcset="/img/old.png 1x, /img/other.png 2x">\n',
+      unheld: /[\s,]/,
+      alsoLinks: [OTHER.path],
+    },
+    {
+      what: 'an unquoted url()',
+      file: `${ROOT}/site.css`,
+      adapter: cssAdapter,
+      text: '.hero { background: url(/img/old.png) no-repeat; }\n',
+      unheld: /[\s()'"\\]/,
+      alsoLinks: [],
+    },
+    {
+      what: 'a quoted url(), which holds any of them',
+      file: `${ROOT}/quoted.css`,
+      adapter: cssAdapter,
+      text: '.hero { background: url("/img/old.png"); }\n',
+      unheld: null,
+      alsoLinks: [],
+    },
+  ];
+  type Page = (typeof PAGES)[number];
+
+  const asset = (relative: string): Asset => ({
+    path: `${ROOT}/${relative}`,
+    relative,
+    extension: '.png',
+    bytes: 1_000,
+  });
+  const read = (page: Page, text: string, assets: readonly Asset[]) =>
+    resolveReferences(page.adapter.findReferences({ file: page.file, text }), {
+      root: ROOT,
+      assets,
+      servingRoots: SERVING,
+      exists: () => false,
+    });
+
+  /** The page after `old.png` moves to `name`, or null when it reads back as the moved file. */
+  function failureFor(page: Page, name: string): string | null {
+    const to = `public/img/${name}`;
+    const before = [asset('public/img/old.png'), OTHER];
+    const graph = buildGraph({
+      root: ROOT,
+      assets: before,
+      references: read(page, page.text, before),
+      unscannedFiles: [],
+    });
+    const plan = planRelocation({
+      graph,
+      moves: [{ from: 'public/img/old.png', to }],
+      servingRoots: SERVING,
+      aliases: NO_ALIASES,
+    });
+    const edits = plan.rewrites[0]?.edits ?? [];
+    const rewritten = page.adapter.rewrite({ text: page.text, edits });
+    const found = read(page, rewritten, [asset(to), OTHER])
+      .flatMap(linkedPaths)
+      .sort();
+    const expected = [`${ROOT}/${to}`, ...page.alsoLinks].sort();
+    const held = page.unheld === null || !page.unheld.test(edits[0]?.replacement ?? '');
+    return JSON.stringify(found) === JSON.stringify(expected) && held
+      ? null
+      : `${page.what}, moved to ${name}: ${rewritten.trim()}`;
+  }
+
+  it('writes each new name so that its own syntax reads it back as the moved file', () => {
+    const failures = PAGES.flatMap((page) =>
+      NAMES.map((name) => failureFor(page, name)).filter((failure) => failure !== null),
+    );
+
+    expect(failures).toEqual([]);
+  });
+});
+
 describe('relocate, and a new name read back from a Markdown destination', () => {
   const ROOT = REPO;
   const PAGE = `${ROOT}/docs/guide.md`;

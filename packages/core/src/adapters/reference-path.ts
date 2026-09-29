@@ -437,6 +437,14 @@ export function spell(
   if ((typeof read === 'string' ? read : read.kind) === 'md') {
     return spellDestination(path, spelling);
   }
+  const written = spelledAs(path, spelling);
+  const unheld = typeof read === 'string' ? null : unheldIn(read.shape);
+  // The whole path encoded, not only the character, since a reader decodes one way or the
+  // other and never both: a `%20` already in the name would otherwise be read as a space.
+  return unheld?.test(written) === true ? fullyPercentEncoded(path) : written;
+}
+
+function spelledAs(path: string, spelling: PathSpelling): string {
   switch (spelling) {
     case 'literal':
       return path;
@@ -457,6 +465,42 @@ export function spell(
     default:
       return path;
   }
+}
+
+/** Shapes whose URL is one candidate of a `srcset`, which ends at whitespace or a comma. */
+const SRCSET_SHAPES: ReadonlySet<string> = new Set([
+  'html.img.srcset.single',
+  'html.img.srcset.x',
+  'html.img.srcset.w',
+  'html.source.srcset',
+  'js.jsx.srcset',
+]);
+
+/**
+ * The characters a position's syntax cannot hold as they are, or `null` for one that holds
+ * any. A srcset URL ends at whitespace or a comma; an unquoted `url()` ends at whitespace, and
+ * a quote, a parenthesis or a backslash there makes it invalid.
+ *
+ * @see https://html.spec.whatwg.org/multipage/images.html#parsing-a-srcset-attribute
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
+ */
+function unheldIn(shape: string): RegExp | null {
+  if (SRCSET_SHAPES.has(shape)) return /[\s,]/;
+  if (shape === 'css.url.bare') return /[\s()'"\\]/;
+  return null;
+}
+
+/** Each segment percent-encoded, with the few characters `encodeURIComponent` leaves. */
+function fullyPercentEncoded(path: string): string {
+  return path
+    .split('/')
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[!'()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join('/');
 }
 
 /**

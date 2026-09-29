@@ -2012,7 +2012,11 @@ resolver found it: only an alias link counts, which the graph records as `servin
 relative link whose text an alias also matches stays relative, and the rule is asked of the
 spelling the lookup matched, so `%7E/assets/x.png` is read as `~/assets/x.png`. A leading `./`
 stays when the original had one, and a percent-encoded name stays encoded. A diff in which `./`
-comes and goes is one nobody can review, and a raw space written into a URL breaks it.
+comes and goes is one nobody can review, and a raw space written into a URL breaks it. Where the
+syntax around the path cannot hold a character of the new name, the whole path is written
+percent-encoded instead: a `srcset` URL ends at whitespace or a comma, and an unquoted `url()` at
+whitespace, a quote, a parenthesis or a backslash. The resolver reads a path without its
+surrounding syntax, so the check after the plan cannot see this, and `spell` guards it.
 
 ### What a move refuses
 
