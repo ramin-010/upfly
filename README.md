@@ -48,12 +48,12 @@ Plan
 
   Convert to WebP: 19 images, 5.1 MB now and 1.3 MB after
 [...]
-    src/blog/six-million.jpg → src/blog/six-million.webp  2.2 MB → 489.8 KB
+    src/blog/six-million.jpg → src/blog/six-million.webp  2.2 MB → 489.3 KB
 [...]
   Update references: 19 references in 14 files
 [...]
-Written as run 20260928T181455-64ab: 19 files created, 14 changed, 0 removed. `upfly undo` puts them all back.
-Committed as a89774d6a0bb, one commit holding exactly those files. `git revert a89774d6a0bb` undoes it.
+Written as run 20260929T074344-5d68: 19 files created, 14 changed, 0 removed. `upfly undo` puts them all back.
+Committed as 01b31064d520, one commit holding exactly those files. `git revert 01b31064d520` undoes it.
 ```
 
 Saying what it could not follow is what makes the 19 references it did rewrite trustworthy.
