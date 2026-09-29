@@ -38,7 +38,7 @@ Upfly audit
 [...]
 56 references had no answer to find
 [...]
-  plus 52 with no filename to check — each builds its path at runtime
+  plus 52 with no filename to check: each builds its path at runtime
 [...]
 Examined and not converted
 
