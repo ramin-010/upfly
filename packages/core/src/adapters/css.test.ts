@@ -604,7 +604,7 @@ describe('a trailing interpolation is a pattern, not a dead end', () => {
       'a varying name with a suffix after it',
       '.a { background: url("/srcset/tile@#{$density}x.png"); }',
     ],
-    ['a varying directory BELOW a fixed one', '.a { background: url("/img/#{$dir}/hero.png"); }'],
+    ['a varying directory below a fixed one', '.a { background: url("/img/#{$dir}/hero.png"); }'],
   ])('%s is medium, so the resolver globs it', (_name, source) => {
     expect(ceilingOf(source)).toBe('medium');
   });

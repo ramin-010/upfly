@@ -64,8 +64,8 @@ describe('couldHoldReference', () => {
       ['an entity dot in a link definition', '[label]: hero&#46;png'],
       ['a named entity dot', '![alt](hero&period;png)'],
       ['a percent-encoded dot', '![alt](hero%2Epng)'],
-      ['🔴 a percent-encoded extension LETTER, which `%2` misses', '![alt](hero.%70ng)'],
-      ['🔴 a wholly percent-encoded extension', '![alt](hero%2E%70%6E%67)'],
+      ['a percent-encoded extension letter, which `%2` misses', '![alt](hero.%70ng)'],
+      ['a wholly percent-encoded extension', '![alt](hero%2E%70%6E%67)'],
     ])('%s', (_name, text) => {
       expect(couldHoldReference(text)).toBe(true);
     });

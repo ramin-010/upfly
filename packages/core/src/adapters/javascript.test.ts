@@ -1636,7 +1636,7 @@ describe('javaScriptParseOutcome', () => {
   it.each([
     ['an open object, failing at the very end', ['export const a = {', '  b: 1,']],
     ['an import with no source yet', ['import x']],
-    ['an open template, which Babel reports at its START', ['export const a = `x', '']],
+    ['an open template, which Babel reports at its start', ['export const a = `x', '']],
     ['an open block comment, likewise', ['export const a = 1 /* note', '']],
     ['an open JSX body, likewise', ['export const X = <div>', '  text']],
   ])('says `incomplete` for %s', (_name, lines) => {
