@@ -51,10 +51,10 @@ jobs:
   accuracy-suite:
     # The answer key and the tree are one instrument: a key that has drifted from the tree
     # still reads green, and the measuring harness refuses to run until they agree. `check`
-    # says they agree; `prove` then builds the packages, damages them nineteen ways and
-    # confirms a check fails each time, because a check never seen to fail proves nothing.
-    # `measure` runs the engine over the tree twice, with the suite's configuration and with
-    # none; it fails on any defect in either run, since both figures are published.
+    # says they agree; `prove` then builds the packages, damages copies of them one way at a
+    # time and confirms a check fails each time, because a check never seen to fail proves
+    # nothing. `measure` runs the engine over the tree twice, with the suite's configuration
+    # and with none; it fails on any defect in either run, since both figures are published.
     #
     # Two cells, not six: the key records byte offsets, which match on every platform only
     # because git converts no line endings in the suite (its `.gitattributes` is `-text`).

@@ -8,7 +8,7 @@ a tool; the answers are not.
 ```
 pnpm accuracy:measure    # build, run the engine over tree/ twice, print the matrix
 pnpm accuracy:check      # does the key still describe the tree, with no open questions?
-pnpm accuracy:prove      # can the check and the measurement fail? 19 damages, each must turn one red
+pnpm accuracy:prove      # can the check and the measurement fail? each damage must turn one red
 node accuracy-suite/tools/scan-occurrences.mjs   # authoring aid: every asset-shaped token
 node accuracy-suite/tools/stamp-positions.mjs    # refill derived positions; read its diff
 ```
@@ -30,9 +30,9 @@ that is what stops a figure from this suite escaping into a claim about real pro
 where to add a reader next, and catches a regression that drops `srcset` from 8 to 5; a single
 number does neither.
 
-The rows fall into four populations, read separately and never added together: `claimed` (417
-entries in 69 rows, found against expected: the only population where a miss is a bug),
-`declined` (83 in 17: text that is not a live path, so claiming nothing is right), `unclaimed`
+The rows fall into four populations, read separately and never added together: `claimed` (441
+entries in 72 rows, found against expected: the only population where a miss is a bug),
+`declined` (91 in 19: text that is not a live path, so claiming nothing is right), `unclaimed`
 (15 in 4: real files Upfly chooses not to index) and `gap` (47 in 8: constructs nothing reads
 yet, each with its reason in `knownGap`). The engine runs twice, once with the suite's stated
 configuration and once with none, and each run reports "claimed N of N" over every claimed entry.
@@ -53,9 +53,9 @@ went wrong.
 
 ```
 accuracy-suite/
-  key/answer-key.json         the answer key: 101 shapes, 80 assets, 562 references in 137 files
+  key/answer-key.json         the answer key: 106 shapes, 81 assets, 594 references in 149 files
   tools/check-key.mjs         the self-check: plain text and path arithmetic, no engine
-  tools/prove-can-fail.mjs    19 deliberate damages, each asserted to turn a check red
+  tools/prove-can-fail.mjs    deliberate damages, each asserted to turn a check red
   tools/measure.mjs           the engine over tree/, run twice, rendered as the matrix
   tools/matrix.mjs, .d.mts    the matrix, and its types
   tools/stamp-positions.mjs   fills derived positions; never touches an `expect`
@@ -80,9 +80,9 @@ shared/                the alias target for ~/* and @img/*
 sites/kit-app/, sites/nuxt-app/, sites/vue-app/   aliases through generated and real configs
 ```
 
-505 files: 427 text and 78 binary. 290 of the text files are ordinary and hold no asset-shaped
+518 files: 439 text and 79 binary. 302 of the text files are ordinary and hold no asset-shaped
 token, so referenced files are a minority, as they are in real code. The filler averages about
-1.9 KB a file rather than being stubs, because what distorts a measurement is bytes, not file
+1.8 KB a file rather than being stubs, because what distorts a measurement is bytes, not file
 count: a generated tree with real code's file count and a thirtieth of its bytes once inverted
 two measured conclusions.
 
@@ -154,7 +154,7 @@ exactly that.
 Stated plainly, because a check whose limits are unstated is read as a guarantee:
 
 - Only asset extensions are scanned. A reference to a `.css` or `.ts` file added without a key
-  entry would not be caught. 37 entries hold no asset-shaped token; the checker accepts them
+  entry would not be caught. 42 entries hold no asset-shaped token; the checker accepts them
   because it verifies any listed `raw` at its offset whether or not the scan can see it.
 - A token whose path is split by syntax is found short. `/gallery/hero image.png` matches as
   `image.png`, and `` `/theme-${mode}.png` `` as `.png`. Both are accounted for by containment
