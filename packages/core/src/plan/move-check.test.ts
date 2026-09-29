@@ -150,7 +150,7 @@ describe('a move’s regression count, and what it cannot see', () => {
     // before the conditional bullets, so a change that suppressed every bullet on a
     // regression would leave the heading standing and this test green.
     expect(rendered(check)).toContain('could have broken without');
-    expect(rendered(check)).toContain('.yml — 1 file');
+    expect(rendered(check)).toContain('.yml: 1 file');
     expect(rendered(check)).toContain('assembles at runtime');
   });
 
@@ -176,7 +176,7 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(text).toContain('of a type Upfly DOES read could not be parsed');
     // Named individually with the parser's complaint: unlike an unread type, this is one
     // file a person can open.
-    expect(text).toContain('bratislava.html — invalid css syntax at line 16, column 5');
+    expect(text).toContain('bratislava.html: invalid css syntax at line 16, column 5');
     expect(text).toContain('usually fixable');
   });
 
@@ -245,9 +245,9 @@ describe('a move’s regression count, and what it cannot see', () => {
 
     expect(check.limit.typesThatCouldHide.map((entry) => entry.ext)).toEqual(byVolume);
     // The biggest is named in the output; the smallest is the one summarised away.
-    expect(rendered(check)).toContain('.zzz — 900 files');
+    expect(rendered(check)).toContain('.zzz: 900 files');
     expect(rendered(check)).toContain('... and 1 more');
-    expect(rendered(check)).not.toContain('.aaa —');
+    expect(rendered(check)).not.toContain('.aaa:');
   });
 
   it('discloses directories nothing opened, and says they are outside the unread count', () => {
@@ -336,7 +336,7 @@ describe('a move’s regression count, and what it cannot see', () => {
     expect(check.brokenBefore).toBe(0);
     expect(check.brokenAfter).toBe(0);
     expect(check.regressed).toBe(false);
-    expect(rendered(check)).toContain('.yml — 1 file');
+    expect(rendered(check)).toContain('.yml: 1 file');
     expect(rendered(check)).toContain('could have broken without');
   });
 });

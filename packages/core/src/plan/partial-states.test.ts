@@ -161,7 +161,7 @@ describe('a partial-failure state, built by hand because no real repository has 
         const asset = `public/${target}.png`;
         expect(
           [...converted, ...declined, ...skipped],
-          `${asset} is in no list at all — not converted, not declined, not skipped`,
+          `${asset} is in no list at all: not converted, not declined, not skipped`,
         ).toContain(asset);
       }
       expect(declined).toContain('public/theme-light.png');

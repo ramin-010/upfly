@@ -1215,7 +1215,7 @@ function keptOriginals(
     ? `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and \`--replace\` removes ` +
       `an original only inside one. ${NAME_THE_WEBSITE_FOLDER}.`
     : 'converted, but the original was kept: it is outside a directory this project serves, ' +
-      'where it is the build rather than a browser that resolves it — so a reference Upfly ' +
+      'where it is the build rather than a browser that resolves it, so a reference Upfly ' +
       'failed to rewrite would break the build instead of showing a missing image. ' +
       '`--replace` governs assets in a served directory.';
   return conversions

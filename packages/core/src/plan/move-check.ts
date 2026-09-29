@@ -153,7 +153,7 @@ function render(
 
   // Applies in every tree, read or not, which is why it carries no count.
   lines.push(
-    "    - a path a program assembles at runtime — '/img/' + name + '.png' — has no path",
+    "    - a path a program assembles at runtime ('/img/' + name + '.png') has no path",
     '      text to compare, so neither side of this count contains it.',
   );
 
@@ -176,13 +176,13 @@ function render(
 function verdict(brokenBefore: number, brokenAfter: number, regressed: boolean): string {
   if (regressed) {
     const added = brokenAfter - brokenBefore;
-    return `🔴 REGRESSION — ${plural(added, 'reference')} Upfly can parse broke in this move`;
+    return `🔴 REGRESSION: ${plural(added, 'reference')} Upfly can parse broke in this move`;
   }
 
   // Fewer than before is not a success to claim: the move did not repair anything, so
   // something else changed and a reader should be told rather than reassured.
   if (brokenAfter < brokenBefore) {
-    return `⚠️ ${plural(brokenBefore - brokenAfter, 'reference')} fewer than before — a move repairs nothing, so this needs explaining`;
+    return `⚠️ ${plural(brokenBefore - brokenAfter, 'reference')} fewer than before; a move repairs nothing, so this needs explaining`;
   }
 
   return 'no new broken references among those Upfly can parse';
@@ -208,7 +208,7 @@ function unreadTypeLines(limit: MoveCoverageLimit): string[] {
 
   for (const entry of limit.typesThatCouldHide.slice(0, NAMED_LIMIT)) {
     lines.push(
-      `        ${entry.ext === '' ? '(no extension)' : entry.ext} — ${plural(entry.fileCount, 'file')}`,
+      `        ${entry.ext === '' ? '(no extension)' : entry.ext}: ${plural(entry.fileCount, 'file')}`,
     );
   }
   if (limit.typesThatCouldHide.length > NAMED_LIMIT) {
@@ -236,7 +236,7 @@ function parseFailedLines(limit: MoveCoverageLimit): string[] {
 
   for (const entry of limit.parseFailed.slice(0, NAMED_LIMIT)) {
     const why = complaintOf(entry.detail);
-    lines.push(`        ${entry.relative}${why === '' ? '' : ` — ${why}`}`);
+    lines.push(`        ${entry.relative}${why === '' ? '' : `: ${why}`}`);
   }
   if (limit.parseFailed.length > NAMED_LIMIT) {
     lines.push(`        ... and ${limit.parseFailed.length - NAMED_LIMIT} more`);
@@ -256,7 +256,7 @@ function neverReadLines(limit: MoveCoverageLimit): string[] {
   ];
 
   for (const entry of limit.neverRead.slice(0, NAMED_LIMIT)) {
-    lines.push(`        ${entry.relative} — ${entry.reason}`);
+    lines.push(`        ${entry.relative}: ${entry.reason}`);
   }
   if (limit.neverRead.length > NAMED_LIMIT) {
     lines.push(`        ... and ${limit.neverRead.length - NAMED_LIMIT} more`);

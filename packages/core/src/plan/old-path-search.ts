@@ -370,7 +370,7 @@ function render(
       '',
       '    Each is an occurrence the move did not rewrite. Most will be references that',
       '    could not be repointed; some may be prose, a changelog or a coincidence. This',
-      '    check reads text, so it cannot tell those apart — the line is printed so you can.',
+      '    check reads text, so it cannot tell those apart; the line is printed so you can.',
       '',
     );
   }
@@ -378,7 +378,7 @@ function render(
   lines.push(
     '  What this search cannot see. It never consults the graph, which is the point, but',
     '  it can only find a path that is written down as text:',
-    "    - a path a program assembles at runtime — '/img/' + name + '.png' — is not written",
+    "    - a path a program assembles at runtime ('/img/' + name + '.png') is not written",
     '      down anywhere, so nothing matches it.',
     '    - a path spelled some other way: URL-encoded, behind a CDN prefix, or split across',
     `      a concatenation. ${plural(spellings.length, 'spelling was', 'spellings were')} searched, listed below.`,
@@ -389,7 +389,7 @@ function render(
   if (unsearchable.length > 0) {
     lines.push(
       `    - ${plural(unsearchable.length, 'file')} could not be read at all:`,
-      ...unsearchable.slice(0, 5).map((entry) => `        ${entry.file} — ${entry.reason}`),
+      ...unsearchable.slice(0, 5).map((entry) => `        ${entry.file}: ${entry.reason}`),
     );
   }
 
