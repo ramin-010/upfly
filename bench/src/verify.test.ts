@@ -71,14 +71,14 @@ function hedgeReport(asset: string, where: string): Report {
 }
 
 describe('verifyBroken asks every spelling', () => {
-  it('calls a percent-encoded path FALSE when it names a file that exists', async () => {
+  it('calls a percent-encoded path false when it names a file that exists', async () => {
     const result = await verifyFindings(root, brokenReport('./img/hero%20image.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-false');
     expect(result.items[0]?.evidence.join(' ')).toMatch(/resolves to a file that exists/);
   });
 
-  it('calls an entity-spelled path FALSE when it names a file that exists', async () => {
+  it('calls an entity-spelled path false when it names a file that exists', async () => {
     const result = await verifyFindings(root, brokenReport('./img/a&amp;b.png'), ['']);
 
     expect(result.items[0]?.verdict).toBe('confirmed-false');

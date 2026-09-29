@@ -86,7 +86,7 @@ async function main(): Promise<void> {
   let mark = performance.now();
 
   stdout.write(
-    `§5.1(j) false-dead rate\n  root: ${options.root}\n  public: ${options.publicDirs.join(', ') || '(none)'}\n\n`,
+    `false-dead rate\n  root: ${options.root}\n  public: ${options.publicDirs.join(', ') || '(none)'}\n\n`,
   );
 
   const discovery = await discover({ root: options.root, adapters: ADAPTERS });
@@ -178,7 +178,7 @@ function report_(
   print('all unreferenced (`dead` + `possibly-dead`)', unreferenced, options.sample);
 
   if (verified.unreadable.length > 0) {
-    stdout.write(`\n  ⚠️ the oracle could not read ${verified.unreadable.length} file(s):\n`);
+    stdout.write(`\n  the oracle could not read ${verified.unreadable.length} file(s):\n`);
     for (const entry of verified.unreadable.slice(0, 5)) stdout.write(`      ${entry}\n`);
   }
 
@@ -209,9 +209,9 @@ function print(label: string, items: readonly ItemVerdict[], sample: number): vo
   );
   stdout.write(`      confirmed-false ${wrong.length}\n`);
   stdout.write(`      ambiguous       ${unclear.length}\n`);
-  stdout.write(`      FALSE RATE      ${rate.toFixed(1)}%\n`);
+  stdout.write(`      false rate      ${rate.toFixed(1)}%\n`);
   for (const item of wrong.slice(0, 10)) {
-    stdout.write(`        ✗ ${item.subject}\n`);
+    stdout.write(`        - ${item.subject}\n`);
     for (const line of item.evidence.slice(0, 3)) stdout.write(`            ${line}\n`);
   }
   stdout.write('\n');
@@ -222,9 +222,9 @@ function print(label: string, items: readonly ItemVerdict[], sample: number): vo
  * outside the target repository.
  */
 async function writeDetail(out: string, items: readonly ItemVerdict[]): Promise<void> {
-  const lines = ['# §5.1(j): every unreferenced-asset verdict', ''];
+  const lines = ['# False-dead rate: every unreferenced-asset verdict', ''];
   for (const item of [...items].sort((a, b) => (a.subject < b.subject ? -1 : 1))) {
-    lines.push(`## ${item.subject} (${item.kind}): **${item.verdict}**`);
+    lines.push(`## ${item.subject} (${item.kind}): ${item.verdict}`);
     for (const line of item.evidence) lines.push(`    ${line}`);
     lines.push('');
   }

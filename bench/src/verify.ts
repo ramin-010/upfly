@@ -632,7 +632,7 @@ function assertOracleSeesSpaces(pattern: () => RegExp): void {
 
   if (!hitsByToken.has('firing practice.webp')) {
     throw new Error(
-      'The oracle cannot see a filename containing a space, so any false-dead rate it reports is meaningless. See §5.1(j) and R38.',
+      'The oracle cannot see a filename containing a space, so any false-dead rate it reports is meaningless.',
     );
   }
 }

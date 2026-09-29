@@ -122,7 +122,7 @@ async function main(): Promise<void> {
   );
   stdout.write(`\nWrote worksheets to ${outDir}\n`);
   if (partial) {
-    stdout.write('\n⚠️  Partial run. SUMMARY.md says so. Re-run with no flags before quoting it.\n');
+    stdout.write('\nPartial run. SUMMARY.md says so. Re-run with no flags before quoting it.\n');
   }
 }
 
@@ -143,20 +143,20 @@ function partialSummary(
   const reasons: string[] = [];
   if (only !== undefined) {
     reasons.push(
-      `**Only \`${only}\` ran.** Not run: ${absent.map((repo) => repo.name).join(', ') || 'none'}.`,
+      `Only \`${only}\` ran. Not run: ${absent.map((repo) => repo.name).join(', ') || 'none'}.`,
     );
   }
   if (!probed) {
     reasons.push(
-      '**`--no-probe`**, so `oversized` and `format-opportunity` are absent and no saving was measured.',
+      '`--no-probe`, so `oversized` and `format-opportunity` are absent and no saving was measured.',
     );
   }
 
   return [
-    '# ⚠️ PARTIAL RUN: this is not the §5.1 gate',
+    '# Partial run: this is not the whole validation',
     '',
     'Everything below was measured and is true. It is simply not all of it.',
-    '**Re-run `pnpm validate` with no flags before quoting any of it as a result.**',
+    'Re-run `pnpm validate` with no flags before quoting any of it as a result.',
     '',
     ...reasons.map((reason) => `- ${reason}`),
     '',
@@ -590,17 +590,17 @@ function worksheet(result: RepoResult): string {
   const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null);
 
   const lines = [
-    `# ${labelOf(repo)}: §5.1(c)/(d) review worksheet`,
+    `# ${labelOf(repo)}: review worksheet`,
     '',
-    `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with NO configuration: serving roots detected and inferred exactly as a first run does (R147)' : ''}.`,
+    `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with no configuration: serving roots detected and inferred exactly as a first run does' : ''}.`,
     `Root: \`${root}\``,
     '',
-    'Every `broken` finding has been opened and every `dead` asset grepped **by machine**, against',
+    'Every `broken` finding has been opened and every `dead` asset grepped by machine, against',
     'an oracle that does not use the engine: its own directory index and its own grep, over the',
     `whole tree including pruned and ignored directories. ${verdictHeadline(result.verified)}`,
     '',
-    '**What is left for you is below: the ambiguous items and the judgement calls.** A verdict of',
-    '*confirmed-genuine* means the oracle looked and found nothing; spot-check a few rather than',
+    'What is left for you is below: the ambiguous items and the judgement calls. A verdict of',
+    '`confirmed-genuine` means the oracle looked and found nothing; spot-check a few rather than',
     'reproducing them.',
     '',
     '---',
@@ -612,21 +612,21 @@ function worksheet(result: RepoResult): string {
   lines.push(...verdictSection('possibly-dead', '3. Possibly-dead citations', result.verified));
 
   lines.push(
-    `## 4. §5.1(b) false-negative sweep: ${needsHuman.length} hits need a decision`,
+    `## 4. False-negative sweep: ${needsHuman.length} hits need a decision`,
     '',
     `Grepped the whole repo for every asset filename. ${result.unaccounted.length} hits were not`,
     `linked by the graph, and ${result.unaccounted.length - needsHuman.length} were explained`,
     'mechanically: a file type no adapter reads, an absolute URL, a commented-out line, prose, or a',
-    'line naming a different file that shares a basename. The rest are below, **grouped by shape so',
-    'the same decision is made once**.',
+    'line naming a different file that shares a basename. The rest are below, grouped by shape so',
+    'the same decision is made once.',
     '',
-    'The question for each: **if this image were renamed, would this line break?** If yes it is a',
+    'The question for each: if this image were renamed, would this line break? If yes it is a',
     'miss and needs an adapter fix plus a fixture. If no, write down why.',
     '',
   );
 
   if (needsHuman.length === 0) {
-    lines.push('_Nothing unaccounted for in a file an adapter claims._', '');
+    lines.push('Nothing unaccounted for in a file an adapter claims.', '');
   } else {
     for (const group of groupResidue(needsHuman)) {
       lines.push(`### ${group.label}`, '');
@@ -645,7 +645,7 @@ function worksheet(result: RepoResult): string {
   lines.push(
     '## 5. Read the report as a stranger',
     '',
-    `\`${labelOf(repo)}.report.txt\` is the human output. §5.1(d): if the numbers are not obvious in`,
+    `\`${labelOf(repo)}.report.txt\` is the human output. If the numbers are not obvious in`,
     'ten seconds, or the skipped list reads as noise, the report has failed even with a correct',
     'graph behind it.',
     '',
@@ -665,7 +665,7 @@ function verdictHeadline(verified: VerifyResult): string {
   // "0 confirmed-false" would not show that.
   const headline =
     wrong > 0
-      ? `**${wrong} of ${verified.items.length} came back confirmed-false; the gate is not passed.**`
+      ? `${wrong} of ${verified.items.length} came back confirmed-false; the gate is not passed.`
       : unclear === 0
         ? `All ${verified.items.length} came back confirmed-genuine.`
         : `None came back false; ${unclear} of ${verified.items.length} came back ambiguous, for you to decide.`;
@@ -682,14 +682,15 @@ function verdictHeadline(verified: VerifyResult): string {
  * "0 confirmed-false" that does not say so claims more than it checked.
  */
 const BLIND_SPOT = [
-  '> ⚠️ **What this pass cannot see.** Every check above searches for a *string*. An asset that is',
-  '> alive with **no string naming it anywhere** is invisible to it exactly as it is invisible to the',
-  '> engine: a framework file convention (R17 was found this way, and this oracle confirmed one of',
-  '> the two as genuine), a build-config glob, a CMS, a filename assembled at runtime from data.',
+  '> What this pass cannot see: every check above searches for a string. An asset that is',
+  '> alive with no string naming it anywhere is invisible to it exactly as it is invisible to the',
+  '> engine: a framework file convention (Next.js serves an `opengraph-image.jpg` by its filename',
+  '> alone, and this oracle once confirmed such a file as genuinely dead), a build-config glob, a',
+  '> CMS, a filename assembled at runtime from data.',
   '> So "0 confirmed-false" bounds the machine\'s reach, not the truth.',
   '>',
-  '> **The question only a person can carry:** *is anything here alive for a reason that is not a',
-  '> string?*',
+  '> The question only a person can carry: is anything here alive for a reason that is not a',
+  '> string?',
 ].join('\n');
 
 /**
@@ -708,7 +709,7 @@ function verdictSection(
   const lines = [`## ${title} (${items.length})`, ''];
 
   if (items.length === 0) {
-    lines.push('_None reported._', '');
+    lines.push('None reported.', '');
     return lines;
   }
 
@@ -718,7 +719,7 @@ function verdictSection(
 
     lines.push(
       verdict === 'confirmed-false'
-        ? `### ⚠️ ${group.length} confirmed FALSE: the oracle disagrees with the engine`
+        ? `### ${group.length} confirmed false: the oracle disagrees with the engine`
         : `### ${group.length} ambiguous: your call`,
       '',
     );
@@ -769,7 +770,7 @@ function verdictCounts(verified: VerifyResult): string {
   const of = (verdict: ItemVerdict['verdict']) =>
     verified.items.filter((item) => item.verdict === verdict).length;
 
-  return `${of('confirmed-genuine')} genuine, ${of('confirmed-false')} FALSE, ${of('ambiguous')} ambiguous`;
+  return `${of('confirmed-genuine')} genuine, ${of('confirmed-false')} false, ${of('ambiguous')} ambiguous`;
 }
 
 /** One judgement call, and everything it covers. */
@@ -837,7 +838,7 @@ function shapesIn(entries: readonly Triaged[]): string {
 /** Every sweep hit and what triage made of it: the audit trail for the sweep itself. */
 function sweepLog(result: RepoResult): string {
   const lines = [
-    `# ${labelOf(result.repo)}: §5.1(b) sweep, every hit`,
+    `# ${labelOf(result.repo)}: false-negative sweep, every hit`,
     '',
     `${result.unaccounted.length} grep hits the graph did not link. This is the complete list,`,
     'including the ones triage explained, so the triage rules themselves can be reviewed rather',
@@ -882,19 +883,19 @@ function summarise(result: RepoResult): string {
 
   return [
     `  files ${result.files}, assets ${result.assets}, references ${result.references}`,
-    `  (a) range invariant: ${result.rangeInvariantChecked} checked, ${result.rangeInvariantFailures.length} failures`,
-    `  (b) unaccounted grep hits: ${result.unaccounted.length} total, ${needsHuman} need a human`,
-    `  (f) deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}, no absolute path: ${result.noAbsolutePath}`,
-    ...result.determinismDiff.map((entry) => `      🔴 FINDINGS DIFFER between runs: ${entry}`),
-    ...result.cwdDiff.map((entry) => `      🔴 FINDINGS DIFFER by cwd: ${entry}`),
+    `  range invariant: ${result.rangeInvariantChecked} checked, ${result.rangeInvariantFailures.length} failures`,
+    `  unaccounted grep hits: ${result.unaccounted.length} total, ${needsHuman} need a human`,
+    `  deterministic: ${result.deterministic}, cwd-independent: ${result.cwdIndependent}, no absolute path: ${result.noAbsolutePath}`,
+    ...result.determinismDiff.map((entry) => `      findings differ between runs: ${entry}`),
+    ...result.cwdDiff.map((entry) => `      findings differ by cwd: ${entry}`),
     ...result.environmentNotes.map(
-      (entry) => `      🔴 SKIPPED LIST DIFFERS between runs: ${entry}`,
+      (entry) => `      the skipped list differs between runs: ${entry}`,
     ),
     ...(result.absolutePathEvidence.length === 0
       ? []
       : result.absolutePathEvidence.map((line) => `      ! ${line}`)),
-    `  (d) verdicts: ${verdictCounts(result.verified)}  (oracle indexed ${result.verified.filesIndexed}, grepped ${result.verified.filesGrepped})`,
-    `  (g) graph: ${result.graphMs} ms`,
+    `  verdicts: ${verdictCounts(result.verified)}  (oracle indexed ${result.verified.filesIndexed}, grepped ${result.verified.filesGrepped})`,
+    `  graph: ${result.graphMs} ms`,
     `  findings: broken ${counts.broken}, dead ${counts.dead}, possibly-dead ${counts['possibly-dead']}, oversized ${counts.oversized}, opportunities ${counts['format-opportunity']}`,
     '',
   ].join('\n');
@@ -902,29 +903,29 @@ function summarise(result: RepoResult): string {
 
 function overallSummary(results: readonly RepoResult[]): string {
   const lines = [
-    '# §5.1 validation: automated parts',
+    '# Validation: automated parts',
     '',
-    'Produced by `bench/src/validate.ts`. Parts (c) and (d) need a person; see each',
+    'Produced by `bench/src/validate.ts`. Reviewing the findings needs a person; see each',
     '`*.review.md` worksheet.',
     '',
-    '| repo | files | assets | refs | (a) checked | (a) fail | (b) need human | (f) det. | (f) cwd | (f) no abs path | (g) graph ms |',
+    '| repo | files | assets | refs | range checked | range failures | sweep hits for a person | deterministic | cwd-independent | no absolute path | graph ms |',
     '|---|---|---|---|---|---|---|---|---|---|---|',
   ];
 
   for (const result of results) {
     const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null).length;
     lines.push(
-      `| ${labelOf(result.repo)} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'NO'} | ${result.cwdIndependent ? 'yes' : 'NO'} | ${result.noAbsolutePath ? 'yes' : 'NO'} | ${result.graphMs} |`,
+      `| ${labelOf(result.repo)} | ${result.files} | ${result.assets} | ${result.references} | ${result.rangeInvariantChecked} | ${result.rangeInvariantFailures.length} | ${needsHuman} | ${result.deterministic ? 'yes' : 'no'} | ${result.cwdIndependent ? 'yes' : 'no'} | ${result.noAbsolutePath ? 'yes' : 'no'} | ${result.graphMs} |`,
     );
   }
 
   lines.push(
     '',
-    '⚠️ **What the §5.1(d) verdicts cannot cover.** Every automated check searches for a string.',
+    "What the oracle's verdicts cannot cover: every automated check searches for a string.",
     'An asset alive with no string naming it anywhere is invisible to the oracle exactly as it is',
-    'invisible to the engine: R17 is one, and the oracle confirmed one of its two instances as',
-    '*genuine*. A person still has to ask whether anything here is alive for a reason that is not',
-    'a string.',
+    'invisible to the engine. A Next.js `opengraph-image.jpg` is one, served by its filename alone,',
+    'and the oracle once confirmed such a file as genuinely dead. A person still has to ask whether',
+    'anything here is alive for a reason that is not a string.',
     '',
   );
 
