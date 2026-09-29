@@ -105,19 +105,21 @@ async function main(): Promise<void> {
     }
   }
 
-  stdout.write(`\n${'='.repeat(74)}\nR47's cohort, widened\n\n`);
+  stdout.write(
+    `\n${'='.repeat(74)}\nlossless WebP against webp ${LOSSY_QUALITY}, on every raster image in the corpus\n\n`,
+  );
   stdout.write(`  images measured : ${rows.length}\n`);
-  stdout.write(`  threw (R86)     : ${threw.length}\n`);
+  stdout.write(`  threw           : ${threw.length}\n`);
   for (const failure of threw.slice(0, 5)) {
     stdout.write(`      ${failure.repo}/${failure.relative}: ${failure.why}\n`);
   }
 
   const wins = rows.filter((row) => row.losslessWins);
   stdout.write(
-    `\n  🔴 lossless produces FEWER BYTES than webp ${LOSSY_QUALITY} : ${wins.length} of ${rows.length} (${pct(wins.length / Math.max(1, rows.length))})\n`,
+    `\n  lossless produces fewer bytes than webp ${LOSSY_QUALITY}     : ${wins.length} of ${rows.length} (${pct(wins.length / Math.max(1, rows.length))})\n`,
   );
   stdout.write(
-    `     on those images it beats the lossy encode by  : ${pct(median(wins.map((r) => (r.lossyBytes - r.losslessBytes) / r.lossyBytes)))} median\n`,
+    `    on those images it beats the lossy encode by : ${pct(median(wins.map((r) => (r.lossyBytes - r.losslessBytes) / r.lossyBytes)))} median\n`,
   );
 
   stdout.write('\n  by source format\n');
@@ -140,7 +142,7 @@ async function main(): Promise<void> {
   // sources only, so no decision rests on this row.
   if (rows.some((row) => row.source === '.gif')) {
     stdout.write(
-      '\n  ⚠️ the .gif row is WITHDRAWN: 26 of 78 corpus GIFs are animated and this\n     instrument encodes first frames only. Do not quote it. The other rows stand.\n',
+      '\n  the .gif row is withdrawn: 26 of 78 corpus GIFs are animated and this\n  instrument encodes first frames only. Do not quote it. The other rows stand.\n',
     );
   }
 
@@ -159,14 +161,14 @@ async function main(): Promise<void> {
     `    proposed (smaller of the two)  : ${(proposed / 1048576).toFixed(1)} MB  (${pct((original - proposed) / original)} saved)\n`,
   );
   stdout.write(
-    `    🔴 what the rule actually buys : ${pct((today - proposed) / today)} beyond today's default\n`,
+    `    what the rule actually buys    : ${pct((today - proposed) / today)} beyond today's default\n`,
   );
 
   // The bands below look for a cheap trigger. Encoding both costs a second encode on every
   // image, and a lossless encode costs about 1.3 times a lossy one. webp 80 saves little on
   // a text-heavy image, or grows it, so if lossless wins cluster where the lossy saving was
   // poor, the second encode could be spent only there.
-  stdout.write('  do the lossless wins concentrate where the LOSSY encode did badly?\n');
+  stdout.write('  do the lossless wins concentrate where the lossy encode did badly?\n');
   stdout.write('    lossy saving band     images   lossless wins   share\n');
   const bands: [string, (s: number) => boolean][] = [
     ['grew the file (<0%)', (s) => s < 0],
@@ -192,7 +194,7 @@ async function main(): Promise<void> {
     (row) => row.lossyBytes >= row.originalBytes && row.losslessBytes >= row.originalBytes,
   );
   stdout.write(
-    `\n  images where NEITHER encode beats the original : ${neither.length} (planner already drops these)\n\n`,
+    `\n  images where neither encode beats the original : ${neither.length} (planner already drops these)\n\n`,
   );
 }
 

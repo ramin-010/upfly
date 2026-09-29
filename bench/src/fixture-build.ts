@@ -566,7 +566,7 @@ async function runBaseline(fixture: FixtureSpec): Promise<string[]> {
   try {
     for (const [instrument, outcome] of await check(root, fixture)) {
       const ok = outcome.verdict === 'intact';
-      stdout.write(`  baseline ${instrument.padEnd(11)} ${ok ? 'intact' : 'BROKEN'}\n`);
+      stdout.write(`  baseline ${instrument.padEnd(11)} ${ok ? 'intact' : 'broken'}\n`);
       if (!ok) failures.push(`${fixture.name}/${instrument}: ${outcome.detail}`);
     }
   } finally {
@@ -591,7 +591,7 @@ async function runMutation(fixture: FixtureSpec, mutation: Mutation): Promise<Ro
         detail: outcome.detail,
       });
       stdout.write(
-        `  ${mutation.referenceClass.padEnd(21)} ${instrument.padEnd(11)} ${sighted ? 'sighted' : 'BLIND'}\n`,
+        `  ${mutation.referenceClass.padEnd(21)} ${instrument.padEnd(11)} ${sighted ? 'sighted' : 'blind'}\n`,
       );
     }
   } finally {
@@ -625,7 +625,7 @@ async function runOptimized(fixture: FixtureSpec, policy: PublicPolicy): Promise
     );
 
     if (result.refusal !== null) {
-      stdout.write(`  optimize    REFUSED  ${result.refusal.code}\n`);
+      stdout.write(`  optimize    refused  ${result.refusal.code}\n`);
       failures.push(`${fixture.name}/optimize refused: ${result.refusal.reason}`);
       return { failures, notExercised };
     }
@@ -653,14 +653,14 @@ async function runOptimized(fixture: FixtureSpec, policy: PublicPolicy): Promise
     }
     if (policy === 'replace' && deleted.length === 0) {
       stdout.write(
-        '  NOT EXERCISED: no original was deleted, so this tree says nothing about deleting\n',
+        '  not exercised: no original was deleted, so this tree says nothing about deleting\n',
       );
       notExercised.push(fixture.name);
     }
 
     for (const [instrument, outcome] of await check(root, fixture)) {
       const ok = outcome.verdict === 'intact';
-      stdout.write(`  optimized ${instrument.padEnd(11)} ${ok ? 'intact' : 'BROKEN'}\n`);
+      stdout.write(`  optimized ${instrument.padEnd(11)} ${ok ? 'intact' : 'broken'}\n`);
       if (!ok) failures.push(`${fixture.name}/${instrument}: ${outcome.detail}`);
     }
   } finally {
@@ -700,12 +700,12 @@ async function runExitCriterion(
     notExercised.push(...outcomes.notExercised);
   }
 
-  if (failures.length > 0) stdout.write('\nEXIT CRITERION FAILED\n');
+  if (failures.length > 0) stdout.write('\nexit criterion failed\n');
   else if (notExercised.length > 0) {
     stdout.write(
-      `\nEXIT CRITERION NOT DEMONSTRATED: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
+      `\nexit criterion not demonstrated: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
     );
-  } else stdout.write('\nEXIT CRITERION MET\n');
+  } else stdout.write('\nexit criterion met\n');
   for (const failure of failures) stdout.write(`  ${failure}\n`);
   exit(failures.length === 0 && notExercised.length === 0 ? 0 : 1);
 }
@@ -917,7 +917,7 @@ async function cliApply(copy: CliCopy, commits: number): Promise<boolean> {
   }
   if (copy.policy === 'replace' && written.removed.length === 0) {
     stdout.write(
-      '  NOT EXERCISED: no original was deleted, so this tree says nothing about deleting\n',
+      '  not exercised: no original was deleted, so this tree says nothing about deleting\n',
     );
     copy.notExercised.push(`${copy.fixture.name}${copy.nested ? ' (nested)' : ''}`);
   }
@@ -939,7 +939,7 @@ function cliSecondRun(copy: CliCopy, commits: number): void {
     failed(copy, 'the second run made a commit');
   }
   stdout.write(
-    `  cli second run  exit ${second.status}, ${wrote ? 'WROTE FILES' : 'nothing to do'}\n`,
+    `  cli second run  exit ${second.status}, ${wrote ? 'wrote files' : 'nothing to do'}\n`,
   );
 }
 
@@ -950,7 +950,7 @@ async function cliBuildAndRevert(
   const beforeBuild = await fingerprint(copy.project);
   for (const [instrument, outcome] of await check(copy.project, copy.fixture)) {
     const ok = outcome.verdict === 'intact';
-    stdout.write(`  cli ${instrument.padEnd(11)} ${ok ? 'intact' : 'BROKEN'}\n`);
+    stdout.write(`  cli ${instrument.padEnd(11)} ${ok ? 'intact' : 'broken'}\n`);
     if (!ok) failed(copy, `${instrument}: ${outcome.detail}`);
   }
   // A build can leave files of its own, such as a generated TypeScript declaration.
@@ -967,7 +967,7 @@ async function cliBuildAndRevert(
   const left = differences(original, reverted);
   if (left.length > 0) failed(copy, `git revert left ${left.join(', ')} different`);
   stdout.write(
-    `  cli git revert  ${left.length === 0 ? 'every byte back' : `${left.length} files DIFFERENT`}\n`,
+    `  cli git revert  ${left.length === 0 ? 'every byte back' : `${left.length} files different`}\n`,
   );
 }
 
@@ -995,7 +995,7 @@ async function runCliUndo(fixture: FixtureSpec, policy: PublicPolicy): Promise<s
       failures.push(`${fixture.name}: undo exited ${undo.status}: ${undo.stderr.trim()}`);
     if (left.length > 0) failures.push(`${fixture.name}: undo left ${left.join(', ')} different`);
     stdout.write(
-      `  cli undo        ${written.created.length + written.changed.length + written.removed.length} files written, ${left.length === 0 ? 'every byte back' : `${left.length} files DIFFERENT`}\n`,
+      `  cli undo        ${written.created.length + written.changed.length + written.removed.length} files written, ${left.length === 0 ? 'every byte back' : `${left.length} files different`}\n`,
     );
   } catch (error) {
     failures.push(`${fixture.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1030,12 +1030,12 @@ async function runCliCriterion(
     failures.push(...(await runCliUndo(fixture, policy)));
   }
 
-  if (failures.length > 0) stdout.write('\nCLI CRITERION FAILED\n');
+  if (failures.length > 0) stdout.write('\nCLI criterion failed\n');
   else if (notExercised.length > 0) {
     stdout.write(
-      `\nCLI CRITERION NOT DEMONSTRATED: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
+      `\nCLI criterion not demonstrated: every tree intact, but no original was deleted in ${notExercised.join(', ')}\n`,
     );
-  } else stdout.write('\nCLI CRITERION MET\n');
+  } else stdout.write('\nCLI criterion met\n');
   for (const failure of failures) stdout.write(`  ${failure}\n`);
   exit(failures.length === 0 && notExercised.length === 0 ? 0 : 1);
 }
@@ -1083,7 +1083,7 @@ async function main(): Promise<void> {
   await writeReport(rows, baselineFailures);
 
   if (baselineFailures.length > 0) {
-    stdout.write('\nBASELINE FAILED; the harness cannot vouch for anything:\n');
+    stdout.write('\nbaseline failed; the harness cannot vouch for anything:\n');
     for (const failure of baselineFailures) stdout.write(`  ${failure}\n`);
     exit(1);
   }
@@ -1096,7 +1096,7 @@ async function main(): Promise<void> {
   );
 
   if (unseen.length > 0) {
-    stdout.write(`\n⚠️  ${unseen.length} (fixture, class) pairs no instrument can see:\n`);
+    stdout.write(`\n${unseen.length} (fixture, class) pairs no instrument can see:\n`);
     for (const hole of unseen) stdout.write(`  ${hole}\n`);
   }
 }
@@ -1119,7 +1119,7 @@ async function writeReport(
     '# Fixture build harness: what each instrument can actually see',
     '',
     'Generated by `bench/src/fixture-build.ts`. Each row is one deliberately broken',
-    'reference. **sighted** means the instrument reported the tree broken; **BLIND**',
+    'reference. `sighted` means the instrument reported the tree broken; `blind`',
     'means it reported the tree intact while a reference pointed at nothing.',
     '',
     '| fixture | reference class | instrument | verdict |',
@@ -1128,7 +1128,7 @@ async function writeReport(
 
   for (const row of rows) {
     lines.push(
-      `| ${row.fixture} | ${row.referenceClass} | ${row.instrument} | ${row.sighted ? 'sighted' : '**BLIND**'} |`,
+      `| ${row.fixture} | ${row.referenceClass} | ${row.instrument} | ${row.sighted ? 'sighted' : 'blind'} |`,
     );
   }
 
