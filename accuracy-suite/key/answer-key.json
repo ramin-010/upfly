@@ -93,7 +93,7 @@
     {
       "id": "html.video.src",
       "label": "video@src",
-      "motivation": "Points at a real file the engine does not index — the out-of-scope case that is not a URL."
+      "motivation": "Points at a real file the engine does not index: the out-of-scope case that is not a URL."
     },
     {
       "id": "html.video.poster",
@@ -304,7 +304,7 @@
     {
       "id": "js.import.alias.unmapped",
       "label": "import through an alias that maps nowhere",
-      "motivation": "Its own bucket. Not broken, not dynamic — unmapped."
+      "motivation": "Its own bucket. Not broken, not dynamic, but unmapped."
     },
     {
       "id": "path.bare-specifier",
@@ -415,7 +415,7 @@
     {
       "id": "md.style-attribute",
       "label": "a style attribute inside markdown",
-      "motivation": "CSS inside HTML inside markdown — three parsers deep."
+      "motivation": "CSS inside HTML inside markdown, three parsers deep."
     },
     {
       "id": "md.prose-mention",
@@ -567,7 +567,7 @@
     {
       "id": "decoy.query-or-hash",
       "label": "a real file with a query string or fragment",
-      "motivation": "Not a decoy in the end — these resolve. Kept in the row because they look like one and are the case an over-eager stripper gets wrong in the other direction."
+      "motivation": "Not a decoy in the end: these resolve. Kept in the row because they look like one and are the case an over-eager stripper gets wrong in the other direction."
     },
     {
       "id": "path.data-uri",
@@ -1409,7 +1409,7 @@
           "occurrence": 2,
           "shape": "mdx.import",
           "expect": "resolved",
-          "why": "A third — and the same path the frontmatter above already names, so one file carries it in two positions with two different outcomes expected today.",
+          "why": "A third, and the same path the frontmatter above already names, so one file carries it in two positions with two different outcomes expected today.",
           "target": "apps/docs/public/brand.png",
           "offset": 271,
           "line": 10,
@@ -1835,7 +1835,7 @@
           "occurrence": 2,
           "shape": "md.style-attribute",
           "expect": "resolved",
-          "why": "CSS inside an HTML attribute inside markdown — three parsers deep.",
+          "why": "CSS inside an HTML attribute inside markdown, three parsers deep.",
           "target": "apps/docs/public/brand.png",
           "offset": 1367,
           "line": 54,
@@ -1857,7 +1857,7 @@
           "occurrence": 4,
           "shape": "md.style-attribute",
           "expect": "resolved",
-          "why": "A third, with the quotes written as &quot; entities — a character reference inside CSS inside HTML inside markdown.",
+          "why": "A third, with the quotes written as &quot; entities: a character reference inside CSS inside HTML inside markdown.",
           "decoded": "/logo.png",
           "target": "apps/docs/public/logo.png",
           "offset": 1553,
@@ -2190,7 +2190,7 @@
           "occurrence": 1,
           "shape": "astro.import.frontmatter",
           "expect": "resolved",
-          "why": "A third, imported and never used — which is still a reference.",
+          "why": "A third, imported and never used, which is still a reference.",
           "target": "apps/docs/public/img/screenshot.png",
           "offset": 122,
           "line": 4,
@@ -2907,7 +2907,7 @@
           "occurrence": 1,
           "shape": "html.img.src",
           "expect": "resolved",
-          "why": "A bare relative path — no leading dot, no leading slash.",
+          "why": "A bare relative path, with no leading dot and no leading slash.",
           "target": "apps/web/src/assets/inline-logo.jpg",
           "offset": 2802,
           "line": 79,
@@ -3202,7 +3202,7 @@
           "occurrence": 1,
           "shape": "html.iframe.src",
           "expect": "discarded",
-          "why": "An iframe pointing at a real HTML page. A document is never an asset, and reporting this would be a false finding. Note the token scan cannot see this line — .html is not an asset extension — so the key lists it without the scan demanding it.",
+          "why": "An iframe pointing at a real HTML page. A document is never an asset, and reporting this would be a false finding. Note the token scan cannot see this line, since .html is not an asset extension, so the key lists it without the scan demanding it.",
           "offset": 1875,
           "line": 43,
           "column": 18
@@ -3232,7 +3232,7 @@
           "occurrence": 2,
           "shape": "html.video.poster",
           "expect": "resolved",
-          "why": "The same poster on that second video — one file, two references.",
+          "why": "The same poster on that second video: one file, two references.",
           "target": "apps/web/public/media/poster.jpg",
           "offset": 2177,
           "line": 47,
@@ -4459,7 +4459,7 @@
           "occurrence": 1,
           "shape": "js.cssinjs",
           "expect": "resolved",
-          "why": "CSS inside a tagged template literal — CSS the CSS adapter never sees.",
+          "why": "CSS inside a tagged template literal, which the CSS adapter never sees.",
           "target": "apps/web/public/img/banner.png",
           "offset": 300,
           "line": 7,
@@ -4533,7 +4533,7 @@
           "occurrence": 1,
           "shape": "js.template.pattern",
           "expect": "resolved-pattern",
-          "why": "An interpolation inside CSS inside a template literal — two levels of quoting deep.",
+          "why": "An interpolation inside CSS inside a template literal, two levels of quoting deep.",
           "target": [
             "apps/web/public/theme-light.png",
             "apps/web/public/theme-dark.png",
@@ -4672,7 +4672,7 @@
           "occurrence": 1,
           "shape": "js.import.alias.unmapped",
           "expect": "unresolved-alias",
-          "why": "Alias-shaped with no rule. Not broken — we never established where it points.",
+          "why": "Alias-shaped with no rule. Not broken, because we never established where it points.",
           "offset": 248,
           "line": 6,
           "column": 27
@@ -5537,7 +5537,7 @@
           "occurrence": 1,
           "shape": "decoy.comment",
           "expect": "discarded",
-          "why": "A second comment naming a file that really exists — which is what makes it a decoy rather than a typo.",
+          "why": "A second comment naming a file that really exists, which is what makes it a decoy rather than a typo.",
           "offset": 433,
           "line": 10,
           "column": 28
@@ -6108,7 +6108,7 @@
           "occurrence": 1,
           "shape": "json.config.glob",
           "expect": "discarded",
-          "why": "A third, with a real directory prefix in front of the wildcard — which is the one a glob-aware resolver is most tempted by.",
+          "why": "A third, with a real directory prefix in front of the wildcard, which is the one a glob-aware resolver is most tempted by.",
           "offset": 777,
           "line": 23,
           "column": 48
@@ -6513,7 +6513,7 @@
           "occurrence": 1,
           "shape": "unread.erb",
           "expect": "broken",
-          "why": "An asset-pipeline URL. legacy/public is the serving root, and it holds no assets/ directory — so this is broken even though a file called emblem.png exists elsewhere.",
+          "why": "An asset-pipeline URL. legacy/public is the serving root, and it holds no assets/ directory, so this is broken even though a file called emblem.png exists elsewhere.",
           "knownGap": "No adapter reads .erb files.",
           "offset": 52,
           "line": 2,
