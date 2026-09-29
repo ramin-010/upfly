@@ -33,7 +33,7 @@ import type {
   ResolvedVia,
 } from '../types.js';
 import type { AliasMap } from './aliases.js';
-import { expandAlias, matchingRule } from './aliases.js';
+import { expandAlias, matchingRule, viteRootOf } from './aliases.js';
 import { provenPath } from './reference.js';
 
 /**
@@ -592,10 +592,12 @@ function resolveGlob(
 
 /**
  * The assets one glob pattern matches, from the first base that holds any. The bases are
- * Vite's: `./` and `../` start at the module's folder, and anything else not rooted goes
- * through a declared alias. A `/` pattern is tried against the serving roots and then the
- * project root, as any root-relative pattern is. One that starts with `**` matches at any
- * depth, which inside the project is the same as from its root.
+ * Vite's: `./` and `../` start at the module's folder, anything else not rooted goes through a
+ * declared alias, and `/` starts at the root the nearest Vite config serves the file from, the
+ * app's folder in a monorepo. A `/` pattern is then tried against the serving roots and the
+ * project root, as any root-relative pattern is, since a glob keeps what it links and a link
+ * missed would call a loaded image unused. One that starts with `**` matches at any depth,
+ * which inside the project is the same as from its root.
  */
 function globMatches(
   pattern: string,
@@ -606,6 +608,7 @@ function globMatches(
   const candidates: readonly Candidate[] = pattern.startsWith('**')
     ? [{ path: posix.join(toPosix(resolvePath(context.root)), pattern), via: 'project-root' }]
     : [
+        ...fromViteRoot(pattern, raw, context),
         ...candidatePaths(pattern, raw, context.root, context.publicDirs),
         ...(isAliasShaped(pattern, raw.kind)
           ? throughDeclared(pattern, raw, context).map((path) => ({
@@ -619,6 +622,12 @@ function globMatches(
     if (matches.length > 0) return { matches, via: candidate.via };
   }
   return { matches: [], via: 'file' };
+}
+
+/** A `/` pattern read from the root the nearest Vite config serves the file from, if any. */
+function fromViteRoot(pattern: string, raw: RawReference, context: ResolveContext): Candidate[] {
+  const root = pattern.startsWith('/') ? viteRootOf(context.aliases, raw.file) : null;
+  return root === null ? [] : [{ path: posix.join(root, pattern), via: 'serving-root' }];
 }
 
 /**

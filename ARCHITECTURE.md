@@ -194,8 +194,11 @@ text is glob syntax rather than a path with holes, so `RawReference.glob` marks 
 reads it as picomatch, the matcher behind Vite's globbing, reads it: `*` and `?` stay in one
 folder, a `**` segment crosses any number, `[...]` is a class and `{a,b}` offers alternatives, and
 a wildcard skips a leading dot unless the call sets `exhaustive`. Its base is Vite's: `./` and `../`
-from the module's folder, anything unrooted through a declared alias, and `/` through the serving
-roots and then the project root, as any root-relative pattern is tried. The call's `!` patterns
+from the module's folder, anything unrooted through a declared alias, and `/` from Vite's own root
+(`posix.join(root, glob.slice(1))` in Vite's `toAbsoluteGlob`): the `root` the nearest Vite config
+names, else its folder, which in a monorepo is the app's. A `/` pattern is then tried against the
+serving roots and the project root, as any root-relative pattern is, since a glob keeps what it
+links and a link missed would call a loaded image unused. The call's `!` patterns
 remove what they match from every pattern in the call. A folder in the base is matched literally,
 as Vite escapes it, so `[draft]/` is no class. Syntax this does not read (an extglob, a `{1..3}`
 range) leaves the pattern `dynamic` rather than misread, and a glob that can name only non-images,

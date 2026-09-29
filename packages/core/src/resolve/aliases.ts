@@ -250,6 +250,16 @@ export function expandAlias(
 }
 
 /**
+ * The absolute POSIX folder the nearest Vite config serves `fromFile`'s project from, or `null`
+ * when no Vite config serves it, or the map records none. Vite reads a glob that starts with
+ * `/` from there.
+ */
+export function viteRootOf(map: AliasMap, fromFile: string): string | null {
+  const from = toPosix(fromFile);
+  return map.viteConfigs?.find((config) => serves(config.scope, from))?.root ?? null;
+}
+
+/**
  * The one rule that maps `rawPath` written in `fromFile`, chosen as the tool that applies it
  * chooses, or `null`. A file is built by its nearest Vite config and typed by its nearest
  * tsconfig, so only those two configs' rules apply, Vite's first. Vite takes the first alias

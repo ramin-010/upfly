@@ -1835,6 +1835,44 @@ describe('a backslash left in a spelling', () => {
   });
 });
 
+describe("rung 2: a glob that starts with `/`, read from Vite's root", () => {
+  // In a monorepo Vite runs from the app's folder, so `/src/img/*.png` written in `apps/web`
+  // names `apps/web/src/img/one.png`, not a `src/img` at the project root.
+  const assets = [asset('apps/web/src/img/one.png'), asset('apps/web/site/img/two.png')];
+
+  function fromApp(pattern: string, root: string): readonly string[] | string {
+    const app = toPosix(join(ROOT, 'apps/web'));
+    const [reference] = resolveReferences(
+      [
+        raw({
+          rawPath: pattern,
+          file: join(ROOT, 'apps/web/src/gallery.ts'),
+          shape: 'js.import.meta.glob',
+          ceiling: 'medium',
+          glob: { exclude: [], dot: false },
+        }),
+      ],
+      {
+        root: ROOT,
+        assets,
+        servingRoots: CONVENTIONAL_SERVING_ROOTS,
+        aliases: { rules: [], viteConfigs: [{ scope: app, root: `${app}${root}` }], skipped: [] },
+        exists: NOTHING_EXISTS,
+      },
+    );
+    if (reference === undefined) return 'dropped';
+    return isLinked(reference) ? linkedPaths(reference) : reference.resolution;
+  }
+
+  it('matches from the folder of the Vite config that builds the file', () => {
+    expect(fromApp('/src/img/*.png', '')).toEqual([join(ROOT, 'apps/web/src/img/one.png')]);
+  });
+
+  it('matches from the root that config names, when it names one', () => {
+    expect(fromApp('/img/*.png', '/site')).toEqual([join(ROOT, 'apps/web/site/img/two.png')]);
+  });
+});
+
 describe("rung 2: a bundler's glob, read as Vite globs it", () => {
   const assets = [
     'src/img/one.png',
