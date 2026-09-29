@@ -481,12 +481,12 @@ So two things happen below a floor:
 **The measure is deliberately narrow: root-relative references only, linked over linked-plus-broken.**
 Only those depend on a serving root. Root-relative is read from the path a reference's text proves
 (`provenPath`), in the measure, the withheld list, the audit's split and the pattern list alike, so
-`'/img' + '/x.png'` counts though its text starts with a quote. A repository whose *relative* imports are genuinely broken
-scores normally and keeps every one of its findings, which makes the diagnosis correct by
-construction rather than merely the likeliest explanation. Dynamic, discarded, alias-shaped and
-out-of-scope references are excluded too: a discarded path-shaped string out of a lockfile is no
-evidence about a serving root, and counting it would make a large `package.json` look like a
-misconfiguration.
+`'/img' + '/x.png'` counts though its text starts with a quote. A repository whose *relative*
+imports are genuinely broken scores normally and keeps every one of its findings, which makes the
+diagnosis correct by construction rather than merely the likeliest explanation. Dynamic, discarded,
+alias-shaped and out-of-scope references are excluded too: a discarded path-shaped string out of a
+lockfile is no evidence about a serving root, and counting it would make a large `package.json` look
+like a misconfiguration.
 
 **The floor is 25%, and it was measured rather than chosen.** Across the five validation
 repositories, root-relative references only:
@@ -674,13 +674,14 @@ neither what the author wrote nor the file's name, and looking it up would miss,
 asserted reference means a `broken` finding. The decoder knows numeric references (`&#38;`,
 `&#x26;`) and every named reference the HTML specification defines, taken from parse5's table:
 each name is decoded once inside an attribute value, where it counts only whole and with its
-semicolon. What reads a path decides which references it holds, so there is one decoder per
-reading context (`characterReferencesReadIn`). An HTML parser decodes an attribute, the CSS inside
-a style attribute and a JSX attribute's string, and CommonMark decodes a link destination's names
-the same way, so `![](caf&eacute;.png)` names `café.png`, as `<img src="caf&eacute;.png">` does. A
-`.css` file, a `<style>` body, a `new URL` name, JavaScript and JSON decode none: in a stylesheet
-`url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. A `<style>` body inside Markdown
-is read the same way: its CSS takes a shape of its own, `md.style-element`, rather than the style
+semicolon. What reads a path decides which character references in it are decoded, and how:
+`characterReferencesReadIn` picks HTML's decoder, CommonMark's, or none, from the reference's kind
+and shape. An HTML parser decodes an attribute, the CSS inside a style attribute and a JSX
+attribute's string, and CommonMark decodes a link destination's names the same way, so
+`![](caf&eacute;.png)` names `café.png`, as `<img src="caf&eacute;.png">` does. A `.css` file, a
+`<style>` body, a `new URL` name, JavaScript and JSON decode none: in a stylesheet
+`url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. A `<style>` body inside Markdown is
+read the same way: its CSS takes a shape of its own, `md.style-element`, rather than the style
 attribute's, since the shape picks the decoder. The two decoders read a number differently. HTML
 reads any number of digits, so `&#00000065;` is `A`, and a number from 128 to 159 through the
 Windows-1252 table, as parse5 does with the table of its `entities` dependency, so `&#128;uro.png`
@@ -694,22 +695,22 @@ In a Markdown destination a backslash before an ASCII punctuation character is a
 CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names
 `my_photo.png`, and `\&eacute;` is the text `&eacute;`, since an escaped `&` starts no reference.
 So for a reference of kind `md`, `spellingsOf` offers that reading, recorded as `markdown-escapes`
-when the path holds an escape. Nowhere else is a backslash an escape. In an attribute's URL (in
-HTML or JSX, or a `new URL` name) one left after decoding is read as a slash, as the URL parser
-reads it on every platform (`readAsUrl`): `<img src="img\photo.png">` loads `img/photo.png` on
-Linux as on Windows, and `\\cdn/x.png` in an attribute is another host's. A Markdown destination
-is not read that way. Most renderers (markdown-it, micromark, commonmark.js, cmark-gfm) write a
-backslash CommonMark keeps, as in `img\photo.png`, `img\\photo.png` or `img&#92;photo.png`, as
-`%5C`, and a browser keeps a `%5C` as written, so only a renderer that passes the backslash
-through, or a Windows server, finds the folder. The Markdown adapter refuses such a destination
-as `unsafe`, and every adapter refuses a `%5C` in a URL the same way (`holdsEncodedBackslash`),
-each only while the path could name an image: nothing rewrites it, and the name search hedges
-the image it names rather than calling it dead. A drive path names a place on a disk rather than
-a folder, and keeps its own reading. In CSS a backslash is an escape, and the CSS adapter reports
-a path holding one as `unsafe`; a JavaScript string writes one only as an escape, and keeps it.
-Whatever is left, the resolver looks up no spelling that still holds a backslash, since Windows
-path rules read one as a folder separator and every other platform's as part of a name; the
-drive path, read with Windows rules everywhere, is the exception.
+when the path holds an escape. Nowhere else does `spellingsOf` read a backslash as an escape. In an
+attribute's URL (in HTML or JSX, or a `new URL` name) one left after decoding is read as a slash, as
+the URL parser reads it on every platform (`readAsUrl`): `<img src="img\photo.png">` loads
+`img/photo.png` on Linux as on Windows, and `\\cdn/x.png` in an attribute is another host's. A
+Markdown destination is not read that way. Most renderers (markdown-it, micromark, commonmark.js,
+cmark-gfm) write a backslash CommonMark keeps, as in `img\photo.png`, `img\\photo.png` or
+`img&#92;photo.png`, as `%5C`, and a browser keeps a `%5C` as written, so only a renderer that
+passes the backslash through, or a Windows server, finds the folder. The Markdown adapter refuses
+such a destination as `unsafe`, and every adapter refuses a `%5C` in a URL the same way
+(`holdsEncodedBackslash`), each only while the path could name an image: nothing rewrites it, and
+the name search hedges the image it names rather than calling it dead. A drive path names a place on
+a disk rather than a folder, and keeps its own reading. In CSS a backslash is an escape, and the CSS
+adapter reports a path holding one as `unsafe`; a JavaScript string writes one only as an escape,
+and keeps it. Whatever is left, the resolver looks up no spelling that still holds a backslash,
+since Windows path rules read one as a folder separator and every other platform's as part of a
+name; the drive path, read with Windows rules everywhere, is the exception.
 
 The spellings are tried one at a time, so a path that needs both decodings, such as
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
@@ -719,14 +720,13 @@ reads `hero%20image.png`, which a server decodes again), is therefore reported a
 Markdown adapter, a refusal with a reason instead of a ceiling that leads to a lookup. That holds
 only while some reading of the path ends in an image extension: as written or as CommonMark reads
 it, where an unknown name stays text, each also percent-decoded. `/wiki/AT&T;` shows none, so it
-names no image whatever `&T;`
-meant; it is kept like any other link, and the resolver drops it. The HTML adapter refuses the same
-character-reference paths, and also any whose decoded spelling differs from parse5's reading of the
-attribute, as when a legacy name such as `&copy` is written without its semicolon: parse5 still
-decodes it before a `.`, and our decoder does not. It too refuses one only while some reading ends
-in an image extension, as written or as parse5 reads it, each also percent-decoded
-(`attributeCouldNameAnImage`): `/avatar/AT&amp;T&x;` is kept like any other value, and the
-resolver drops it.
+names no image whatever `&T;` meant; it is kept like any other link, and the resolver drops it. The
+HTML adapter refuses the same character-reference paths, and also any whose decoded spelling differs
+from parse5's reading of the attribute, as when a legacy name such as `&copy` is written without its
+semicolon: parse5 still decodes it before a `.`, and our decoder does not. It too refuses one only
+while some reading ends in an image extension, as written or as parse5 reads it, each also
+percent-decoded (`attributeCouldNameAnImage`): `/avatar/AT&amp;T&x;` is kept like any other value,
+and the resolver drops it.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
@@ -735,14 +735,15 @@ hold. It percent-encodes each segment separately, leaving the slashes alone, and
 spelling re-encodes only `&`, because inventing entities for other characters would change text the
 author did not write. A Markdown destination is written so that CommonMark reads it as the file,
 bare or in angle brackets, since the reference does not record which: `\`, `&`, `<`, `>` and both
-parentheses are escaped with a backslash (an unmatched parenthesis ends a bare destination), and a
-literal path that needs no escape stays as written. No backslash escapes a space or a control
-character, `#` and `?` would start a fragment or a query, and a server decodes a percent-escape a
-name holds, so a name with any of them is written wholly percent-encoded, parentheses included:
-the resolver decodes an escape or a percent-escape, never both. The optimize planner re-spells
-nothing: it swaps the extension in the text as written, so `my\_photo.png` becomes
-`my\_photo.webp`, which reads as the converted file. How the HTML adapter finds these spellings in
-attributes, `style` included, is under "Character references in HTML attributes".
+parentheses are escaped with a backslash (an unmatched parenthesis ends a bare destination), though
+`&` is written `&amp;` where the author wrote character references, and a literal path that needs no
+escape stays as written. No backslash escapes a space or a control character, `#` and `?` would
+start a fragment or a query, and a server decodes a percent-escape a name holds, so a name with any
+of them is written wholly percent-encoded, parentheses included: the resolver decodes an escape or a
+percent-escape, never both. The optimize planner re-spells nothing: it swaps the extension in the
+text as written, so `my\_photo.png` becomes `my\_photo.webp`, which reads as the converted file. How
+the HTML adapter finds these spellings in attributes, `style` included, is under "Character
+references in HTML attributes".
 
 ### `possibly-dead`, and why "zero references" is usually a lie
 
@@ -788,16 +789,15 @@ both, and in any script: `Zaječar (2).jpg` and `Рисунок3.png` are found 
 fast, and walks left by code point over letters, digits and combining marks of any script, emoji
 (with the joiner, skin tones and flag letters their sequences use), U+FFFD, which stands for bytes
 a name held that were not UTF-8, and `_@.-`; a pattern with that class in front of the extension
-retried it from every letter of every
-word and ran several times slower. From each token the search walks left over up to six
-space-separated words, so
-`Firing Practice.webp` is found whole. A second pass starts at each image extension and walks
-left for names that hold parentheses in balanced pairs: `hero (1).png` is the name a browser
-gives a second download of `hero.png`. The pass is separate because parentheses in the token
-would change what it finds, `url(hero.png` in place of `hero.png` in `url(hero.png)`. A third,
-from the same extensions, reads a run that holds `%`, and only such a run: it yields the run as
-written, since a file's name may hold `%`, and percent-decoded, as a URL names a file, so
-`/img/vue%20photo.png` in a file no adapter reads names `vue photo.png`.
+would retry it from every letter of every word, several times slower. From each token the search
+walks left over up to six space-separated words, so `Firing Practice.webp` is found whole. A second
+pass starts at each image extension and walks left for names that hold parentheses in balanced
+pairs: `hero (1).png` is the name a browser gives a second download of `hero.png`. The pass is
+separate because parentheses in the token would change what it finds, `url(hero.png` in place of
+`hero.png` in `url(hero.png)`. A third, from the same extensions, reads a run that holds `%`, and
+only such a run: it yields the run as written, since a file's name may hold `%`, and
+percent-decoded, as a URL names a file, so `/img/vue%20photo.png` in a file no adapter reads names
+`vue photo.png`.
 
 The unresolved paths it reads are those of references whose target is unknown: `dynamic`,
 `unresolved-alias`, `discarded`, and the root-relative `broken` references that a run with no
@@ -969,20 +969,20 @@ same thing written in Markdown, so it has its own shape, `md.link`, with the sam
 embed, `![alt](path)`, stays `md.image` and is repointed. A link definition, `[label]: path`, is
 repointed only when images alone use it: one that a plain reference link uses (`[text][label]`,
 `[label][]` or `[label]`) is `md.reference-definition.link`, with the link's rule, even where an
-image shares it. The rule lives on the shape, as
-`formatKept` in `SHAPES`, where the planner reads it; see "A link says the asset is alive" for what
-it does there. Because the shape carries the rule, it survives where another shape would otherwise take
-over: a percent-encoded or entity-encoded spelling, Markdown's and Astro's relabelling of what the
-HTML adapter found, and a JSX template, which elsewhere takes a template's shape. A JSX value at
-such a position that is not one string or template is not one path, so each path found inside it
-is read as it would be anywhere else: a branch of a choice, a literal or a pattern in a `+` chain,
-a call's argument in `content={absolute('/og.png')}`, a `require()` or a `new URL(…)`. Each takes
-the position's shape once the walk ends (`withPositionShape`), as everything an Astro braced value
-yields does. Under its own shape a guess that resolved could be repointed. The innermost attribute
-value decides, and a link asks its claim of each path found, so a PDF inside a link keeps the
-shape it was found with. A link's claim reads the value's text, so a link whose value has none of
-its own, such as `href={photo || '/img/team.jpg'}`, is not declined at the element: each path in
-it is judged by the claim the same way.
+image shares it. The rule lives on the shape, as `formatKept` in `SHAPES`, where the planner reads
+it; see "A link says the asset is alive" for what it does there. Because the shape carries the rule,
+it survives where another shape would otherwise take over: a percent-encoded or entity-encoded
+spelling, Markdown's and Astro's relabelling of what the HTML adapter found, and a JSX template,
+which elsewhere takes a template's shape. A JSX value at such a position that is not one string or
+template is not one path, so each path found inside it is read as it would be anywhere else: a
+branch of a choice, a literal or a pattern in a `+` chain, a call's argument in
+`content={absolute('/og.png')}`, a `require()` or a `new URL(…)`. Each takes the position's shape
+once the walk ends (`withPositionShape`), as everything an Astro braced value yields does. Under its
+own shape a guess that resolved could be repointed. The innermost attribute value decides, and a
+link asks its claim of each path found, so a PDF inside a link keeps the shape it was found with. A
+link's claim reads the value's text, so a link whose value has none of its own, such as
+`href={photo || '/img/team.jpg'}`, is not declined at the element: each path in it is judged by the
+claim the same way.
 
 The HTML adapter reads a `<template>`'s content as well as its children. parse5 keeps a
 template's markup in a separate fragment, and that markup is live: a script clones it into the
@@ -1245,8 +1245,8 @@ attribute as unread:
    which our decoder leaves alone, so where the two disagree the offsets would describe text the
    browser never saw. This comparison is what makes a bounded decoder safe to use.
 3. Each mapped range starts within the attribute, runs forwards, and, decoded, is the path the CSS
-   adapter found, so a map off by any amount is refused. `html.guard.test.ts` checks it against the
-   map the decoder built when an emoji a reference spelled got one entry for its two code units.
+   adapter found, so a map off by any amount is refused. `html.guard.test.ts` checks it against a
+   map with one entry per code point, which gives an emoji's two code units one entry.
 
 An unread `style` attribute, whether escaped beyond these guards or simply not valid CSS, is
 reported with a note saying whether its CSS contains `url()` or `image-set()`. Without one there is
@@ -1611,14 +1611,14 @@ An embedded colour profile whose primaries are sRGB's is converted through and d
 does by default, so an ordinary photo pays nothing for it. sRGB is named as the target
 (`withIccProfile('srgb', { attach: false })`): left to the default, a 16-bit image ends in another
 space's numbers once the profile is dropped, and pure red was written as 234, 51, 34; for any other
-image the bytes are the same. Any other RGB profile, Display P3 and
-wider, is kept with the numbers it describes (sharp's `keepIccProfile`): converting through it into
-sRGB would bring its most saturated colours inside sRGB, and a wide-gamut screen would show them
-duller than the original. The kept profile costs its own bytes, about half a kilobyte for Display P3,
-and since the measuring encode and the written one make the same choice, the saving shown includes
-that cost. A grey or CMYK profile cannot describe the RGB that WebP and AVIF store, so it is converted
-as before. A profile that records no primaries is kept, since nothing short of converting through it
-tells whether its colours fit inside sRGB.
+image the bytes are the same. Any other RGB profile, Display P3 and wider, is kept with the numbers
+it describes (sharp's `keepIccProfile`): converting through it into sRGB would bring its most
+saturated colours inside sRGB, and a wide-gamut screen would show them duller than the original. The
+kept profile costs its own bytes, about half a kilobyte for Display P3, and since the measuring
+encode and the written one make the same choice, the saving shown includes that cost. A grey or CMYK
+profile cannot describe the RGB that WebP and AVIF store, so it is converted into sRGB. A profile
+that records no primaries is kept, since nothing short of converting through it tells whether its
+colours fit inside sRGB.
 
 ### Lossless WebP for PNG sources
 
@@ -1860,8 +1860,8 @@ folder `--exclude` names still takes the page. `optimize` gives the planner a wa
 directory, and a file the walk did not index is found by listing each directory on the way to a
 place a path could lead: inside the project, and under an alias target outside it, since
 `../shared/*` in a monorepo package can reach a file there first. Only names are read, never a
-file, and the disk is only read. The resolver's optional `unindexed` port asks for it wherever its index misses, in
-the order it looks, and both sides of the comparison are read that way.
+file, and the disk is only read. The resolver's optional `unindexed` port asks for it wherever its
+index misses, in the order it looks, and both sides of the comparison are read that way.
 
 The check folds case on every platform, as the collision check does (see "Two paths are the same
 file more often than they look"): on Windows and macOS `/img/logo.webp` loads a nearer `Logo.webp`,
@@ -1950,12 +1950,12 @@ another run changed after this run staged is refused anyway.
 `commit` and `revert` each take the lock for their whole duration, so a caller that uses the
 transaction directly is covered. `optimize` also takes it before the encodes and holds it until
 `commit` returns, so no other run can start and finish while this run encodes, or between its
-checks and its first manifest write. The holds nest: a run may take the lock again while it holds it, and releasing a
-nested hold does nothing, so an inner `commit` finishing does not unlock the run around it.
-Re-entry needs both the same run id and the same process. A process id alone cannot tell apart two
-runs in one process, as an editor extension would have; a run id alone would let an `undo` started
-from a second terminal, which reads the run id from the manifest, walk into that run while it is
-still writing.
+checks and its first manifest write. The holds nest: a run may take the lock again while it holds
+it, and releasing a nested hold does nothing, so an inner `commit` finishing does not unlock the run
+around it. Re-entry needs both the same run id and the same process. A process id alone cannot tell
+apart two runs in one process, as an editor extension would have; a run id alone would let an `undo`
+started from a second terminal, which reads the run id from the manifest, walk into that run while
+it is still writing.
 
 The lock file is made with an exclusive create (`O_EXCL`), never by checking for it and then writing
 it, since two runs could both see no lock and both write one. That is why `FileStore` has a
@@ -2239,12 +2239,11 @@ The default is the unflattering one. Whether an answer exists is the engine's ow
 reference counts as `correctly-refused` only when a property from the closed list `REFUSAL_REASONS`
 holds for it: a path assembled at render time, a target outside what Upfly acts on, or a style
 attribute the adapter could not read that holds no url-taking function once parse5 has decoded it
-(`url&#40;` is one). Each is a fact about the
-reference, never "the engine cannot handle it". Everything else is `missed-with-an-answer`, including
-an alias that no config the engine can read declares, since a bundler config it did not read may
-well resolve it. Adding a reason moves references from missed to correctly refused and raises the
-accuracy figure, which is why it has to be a visible edit to one list rather than a condition
-somewhere else.
+(`url&#40;` is one). Each is a fact about the reference, never "the engine cannot handle it".
+Everything else is `missed-with-an-answer`, including an alias that no config the engine can read
+declares, since a bundler config it did not read may well resolve it. Adding a reason moves
+references from missed to correctly refused and raises the accuracy figure, which is why it has to
+be a visible edit to one list rather than a condition somewhere else.
 
 Refusals are listed, not only counted. Each entry in `references.unsafe` carries its
 `refusalReason`, so a reader can dispute a single refusal. A reason known to over-claim carries a
