@@ -209,7 +209,7 @@ export const SHAPES = [
       "tooltip's `title`, an `alt`, a custom attribute, or `data-src` and `imagesrcset`, " +
       'which a lazy-loading script or the browser may load and Upfly does not read yet. The ' +
       'HTML reader returns it as a declined value, which the resolver discards and the report ' +
-      "counts under the attribute's name, so the report never says nothing was skipped.",
+      "counts under the attribute's name, so the report shows what was skipped.",
   },
   {
     id: 'html.style.element',
@@ -349,9 +349,10 @@ export const SHAPES = [
     why:
       '`new URL(path, import.meta.url)`, the asset-reference pattern Vite and webpack 5 both ' +
       'document, emitted by the JavaScript adapter. Its path is a URL resolved against the ' +
-      "module's own URL, so a bare name is a file beside the module. Vite reads it first: " +
-      'through its aliases before the module folder, then as a package, so a name a package ' +
-      'holds is `out-of-scope` and one found nowhere is `broken`.',
+      "module's own URL, so a bare name is a file beside the module. Vite reads the name " +
+      'before the browser does: through its aliases, then beside the module, then as a ' +
+      'package. A name an alias maps and misses is `unresolved-alias`, one a package holds ' +
+      '`out-of-scope`, and one found nowhere else `broken`.',
   },
   {
     id: 'js.import.meta.glob',
@@ -359,10 +360,11 @@ export const SHAPES = [
     emission: 'engine',
     why:
       "Vite's glob import, emitted by the JavaScript adapter once for each pattern the call " +
-      'names, one string or an array of them. Each is globbed as Vite globs it, from the ' +
-      "module's folder, the project root or an alias, and a `!` pattern removes what it " +
-      'matches from every pattern in the call. The glob links each asset it matches and is ' +
-      'never rewritten, so `--replace` keeps their originals.',
+      'names, one string or an array of them. Each is globbed from the base Vite gives it: the ' +
+      "module's folder for `./` and `../`, an alias, or Vite's root for `/`, which is then also " +
+      'tried against the serving roots and the project root, as any root-relative pattern is. ' +
+      'A `!` pattern removes what it matches from every pattern in the call. The glob links ' +
+      'each asset it matches and is never rewritten, so `--replace` keeps their originals.',
   },
   {
     id: 'js.require.context',

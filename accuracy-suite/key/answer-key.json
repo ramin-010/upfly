@@ -174,7 +174,7 @@
     {
       "id": "html.attribute.other",
       "label": "a path in an HTML attribute Upfly does not read",
-      "motivation": "A path naming an image where Upfly reads none: a tooltip, a custom attribute, or data-src and imagesrcset, which a lazy-loading script or the browser may load and Upfly does not read yet. Declined and counted, so the report never says nothing was skipped; the row reads backwards: an outcome other than discarded is the failure."
+      "motivation": "A path naming an image where Upfly reads none: a tooltip, a custom attribute, or data-src and imagesrcset, which a lazy-loading script or the browser may load and Upfly does not read yet. Declined and counted, so the report shows what was skipped; the row reads backwards: an outcome other than discarded is the failure."
     },
     {
       "id": "html.style.element",
@@ -319,17 +319,17 @@
     {
       "id": "js.new-url",
       "label": "new URL('./x.png', import.meta.url)",
-      "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module. Vite reads it first, through its aliases before the module's folder and then as a package, so a name a package holds is out-of-scope and one found nowhere is broken."
+      "motivation": "The asset pattern Vite and webpack 5 document. Its first argument is a URL, resolved against the module's own URL, so a bare name is a file beside the module. Vite reads the name before the browser does: through its aliases, then beside the module, then as a package. A name an alias maps and misses is unresolved-alias, one a package holds out-of-scope, and one found nowhere else broken."
     },
     {
       "id": "js.import.meta.glob",
       "label": "import.meta.glob('./img/*.png')",
-      "motivation": "Vite's glob import loads every file its patterns match: one string or an array of them, a `!` pattern leaving files out, `**` crossing folders and braces offering alternatives. Read as a plain string, `./img/*.png` names no file, and every image it loads was reported unused. Four instances: a string, `**`, braces through an alias, and an array with a negation."
+      "motivation": "Vite's glob import loads every file its patterns match: one string or an array of them, a `!` pattern leaving files out, `**` crossing folders and braces offering alternatives. Read as a plain string, `./img/*.png` names no file, and every image it loads would be reported unused. Four instances: a string, `**`, braces through an alias, and an array with a negation."
     },
     {
       "id": "js.require.context",
       "label": "require.context('./img', true, /\\.png$/)",
-      "motivation": "webpack's context bundles every file under a folder whose path from it, written from `./`, a regular expression matches: that folder alone or every folder below it, as the second argument says. Read as a plain string, the folder names no file, and every image it bundles was reported unused. Four instances: one folder only, the folder alone with webpack's defaults, an expression that leaves some images out, and an expression only the build can work out."
+      "motivation": "webpack's context bundles every file under a folder whose path from it, written from `./`, a regular expression matches: that folder alone or every folder below it, as the second argument says. Read as a plain string, the folder names no file, and every image it bundles would be reported unused. Four instances: one folder only, the folder alone with webpack's defaults, an expression that leaves some images out, and an expression only the build can work out."
     },
     {
       "id": "js.template.pattern",
