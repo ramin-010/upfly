@@ -1547,11 +1547,15 @@ the written one alike, turns the pixels first (sharp's `autoOrient`). Without it
 shows sideways, and under `--replace` the original, which showed correctly, is deleted. `metadata()`
 reports the size as shown too, so `oversized` names the side that is too long as a viewer sees it.
 
-An embedded colour profile needs no code: sharp converts the pixels through it to sRGB before it
-drops the profile, so a Display P3 photo keeps the colours it shows. Colours outside sRGB's range are
-brought inside it, so on a wide-gamut screen the most saturated parts of such a photo can look less
-saturated than the original. Keeping the profile instead would cost its bytes, 480 for Display P3,
-on every image that carries one.
+An embedded colour profile whose primaries are sRGB's is converted through and dropped, as sharp
+does by default, so an ordinary photo pays nothing for it. Any other RGB profile, Display P3 and
+wider, is kept with the numbers it describes (sharp's `keepIccProfile`): converting through it into
+sRGB would bring its most saturated colours inside sRGB, and a wide-gamut screen would show them
+duller than the original. The kept profile costs its own bytes, about half a kilobyte for Display P3,
+and since the measuring encode and the written one make the same choice, the saving shown includes
+that cost. A grey or CMYK profile cannot describe the RGB that WebP and AVIF store, so it is converted
+as before. A profile that records no primaries is kept, since nothing short of converting through it
+tells whether its colours fit inside sRGB.
 
 ### Lossless WebP for PNG sources
 

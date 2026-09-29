@@ -38,7 +38,12 @@ export async function createSharpProbe(
    * Both encoding methods use it, so a measurement and the file it predicts always share
    * their settings.
    */
-  const encoder = (path: string, format: EncodeFormat, animated: boolean, lossless = false) => {
+  const encoder = async (
+    path: string,
+    format: EncodeFormat,
+    animated: boolean,
+    lossless = false,
+  ) => {
     if (animated && STILL_ONLY_FORMATS.has(format)) {
       throw new Error(
         `${format} is written as a single still image, so an animation cannot be encoded to it without stacking its frames into one picture`,
@@ -53,13 +58,14 @@ export async function createSharpProbe(
     // `too-large-to-encode` is computed against, even if sharp's default changes.
     //
     // The encode drops metadata, the EXIF orientation tag with it, so `autoOrient` turns the
-    // pixels the way a viewer would; phones store most photos unturned. An embedded colour
-    // profile needs nothing here: sharp converts through it to sRGB before dropping it.
+    // pixels the way a viewer would; phones store most photos unturned.
     const pipeline = sharp(path, {
       animated,
       autoOrient: true,
       limitInputPixels: MAX_ENCODE_PIXELS,
     });
+    // Without this, sharp converts through the embedded profile into sRGB and drops it.
+    if (keepsProfile((await pipeline.metadata()).icc)) pipeline.keepIccProfile();
     switch (format) {
       case 'webp':
         // sharp ignores `quality` when `lossless` is set, so the two are never passed
@@ -102,7 +108,7 @@ export async function createSharpProbe(
     },
 
     async encodedBytes({ path, format, animated, lossless }): Promise<number> {
-      const buffer = await encoder(path, format, animated, lossless).toBuffer();
+      const buffer = await (await encoder(path, format, animated, lossless)).toBuffer();
       return buffer.length;
     },
 
@@ -112,10 +118,58 @@ export async function createSharpProbe(
       // reports a missing directory as "unable to open for write", which reads like a
       // permissions problem, so the port creates it.
       await mkdir(dirname(destination), { recursive: true });
-      const { size } = await encoder(path, format, animated, lossless).toFile(destination);
+      const { size } = await (await encoder(path, format, animated, lossless)).toFile(destination);
       return size;
     },
   };
+}
+
+/**
+ * sRGB's red, green and blue as a profile records them: CIE XYZ adapted to D50, as rounded
+ * from the sRGB standard. Profiles from different makers agree to about 0.0001, and Display P3,
+ * the nearest wider range, differs by 0.08.
+ */
+const SRGB_PRIMARIES = [
+  ['rXYZ', [0.4361, 0.2225, 0.0139]],
+  ['gXYZ', [0.3851, 0.7169, 0.0971]],
+  ['bXYZ', [0.1431, 0.0606, 0.7142]],
+] as const;
+
+/**
+ * Whether an encode keeps an embedded colour profile, rather than converting through it.
+ *
+ * Converting into sRGB loses nothing from a profile whose primaries are sRGB's, and a grey or
+ * CMYK profile cannot describe the RGB that WebP and AVIF store, so those are converted. Any
+ * other RGB profile is kept, one that records no primaries included, since nothing short of
+ * converting through it tells whether its colours fit inside sRGB.
+ * See https://www.color.org/specification/ICC.1-2022-05.pdf, sections 7.2 and 7.3.
+ */
+function keepsProfile(icc: Buffer | undefined): boolean {
+  if (icc === undefined || icc.length < 132 || icc.toString('latin1', 16, 20) !== 'RGB ') {
+    return false;
+  }
+  return !SRGB_PRIMARIES.every(([tag, expected]) => {
+    const recorded = primary(icc, tag);
+    return (
+      recorded !== undefined &&
+      expected.every((value, index) => Math.abs((recorded[index] ?? Number.NaN) - value) <= 0.01)
+    );
+  });
+}
+
+/** One primary's XYZ from a profile's tag table, or undefined when the profile has none. */
+function primary(icc: Buffer, tag: string): number[] | undefined {
+  const end = Math.min(icc.length, 132 + icc.readUInt32BE(128) * 12);
+  for (let entry = 132; entry + 12 <= end; entry += 12) {
+    if (icc.toString('latin1', entry, entry + 4) !== tag) continue;
+    const offset = icc.readUInt32BE(entry + 4);
+    if (offset + 20 > icc.length || icc.toString('latin1', offset, offset + 4) !== 'XYZ ') {
+      return undefined;
+    }
+    // An XYZ value is its type, 4 reserved bytes, then X, Y and Z as signed 16.16 fixed point.
+    return [0, 1, 2].map((index) => icc.readInt32BE(offset + 8 + 4 * index) / 65536);
+  }
+  return undefined;
 }
 
 /**

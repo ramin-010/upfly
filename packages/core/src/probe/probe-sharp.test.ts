@@ -446,7 +446,7 @@ describe('a converted image looks like the original', () => {
     'keeps the colours of a photo with an embedded colour profile, as %s',
     async (format) => {
       // Display P3 stores other numbers for the same red. Read as sRGB, those numbers
-      // show a duller red, so the encode has to convert through the profile.
+      // show a duller red, so the encode has to keep the profile or convert through it.
       const { default: sharp } = await import('sharp');
       const red = Buffer.alloc(32 * 32 * 3);
       for (let index = 0; index < red.length; index += 3) red.set([255, 0, 0], index);
@@ -470,4 +470,81 @@ describe('a converted image looks like the original', () => {
       expect(near(await channels(destination), [255, 0, 0])).toBe(true);
     },
   );
+
+  /** A 32 by 32 red PNG or JPEG carrying one of libvips' own profiles, and its stored numbers. */
+  async function profiledRed(name: string, profile: 'srgb' | 'p3' | 'cmyk') {
+    const { default: sharp } = await import('sharp');
+    const red = Buffer.alloc(32 * 32 * 3);
+    for (let index = 0; index < red.length; index += 3) red.set([255, 0, 0], index);
+    const path = join(temp, name);
+    await sharp(red, { raw: { width: 32, height: 32, channels: 3 } })
+      .withIccProfile(profile)
+      .toFile(path);
+    const { icc } = await sharp(path).metadata();
+    const stored = await sharp(path, { ignoreIcc: true }).raw().toBuffer();
+    return { path, icc, stored };
+  }
+
+  it.each(['webp', 'avif'] as const)(
+    'keeps a Display P3 profile with the numbers it describes, so a wide-gamut screen shows them, as %s',
+    async (format) => {
+      const { default: sharp } = await import('sharp');
+      const source = await profiledRed(`wide-${format}.png`, 'p3');
+      const destination = join(temp, `wide.${format}`);
+
+      const measured = await probe.encodedBytes({ path: source.path, format, animated: false });
+      const written = await probe.encodeToFile({
+        path: source.path,
+        format,
+        animated: false,
+        destination,
+      });
+
+      const { icc } = await sharp(destination).metadata();
+      const stored = await sharp(destination, { ignoreIcc: true }).raw().toBuffer();
+      expect(source.icc).toBeDefined();
+      expect(icc?.equals(source.icc ?? Buffer.alloc(0))).toBe(true);
+      // Converted into sRGB, the stored red would be about 255, 0, 0 instead of these.
+      for (const channel of [0, 1, 2]) {
+        expect(
+          Math.abs((stored[channel] ?? 0) - (source.stored[channel] ?? 0)),
+        ).toBeLessThanOrEqual(3);
+      }
+      expect(written).toBe(measured);
+    },
+  );
+
+  it.each(['webp', 'avif'] as const)(
+    'adds no bytes to an image whose profile is sRGB, as %s',
+    async (format) => {
+      const { default: sharp } = await import('sharp');
+      const source = await profiledRed(`srgb-${format}.png`, 'srgb');
+      const bare = join(temp, `srgb-bare-${format}.png`);
+      await sharp(source.stored, { raw: { width: 32, height: 32, channels: 3 } }).toFile(bare);
+      const destination = join(temp, `srgb.${format}`);
+
+      const profiled = await probe.encodedBytes({ path: source.path, format, animated: false });
+      const plain = await probe.encodedBytes({ path: bare, format, animated: false });
+      await probe.encodeToFile({ path: source.path, format, animated: false, destination });
+
+      expect(source.icc).toBeDefined();
+      expect(profiled).toBe(plain);
+      expect((await sharp(destination).metadata()).icc).toBeUndefined();
+    },
+  );
+
+  it('converts a CMYK photo into sRGB, since WebP and AVIF hold only RGB', async () => {
+    const { default: sharp } = await import('sharp');
+    const source = await profiledRed('cmyk.jpg', 'cmyk');
+    const destination = join(temp, 'cmyk.webp');
+
+    await probe.encodeToFile({ path: source.path, format: 'webp', animated: false, destination });
+
+    const shownRed = [...(await sharp(destination).raw().toBuffer()).subarray(0, 3)];
+    expect((await sharp(source.path).metadata()).space).toBe('cmyk');
+    expect((await sharp(destination).metadata()).icc).toBeUndefined();
+    expect(shownRed.every((value, index) => Math.abs(value - (index === 0 ? 255 : 0)) <= 40)).toBe(
+      true,
+    );
+  });
 });
