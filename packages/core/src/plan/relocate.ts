@@ -67,6 +67,11 @@ export type RefusalCode =
    * own file, among the files the moves leave, it reaches another file first, or none.
    */
   | 'rewrite-would-miss'
+  /**
+   * A reference the moves leave as written would load the moved file where today it loads
+   * another, or none: read again among the files the moves leave, it reaches the destination.
+   */
+  | 'redirects-a-reference'
   /** The asset is not in the graph, so we cannot know what points at it. */
   | 'not-an-asset';
 
@@ -137,14 +142,14 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
   // on the whole plan. Refusing a move changes those files and drops its rewrites, so the
   // references are repointed again without it until the check refuses nothing.
   let repointing = repointAll(input, accepted);
-  let astray = misdirectedMoves(input, accepted, repointing.rewritten);
+  let astray = astrayMoves(input, accepted, repointing.rewritten);
   while (astray.length > 0) {
     for (const refusal of astray) {
       accepted.delete(refusal.from);
       refused.push(refusal);
     }
     repointing = repointAll(input, accepted);
-    astray = misdirectedMoves(input, accepted, repointing.rewritten);
+    astray = astrayMoves(input, accepted, repointing.rewritten);
   }
 
   return {
@@ -244,6 +249,91 @@ function misdirectedMoves(
         ...move,
         code: 'rewrite-would-miss' as const,
         reason: `${where}${more} ${outcome} Move it elsewhere, or change the reference by hand first.`,
+      },
+    ];
+  });
+}
+
+/**
+ * The moves the check after the plan refuses, one refusal per move: those a rewritten reference
+ * would not follow, then those that would change what a reference left as written loads.
+ */
+function astrayMoves(
+  input: RelocateInput,
+  accepted: ReadonlyMap<string, Move>,
+  rewritten: ReadonlyMap<Reference, Rewritten>,
+): RefusedMove[] {
+  const missed = misdirectedMoves(input, accepted, rewritten);
+  const refused = new Set(missed.map((refusal) => refusal.from));
+  return [
+    ...missed,
+    ...redirectingMoves(input, accepted, rewritten).filter((refusal) => !refused.has(refusal.from)),
+  ];
+}
+
+/**
+ * The moves that would change what a reference they leave as written loads, each refused naming
+ * the first such reference and counting the rest.
+ *
+ * Every literal reference no move rewrites is read before and after, among the files the moves
+ * leave, as a later run would read it: one that would reach a moved file's new path where today
+ * it reaches another file, or none, would show a page nobody asked to change another image. A
+ * file moved into a nearer serving root, or to the name a broken reference asks for, does this.
+ * Patterns are left out: their text is never a promise of one file.
+ */
+function redirectingMoves(
+  input: RelocateInput,
+  accepted: ReadonlyMap<string, Move>,
+  rewritten: ReadonlyMap<Reference, Rewritten>,
+): RefusedMove[] {
+  const { root } = input.graph;
+  const untouched = input.graph.references.filter(
+    (reference) =>
+      !rewritten.has(reference) &&
+      (reference.resolution === 'resolved' || reference.resolution === 'broken'),
+  );
+  if (untouched.length === 0 || accepted.size === 0) return [];
+  const read = (assets: readonly Asset[]) =>
+    new Map(
+      resolveReferences(untouched, {
+        root,
+        assets,
+        servingRoots: input.servingRoots,
+        aliases: input.aliases,
+        foldCase: true,
+        exists: () => false,
+      }).map((answer) => [placeOf(answer), linkedPaths(answer)[0]]),
+    );
+  const today = read(input.graph.assets.map((node) => node.asset));
+  const after = read(assetsAfterMoves(input.graph, accepted));
+  const destinations = new Map([...accepted.values()].map((move) => [move.to, move]));
+
+  const found = new Map<string, { reference: Reference; loads: string; count: number }>();
+  for (const reference of untouched) {
+    const place = placeOf(reference);
+    const lands = after.get(place);
+    const move = lands === undefined ? undefined : destinations.get(relativePath(root, lands));
+    if (move === undefined) continue;
+    const before = today.get(place);
+    const loads = before === undefined ? 'nothing' : relativePath(root, before);
+    // A reference that already led to the moved file follows it, or is declined on its own.
+    if (loads === move.from) continue;
+    const first = found.get(move.from);
+    found.set(
+      move.from,
+      first === undefined ? { reference, loads, count: 1 } : { ...first, count: first.count + 1 },
+    );
+  }
+
+  return [...found].flatMap(([from, { reference, loads, count }]) => {
+    const move = accepted.get(from);
+    if (move === undefined) return [];
+    const more = count === 1 ? '' : ` (and ${count - 1} more)`;
+    return [
+      {
+        ...move,
+        code: 'redirects-a-reference' as const,
+        reason: `\`${reference.rawPath}\` in \`${relativePath(root, reference.file)}\`${more} loads ${loads} today, and would load ${move.to} after the move, though Upfly leaves its text as it is. Move it elsewhere, or change that reference by hand first.`,
       },
     ];
   });

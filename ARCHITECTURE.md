@@ -2053,9 +2053,12 @@ while `src/logo.png` exists, unless that is the file being renamed.
 Last, every rewritten reference is read again from the file that holds it, as a later run would
 read it, among the files the moves leave, with case folded as the planner folds it. A new text can
 reach another file first, in a nearer serving root or through a longer alias key, or reach none;
-the move is then refused as `rewrite-would-miss`, naming the reference. Refusing a move changes the
-files the others leave, so the check runs again until it refuses nothing. A reference the move does
-not rewrite is not read again, so one that misses its file today could find the moved file after.
+the move is then refused as `rewrite-would-miss`, naming the reference. Every literal reference the
+moves leave as written is read again too, before and after: one that would reach a moved file's
+new path where today it loads another file, or none, would change a page nobody asked to change,
+so its move is refused as `redirects-a-reference`. A file moved into a nearer serving root, or to
+the name a broken reference asks for, does this. Refusing a move changes the files the others
+leave, so the check runs again until it refuses nothing.
 
 Some references to a moved asset cannot be repointed: a template, a reference a rewrite rule forbids
 editing, or one whose new spelling cannot be worked out. They do not stop the move. Each is listed in

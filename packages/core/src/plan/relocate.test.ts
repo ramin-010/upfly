@@ -785,6 +785,64 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(plan.refused[0]?.reason).toContain('which reaches apps/web/public/img/x.png first');
   });
 
+  it('refuses a move that would change what a reference it leaves as written loads', () => {
+    // From `apps/web/src`, `/logo.png` loads public/logo.png today, and `/new.png` loads
+    // nothing. A file moved to apps/web/public/logo.png or to public/new.png would be found
+    // instead, and a page nobody asked to change would show another image.
+    const graph = graphFor({
+      assets: ['public/logo.png', 'apps/web/public/img/logo.png', 'public/img/new.png'],
+      references: [
+        {
+          file: 'apps/web/src/App.tsx',
+          rawPath: '/logo.png',
+          target: 'public/logo.png',
+          via: 'serving-root',
+        },
+        {
+          file: 'apps/web/src/App.tsx',
+          rawPath: '/img/logo.png',
+          target: 'apps/web/public/img/logo.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+    const brokenToday: Reference = {
+      ...graph.references[0],
+      rawPath: '/new.png',
+      resolution: 'broken',
+      confidence: 'unsafe',
+      resolvedPath: null,
+    } as Reference;
+    const withBroken = buildGraph({
+      root: graph.root,
+      assets: graph.assets.map((node) => node.asset),
+      references: [...graph.references, brokenToday],
+      unscannedFiles: [],
+    });
+    const roots = { servingRoots: { declared: true, dirs: ['public', 'apps/web/public'] } };
+
+    const nearer = replacementFor(
+      graph,
+      { from: 'apps/web/public/img/logo.png', to: 'apps/web/public/logo.png' },
+      roots,
+    ).plan;
+    const named = replacementFor(
+      withBroken,
+      { from: 'public/img/new.png', to: 'public/new.png' },
+      roots,
+    ).plan;
+
+    expect(nearer.moves).toEqual([]);
+    expect(nearer.refused.map((refusal) => refusal.code)).toEqual(['redirects-a-reference']);
+    expect(nearer.refused[0]?.reason).toContain(
+      '`/logo.png` in `apps/web/src/App.tsx` loads public/logo.png today',
+    );
+    expect(named.moves).toEqual([]);
+    expect(named.refused[0]?.reason).toContain(
+      '`/new.png` in `apps/web/src/App.tsx` loads nothing today',
+    );
+  });
+
   it('declines a reference it may not edit, rather than moving in silence', () => {
     // The move happens and this reference will break. Saying so is the difference
     // between a dangling reference Upfly found and one it caused.
