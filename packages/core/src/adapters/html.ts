@@ -288,7 +288,7 @@ function collectFromAttribute(input: {
   addAttributeReference(url.text, url.start, context, position.html);
 }
 
-/** Attributes a browser or a lazy-loading script loads an image from, which Upfly does not read yet. */
+/** Attributes a browser or a lazy-loading script loads an image from, which Upfly does not read. */
 const NOT_READ_YET: ReadonlySet<string> = new Set(['data-src', 'data-srcset', 'imagesrcset']);
 
 /** Of those, the ones that hold a candidate list, as `srcset` does. */
@@ -297,8 +297,7 @@ const SRCSET_LISTS: ReadonlySet<string> = new Set(['data-srcset', 'imagesrcset']
 /**
  * A path-shaped value naming an image in an attribute Upfly does not read on its element,
  * returned declined so the report counts it by attribute, as the JSX reader does: a
- * tooltip's `title`, an `alt`, a custom attribute, or one Upfly does not read yet
- * (`NOT_READ_YET`). The resolver discards it; nothing links or rewrites it.
+ * tooltip's `title`, an `alt`, a custom attribute, or one Upfly does not read (`NOT_READ_YET`). The resolver discards it; nothing links or rewrites it.
  */
 function declineAttributeValue(
   name: string,
@@ -308,7 +307,7 @@ function declineAttributeValue(
   context: Context,
 ): void {
   const note = NOT_READ_YET.has(name)
-    ? `HTML attribute ${name}, which a browser or a lazy-loading script may load, and Upfly does not read yet`
+    ? `HTML attribute ${name}, which a browser or a lazy-loading script may load, and Upfly does not read`
     : `HTML attribute ${name}, which Upfly does not read as a file path on this element`;
   const values = SRCSET_LISTS.has(name)
     ? parseSrcset(raw).map((candidate) => ({ text: candidate.url, at: start + candidate.offset }))

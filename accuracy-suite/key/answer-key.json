@@ -174,7 +174,7 @@
     {
       "id": "html.attribute.other",
       "label": "a path in an HTML attribute Upfly does not read",
-      "motivation": "A path naming an image where Upfly reads none: a tooltip, a custom attribute, or data-src and imagesrcset, which a lazy-loading script or the browser may load and Upfly does not read yet. Declined and counted, so the report shows what was skipped; the row reads backwards: an outcome other than discarded is the failure."
+      "motivation": "A path naming an image where Upfly reads none: a tooltip, a custom attribute, or data-src and imagesrcset, which a lazy-loading script or the browser may load and Upfly does not read. Declined and counted, so the report shows what was skipped; the row reads backwards: an outcome other than discarded is the failure."
     },
     {
       "id": "html.style.element",
@@ -7056,7 +7056,7 @@
           "occurrence": 1,
           "shape": "html.attribute.other",
           "expect": "discarded",
-          "why": "The first candidate of a preload link's imagesrcset, which the browser loads and Upfly does not read yet. Declined, it is counted by attribute rather than dropped without a word.",
+          "why": "The first candidate of a preload link's imagesrcset, which the browser loads and Upfly does not read. Declined, it is counted by attribute rather than dropped without a word.",
           "offset": 160,
           "line": 5,
           "column": 49
@@ -7086,7 +7086,7 @@
           "occurrence": 1,
           "shape": "html.attribute.other",
           "expect": "discarded",
-          "why": "A lazy-loading script's data-src, which Upfly does not read yet: declined and counted, so the report shows the value it did not read.",
+          "why": "A lazy-loading script's data-src, which Upfly does not read: declined and counted, so the report shows the value it did not read.",
           "offset": 326,
           "line": 9,
           "column": 37

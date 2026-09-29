@@ -1162,15 +1162,15 @@ describe('a value naming an image in an attribute Upfly does not read', () => {
     );
     const declined = references.filter((reference) => reference.declined === true);
 
-    const later = 'which a browser or a lazy-loading script may load, and Upfly does not read yet';
+    const unread = 'which a browser or a lazy-loading script may load, and Upfly does not read';
     expect(declined.map((reference) => [reference.rawPath, reference.note])).toEqual([
       [
         '/img/tooltip.png',
         'HTML attribute title, which Upfly does not read as a file path on this element',
       ],
-      ['/img/lazy.jpg', `HTML attribute data-src, ${later}`],
-      ['/img/one.png', `HTML attribute imagesrcset, ${later}`],
-      ['/img/two.png', `HTML attribute imagesrcset, ${later}`],
+      ['/img/lazy.jpg', `HTML attribute data-src, ${unread}`],
+      ['/img/one.png', `HTML attribute imagesrcset, ${unread}`],
+      ['/img/two.png', `HTML attribute imagesrcset, ${unread}`],
     ]);
     for (const reference of declined) {
       expect([reference.shape, reference.ceiling, reference.asserted]).toEqual([

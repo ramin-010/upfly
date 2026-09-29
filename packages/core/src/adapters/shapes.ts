@@ -207,7 +207,7 @@ export const SHAPES = [
     why:
       'A path naming an image in an attribute Upfly does not read on its element: a ' +
       "tooltip's `title`, an `alt`, a custom attribute, or `data-src` and `imagesrcset`, " +
-      'which a lazy-loading script or the browser may load and Upfly does not read yet. The ' +
+      'which a lazy-loading script or the browser may load and Upfly does not read. The ' +
       'HTML reader returns it as a declined value, which the resolver discards and the report ' +
       "counts under the attribute's name, so the report shows what was skipped.",
   },
