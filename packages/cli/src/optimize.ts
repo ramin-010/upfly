@@ -41,7 +41,7 @@ import { type Io, emit, progressReporter, stopWith } from './output.js';
 import { count, renderPlan, writtenByKind } from './plan-text.js';
 
 /** A reason to stop, with the exit code and, for a refusal, the name `--json` gives it. */
-interface Refusal {
+export interface Refusal {
   readonly code: ExitCode;
   readonly reason?: string;
   readonly message: string;
@@ -105,8 +105,8 @@ function onlyNotes(result: OptimizeProjectResult): string[] {
 }
 
 /** The project directory and its settings, or why the command cannot use them. */
-async function openProject(
-  options: OptimizeOptions,
+export async function openProject(
+  options: Pick<OptimizeOptions, 'dir'>,
 ): Promise<{ readonly root: string; readonly settings: UpflyConfig } | Refusal> {
   const root = resolve(options.dir);
   if (!isDirectory(root)) {
@@ -200,7 +200,7 @@ function commitRun(root: string, manifest: Manifest, plan: OptimizationPlan): st
  * A run in progress, or one that stopped part way, either of which a new write must wait
  * for. The engine refuses both as well; asking first says so before the project is read.
  */
-async function unfinishedRun(root: string): Promise<Refusal | null> {
+export async function unfinishedRun(root: string): Promise<Refusal | null> {
   const store = createNodeFileStore(root);
   const holder = await readLockHolder(store);
   if (holder !== null && processIsAlive(holder.pid)) {
@@ -234,7 +234,11 @@ async function unfinishedRun(root: string): Promise<Refusal | null> {
 }
 
 /** Whether git lets this run write, and commit, in `root`. */
-function gitRefusal(git: GitState, options: OptimizeOptions, root: string): Refusal | null {
+export function gitRefusal(
+  git: GitState,
+  options: Pick<OptimizeOptions, 'dir' | 'commit' | 'allowDirty'>,
+  root: string,
+): Refusal | null {
   if (git.kind !== 'repository' || !git.tracked) {
     const why = unprotected(git, options.dir);
     if (options.commit) {
@@ -287,7 +291,7 @@ function unprotected(git: GitState, dir: string): string {
 }
 
 /** The engine's own refusals, as exit 3 with what to do; null for anything else. */
-async function engineRefusal(error: unknown, root: string): Promise<Refusal | null> {
+export async function engineRefusal(error: unknown, root: string): Promise<Refusal | null> {
   if (!(error instanceof UpflyError)) return null;
   switch (error.code) {
     case 'TRANSACTION_LOCKED':
@@ -356,7 +360,11 @@ interface Outcome {
 }
 
 /** Things worth knowing before running with `--apply`, said on a dry run. */
-function notes(options: OptimizeOptions, git: GitState, unfinished: Refusal | null): string[] {
+export function notes(
+  options: Pick<OptimizeOptions, 'apply' | 'dir'>,
+  git: GitState,
+  unfinished: Refusal | null,
+): string[] {
   if (options.apply) return [];
   const said: string[] = [];
   if (unfinished !== null) said.push(unfinished.message);
@@ -432,10 +440,11 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
   io.stdout.write(`${lines.join('\n')}\n`);
 }
 
-function outcomeLines(
-  options: OptimizeOptions,
+/** What an applied run wrote and committed, or that a dry run wrote nothing. */
+export function outcomeLines(
+  options: Pick<OptimizeOptions, 'apply'>,
   manifest: Manifest | null,
-  outcome: Outcome,
+  outcome: Pick<Outcome, 'git' | 'commit'>,
 ): string[] {
   if (!options.apply) {
     return ['Dry run: nothing was written. Run the same command with --apply to write this plan.'];
@@ -467,7 +476,7 @@ function inRepository(git: GitState): string {
 }
 
 /** Up to three of the paths, so the reader knows which, and how many more there are. */
-function some(paths: readonly string[]): string {
+export function some(paths: readonly string[]): string {
   const more = paths.length > 3 ? ` and ${paths.length - 3} more` : '';
   return `${paths.slice(0, 3).join(', ')}${more}`;
 }

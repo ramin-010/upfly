@@ -18,6 +18,8 @@ Commands:
   refs <image> [dir]
                    List where one image is referenced, whether Upfly could rewrite each
                    reference, and what optimize would do with it. Changes nothing.
+  dedupe [dir]     Keep one copy of each image stored more than once and point the
+                   references at it. Deletes nothing; shows the plan unless run with --apply.
 
 Options for every command:
   --json         Print one JSON object per line: progress, then the result
@@ -167,6 +169,38 @@ is not an image Upfly found, or for a usage or configuration error; 3 when the
 configuration file belongs to another tool; 4 for a failure Upfly did not anticipate.
 `;
 
+const DEDUPE = `Usage: upfly dedupe [dir] [options]
+
+For each set of images with the same bytes, keeps one copy and points the references to the
+others at it, where the kept copy can be reached the way each reference loads files: a URL
+from the same folder the site is served from, an import from outside every such folder. A
+reference that cannot follow stays as written, with the reason. Without --apply it writes
+nothing and shows the plan. It never deletes a file: a copy nothing names any more is left
+where it is, and upfly audit lists it as unused, with its size.
+
+The copy kept is the one the most references use; on a tie, one a folder the site is served
+from holds, then the shortest path, then the first in path order.
+
+Options:
+  --keep <path>          Keep this copy of its set, a path inside the project; repeatable,
+                         one per set
+  --apply                Write the plan. Refused while the project folder has uncommitted
+                         changes or git does not track it, as optimize is
+  --commit               With --apply: commit exactly the files the run wrote, as one
+                         commit that git revert undoes
+  --allow-dirty          With --apply: write even with uncommitted changes, or outside a
+                         git repository. upfly undo still puts the files back
+  --public <dir>         A folder the site is served from, such as public; repeat it for
+                         several, and use . for the project root itself
+  --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
+  --json                 Print one JSON object per line: progress, then the result
+  --no-color             Plain text; also when NO_COLOR is set
+
+Exit status: 0 when the run finished, including when there was nothing to do; 2 for a
+usage or configuration error, such as a --keep that names no copy; 3 when Upfly refused to
+write, and the message says why and what to do; 4 for a failure Upfly did not anticipate.
+`;
+
 const TEXT: Record<CommandName, string> = {
   audit: AUDIT,
   optimize: OPTIMIZE,
@@ -174,6 +208,7 @@ const TEXT: Record<CommandName, string> = {
   check: CHECK,
   init: INIT,
   refs: REFS,
+  dedupe: DEDUPE,
 };
 
 /** The help for one command, or the general help when `command` is null. */

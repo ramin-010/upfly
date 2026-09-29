@@ -3,6 +3,7 @@
 import { type CommandOptions, parseCommandLine } from './args.js';
 import { runAudit } from './audit.js';
 import { runCheck } from './check.js';
+import { runDedupe } from './dedupe.js';
 import { EXIT_CODES, type ExitCode, VERSION } from './exit-codes.js';
 import { helpText } from './help.js';
 import { runInit } from './init.js';
@@ -78,5 +79,7 @@ function run(options: CommandOptions, io: Io): Promise<ExitCode> {
       return runInit(options, io);
     case 'refs':
       return runRefs(options, io);
+    case 'dedupe':
+      return runDedupe(options, io);
   }
 }

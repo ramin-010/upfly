@@ -7,7 +7,7 @@
 import { parseArgs } from 'node:util';
 import { normaliseServedDir } from './config.js';
 
-export type CommandName = 'audit' | 'optimize' | 'undo' | 'check' | 'init' | 'refs';
+export type CommandName = 'audit' | 'optimize' | 'undo' | 'check' | 'init' | 'refs' | 'dedupe';
 
 export interface CommonOptions {
   /** The project directory, as given; the current directory when none is. */
@@ -75,6 +75,18 @@ export interface InitOptions extends CommonOptions {
   readonly command: 'init';
 }
 
+export interface DedupeOptions extends CommonOptions, ScopeOptions {
+  readonly command: 'dedupe';
+  /** `--apply`: write the plan. Without it the run only reports what it would do. */
+  readonly apply: boolean;
+  /** `--commit`: commit the files the run wrote, and nothing else, as one commit. */
+  readonly commit: boolean;
+  /** `--allow-dirty`: apply over uncommitted changes, or where git cannot help. */
+  readonly allowDirty: boolean;
+  /** Copies to keep from `--keep`, as POSIX paths relative to the project. */
+  readonly keep: readonly string[];
+}
+
 export interface RefsOptions extends CommonOptions, ScopeOptions {
   readonly command: 'refs';
   /** The image to answer for, as the user wrote it: resolved from the current folder. */
@@ -87,7 +99,8 @@ export type CommandOptions =
   | UndoOptions
   | CheckOptions
   | InitOptions
-  | RefsOptions;
+  | RefsOptions
+  | DedupeOptions;
 
 export type Parsed =
   | { readonly kind: 'run'; readonly options: CommandOptions }
@@ -105,7 +118,15 @@ export type Parsed =
  */
 export const DEFAULT_MAX_ENCODES = 100;
 
-const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check', 'init', 'refs'];
+const COMMANDS: readonly CommandName[] = [
+  'audit',
+  'optimize',
+  'undo',
+  'check',
+  'init',
+  'refs',
+  'dedupe',
+];
 
 const COMMON = {
   json: { type: 'boolean' },
@@ -153,6 +174,15 @@ const CHECK = {
 
 const REFS = { ...COMMON, ...SCOPE } as const;
 
+const DEDUPE = {
+  ...COMMON,
+  ...SCOPE,
+  apply: { type: 'boolean' },
+  commit: { type: 'boolean' },
+  'allow-dirty': { type: 'boolean' },
+  keep: { type: 'string', multiple: true },
+} as const;
+
 /**
  * Parses `argv`, the arguments after `upfly`.
  *
@@ -178,7 +208,47 @@ export function parseCommandLine(argv: readonly string[]): Parsed {
   if (command === 'optimize') return parseOptimize(rest);
   if (command === 'check') return parseCheck(rest);
   if (command === 'refs') return parseRefs(rest);
+  if (command === 'dedupe') return parseDedupe(rest);
   return parseCommonOnly(command, rest);
+}
+
+function parseDedupe(args: readonly string[]): Parsed {
+  const command = 'dedupe';
+  let parsed: ReturnType<typeof parseDedupeArgs>;
+  try {
+    parsed = parseDedupeArgs(args);
+  } catch (error) {
+    return { kind: 'usage-error', command, message: plainParseError(error) };
+  }
+  const { values, positionals } = parsed;
+  if (values.help === true) return { kind: 'help', command };
+  const dir = directoryOf(positionals);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
+  const scope = scopeOf(values);
+  if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
+  const apply = values.apply === true;
+  const commit = values.commit === true;
+  const allowDirty = values['allow-dirty'] === true;
+  const conflict = writeFlagConflict(apply, commit, allowDirty);
+  if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
+  return {
+    kind: 'run',
+    options: {
+      command,
+      dir: dir.value,
+      json: values.json === true,
+      noColor: values['no-color'] === true,
+      apply,
+      commit,
+      allowDirty,
+      keep: (values.keep ?? []).map((path) => path.replaceAll('\\', '/').replace(/^\.\//, '')),
+      ...scope,
+    },
+  };
+}
+
+function parseDedupeArgs(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: DEDUPE, allowPositionals: true, strict: true });
 }
 
 function parseRefs(args: readonly string[]): Parsed {

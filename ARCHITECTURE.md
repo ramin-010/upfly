@@ -2348,6 +2348,14 @@ conversion, or its decline) or, for an image nothing links, from the audit (`dea
 the answer cannot drift from what `optimize` does. The `--json` answer is kept small: the
 image, its size, the references, the verdict.
 
+**`dedupe` writes as `optimize` writes.** It refuses `--apply` over uncommitted changes or where
+git cannot help, and a run in progress, with `optimize`'s own checks; `--commit` makes one commit of
+exactly the files written, ending `Upfly-Run: <id>`, so `upfly undo` and `git revert` both reverse
+it. A `--keep` that names no copy, or two copies of one image, stops the run before it writes
+(exit 2). The plan prints in `optimize`'s shape: each set with the copy kept and why, each other
+copy with how many of its references move, each staying reference with its reason, the files
+that change, and the copies no reference names afterwards, which stay on disk.
+
 **`init` writes down the decision a run would make.** It calls `decideServingRoots` inside the
 pipeline, as every run without declared folders does, and writes `upfly.config.json` with the
 schema, the folders and the format, giving each folder's reason: the project file a detected
