@@ -312,6 +312,34 @@ describe('relocate, and how a path is re-spelled', () => {
     );
   });
 
+  it.each([
+    ['the project root listed first', ['', 'public']],
+    ['the project root listed last', ['public', '']],
+  ])('re-spells a URL from the deepest serving root that holds the new path: %s', (_name, dirs) => {
+    // Where one serving root holds another, the planner reads a path's URL from the deepest,
+    // so a move and a conversion spell the same file the same way whatever the list's order.
+    const graph = graphFor({
+      assets: ['public/hero.png'],
+      references: [
+        {
+          file: 'index.html',
+          rawPath: '/hero.png',
+          target: 'public/hero.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+
+    const { plan, text } = replacementFor(
+      graph,
+      { from: 'public/hero.png', to: 'public/img/hero.png' },
+      { servingRoots: { declared: true, dirs } },
+    );
+
+    expect(plan.refused).toEqual([]);
+    expect(text).toBe('/img/hero.png');
+  });
+
   it('re-spells an aliased import through the same alias', () => {
     // `astro-docs` imports `~/assets/houston.png`. Moving it within the alias's root
     // keeps the alias: the import statement is untouched apart from the path.

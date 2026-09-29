@@ -443,7 +443,7 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   }
 
   if (reference.resolution === 'resolved' && reference.resolvedVia === 'serving-root') {
-    const base = servingRootFor(move.to, input.servingRoots);
+    const base = servingRootOf(move.to, input.servingRoots);
     if (base === null) return null;
     const rest = base === '' ? move.to : move.to.slice(base.length + 1);
     return `/${asWritten(rest)}${suffix}`;
@@ -459,15 +459,6 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   // edit changes the path and nothing else about the line.
   const dotted = path.startsWith('./') && !relative.startsWith('../') ? `./${relative}` : relative;
   return `${asWritten(dotted)}${suffix}`;
-}
-
-/** The serving root the new path sits under, or `null` when none does. */
-function servingRootFor(relative: string, servingRoots: ServingRoots): string | null {
-  for (const dir of servingRoots.dirs) {
-    if (dir === '') return '';
-    if (relative === dir || relative.startsWith(`${dir}/`)) return dir;
-  }
-  return null;
 }
 
 /** The path part of a raw reference, without any `?query` or `#fragment`. */
