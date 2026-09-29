@@ -1571,6 +1571,30 @@ describe('a name given to new URL(name, import.meta.url), read as Vite reads it'
     // An alias that matches is Vite's only answer, so the hero.jpg beside the module is not it.
     expect(url('assets/hero.jpg', { aliases: vite })?.resolution).toBe('unresolved-alias');
   });
+
+  it('never reads a name through a tsconfig key, which does not reach the asset plugin', () => {
+    // Vite reads the name with its own alias and resolve plugins only, so `~/assets/logo.png`
+    // is looked for beside the module, as `src/~/assets/logo.png`, and a tsconfig `paths`
+    // entry, which only a plugin could add, never maps it.
+    const tsconfig: AliasMap = {
+      rules: [
+        {
+          prefix: '~/',
+          targets: [join(ROOT, 'src')],
+          wildcard: true,
+          scope: toPosix(ROOT),
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      tsconfigs: [{ scope: toPosix(ROOT), baseUrl: toPosix(ROOT) }],
+      skipped: [],
+    };
+
+    expect(url('~/assets/logo.png', { aliases: tsconfig })?.resolution).toBe('unresolved-alias');
+    // With the baseUrl no key takes part either: `src/assets/logo.png` is not beside the module.
+    expect(url('src/assets/logo.png', { aliases: tsconfig })?.resolution).toBe('broken');
+  });
 });
 
 describe('rung 4b: a declared alias, in every spelling the path could be read in', () => {

@@ -132,10 +132,20 @@ export function resolveReferences(
     exists: options.exists,
     aliases: options.aliases ?? { rules: [], skipped: [] },
   };
+  // Vite's asset plugin reads a `new URL` name with Vite's own aliases alone: a tsconfig key,
+  // which only a plugin could add, never reaches it.
+  const assetUrlContext: ResolveContext = {
+    ...context,
+    aliases: {
+      rules: context.aliases.rules.filter((rule) => rule.tool === 'vite'),
+      tsconfigs: [],
+      skipped: context.aliases.skipped,
+    },
+  };
   const resolved: Reference[] = [];
 
   for (const raw of rawReferences) {
-    const reference = resolveOne(raw, context);
+    const reference = resolveOne(raw, raw.shape === 'js.new-url' ? assetUrlContext : context);
     if (reference !== null) resolved.push(reference);
   }
 

@@ -587,7 +587,9 @@ leading `#` is a fragment. A bundler reads the name before the browser does, and
 as Vite's asset plugin (`assetImportMetaUrlPlugin`) does. A name that does not start with `.`
 goes through the nearest Vite config's aliases before anything else, and an alias that matches
 is its only answer (rung 4a); the plugin runs only Vite's own alias and resolve plugins, so a
-tsconfig key does not apply there. Then the file beside the module. Then a name that starts with
+tsconfig key applies at no rung: an alias-shaped name no Vite alias maps, such as `~/img/x.png`
+under a tsconfig `~/*`, ends `unresolved-alias` once the lookups below miss. Then the file beside
+the module. Then a name that starts with
 a letter, digit, `_` or `@` is looked for as a package, in the `node_modules` of the module's
 folder or of any folder above it, and is `out-of-scope` where one holds it (rung 5b). A name found
 nowhere is `broken`: Vite leaves it for the browser, which asks for it beside the module.
