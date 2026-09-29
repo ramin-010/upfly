@@ -7,7 +7,7 @@
 import { parseArgs } from 'node:util';
 import { normaliseServedDir } from './config.js';
 
-export type CommandName = 'audit' | 'optimize' | 'undo' | 'check';
+export type CommandName = 'audit' | 'optimize' | 'undo' | 'check' | 'init';
 
 export interface CommonOptions {
   /** The project directory, as given; the current directory when none is. */
@@ -69,7 +69,16 @@ export interface CheckOptions extends CommonOptions, ScopeOptions {
   readonly changed: { readonly against: string | null } | null;
 }
 
-export type CommandOptions = AuditOptions | OptimizeOptions | UndoOptions | CheckOptions;
+export interface InitOptions extends CommonOptions {
+  readonly command: 'init';
+}
+
+export type CommandOptions =
+  | AuditOptions
+  | OptimizeOptions
+  | UndoOptions
+  | CheckOptions
+  | InitOptions;
 
 export type Parsed =
   | { readonly kind: 'run'; readonly options: CommandOptions }
@@ -87,7 +96,7 @@ export type Parsed =
  */
 export const DEFAULT_MAX_ENCODES = 100;
 
-const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check'];
+const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check', 'init'];
 
 const COMMON = {
   json: { type: 'boolean' },
@@ -156,7 +165,7 @@ export function parseCommandLine(argv: readonly string[]): Parsed {
   if (command === 'audit') return parseAudit(rest);
   if (command === 'optimize') return parseOptimize(rest);
   if (command === 'check') return parseCheck(rest);
-  return parseUndo(rest);
+  return parseCommonOnly(command, rest);
 }
 
 function parseCheck(args: readonly string[]): Parsed {
@@ -305,11 +314,11 @@ function writeFlagConflict(apply: boolean, commit: boolean, allowDirty: boolean)
   return null;
 }
 
-function parseUndo(args: readonly string[]): Parsed {
-  const command = 'undo';
-  let parsed: ReturnType<typeof parseUndoArgs>;
+/** A command that takes a folder and only the options every command takes. */
+function parseCommonOnly(command: 'undo' | 'init', args: readonly string[]): Parsed {
+  let parsed: ReturnType<typeof parseCommonArgs>;
   try {
-    parsed = parseUndoArgs(args);
+    parsed = parseCommonArgs(args);
   } catch (error) {
     return { kind: 'usage-error', command, message: plainParseError(error) };
   }
@@ -328,7 +337,7 @@ function parseUndo(args: readonly string[]): Parsed {
   };
 }
 
-function parseUndoArgs(args: readonly string[]) {
+function parseCommonArgs(args: readonly string[]) {
   return parseArgs({ args: [...args], options: COMMON, allowPositionals: true, strict: true });
 }
 

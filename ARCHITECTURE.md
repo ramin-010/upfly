@@ -2304,6 +2304,14 @@ names, so a broken reference whose file name matches a deleted file is kept wher
 Everything the verdict leaves out is counted in a sentence: findings outside the change, unused
 images over the limit, files that could not be read, and references whose file cannot be known.
 
+**`init` writes down the decision a run would make.** It calls `decideServingRoots` inside the
+pipeline, as every run without declared folders does, and writes `upfly.config.json` with the
+schema, the folders and the format, giving each folder's reason: the project file a detected
+folder sits beside, or the count of root-relative paths that chose an inferred one. With no folder
+found it leaves `publicDirs` out rather than declare the project root. It refuses (exit 3) when
+any configuration file exists, the v2 extension's included, and writes with `wx`, so a file that
+appears while the project is read is never overwritten.
+
 **The configuration file is `upfly.config.ts` (or `.js` and their module forms), or
 `upfly.config.json`, in the directory the command runs on.** The code forms load through c12 with
 everything a user did not ask for turned off: `extends` layers, which c12 would download from a

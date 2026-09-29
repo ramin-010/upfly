@@ -14,6 +14,7 @@ Commands:
   undo [dir]       Put back every file the last optimize --apply changed.
   check [dir]      Fail, for continuous integration, when a reference names an image that
                    does not exist. Changes nothing.
+  init [dir]       Write upfly.config.json with the folders Upfly works out, and say why.
 
 Options for every command:
   --json         Print one JSON object per line: progress, then the result
@@ -124,11 +125,27 @@ error, or a ref git does not know; 3 when Upfly cannot tell where the site is se
 or the configuration file belongs to another tool; 4 for a failure Upfly did not anticipate.
 `;
 
+const INIT = `Usage: upfly init [dir] [options]
+
+Writes upfly.config.json in the project: the folders the site is served from, as Upfly
+works them out when none is named, and the format to convert to, with the reason for each.
+Read it, correct what is wrong, and every command uses it from then on. It never changes
+a configuration file that already exists.
+
+Options:
+  --json                 Print one JSON object per line: progress, then the result
+  --no-color             Plain text; also when NO_COLOR is set
+
+Exit status: 0 when the file was written; 2 for a usage error; 3 when a configuration
+file already exists, which the message names; 4 for a failure Upfly did not anticipate.
+`;
+
 const TEXT: Record<CommandName, string> = {
   audit: AUDIT,
   optimize: OPTIMIZE,
   undo: UNDO,
   check: CHECK,
+  init: INIT,
 };
 
 /** The help for one command, or the general help when `command` is null. */

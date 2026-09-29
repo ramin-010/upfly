@@ -5,6 +5,7 @@ import { runAudit } from './audit.js';
 import { runCheck } from './check.js';
 import { EXIT_CODES, type ExitCode, VERSION } from './exit-codes.js';
 import { helpText } from './help.js';
+import { runInit } from './init.js';
 import { runOptimize } from './optimize.js';
 import { type Io, colourFor, emit, paint } from './output.js';
 import { runUndo } from './undo.js';
@@ -72,5 +73,7 @@ function run(options: CommandOptions, io: Io): Promise<ExitCode> {
       return runUndo(options, io);
     case 'check':
       return runCheck(options, io);
+    case 'init':
+      return runInit(options, io);
   }
 }
