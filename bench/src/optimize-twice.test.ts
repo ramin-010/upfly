@@ -46,7 +46,7 @@ const POLICIES: readonly PublicPolicy[] = ['keep-original', 'replace'];
 
 /**
  * Each test optimizes a whole fixture with real encodes. Alone one takes a few seconds, but in a
- * full run on a loaded machine one has passed the shared 30-second limit, so these tests get
+ * full run on a loaded machine one can pass the shared 30-second limit, so these tests get
  * their own. The limit only has to catch a hung test.
  */
 const LIMIT_MS = 120_000;

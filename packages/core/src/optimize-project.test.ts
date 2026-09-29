@@ -167,8 +167,8 @@ describe('an original that a page created during the run names', () => {
       format: 'webp',
       publicPolicy: 'replace',
       apply: true,
-      // After the first search for mentions and before the deletes: the window the images
-      // take to encode.
+      // Between the first search for mentions and the second, which the encodes put minutes
+      // apart.
       beforeWrite: async () => {
         await writeFile(join(root, 'notes.html'), '<img src="images/logo.png">\n');
         return true;

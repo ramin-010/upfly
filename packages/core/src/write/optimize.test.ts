@@ -1014,7 +1014,7 @@ describe('replace at the seam: a new file only where a reference moves to it, a 
   });
 
   it('creates the same two files under keep-original, and deletes nothing', async () => {
-    // A new file only where a reference moves to it holds under either policy.
+    // Under either policy a file is created only where a reference moves to it.
     const { creates, deletes } = await runEverything('keep-original');
 
     expect(creates).toEqual(['public/logo.webp', 'public/theme-light.webp']);

@@ -35,7 +35,8 @@ const CONFIGS = [
 ];
 /**
  * `@icons/*.svg` has text after its `*`, and ties `@icons/*` on prefix length, which TypeScript
- * settles by the order the keys are written. `*` maps every name, so `baseUrl` never answers.
+ * settles by the order the keys are written. Where a config has the `*` key, it maps every
+ * name, so `baseUrl` never answers there.
  */
 const KEYS = [
   '@/*',

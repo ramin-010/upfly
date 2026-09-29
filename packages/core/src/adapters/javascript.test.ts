@@ -1716,7 +1716,7 @@ describe('import.meta.glob', () => {
     }
   });
 
-  it('matches names that start with a dot only when the call asks for every file', () => {
+  it('sets dot only when the call asks for every file', () => {
     const [reference] = globs("import.meta.glob('./img/*.png', { exhaustive: true });");
 
     expect(reference?.glob).toEqual({ exclude: [], dot: true });

@@ -425,7 +425,8 @@ describe('spellingsOf', () => {
     '&hi?;',
   ])('offers only the literal spelling of %s, which CommonMark does not decode', (written) => {
     expect(spellingsOf(written, 'md').map((candidate) => candidate.spelling)).toEqual(['literal']);
-    // HTML leaves each as written too, but for the number, which it reads as U+FFFD.
+    // The resolver's HTML reading leaves each as written too, but for the number, which it
+    // reads as U+FFFD.
     if (written === '&#87654321;') return;
     expect(spellingsOf(written, 'attr').map((candidate) => candidate.spelling)).toEqual([
       'literal',
@@ -450,8 +451,9 @@ describe('spellingsOf', () => {
 
   /**
    * CommonMark removes a backslash before ASCII punctuation in a link destination (section
-   * 2.4), so in Markdown `my\_photo.png` names `my_photo.png`. Nowhere else is it an escape:
-   * an attribute's URL parser reads it as a slash, and an import or CSS keeps it as written.
+   * 2.4), so in Markdown `my\_photo.png` names `my_photo.png`. Nowhere else does `spellingsOf`
+   * read one as an escape: an attribute's URL parser reads it as a slash, and for an import or
+   * CSS it is kept as written.
    */
   it('reads the backslash escapes of a Markdown destination and of nothing else', () => {
     expect(spellingsOf('/img/my\\_photo.png', 'md')).toEqual([

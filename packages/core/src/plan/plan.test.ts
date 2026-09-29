@@ -1131,7 +1131,7 @@ describe('the public policy', () => {
       expect(keep.conversions).toEqual([]);
     });
 
-    it('holds under keep-original too, for every member', () => {
+    it('converts no member under keep-original either, since no reference moves to any of them', () => {
       // No reference moves to any of these, so a new file would be loaded by nobody,
       // whichever policy keeps or removes the originals.
       const everyMember = {

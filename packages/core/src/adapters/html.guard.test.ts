@@ -1,8 +1,8 @@
 /**
  * The last guard on a style attribute read through its character references, against a
- * decoder whose offset map is wrong. The map here is the one the decoder once built: one
- * entry per code point, so an emoji a reference spells gets one entry for its two code units
- * and every entry after it sits one place early. The guard must refuse the attribute rather
+ * decoder whose offset map is wrong. The map here has one entry per code point, so an emoji a
+ * reference spells gets one entry for its two code units and every entry after it sits one
+ * place early. The guard must refuse the attribute rather
  * than read a path at a range that no longer holds it.
  */
 

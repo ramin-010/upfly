@@ -249,7 +249,7 @@ describe('imageFilenameCandidates', () => {
     expect(tokens('url(/img/hero.png)')).toEqual(['hero.png']);
   });
 
-  it('spells a name in letters beyond ASCII, as a file system allows', () => {
+  it('finds a name in letters beyond ASCII, as a file system allows', () => {
     expect(tokens('See Zaječar (2).jpg and Poznań cover (3).png in the gallery.')).toEqual(
       expect.arrayContaining(['Zaječar (2).jpg', 'Poznań cover (3).png']),
     );
@@ -260,7 +260,7 @@ describe('imageFilenameCandidates', () => {
     expect(tokens('"/img/\u{10437}\u{10436}.png"')).toEqual(['\u{10437}\u{10436}.png']);
   });
 
-  it('spells a name holding an emoji or U+FFFD, as a file system allows', () => {
+  it('finds a name holding an emoji or U+FFFD, as a file system allows', () => {
     // An emoji can be several code points joined by U+200D, and U+FFFD stands for bytes a
     // name held that were not UTF-8. Each is written as its code points here.
     const party = `party-${String.fromCodePoint(0x1f389)}.png`;

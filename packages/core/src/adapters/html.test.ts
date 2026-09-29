@@ -163,7 +163,7 @@ describe('htmlAdapter', () => {
       expect(slices(source)).toEqual(paths(source));
     });
 
-    it('reads nothing from a meta tag or a link that names no image', () => {
+    it("reads no path from a meta tag or a link that names no image, declining the meta tag's value", () => {
       // Declined and counted, never read as a path.
       const described = find('<meta name="description" content="/img/logo.png">');
       expect(described.map(({ shape, declined }) => [shape, declined])).toEqual([
@@ -749,7 +749,7 @@ describe('htmlAdapter', () => {
       }
     });
 
-    it('keeps a value no reading of which names an image as any other, for the resolver to drop', () => {
+    it('reads a value that can name no image as a plain value, for the resolver to drop', () => {
       // No reading of `/avatar/AT&amp;T&x;` ends in an image extension, whatever `&x;` means.
       const [reference] = find('<img src="/avatar/AT&amp;T&x;">');
       expect([reference?.shape, reference?.ceiling]).toEqual(['html.img.src', 'high']);
