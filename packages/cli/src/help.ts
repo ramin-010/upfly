@@ -12,6 +12,8 @@ Commands:
   optimize [dir]   Convert images and update the references it can rewrite. Shows the plan
                    and changes nothing unless run with --apply.
   undo [dir]       Put back every file the last optimize --apply changed.
+  check [dir]      Fail, for continuous integration, when a reference names an image that
+                   does not exist. Changes nothing.
 
 Options for every command:
   --json         Print one JSON object per line: progress, then the result
@@ -97,7 +99,37 @@ error; 3 when undo refused because a file changed since the run, or another run 
 progress; 4 for a failure Upfly did not anticipate.
 `;
 
-const TEXT: Record<CommandName, string> = { audit: AUDIT, optimize: OPTIMIZE, undo: UNDO };
+const CHECK = `Usage: upfly check [dir] [options]
+
+Fails when a reference names an image that does not exist, or when an image a reference uses
+is larger than check.maxImageBytes in the config file. An unused image never fails it. The
+first line says whether it passed and why; the findings follow. It reads no pixels and
+changes nothing.
+
+Options:
+  --changed [ref]        Keep only what a change could have caused: the findings in files
+                         changed since ref (a branch, tag or commit; measured from where
+                         the current commit and ref last shared history), or with no ref,
+                         in files with uncommitted changes. A reference to an image the
+                         change deleted counts wherever it sits. Put the folder before
+                         --changed when no ref follows it
+  --public <dir>         A folder the site is served from, such as public; repeat it for
+                         several, and use . for the project root itself
+  --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
+  --json                 Print one JSON object per line: progress, then the result
+  --no-color             Plain text; also when NO_COLOR is set
+
+Exit status: 0 when it passed; 1 when a finding failed it; 2 for a usage or configuration
+error, or a ref git does not know; 3 when Upfly cannot tell where the site is served from,
+or the configuration file belongs to another tool; 4 for a failure Upfly did not anticipate.
+`;
+
+const TEXT: Record<CommandName, string> = {
+  audit: AUDIT,
+  optimize: OPTIMIZE,
+  undo: UNDO,
+  check: CHECK,
+};
 
 /** The help for one command, or the general help when `command` is null. */
 export function helpText(command: CommandName | null): string {

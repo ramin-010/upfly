@@ -34,14 +34,14 @@ export const TEMP = realpathSync.native(tmpdir());
  */
 export function upfly(
   args: readonly string[],
-  options: { env?: NodeJS.ProcessEnv; preload?: string } = {},
+  options: { env?: NodeJS.ProcessEnv; preload?: string; cwd?: string } = {},
 ) {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_CEILING_DIRECTORIES: TEMP, ...options.env };
   for (const key of ['NO_COLOR', 'FORCE_COLOR']) if (!(key in (options.env ?? {}))) delete env[key];
   const result = spawnSync(
     process.execPath,
     [...(options.preload ? ['--require', options.preload] : []), BIN, ...args],
-    { encoding: 'utf8', env },
+    { encoding: 'utf8', env, ...(options.cwd === undefined ? {} : { cwd: options.cwd }) },
   );
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }

@@ -2,6 +2,7 @@
 
 import { type CommandOptions, parseCommandLine } from './args.js';
 import { runAudit } from './audit.js';
+import { runCheck } from './check.js';
 import { EXIT_CODES, type ExitCode, VERSION } from './exit-codes.js';
 import { helpText } from './help.js';
 import { runOptimize } from './optimize.js';
@@ -69,5 +70,7 @@ function run(options: CommandOptions, io: Io): Promise<ExitCode> {
       return runOptimize(options, io);
     case 'undo':
       return runUndo(options, io);
+    case 'check':
+      return runCheck(options, io);
   }
 }

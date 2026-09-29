@@ -167,7 +167,7 @@ describe('no network, even for a config that names a remote layer', () => {
       kind: 'invalid',
       file: 'upfly.config.ts',
       message:
-        'unknown setting `extends`. The settings are `publicDirs`, `publicPolicy`, `format` and `exclude`.',
+        'unknown setting `extends`. The settings are `publicDirs`, `publicPolicy`, `format`, `exclude` and `check`.',
     });
     expect(attempts).toEqual([]);
   });
@@ -247,7 +247,7 @@ describe('what a config may say', () => {
       kind: 'invalid',
       file: 'upfly.config.json',
       message:
-        'unknown setting `publicDir`. The settings are `publicDirs`, `publicPolicy`, `format` and `exclude`.',
+        'unknown setting `publicDir`. The settings are `publicDirs`, `publicPolicy`, `format`, `exclude` and `check`.',
     });
   });
 

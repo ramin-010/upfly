@@ -7,7 +7,7 @@
 import { parseArgs } from 'node:util';
 import { normaliseServedDir } from './config.js';
 
-export type CommandName = 'audit' | 'optimize' | 'undo';
+export type CommandName = 'audit' | 'optimize' | 'undo' | 'check';
 
 export interface CommonOptions {
   /** The project directory, as given; the current directory when none is. */
@@ -60,7 +60,16 @@ export interface UndoOptions extends CommonOptions {
   readonly command: 'undo';
 }
 
-export type CommandOptions = AuditOptions | OptimizeOptions | UndoOptions;
+export interface CheckOptions extends CommonOptions, ScopeOptions {
+  readonly command: 'check';
+  /**
+   * `--changed`: keep only the findings a change could have caused. `against` is the git ref
+   * the change is measured from, or `null` for the uncommitted changes. `null` without the flag.
+   */
+  readonly changed: { readonly against: string | null } | null;
+}
+
+export type CommandOptions = AuditOptions | OptimizeOptions | UndoOptions | CheckOptions;
 
 export type Parsed =
   | { readonly kind: 'run'; readonly options: CommandOptions }
@@ -78,7 +87,7 @@ export type Parsed =
  */
 export const DEFAULT_MAX_ENCODES = 100;
 
-const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo'];
+const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check'];
 
 const COMMON = {
   json: { type: 'boolean' },
@@ -117,6 +126,12 @@ const OPTIMIZE = {
   'include-declined': { type: 'boolean' },
 } as const;
 
+const CHECK = {
+  ...COMMON,
+  ...SCOPE,
+  changed: { type: 'string' },
+} as const;
+
 /**
  * Parses `argv`, the arguments after `upfly`.
  *
@@ -140,7 +155,52 @@ export function parseCommandLine(argv: readonly string[]): Parsed {
   const command = first as CommandName;
   if (command === 'audit') return parseAudit(rest);
   if (command === 'optimize') return parseOptimize(rest);
+  if (command === 'check') return parseCheck(rest);
   return parseUndo(rest);
+}
+
+function parseCheck(args: readonly string[]): Parsed {
+  const command = 'check';
+  let parsed: ReturnType<typeof parseCheckArgs>;
+  try {
+    parsed = parseCheckArgs(withChangedValue(args));
+  } catch (error) {
+    return { kind: 'usage-error', command, message: plainParseError(error) };
+  }
+  const { values, positionals } = parsed;
+  if (values.help === true) return { kind: 'help', command };
+  const dir = directoryOf(positionals);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
+  const scope = scopeOf(values);
+  if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
+  const changed = values.changed;
+
+  return {
+    kind: 'run',
+    options: {
+      command,
+      dir: dir.value,
+      json: values.json === true,
+      noColor: values['no-color'] === true,
+      changed: changed === undefined ? null : { against: changed === '' ? null : changed },
+      ...scope,
+    },
+  };
+}
+
+function parseCheckArgs(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: CHECK, allowPositionals: true, strict: true });
+}
+
+/**
+ * `--changed` takes a ref or nothing, and the parser only knows options that always take a
+ * value, so a `--changed` with no ref after it is given an empty one.
+ */
+function withChangedValue(args: readonly string[]): string[] {
+  return args.map((arg, index) => {
+    const next = args[index + 1];
+    return arg === '--changed' && (next === undefined || next.startsWith('-')) ? '--changed=' : arg;
+  });
 }
 
 function parseAudit(args: readonly string[]): Parsed {

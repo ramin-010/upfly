@@ -30,6 +30,17 @@ export interface UpflyConfig {
   readonly format?: 'webp' | 'avif';
   /** Paths to leave out of the walk, in `.gitignore` syntax, added to `.upflyignore`. */
   readonly exclude?: readonly string[];
+  /** What `upfly check` fails on besides a reference to an image that does not exist. */
+  readonly check?: CheckSettings;
+}
+
+/** The limits `upfly check` holds a project to. */
+export interface CheckSettings {
+  /**
+   * The largest an image may be on disk, in bytes. An image a reference uses fails the check
+   * when its file is larger; an image nothing uses never does.
+   */
+  readonly maxImageBytes?: number;
 }
 
 /** Returns its argument, typed, for an `upfly.config.ts` that wants editor completion. */
@@ -67,9 +78,10 @@ export const V2_EXTENSION_KEYS: readonly string[] = [
   'cloudUpload',
 ];
 
-const KEYS = ['$schema', 'publicDirs', 'publicPolicy', 'format', 'exclude'] as const;
+const KEYS = ['$schema', 'publicDirs', 'publicPolicy', 'format', 'exclude', 'check'] as const;
 // `format` is not here: the v2 extension's settings use the same name.
-const V3_ONLY_KEYS = new Set(['publicDirs', 'publicPolicy', 'exclude']);
+const V3_ONLY_KEYS = new Set(['publicDirs', 'publicPolicy', 'exclude', 'check']);
+const CHECK_KEYS = ['maxImageBytes'] as const;
 
 export type ConfigOutcome =
   | { readonly kind: 'none' }
@@ -275,6 +287,28 @@ const FIELDS: Record<(typeof KEYS)[number], (value: unknown) => FieldRead> = {
     return patterns === undefined
       ? { problem: '`exclude` must be a list of patterns.' }
       : { value: patterns };
+  },
+  check: (value) => {
+    if (!isRecord(value)) {
+      return {
+        problem: '`check` must hold an object of settings, such as {"maxImageBytes": 500000}.',
+      };
+    }
+    const unknown = Object.keys(value).filter(
+      (key) => !(CHECK_KEYS as readonly string[]).includes(key),
+    );
+    if (unknown.length > 0) {
+      return {
+        problem: `unknown ${unknown.length === 1 ? 'setting' : 'settings'} ${list(unknown.map((key) => `\`check.${key}\``))}. The settings under \`check\` are ${list(CHECK_KEYS.map((key) => `\`${key}\``))}.`,
+      };
+    }
+    const max = value.maxImageBytes;
+    if (max !== undefined && !(typeof max === 'number' && Number.isInteger(max) && max > 0)) {
+      return {
+        problem: '`check.maxImageBytes` must be a whole number of bytes above 0, such as 500000.',
+      };
+    }
+    return { value: max === undefined ? {} : { maxImageBytes: max } };
   },
 };
 

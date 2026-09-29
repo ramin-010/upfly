@@ -2288,9 +2288,21 @@ How `bench/src/verify.ts` checks findings from outside the engine: `bench/README
 ## The CLI
 
 `upfly` is a thin layer over the engine: it reads the command line and the configuration, runs
-`runPipeline` (`audit`), `optimizeProject` (`optimize`) or the transaction's `revert` (`undo`),
-and prints. It decides serving roots with the engine's own `servingRootsFor`, so a command cannot
-decide them differently from the measurements behind it.
+`runPipeline` (`audit` and `check`), `optimizeProject` (`optimize`) or the transaction's `revert`
+(`undo`), and prints. It decides serving roots with the engine's own `servingRootsFor`, so a
+command cannot decide them differently from the measurements behind it.
+
+**`check` is the gate for continuous integration.** It fails (exit 1) on a `broken` finding, and
+on an image some reference uses whose file is larger than `check.maxImageBytes`; it reads no
+pixels. An unused image never fails it: most projects hold some, and a gate that fails on its
+first run is switched off. When the serving root cannot be found it refuses (exit 3), as
+`optimize` does, because the root-relative references cannot be judged. `--changed <ref>` keeps
+what a change could have caused: findings in the files changed since the commit `ref` and `HEAD`
+last shared (`git merge-base`), working tree and untracked files included, or since the last
+commit without a ref. A change breaks a page it never touched by deleting the image the page
+names, so a broken reference whose file name matches a deleted file is kept wherever it sits.
+Everything the verdict leaves out is counted in a sentence: findings outside the change, unused
+images over the limit, files that could not be read, and references whose file cannot be known.
 
 **The configuration file is `upfly.config.ts` (or `.js` and their module forms), or
 `upfly.config.json`, in the directory the command runs on.** The code forms load through c12 with

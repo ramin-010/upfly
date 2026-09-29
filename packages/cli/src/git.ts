@@ -64,6 +64,114 @@ export function gitState(root: string): GitState {
   return { kind: 'repository', top: resolve(top), prefix, tracked, changed };
 }
 
+export type Changes =
+  | { readonly kind: 'no-git' }
+  | { readonly kind: 'not-a-repository' }
+  /** Git could not find a commit shared by the ref and the current one; its own first line. */
+  | { readonly kind: 'unknown-ref'; readonly detail: string }
+  | {
+      readonly kind: 'changes';
+      /** Every path under the project the change added, modified or deleted, relative to it. */
+      readonly paths: readonly string[];
+      /** The paths among them that the change deleted. */
+      readonly deleted: readonly string[];
+    };
+
+/**
+ * The files under `root` a change touched: since the last commit when `against` is null, and
+ * otherwise since the commit `against` and the current one last shared, working tree
+ * included, so a branch is measured by its own commits and not by what its base gained since.
+ * Untracked files count as added.
+ *
+ * @param root the project directory
+ * @param against a branch, tag or commit, or null for the uncommitted changes
+ * @throws when git fails in a way other than finding no repository or no such ref
+ */
+export function changedFiles(root: string, against: string | null): Changes {
+  const where = git(root, ['rev-parse', '--show-prefix']);
+  if (where.missing) return { kind: 'no-git' };
+  if (where.status !== 0) return { kind: 'not-a-repository' };
+  const prefix = where.stdout.split('\n')[0] ?? '';
+
+  const found = against === null ? uncommittedChanges(root, prefix) : changesSince(root, against);
+  if (found.kind !== 'changes') return found;
+  return {
+    kind: 'changes',
+    paths: [...found.paths].sort(compare),
+    deleted: [...found.deleted].sort(compare),
+  };
+}
+
+type Found =
+  | Extract<Changes, { kind: 'unknown-ref' }>
+  | { readonly kind: 'changes'; readonly paths: Set<string>; readonly deleted: Set<string> };
+
+/** The files `git status` lists under `root`, from where the repository's top is `prefix`. */
+function uncommittedChanges(root: string, prefix: string): Found {
+  const status = must(
+    git(root, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+      '--no-renames',
+      '--',
+      '.',
+    ]),
+    'status',
+  );
+  const paths = new Set<string>();
+  const deleted = new Set<string>();
+  // Porcelain paths are relative to the repository's top, wherever git runs.
+  for (const entry of status.stdout.split('\0').filter((line) => line.length > 3)) {
+    const named = entry.slice(3);
+    const path = named.startsWith(prefix) ? named.slice(prefix.length) : named;
+    paths.add(path);
+    if (entry[0] === 'D' || entry[1] === 'D') deleted.add(path);
+  }
+  return { kind: 'changes', paths, deleted };
+}
+
+/** The files under `root` that differ from where `against` and `HEAD` last shared history. */
+function changesSince(root: string, against: string): Found {
+  const base = git(root, ['merge-base', against, 'HEAD']);
+  if (base.status !== 0) {
+    return {
+      kind: 'unknown-ref',
+      detail: firstLine(base.stderr) || 'it shares no history with the current commit',
+    };
+  }
+  // `--relative` names paths from the project folder and leaves out the rest of the repository.
+  const diff = must(
+    git(root, [
+      'diff',
+      '--name-status',
+      '-z',
+      '--no-renames',
+      '--relative',
+      base.stdout.trim(),
+      '--',
+      '.',
+    ]),
+    'diff',
+  );
+  const paths = new Set<string>();
+  const deleted = new Set<string>();
+  const fields = diff.stdout.split('\0');
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const path = fields[index + 1] ?? '';
+    if (path === '') continue;
+    paths.add(path);
+    if (fields[index]?.startsWith('D')) deleted.add(path);
+  }
+  const untracked = must(
+    git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', '.']),
+    'ls-files',
+  );
+  for (const path of untracked.stdout.split('\0')) if (path !== '') paths.add(path);
+  return { kind: 'changes', paths, deleted };
+}
+
 /**
  * Which of `paths` git would refuse to add because an ignore rule covers them. A tracked
  * file is never among them: ignore rules do not apply to it.
