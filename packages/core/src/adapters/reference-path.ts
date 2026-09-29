@@ -366,11 +366,11 @@ function decodeNamedReference(name: string): string | null {
  * path: text the decoder cannot finish contributes no candidate.
  *
  * @param read The reference, or its kind alone, which reads an attribute as HTML's and a
- * `css-url` as a stylesheet's. It picks the decoder (`characterReferencesReadIn`). Only in a
- * Markdown destination (`'md'`) is a backslash before ASCII punctuation an escape, decoded with
- * the character references in one pass, as CommonMark reads it. A backslash left after that is
- * a slash in an attribute's URL (`readAsUrl`), and is kept as written anywhere else; one a
- * percent-escape decodes to is kept everywhere, since a browser keeps `%5C` as written.
+ * `css-url` as a stylesheet's. It picks the decoder. Only in a Markdown destination (`'md'`)
+ * is a backslash before ASCII punctuation an escape, decoded with the character references in
+ * one pass, as CommonMark reads it. A backslash left after that is a slash in an attribute's
+ * URL, as the URL parser reads it, and is kept as written anywhere else; one a percent-escape
+ * decodes to is kept everywhere, since a browser keeps `%5C` as written.
  * Required, because a call that left it out would lose a spelling without a word.
  */
 export function spellingsOf(
@@ -422,8 +422,8 @@ export function spellingsOf(
  * `hero image.png`, referenced as `hero%20image.png`, would be rewritten with a raw space.
  *
  * @param read The reference, or its kind alone, as `spellingsOf` takes it. A Markdown
- * destination has a syntax of its own (`spellDestination`). Required, because a call that
- * left it out would write a destination that ends early without a word.
+ * destination has a syntax of its own. Required, because a call that left it out would write
+ * a destination that ends early without a word.
  */
 export function spell(
   path: string,

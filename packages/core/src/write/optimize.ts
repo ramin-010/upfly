@@ -85,9 +85,10 @@ export interface OptimizeInput {
    */
   readonly excludedFiles?: readonly string[];
   /**
-   * Walks the project again for the search made after the encodes, which can take minutes,
-   * so a page saved or created meanwhile is read as it is then. Without it that search reads
-   * `files` again, which finds a page saved since but not a new one.
+   * Lists the project's files again after the images are encoded, which can take minutes, so
+   * the search for mentions of an original about to be deleted also reads a page saved or
+   * created meanwhile. Without it that search reads `files` again: it sees a page saved since,
+   * not a new one.
    */
   readonly listFiles?: () => Promise<Pick<OptimizeInput, 'files' | 'unread' | 'excludedFiles'>>;
   readonly servingRoots: ServingRoots;

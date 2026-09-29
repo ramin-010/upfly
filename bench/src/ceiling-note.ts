@@ -20,7 +20,11 @@ export interface CeilingNoteInput {
 /**
  * The lines to print under the gate's verdict, or an empty string when there is nothing to add.
  *
- * @example ceilingNote({ over: true, inCi: false, headUnchanged: true })
+ * @example
+ * ceilingNote({ over: true, inCi: false, headUnchanged: true });
+ * // a blank line, then four indented lines: "This gate cannot judge a change on this
+ * // machine: ...", and how to judge one instead
+ * ceilingNote({ over: true, inCi: true, headUnchanged: true }); // ''
  */
 export function ceilingNote({ over, inCi, headUnchanged }: CeilingNoteInput): string {
   if (!over || inCi) return '';

@@ -115,9 +115,11 @@ export interface RawReference {
   readonly unread?: true;
   /**
    * Set on a pattern a bundler expands into files when it builds, such as each pattern given
-   * to `import.meta.glob`. `rawPath` is then written in glob syntax (`*`, `**`, `?`, `[...]`,
-   * `{a,b}`) rather than as a path with holes, and the ceiling is `medium`: the resolver links
-   * every asset it matches, and nothing ever rewrites it.
+   * to `import.meta.glob` other than a `!` one. `rawPath` is then written in glob syntax (`*`,
+   * `**`, `?`, `[...]`, `{a,b}`) rather than as a path with holes. With a `medium` ceiling the
+   * resolver links every asset it matches, less those an `exclude` pattern matches, and nothing
+   * ever rewrites it; an `unsafe` one is a pattern written with escape sequences, which is never
+   * linked, and what it could name is hedged.
    */
   readonly glob?: BundlerGlob;
   /**

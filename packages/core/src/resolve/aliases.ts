@@ -231,10 +231,12 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
 }
 
 /**
- * Expand an alias-shaped path into candidate absolute POSIX paths: the targets of the rule
- * `matchingRule` chooses, in order. With `baseUrl`, a module name no rule matches is looked
- * for under the nearest tsconfig's `baseUrl`; TypeScript tries it only when no key matches,
- * so a key whose targets miss has no fallback. Returns `[]` when nothing applies.
+ * Expand an alias-shaped path into candidate absolute POSIX paths: the targets, in order, of
+ * the one rule that applies to `fromFile`, which is the first matching alias of the nearest
+ * Vite config, else the nearest tsconfig's exact key or longest matching prefix. With
+ * `baseUrl`, a module name no rule matches is looked for under the nearest tsconfig's
+ * `baseUrl`; TypeScript tries it only when no key matches, so a key whose targets miss has no
+ * fallback. Returns `[]` when nothing applies.
  */
 export function expandAlias(
   map: AliasMap,

@@ -67,8 +67,8 @@ export function relativePath(root: string, absolute: string): string {
 /**
  * Lowercase extension including the leading dot, or `''` if there is none, read as
  * `path.posix.extname` reads it on every platform. A reference such as `img/hero\.png` is
- * text, not a native path: its backslash never ends a folder, so no plan differs by machine. A
- * native path passed here names a file found by its extension, so its separators change nothing.
+ * text, not a native path: its backslash never ends a folder, so no plan differs by machine.
+ * Pass a file name, or a native path through `toPosix` first.
  */
 export function extensionOf(filePath: string): string {
   // A path that ends in `/` names a folder. `extname` ignores the slash, and would read
@@ -187,8 +187,8 @@ function runStart(
  * name appears in the text. So from each token this walks left over ` word` runs and yields
  * every step: `Practice.webp`, then `Firing Practice.webp`. Yielding each step, not only the
  * longest, keeps shorter matches working: the prose `Remove workspace.png` must still match
- * an asset named `workspace.png`. A name is read in any script. Names holding parentheses
- * (`namesHoldingParentheses`), then percent-encoded ones, follow from the same extension.
+ * an asset named `workspace.png`. A name is read in any script. Names holding parentheses in
+ * balanced pairs, then percent-encoded ones, follow from the same extension.
  *
  * It lives here, and is exported, because every pass that looks for a name (`scan.ts`,
  * `sweep.ts`, a search for the names they missed) must ask the same question.
