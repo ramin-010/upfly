@@ -11,7 +11,7 @@ Commands:
   audit [dir]      Report images, references, and what could be smaller. Changes nothing.
   optimize [dir]   Convert images and update the references it can rewrite. Shows the plan
                    and changes nothing unless run with --apply.
-  undo [dir]       Put back every file the last optimize --apply changed.
+  undo [dir]       Put back every file the last optimize or dedupe --apply changed.
   check [dir]      Fail, for continuous integration, when a reference names an image that
                    does not exist. Changes nothing.
   init [dir]       Write upfly.config.json with the folders Upfly works out, and say why.
@@ -95,9 +95,10 @@ what to do; 4 for a failure Upfly did not anticipate.
 
 const UNDO = `Usage: upfly undo [dir] [options]
 
-Puts back every file the last optimize --apply changed: removed originals come back,
-updated references point at them again, and converted files are removed. It checks each
-file first and changes nothing if any of them was edited since that run.
+Puts back every file the last optimize --apply or dedupe --apply changed: removed
+originals come back, updated references point at them again, and converted files are
+removed. It checks each file first and changes nothing if any of them was edited since
+that run.
 
 Options:
   --json                 Print one JSON object per line: the result
