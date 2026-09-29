@@ -605,6 +605,7 @@ An import's module name is never looked for beside the importing file, as no mod
 looks there: `import logo from 'logo.png'` does not load the `logo.png` beside the module. A bare
 name with no path after it names a package itself, not a file inside one, so when no alias and no
 `baseUrl` finds it, it is `broken` (rung 6c) rather than out of scope.
+
 The first argument of `new URL(name, import.meta.url)` is not a module specifier. The URL
 constructor resolves it against the module's own URL, so the JavaScript adapter gives it an
 attribute's kind rather than an import's: a bare `hero.png` is the file beside the module, and a
@@ -614,12 +615,13 @@ goes through the nearest Vite config's aliases before anything else, and an alia
 is its only answer (rung 4a); the plugin runs only Vite's own alias and resolve plugins, so a
 tsconfig key applies at no rung: an alias-shaped name no Vite alias maps, such as `~/img/x.png`
 under a tsconfig `~/*`, ends `unresolved-alias` once the lookups below miss. Then the file beside
-the module. Then a name that starts with
-a letter, digit, `_` or `@` is looked for as a package, in the `node_modules` of the module's
-folder or of any folder above it, and is `out-of-scope` where one holds it (rung 5b). A name found
-nowhere is `broken`: Vite leaves it for the browser, which asks for it beside the module.
-`import.meta.resolve(name)` is different, since it follows module resolution; the adapter does
-not read it as a construct, and its argument is guessed at like any path-shaped string.
+the module. Then a name that starts with a letter, digit, `_` or `@` is looked for as a package,
+in the `node_modules` of the module's folder or of any folder above it, and is `out-of-scope`
+where one holds it (rung 5b). A name found nowhere is `broken`: Vite leaves it for the browser,
+which asks for it beside the module. `import.meta.resolve(name)` is different, since it follows
+module resolution; the adapter does not read it as a construct, and its argument is guessed at
+like any path-shaped string.
+
 `unresolved-alias` means an alias-shaped path that no alias Upfly reads maps. It is a final
 outcome, not pending work. The project may still declare the alias where Upfly does not look, such
 as a webpack config, SvelteKit's `kit.alias` or Astro's `vite.resolve.alias`, so the reason says
