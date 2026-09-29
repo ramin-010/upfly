@@ -485,6 +485,30 @@ describe('the name search', () => {
   });
 });
 
+describe('a character reference inside a style attribute', () => {
+  // The HTML parser decodes the whole attribute before CSS reads it, so `caf&eacute;.png`
+  // names `café.png` in every construct CSS owns there, not only a plain `url()`.
+  it.each([
+    ['image-set()', 'background: image-set(url(caf&eacute;.png) 1x)'],
+    ['a custom property', '--hero: url(caf&eacute;.png)'],
+    ['the prefixed image-set()', 'background: -webkit-image-set(url(caf&eacute;.png) 1x)'],
+  ])('is decoded in %s, so the image is linked and nothing is broken', async (_name, css) => {
+    const output = await runPipeline({
+      root: project({
+        'package.json': '{ "name": "site", "private": true }\n',
+        'index.html': `<div style="${css}"></div>\n`,
+        'café.png': 'a cafe, never decoded',
+      }),
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(output.references.map(({ resolution }) => resolution)).toEqual(['resolved']);
+    expect(output.audit.findings.map((finding) => finding.kind)).not.toContain('broken');
+  });
+});
+
 describe('a refused path hedges what it could name', () => {
   const unusedKinds = async (files: Record<string, string>) => {
     const output = await runPipeline({

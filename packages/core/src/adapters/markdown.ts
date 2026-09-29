@@ -406,6 +406,9 @@ function asMarkdownShape(reference: RawReference, isMdx: boolean): RawReference 
   if (reference.shape === 'html.style.attribute') {
     return { ...reference, shape: 'md.style-attribute' };
   }
+  if (reference.host === 'html.style.attribute') {
+    return { ...reference, host: 'md.style-attribute' };
+  }
   if (reference.shape === 'html.style.element') {
     return { ...reference, shape: 'md.style-element' };
   }

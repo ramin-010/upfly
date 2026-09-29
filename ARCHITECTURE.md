@@ -676,8 +676,11 @@ asserted reference means a `broken` finding. The decoder knows numeric reference
 each name is decoded once inside an attribute value, where it counts only whole and with its
 semicolon. What reads a path decides which character references in it are decoded, and how:
 `characterReferencesReadIn` picks HTML's decoder, CommonMark's, or none, from the reference's kind
-and shape. An HTML parser decodes an attribute, the CSS inside a style attribute and a JSX
-attribute's string, and CommonMark decodes a link destination's names the same way, so
+and shape, or, where a construct CSS owns gave the shape (an `image-set()`, a custom property), from
+the markup that holds that CSS, which the reference carries as `host`: the parser decodes a whole
+style attribute before CSS reads any of it. An HTML parser decodes an attribute, the CSS inside a
+style attribute and a JSX attribute's string, and CommonMark decodes a link destination's names the
+same way, so
 `![](caf&eacute;.png)` names `café.png`, as `<img src="caf&eacute;.png">` does. A `.css` file, a
 `<style>` body, a `new URL` name, JavaScript and JSON decode none: in a stylesheet
 `url(caf&eacute;.png)` asks for a file called `caf&eacute;.png`. A `<style>` body inside Markdown is

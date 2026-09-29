@@ -309,7 +309,7 @@ export const NOT_GLOBBABLE_REASON =
 export type PathSpelling = 'literal' | 'percent-encoded' | 'html-entities' | 'markdown-escapes';
 
 /** What a reference's text is read in, when its kind alone cannot say: the kind and shape. */
-export type ReadingPosition = Pick<RawReference, 'kind' | 'shape'>;
+export type ReadingPosition = Pick<RawReference, 'kind' | 'shape' | 'host'>;
 
 /** Whose character references a reader decodes: HTML's rules, or CommonMark's. */
 type CharacterReferenceReading = 'html' | 'commonmark';
@@ -324,11 +324,15 @@ type CharacterReferenceReading = 'html' | 'commonmark';
 function characterReferencesReadIn(
   read: ReferenceKind | ReadingPosition,
 ): CharacterReferenceReading | null {
-  const { kind, shape } = typeof read === 'string' ? { kind: read, shape: null } : read;
+  const { kind, shape, host } =
+    typeof read === 'string' ? { kind: read, shape: null, host: undefined } : read;
   if (kind === 'md') return 'commonmark';
   if (kind === 'attr') return shape === 'js.new-url' ? null : 'html';
   if (kind !== 'css-url') return null;
-  return shape === 'html.style.attribute' || shape === 'md.style-attribute' ? 'html' : null;
+  // CSS a style attribute holds is decoded as the attribute is, whichever construct of its
+  // own, such as `image-set()`, gave the reference its shape.
+  const holder = host ?? shape;
+  return holder === 'html.style.attribute' || holder === 'md.style-attribute' ? 'html' : null;
 }
 
 const ENTITY = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;

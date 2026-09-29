@@ -82,6 +82,13 @@ export interface RawReference {
    */
   readonly shape: ShapeId;
   /**
+   * The shape of the markup construct whose CSS holds the reference, when the reference's own
+   * shape is one CSS owns: `html.style.attribute` for `image-set(url(a.png) 1x)` in a style
+   * attribute. The host decides how the text is decoded, since an HTML parser decodes a whole
+   * style attribute before CSS reads it. Absent where the shape is the host's own.
+   */
+  readonly host?: ShapeId;
+  /**
    * The best confidence this syntax could ever justify. The resolver assigns the
    * ceiling if the path resolves, and demotes to `unsafe` if it does not.
    */

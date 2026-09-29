@@ -509,6 +509,9 @@ function addReference(input: {
   if (isExternalUrl(text, 'css-url')) return;
 
   const shape = shapeOf({ rawPath: text, run, declaration, position, quote });
+  // A construct CSS owns names the shape; the markup around it still decides the decoding.
+  const hosted =
+    run.hostShape !== undefined && shape !== run.hostShape ? { host: run.hostShape } : {};
 
   const reason = dynamicReason(text, quote !== '');
   if (reason !== null) {
@@ -524,6 +527,7 @@ function addReference(input: {
       ...(decoded === null ? {} : { assembledPath: decoded }),
       kind: 'css-url',
       shape,
+      ...hosted,
       ceiling: 'unsafe',
       asserted,
       note: reason,
@@ -553,6 +557,7 @@ function addReference(input: {
     rawPath: path,
     kind: 'css-url',
     shape,
+    ...hosted,
     // An interpolated path is `medium`, never `high`: at `high` the resolver would look
     // `/theme-#{$mode}.png` up verbatim and report a broken reference nobody wrote.
     ceiling: interpolated ? 'medium' : 'high',
