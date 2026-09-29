@@ -329,6 +329,55 @@ describe('audit', () => {
       ]);
     });
 
+    it('says why a path one keystroke from an image extension points at nothing, and nothing more', async () => {
+      // A reference's own note says why its adapter read it as it did, such as a query kept
+      // for the rewrite; that is no reason for a broken path, so it stays off the finding.
+      const source =
+        '<img src="/img/logo.pn">\n<img src="img/photo.wepb">\n<img src="gone.png?v=3">\n';
+      const graph = graphOf({
+        references: [
+          broken('index.html', '/img/logo.pn', source.indexOf('/img/logo')),
+          broken('index.html', 'img/photo.wepb', source.indexOf('img/photo')),
+          {
+            ...broken('index.html', 'gone.png?v=3', source.indexOf('gone.png')),
+            note: 'query or fragment preserved: ?v=3',
+          },
+        ],
+      });
+
+      const result = await audit({
+        graph,
+        sweep: NO_SWEEP,
+        readFile: files({ '/repo/index.html': source }),
+      });
+
+      expect(result.findings).toEqual([
+        {
+          kind: 'broken',
+          file: 'index.html',
+          line: 1,
+          where: 'index.html:1',
+          rawPath: '/img/logo.pn',
+          note: 'ends in .pn, one keystroke from .png: a likely typo, so no image shows here',
+        },
+        {
+          kind: 'broken',
+          file: 'index.html',
+          line: 3,
+          where: 'index.html:3',
+          rawPath: 'gone.png?v=3',
+        },
+        {
+          kind: 'broken',
+          file: 'index.html',
+          line: 2,
+          where: 'index.html:2',
+          rawPath: 'img/photo.wepb',
+          note: 'ends in .wepb, one keystroke from .webp: a likely typo, so no image shows here',
+        },
+      ]);
+    });
+
     it('still reports the finding when the source cannot be re-read', async () => {
       // Losing the line must not lose the finding. It still names the file, and
       // `unreadableSources` says why the line is missing.

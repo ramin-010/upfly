@@ -167,8 +167,11 @@ placement is invisible otherwise. One path passes rung 3 without an image extens
 typo where the element shows an image (`assertsAnImage`: an `<img>` source, a link preview, an
 icon, a Markdown image), whose extension is one keystroke from an image's, as `/img/typo.pn` is
 from `.png`. It goes on down the ladder, so it is `out-of-scope` if such a file exists and
-otherwise `broken` at rung 7, noted as a likely typo, rather than vanish. `/avatar.php`, a script
-that can serve an image, is further than one keystroke and is dropped.
+otherwise `broken` at rung 7, noted as a likely typo, rather than vanish. The audit asks the
+same test (`likelyTypoOf`) and gives the `broken` finding that sentence as its `note`, which the
+report prints under the path; a reference's own note, which says why its adapter read it as it
+did, stays off the finding. `/avatar.php`, a script that can serve an image, is further than
+one keystroke and is dropped.
 
 Rung 1 drops an `unsafe` path whose text shows an extension that is not an image's, such as
 `{{ page.data }}.json`. A construct an adapter could not read (`RawReference.unread`: a style

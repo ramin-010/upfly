@@ -17,6 +17,7 @@ import { unreferencedAssets } from '../graph/graph.js';
 import { compareStrings } from '../paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from '../probe/probe.js';
 import { provenPath } from '../resolve/reference.js';
+import { likelyTypoOf } from '../resolve/resolve.js';
 import { citeReferences } from '../scan/citation.js';
 import type { ReadFilePort } from '../scan/scan.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
@@ -68,6 +69,11 @@ export interface BrokenFinding {
   readonly where: string;
   /** The path exactly as written. */
   readonly rawPath: string;
+  /**
+   * What more is known about why the path points at nothing, such as an extension one
+   * keystroke from an image's. Absent when there is nothing more to say.
+   */
+  readonly note?: string;
 }
 
 /**
@@ -417,12 +423,16 @@ async function brokenFindings(options: AuditOptions): Promise<{
   const rootRelative = new Set<BrokenFinding>();
   const findings = references.map((reference): BrokenFinding => {
     const citation = citations.get(reference);
+    // Not `reference.note`: an adapter's note says why it read the path as it did, which is
+    // no reason for a path to point at nothing.
+    const note = likelyTypoOf(reference);
     const finding: BrokenFinding = {
       kind: 'broken',
       file: citation?.file ?? reference.file,
       line: citation?.line ?? null,
       where: citation?.where ?? reference.file,
       rawPath: reference.rawPath,
+      ...(note === null ? {} : { note }),
     };
     if (dependsOnServingRoot(provenPath(reference))) rootRelative.add(finding);
     return finding;

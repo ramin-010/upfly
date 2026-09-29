@@ -1740,6 +1740,31 @@ describe('buildReport', () => {
       expect(report.unusedVectors.bytes).toBe(2000);
     });
 
+    it('prints the note of a broken reference on its own line under it, and nothing for one without', () => {
+      const text = renderReport(
+        reportOf([
+          {
+            kind: 'broken',
+            file: 'index.html',
+            line: 4,
+            where: 'index.html:4',
+            rawPath: '/img/logo.pn',
+            note: 'ends in .pn, one keystroke from .png: a likely typo, so no image shows here',
+          },
+          brokenAt('/img/gone.png', 'index.html:5'),
+        ]),
+      );
+
+      expect(text).toContain(
+        [
+          '    index.html:4  /img/logo.pn',
+          '      ends in .pn, one keystroke from .png: a likely typo, so no image shows here',
+          '    index.html:5  /img/gone.png',
+          '',
+        ].join('\n'),
+      );
+    });
+
     it('counts the itemised array in the summary, so the two can never disagree', () => {
       // A reader who adds up the findings must get the headline number, and any
       // difference has to be explained by something on the page rather than by a bug.

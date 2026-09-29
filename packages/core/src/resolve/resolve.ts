@@ -428,6 +428,21 @@ function unlinked(
 }
 
 /**
+ * Why a reference is likely a typo of an image's name, such as `/img/logo.pn`, or `null` when
+ * it is not one. The resolver reports such a path as broken rather than drop it, and the audit
+ * gives its finding this note.
+ *
+ * @param raw a reference as its adapter emitted it
+ * @returns the note, or `null` when a spelling of the path shows an image extension or none is
+ * one keystroke from one
+ */
+export function likelyTypoOf(raw: RawReference): string | null {
+  const spellings = spellingsOf(splitPathSuffix(raw.rawPath).path, raw);
+  if (spellings.some(({ path }) => isImageExtension(extensionOf(path)))) return null;
+  return likelyTypo(spellings, raw);
+}
+
+/**
  * The note for a likely typo, or `null` when the path is none: an asserted reference where its
  * element shows an image, whose extension is one keystroke (a letter added, dropped, changed
  * or swapped with its neighbour) from an image extension, as `.pn` is from `.png`. Anything

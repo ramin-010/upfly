@@ -112,6 +112,27 @@ describe('upfly audit', () => {
     expect(snapshot(root)).toEqual(before);
   });
 
+  it('says under a broken reference that its extension is a likely typo, in the text and the JSON', () => {
+    const root = site({ 'about.html': '<p>About</p>\n<img src="img/used.pn">\n' });
+
+    const human = upfly(['audit', root, '--no-probe']);
+    const json = upfly(['audit', root, '--no-probe', '--json']);
+    const report = JSON.parse(json.stdout.trimEnd().split('\n').at(-1) ?? '{}').report;
+
+    expect(human.status).toBe(0);
+    expect(human.stdout).toContain(
+      '    about.html:2  img/used.pn\n      ends in .pn, one keystroke from .png: a likely typo, so no image shows here\n',
+    );
+    expect(report.findings).toContainEqual({
+      kind: 'broken',
+      file: 'about.html',
+      line: 2,
+      where: 'about.html:2',
+      rawPath: 'img/used.pn',
+      note: 'ends in .pn, one keystroke from .png: a likely typo, so no image shows here',
+    });
+  });
+
   it('counts the messages the parsers left, without claiming they concern the files listed', () => {
     const result = upfly(['audit', site({ 'src/broken.scss': '.a { color: red' }), '--no-probe']);
 

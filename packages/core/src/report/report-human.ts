@@ -11,7 +11,7 @@
  */
 
 import { staticExtensionOf } from '../adapters/reference-path.js';
-import type { Finding, OversizeDimension } from '../audit/audit.js';
+import type { Finding, OversizeDimension, SuppressedBroken } from '../audit/audit.js';
 import type { MentionSource } from '../audit/sweep.js';
 import { formatBytes as bytes } from '../format.js';
 import { compareStrings, isImageExtension } from '../paths.js';
@@ -645,10 +645,10 @@ function describe(finding: Finding): string[] {
         // Every one, in the form a broken finding takes: the count alone would not show a
         // reader which references were set aside.
         '    the withheld references, which a run with that directory declared will check:',
-        ...finding.suppressed.map((entry) => `      ${entry.where}  ${entry.rawPath}`),
+        ...finding.suppressed.flatMap((entry) => brokenLines(entry, '      ')),
       ];
     case 'broken':
-      return [`    ${finding.where}  ${finding.rawPath}`];
+      return brokenLines(finding, '    ');
     case 'dead':
       return [`    ${finding.asset}  ${bytes(finding.bytes)}`];
     // Unreachable, as are `oversized` and `format-opportunity`; see `headingFor`.
@@ -814,6 +814,12 @@ function count(value: number, noun: string): string {
 
 function dimensions(width: number | null, height: number | null): string {
   return width === null || height === null ? '' : `, ${width}×${height}`;
+}
+
+/** A broken reference where it is written, and its note, if any, on the line below. */
+function brokenLines(entry: SuppressedBroken, indent: string): string[] {
+  const cited = `${indent}${entry.where}  ${entry.rawPath}`;
+  return entry.note === undefined ? [cited] : [cited, `${indent}  ${entry.note}`];
 }
 
 /**
