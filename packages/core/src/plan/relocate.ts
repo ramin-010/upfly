@@ -21,7 +21,13 @@ import { isLinked, linkedPaths } from '../resolve/reference.js';
 import { type ServingRoots, resolveReferences } from '../resolve/resolve.js';
 import type { Asset, RawReference, Reference } from '../types.js';
 import type { Declined } from '../write/manifest.js';
-import { type UnindexedFiles, patternCannotMove, servingRootOf, unindexedFiles } from './plan.js';
+import {
+  type LinkedReference,
+  type UnindexedFiles,
+  patternCannotMove,
+  servingRootOf,
+  unindexedFiles,
+} from './plan.js';
 import {
   type EditsInFile,
   NOT_UTF8,
@@ -122,6 +128,12 @@ export interface RelocateInput {
    */
   readonly listDirectory?: (absolutePath: string) => readonly string[];
 }
+
+/** What rewriting one reference reads: the graph, the serving roots, the aliases, the policy. */
+export type RewriteContext = Pick<
+  RelocateInput,
+  'graph' | 'servingRoots' | 'aliases' | 'rootLinkPolicy'
+>;
 
 /**
  * Plan a set of moves, refusing any it cannot make safely rather than guessing.
@@ -562,7 +574,7 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
  * and POSIX, or `null` when it was linked another way. TypeScript looks under `baseUrl` only
  * when no `paths` key matches, so only a reference no alias rule covers can have one.
  */
-function baseUrlOf(reference: Reference, input: RelocateInput): string | null {
+function baseUrlOf(reference: Reference, input: RewriteContext): string | null {
   if (reference.kind !== 'import' || reference.resolution !== 'resolved') return null;
   if (reference.resolvedVia !== 'serving-root') return null;
   if (aliasRuleFor(reference, input.aliases) !== null) return null;
@@ -688,10 +700,7 @@ function collectRepoint(
  * The same tests and sentences as `rewriteRefusal` in `plan.ts`; each caller adds its own
  * ending. The conditions must not drift, so a change to either belongs in both.
  */
-function rewriteRefusalFor(
-  reference: Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>,
-  input: RelocateInput,
-): string | null {
+function rewriteRefusalFor(reference: LinkedReference, input: RewriteContext): string | null {
   if (reference.confidence === 'unsafe') return 'the reference has no static path to replace';
   if (input.graph.texts.get(reference.file)?.holdsReplacementCharacter === true) return NOT_UTF8;
   if (reference.resolvedVia === 'speculative-root') {
@@ -714,7 +723,7 @@ function rewriteRefusalFor(
  * survives too, because a diff full of `./` appearing and disappearing is a diff nobody
  * can review.
  */
-function repointed(reference: Reference, move: Move, input: RelocateInput): string | null {
+function repointed(reference: Reference, move: Move, input: RewriteContext): string | null {
   const { rawPath } = reference;
   const suffix = rawPath.slice(pathPartOf(rawPath).length);
   const path = pathPartOf(rawPath);
@@ -794,6 +803,146 @@ function posixRelative(from: string, to: string): string {
   const up = fromParts.length - shared;
   const down = toParts.slice(shared);
   return [...Array.from({ length: up }, () => '..'), ...down].join('/');
+}
+
+/** Every reference to `from` pointed at `to`, a file that already exists. Nothing moves. */
+export interface Repoint {
+  /** POSIX-relative path of the file the references name now. */
+  readonly from: string;
+  /** POSIX-relative path of the file they are to name. */
+  readonly to: string;
+}
+
+export interface RepointInput extends RewriteContext {
+  readonly repoints: readonly Repoint[];
+  /** As `RelocateInput.listDirectory`: the files the walk left out count in the check. */
+  readonly listDirectory?: (absolutePath: string) => readonly string[];
+}
+
+/** What became of one reference to a `from`: its new text, or why it stays as written. */
+export interface RepointOutcome {
+  readonly reference: Reference;
+  readonly repoint: Repoint;
+  /** The new text, when the reference moves to `to`. */
+  readonly replacement?: string;
+  /** Why it stays as written, when it does. */
+  readonly why?: string;
+}
+
+export interface RepointPlan {
+  /** The edits that point the references at their `to`, one entry per file, in path order. */
+  readonly rewrites: readonly PlannedRewrite[];
+  /** Every reference to a `from`, in the graph's order: moved, or staying with its reason. */
+  readonly outcomes: readonly RepointOutcome[];
+}
+
+/**
+ * Plan pointing every reference to one file at another that already exists, as for two
+ * identical copies of an image, rewriting paths the way a move does and moving no file.
+ *
+ * A reference follows only where the new file is reachable the way the reference loads
+ * files: a URL only to a file a folder the site is served from holds, the same folder as
+ * today; an import only to a file no such folder holds. Every new text is read again, among
+ * the files as they are, and must reach its `to`; one that would not stays as written.
+ */
+export function planRepoint(input: RepointInput): RepointPlan {
+  const { root } = input.graph;
+  const repoints = new Map(input.repoints.map((repoint) => [repoint.from, repoint]));
+  const outcomes: RepointOutcome[] = [];
+  const candidates = new Map<Reference, { replacement: string; repoint: Repoint }>();
+
+  for (const reference of input.graph.references) {
+    if (!isLinked(reference)) continue;
+    const repoint = linkedPaths(reference)
+      .map((path) => repoints.get(toPosix(relativePath(root, path))))
+      .find((found) => found !== undefined);
+    if (repoint === undefined) continue;
+    const why = whyStaysAsWritten(reference, repoint, input);
+    if (why !== null) {
+      outcomes.push({ reference, repoint, why });
+      continue;
+    }
+    const replacement = repointed(reference, repoint, input);
+    if (replacement === null) {
+      outcomes.push({
+        reference,
+        repoint,
+        why: `Upfly could not work out how to spell ${repoint.to} from this reference`,
+      });
+      continue;
+    }
+    candidates.set(reference, { replacement, repoint });
+  }
+
+  const onDisk = unindexedFiles(input);
+  const answers = resolveReferences(
+    [...candidates].map(([reference, { replacement }]) => ({ ...reference, rawPath: replacement })),
+    {
+      root,
+      assets: input.graph.assets.map((node) => node.asset),
+      servingRoots: input.servingRoots,
+      aliases: input.aliases,
+      ...(onDisk === undefined ? {} : { unindexed: onDisk }),
+      foldCase: true,
+      exists: () => false,
+    },
+  );
+  const reached = new Map(answers.map((answer) => [placeOf(answer), linkedPaths(answer)[0]]));
+
+  const edits = new Map<string, EditsInFile>();
+  for (const [reference, { replacement, repoint }] of candidates) {
+    const lands = reached.get(placeOf({ ...reference, rawPath: replacement }));
+    const at = lands === undefined ? null : relativePath(root, lands);
+    if (at !== repoint.to) {
+      outcomes.push({
+        reference,
+        repoint,
+        why:
+          at === null
+            ? `it would become \`${replacement}\`, which names no file Upfly can find`
+            : `it would become \`${replacement}\`, which reaches ${at} first`,
+      });
+      continue;
+    }
+    outcomes.push({ reference, repoint, replacement });
+    if (replacement !== reference.rawPath) {
+      collectEdit(edits, toPosix(relativePath(root, reference.file)), reference, replacement);
+    }
+  }
+
+  const order = new Map(input.graph.references.map((reference, index) => [reference, index]));
+  return {
+    rewrites: [...edits.entries()]
+      .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
+      .sort((a, b) => compareStrings(a.file, b.file)),
+    outcomes: outcomes.sort(
+      (a, b) => (order.get(a.reference) ?? 0) - (order.get(b.reference) ?? 0),
+    ),
+  };
+}
+
+/**
+ * Why a reference to `from` cannot be pointed at `to` by changing its text, or `null` when it
+ * can: the tests a move's rewrite applies, and whether `to` is reachable the way the reference
+ * loads files, which a move decides once for the file and a repoint for each reference.
+ */
+function whyStaysAsWritten(
+  reference: LinkedReference,
+  repoint: Repoint,
+  input: RewriteContext,
+): string | null {
+  if (reference.resolution === 'resolved-pattern') return patternCannotMove(reference);
+  const refusal = rewriteRefusalFor(reference, input);
+  if (refusal !== null) return refusal;
+  const from = servingRootOf(repoint.from, input.servingRoots);
+  const into = servingRootOf(repoint.to, input.servingRoots);
+  if (from === into) return null;
+  if (from !== null && into !== null) {
+    return `${repoint.to} is served from ${rootName(into)} and ${repoint.from} from ${rootName(from)}, so a URL that finds one does not find the other`;
+  }
+  return from !== null
+    ? `a URL can load only a file a folder the site is served from holds, and ${repoint.to} is in none`
+    : `an import names a file for the bundler, and ${repoint.to} is in a folder the site serves as it is, which bundlers such as Vite do not import from`;
 }
 
 /** Everything the transaction needs to carry out an accepted move. */

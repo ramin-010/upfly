@@ -75,13 +75,18 @@ export {
   planOptimization,
   whyReferenceStays,
 } from './plan/plan.js';
-export { moveOperationsFor, planRelocation } from './plan/relocate.js';
+export { moveOperationsFor, planRelocation, planRepoint } from './plan/relocate.js';
 export type {
   Move,
   RefusalCode,
   RefusedMove,
   RelocateInput,
   RelocationPlan,
+  Repoint,
+  RepointInput,
+  RepointOutcome,
+  RepointPlan,
+  RewriteContext,
 } from './plan/relocate.js';
 
 // A move's regression count and the limit of that count, as one value, so the count
@@ -98,9 +103,24 @@ export type {
   Survivor,
   Unsearchable,
 } from './plan/old-path-search.js';
-export { alwaysMeasureFor, newRunId, optimize } from './write/optimize.js';
-export type { OptimizeInput, OptimizeProgress, OptimizeResult } from './write/optimize.js';
+export { alwaysMeasureFor, newRunId, optimize, writeRewrites } from './write/optimize.js';
+export type {
+  OptimizeInput,
+  OptimizeProgress,
+  OptimizeResult,
+  WriteRewritesInput,
+} from './write/optimize.js';
 export { optimizeProject } from './optimize-project.js';
+export { dedupeProject } from './dedupe-project.js';
+export type {
+  DedupeCopy,
+  DedupePlan,
+  DedupeProjectInput,
+  DedupeProjectResult,
+  DedupeSet,
+  KeptBecause,
+  StayingReference,
+} from './dedupe-project.js';
 export type {
   OnlyImages,
   OptimizeProjectInput,

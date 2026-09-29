@@ -2068,6 +2068,19 @@ Some references to a moved asset cannot be repointed: a template, a reference a 
 editing, or one whose new spelling cannot be worked out. They do not stop the move. Each is listed in
 `declined`, because it will break.
 
+### Pointing identical copies at one file
+
+`dedupeProject` keeps one copy of each set of byte-identical images (the audit's `duplicate`) and
+points the references to the other copies at it, through `planRepoint`: the move's rewrite, with
+no file moving. The copy kept is the one named, else the one most references use; on a tie, one a
+folder the site is served from holds, then the shortest path, then the first in path order. A
+reference follows only where the kept copy is reachable the way it loads files: a URL to a file
+the same serving root holds, an import to a file no serving root holds, since bundlers such as
+Vite do not import from the folder they serve as it is. Every new text is read again among the
+files as they are and must reach the kept copy, or it stays as written with the reason. The edits
+go through `writeRewrites`, the same transaction and manifest as `optimize`, so `undo` reverses
+them. Nothing is deleted: a copy nothing names any more is listed by the audit as unused.
+
 ### What "broken before versus after" can see
 
 The obvious check after a move counts broken references before and after it. That count comes from

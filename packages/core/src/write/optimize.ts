@@ -35,10 +35,11 @@ import { hashText } from '../scan/text-hash.js';
 import type { Asset } from '../types.js';
 import { applyEdits } from './edits.js';
 import { acquireLock } from './lock.js';
-import { type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
+import { type Declined, type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
 import {
   type FileStore,
   type LockPorts,
+  type PlannedEdit,
   type PlannedOperation,
   type RunContext,
   commit,
@@ -557,24 +558,7 @@ async function stage(
     operations.push({ kind: 'delete', path: conversion.asset, beforeHash: original, backup });
   }
 
-  for (const rewrite of plan.rewrites) {
-    const before = await input.store.readText(rewrite.file);
-    // Read after every encode, which can take minutes, so this is the last moment to find
-    // that the file was saved since the scan. Its edits' offsets count into the scanned
-    // text: applied to any other, they would land in the wrong place, and every later check
-    // would compare against this read and pass.
-    refuseUnlessScannedText(rewrite, before);
-    operations.push({
-      kind: 'edit',
-      path: rewrite.file,
-      beforeHash: hashText(before, input.store.hashAlgorithm),
-      // Applied here only to hash it. Handing the edited text to commit instead would
-      // have commit write bytes without re-reading the source.
-      afterHash: hashText(applyEdits(before, rewrite.edits), input.store.hashAlgorithm),
-      edits: rewrite.edits,
-    });
-  }
-
+  operations.push(...(await editOperations(plan.rewrites, input.store)));
   return operations;
 }
 
@@ -613,6 +597,79 @@ function originalMoved(path: string, happened: string): UpflyError {
     'TRANSACTION_FOREIGN_CHANGE',
     `${path} ${happened}, so no file in the project was changed. Run Upfly again to plan from the project as it is now.`,
   );
+}
+
+/**
+ * Each rewrite as the edit the transaction applies, read from the file as it is now.
+ *
+ * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` when a file changed since the scan
+ */
+async function editOperations(
+  rewrites: readonly PlannedRewrite[],
+  store: FileStore,
+): Promise<PlannedEdit[]> {
+  const operations: PlannedEdit[] = [];
+  for (const rewrite of rewrites) {
+    const before = await store.readText(rewrite.file);
+    // Read after every encode, which can take minutes, so this is the last moment to find
+    // that the file was saved since the scan. Its edits' offsets count into the scanned
+    // text: applied to any other, they would land in the wrong place, and every later check
+    // would compare against this read and pass.
+    refuseUnlessScannedText(rewrite, before);
+    operations.push({
+      kind: 'edit',
+      path: rewrite.file,
+      beforeHash: hashText(before, store.hashAlgorithm),
+      // Applied here only to hash it. Handing the edited text to commit instead would
+      // have commit write bytes without re-reading the source.
+      afterHash: hashText(applyEdits(before, rewrite.edits), store.hashAlgorithm),
+      edits: rewrite.edits,
+    });
+  }
+  return operations;
+}
+
+/** What `writeRewrites` needs: the edits, the disk, and the run's identity. */
+export interface WriteRewritesInput {
+  readonly rewrites: readonly PlannedRewrite[];
+  readonly store: FileStore;
+  readonly runId: string;
+  readonly now: () => string;
+  /** What the plan left as it was, recorded in the manifest with each reason. */
+  readonly declined: readonly Declined[];
+  readonly lock?: LockPorts;
+}
+
+/**
+ * Writes a plan that only edits references, such as pointing identical copies at one file,
+ * through the same transaction, lock and manifest as `optimize`, so `revert` undoes it the
+ * same way. Each file is checked against the text the scan read before anything is written.
+ *
+ * @returns the manifest the run left
+ * @throws {UpflyError} `TRANSACTION_FOREIGN_CHANGE` when a file changed since the scan,
+ * `TRANSACTION_LOCKED` while another run holds the project, and the transaction's other codes
+ */
+export async function writeRewrites(input: WriteRewritesInput): Promise<Manifest> {
+  const runDir = `.upfly/runs/${input.runId}`;
+  await input.store.createExclusive(FOLDER_GITIGNORE, '*\n');
+  const held = await acquireLock({
+    store: input.store,
+    runId: input.runId,
+    now: input.now,
+    ...input.lock,
+  });
+  try {
+    const operations = await editOperations(input.rewrites, input.store);
+    await prepare(operations, input.store, runDir);
+    return await commit(
+      operations,
+      input.store,
+      { runId: input.runId, runDir, now: input.now, declined: input.declined },
+      input.lock ?? {},
+    );
+  } finally {
+    await held.release();
+  }
 }
 
 /**
