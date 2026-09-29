@@ -184,7 +184,7 @@ describe('the report of a pipeline run', () => {
 
     // And what writes the missing config, so the user knows what to run first.
     expect(await aliasReasons(root)).toEqual({
-      'src/routes/+page.ts $lib/assets/kit-hero.png': `${unreadIn('tsconfig.json')}. SvelteKit writes \`$lib\` into \`.svelte-kit/tsconfig.json\` when \`svelte-kit sync\` runs, as installing the project does, so run that, then run Upfly again`,
+      'src/routes/+page.ts $lib/assets/kit-hero.png': `${unreadIn('tsconfig.json')}. SvelteKit writes \`$lib\` into \`.svelte-kit/tsconfig.json\` when \`svelte-kit sync\` runs, as installing the project does, so run \`npx svelte-kit sync\`, or install the project, then run Upfly again`,
     });
   });
 

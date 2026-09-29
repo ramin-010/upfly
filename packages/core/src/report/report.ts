@@ -977,7 +977,7 @@ function aliasReason(reference: Reference, aliases: AliasMap): string {
 }
 
 const SVELTEKIT_WRITES_LIB =
-  'SvelteKit writes `$lib` into `.svelte-kit/tsconfig.json` when `svelte-kit sync` runs, as installing the project does, so run that, then run Upfly again';
+  'SvelteKit writes `$lib` into `.svelte-kit/tsconfig.json` when `svelte-kit sync` runs, as installing the project does, so run `npx svelte-kit sync`, or install the project, then run Upfly again';
 
 function unmappedAliasReason(file: string, aliases: AliasMap): string {
   const from = toPosix(file);

@@ -1019,7 +1019,7 @@ describe('the public policy', () => {
       expect(light?.replacesOriginal).toBe(false);
       expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual(['public/theme-light.png']);
       expect(plan.keptOriginals[0]?.reason).toContain(
-        '`src/Theme.jsx` reaches it through `/theme-${mode}.png`, a path assembled at runtime',
+        '`src/Theme.jsx` reaches it through `/theme-${mode}.png`, a path assembled at runtime that no run can rewrite: deleting the original would break it',
       );
       expect(plan.conversions.map((c) => c.asset)).toEqual(['public/theme-light.png']);
     });
@@ -1052,7 +1052,7 @@ describe('the public policy', () => {
       expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['about.html']);
       expect(plan.conversions[0]?.replacesOriginal).toBe(false);
       expect(plan.keptOriginals[0]?.reason).toContain(
-        '`index.html` names it as `/public/h%65ro.png`, and this run does not rewrite that reference',
+        '`index.html` names it as `/public/h%65ro.png`, and this run does not rewrite that reference: deleting the original would break it',
       );
     });
 

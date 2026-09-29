@@ -314,7 +314,7 @@ const baseline = run(here);
 const measured = measure(here);
 if (baseline.status !== 0 || measured.status !== 0) {
   process.stdout.write(
-    'The undamaged tree does not pass its own check and measurement, so nothing here would mean anything.\n',
+    'The undamaged tree fails its check or its measurement, so nothing here would mean anything.\n',
   );
   process.stdout.write(baseline.status !== 0 ? baseline.stdout : measured.stdout);
   process.stderr.write(measured.stderr);

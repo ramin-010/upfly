@@ -1175,7 +1175,7 @@ function whyStillNeeded(
   if (references.length === 0) {
     return (
       'converted, but the original was kept: nothing Upfly can see links to it, so no ' +
-      'reference moved to the replacement — `--replace` removes an original only once every ' +
+      'reference moved to the replacement. `--replace` removes an original only once every ' +
       'reference to it has moved, and whatever loads this one is somewhere Upfly cannot read'
     );
   }
@@ -1189,8 +1189,8 @@ function whyStillNeeded(
   const where = `\`${relativePath(root, first.file)}\``;
   const text = `\`${first.rawPath}\`${missed.length === 1 ? '' : ` (and ${missed.length - 1} more)`}`;
   return first.resolution === 'resolved-pattern'
-    ? `converted, but the original was kept: ${where} reaches it through ${text}, ${unrewritable(first)} — deleting the original would break it`
-    : `converted, but the original was kept: ${where} names it as ${text}, and this run does not rewrite that reference — deleting the original would break it`;
+    ? `converted, but the original was kept: ${where} reaches it through ${text}, ${unrewritable(first)}: deleting the original would break it`
+    : `converted, but the original was kept: ${where} names it as ${text}, and this run does not rewrite that reference: deleting the original would break it`;
 }
 
 /**
