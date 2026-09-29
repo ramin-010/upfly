@@ -3,11 +3,11 @@
  *
  * Finds static `import`s, `require()`, dynamic `import()`, the bundler forms
  * `new URL('./x.png', import.meta.url)`, `import.meta.glob('./img/*.png')` and
- * `require.context('./img')`, JSX `src`/`srcSet`/`poster` on any element and
- * every attribute position the HTML adapter reads (`url-attributes.ts`), and `url()` inside
- * CSS-in-JS template literals. Path-shaped strings, templates and `+` chains outside those
- * constructs become speculative candidates. One that a construct declines, such as the value
- * of a JSX attribute that names no file, is returned marked `declined` with the reason.
+ * `require.context('./img')`, JSX `src`/`srcSet`/`poster` on any element and every attribute
+ * position the HTML adapter reads (`url-attributes.ts`), and `url()` inside CSS-in-JS template
+ * literals. Path-shaped strings, templates and `+` chains outside those constructs become
+ * speculative candidates. One that a construct declines, such as the value of a JSX attribute that
+ * names no file, is returned marked `declined` with the reason.
  *
  * It parses with `@babel/parser`, never a regular expression: a regex would find
  * `'./logo.png'` inside a comment or an unrelated string, and the rewrite would then edit it.
@@ -409,7 +409,8 @@ function collectFromNode(node: BabelNode, context: Context): void {
       if (isBundlerUrlConstruction(node)) {
         // A URL, not a module specifier: the URL constructor resolves it against the module's
         // own URL, so a bare `hero.png` is the file beside the module. It takes an attribute's
-        // kind, and the resolver adds what Vite reads first. `import.meta.resolve(x)` differs.
+        // kind, and the resolver reads it as Vite does (rungs 4a and 5b).
+        // `import.meta.resolve(x)` follows module resolution instead.
         collectFromModuleSource(
           node.arguments[0],
           context,

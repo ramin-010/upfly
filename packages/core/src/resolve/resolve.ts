@@ -226,13 +226,13 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   }
 
   const { path } = splitPathSuffix(raw.rawPath);
-  // Rungs 3, 4 and 5 ask about the same spellings. Without the kind, `spellingsOf` would not
-  // read a Markdown destination's backslash escapes.
+  // Every spelling the reference's position reads, since its shape picks the decoder. Rung 3
+  // and the alias-shape tests of rungs 4b and 6 read them all.
   const spellings = spellingsOf(path, raw);
-  // Windows path rules read a backslash as a folder separator and every other platform's as
-  // part of a name, so a spelling that still holds one would link a file on one machine and
-  // not on another. Where a browser reads it as a slash, `spellingsOf` already has; a drive
-  // path is read with Windows rules on every platform.
+  // Rungs 4 and 5 look up only these. Windows path rules read a backslash as a folder separator
+  // and every other platform's as part of a name, so a spelling that still holds one would link
+  // a file on one machine and not on another. Where a browser reads it as a slash,
+  // `spellingsOf` already has; a drive path is read with Windows rules on every platform.
   const lookedUp = spellings.filter(
     ({ path: spelled }) => isDrivePath(spelled) || !spelled.includes('\\'),
   );
@@ -284,7 +284,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   if (excluded !== null) return excluded;
 
   // 5b. A `new URL` name that missed beside the module is looked for as a package next, as
-  //     Vite looks: out of scope where one holds it, and otherwise on to rung 7.
+  //     Vite looks: out of scope where one holds it, and otherwise on down the ladder.
   const packaged = raw.shape === 'js.new-url' ? inPackage(path, raw, context) : null;
   if (packaged !== null) return packaged;
 
@@ -569,8 +569,9 @@ function matchThroughAlias(
 
 /**
  * Rung 2 for a bundler's glob: every asset the pattern matches, less any that an `exclude`
- * pattern matches, as Vite globs. Nothing left is `dynamic`, never `broken`, unless the pattern
- * can name only files that are not images, which drops it as rung 3 drops `inter.woff2`.
+ * pattern matches, as Vite globs. Nothing left is `dynamic`, or `unresolved-alias` through an
+ * alias no rule maps, and never `broken`, unless the pattern can name only files that are not
+ * images, which drops it as rung 3 drops `inter.woff2`.
  */
 function resolveGlob(
   raw: RawReference,

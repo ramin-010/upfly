@@ -66,9 +66,9 @@ const ESCAPED_STRING =
 
 /**
  * A key or an escaped string naming an image, returned declined under `reason` so the report
- * counts it, as the JavaScript reader counts its declines; anything else is left out, as
- * before. An escaped one covers its whole text, and its decoded path travels as
- * `assembledPath`, since no range of the text spells it.
+ * counts it, as the JavaScript reader counts its declines; anything else is left out. An
+ * escaped one covers its whole text, and its decoded path travels as `assembledPath`, since no
+ * range of the text spells it.
  */
 function declineCandidate(
   raw: string,

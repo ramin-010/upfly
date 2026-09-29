@@ -258,11 +258,12 @@ async function sweepFiles(
  * its line and a line costs a re-read. `withSourceTexts` re-reads once per file, and only
  * for references that named a candidate.
  *
- * A pattern's holes leave no file name to find, so a pattern the resolver never globbed is
- * tested against every candidate, as the resolver would glob it from whichever directory the
- * site serves: a root-relative one the run had no serving root to glob, a relative one that
- * matched nothing, one written through an alias no rule maps, one an adapter declined, a
- * bundler's glob that matched nothing, and a bundler's context that linked nothing.
+ * A pattern's holes leave no file name to find, so a pattern that linked nothing is tested
+ * against every candidate from any base: a root-relative one the run had no serving root to
+ * glob, a relative one or a bundler's glob that matched nothing, one written through an alias
+ * no rule maps, one an adapter declined, and one holding another language's template holes. A
+ * bundler's context is tested by what it could take from its directory, and a path holding
+ * U+FFFD with each U+FFFD standing for one character.
  */
 async function sweepUnresolvedReferences(
   options: SweepOptions,
