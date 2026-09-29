@@ -177,7 +177,7 @@ is not a keyed gap for that run, a stale gap, or an unkeyed emission. The second
 published too, and a published figure nothing holds can drop unseen.
 
 The judging is in `matrix.mjs`, which imports nothing, not the engine and not `node:fs`. The key
-and the engine's observations are both arguments, so `coverage-matrix.test.ts` can feed it damaged
+and the engine's observations are both arguments, so `accuracy-matrix.test.ts` can feed it damaged
 inputs and check that each one moves a row the wrong way. It joins the key to the engine's
 references by position and puts every key entry in exactly one bucket:
 

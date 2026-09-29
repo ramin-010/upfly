@@ -3,7 +3,7 @@
  * engine does, one row per reference shape.
  *
  * It imports nothing, not the engine and not `node:fs`, and takes the key and the engine's
- * observations as arguments, so `coverage-matrix.test.ts` can feed it damaged inputs and
+ * observations as arguments, so `accuracy-matrix.test.ts` can feed it damaged inputs and
  * check that each row goes the wrong way. It judges outcomes, not shapes: a shape that
  * differs from the key's is listed apart and is never a miss. A file the scanner could not
  * read is its own outcome, never a refusal. The join runs both ways, and there is no total.
