@@ -274,7 +274,13 @@ function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
  */
 function nameSpellings(asset: string): readonly string[] {
   const name = posix.basename(asset);
-  return [...new Set([name, spell(name, 'percent-encoded'), spell(name, 'html-entities')])];
+  return [
+    ...new Set([
+      name,
+      spell(name, 'percent-encoded', 'attr'),
+      spell(name, 'html-entities', 'attr'),
+    ]),
+  ];
 }
 
 /**

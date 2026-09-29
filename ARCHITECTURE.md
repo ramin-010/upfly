@@ -674,11 +674,13 @@ string writes one only as an escape, and keeps it.
 
 The spellings are tried one at a time, so a path that needs both decodings, such as
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a
-reference the decoder cannot read, or references or backslash escapes beside a percent-escape
-(`my\_photo%20x.png`), is therefore reported as `unsafe` by the Markdown adapter, a refusal with a
-reason instead of a ceiling that leads to a lookup. That holds only while some reading of the path
-ends in an image extension: as written or as CommonMark reads it, where an unknown name stays
-text, each also percent-decoded. `/wiki/AT&T;` shows none, so it names no image whatever `&T;`
+reference the decoder cannot read, or references or backslash escapes that leave a percent-escape
+to decode, whether beside them (`my\_photo%20x.png`) or made by them (`hero&#37;20image.png`
+reads `hero%20image.png`, which a server decodes again), is therefore reported as `unsafe` by the
+Markdown adapter, a refusal with a reason instead of a ceiling that leads to a lookup. That holds
+only while some reading of the path ends in an image extension: as written or as CommonMark reads
+it, where an unknown name stays text, each also percent-decoded. `/wiki/AT&T;` shows none, so it
+names no image whatever `&T;`
 meant; it is kept like any other link, and the resolver drops it. The HTML adapter refuses the same
 character-reference paths, and also any whose decoded spelling differs from parse5's reading of the
 attribute, as when a legacy name such as `&copy` is written without its semicolon: parse5 still
@@ -689,13 +691,19 @@ resolver drops it.
 
 A rewrite writes the new path back in the matched spelling. It starts from the path on disk, so
 without this a file called `hero image.webp` would be written into a URL with a raw space. `spell`
-percent-encodes each segment separately, leaving the slashes alone, and for an entity spelling
-re-encodes only `&`, because inventing entities for other characters would change text the author
-did not write. For a Markdown escape it escapes only `\` and `&`, which CommonMark would otherwise
-read as the start of an escape or a reference. The optimize planner re-spells nothing: it swaps the
-extension in the text as written, so `my\_photo.png` becomes `my\_photo.webp`, which reads as the
-converted file. How the HTML adapter finds these spellings in attributes, `style` included, is
-under "Character references in HTML attributes".
+takes the reference, as `spellingsOf` does, because the syntax around the path decides what it may
+hold. It percent-encodes each segment separately, leaving the slashes alone, and for an entity
+spelling re-encodes only `&`, because inventing entities for other characters would change text the
+author did not write. A Markdown destination is written so that CommonMark reads it as the file,
+bare or in angle brackets, since the reference does not record which: `\`, `&`, `<`, `>` and both
+parentheses are escaped with a backslash (an unmatched parenthesis ends a bare destination), and a
+literal path that needs no escape stays as written. No backslash escapes a space or a control
+character, `#` and `?` would start a fragment or a query, and a server decodes a percent-escape a
+name holds, so a name with any of them is written wholly percent-encoded, parentheses included:
+the resolver decodes an escape or a percent-escape, never both. The optimize planner re-spells
+nothing: it swaps the extension in the text as written, so `my\_photo.png` becomes
+`my\_photo.webp`, which reads as the converted file. How the HTML adapter finds these spellings in
+attributes, `style` included, is under "Character references in HTML attributes".
 
 ### `possibly-dead`, and why "zero references" is usually a lie
 
@@ -1165,8 +1173,8 @@ same way:
   range and `rawPath` stay the encoded source text; the resolver also tries the decoded spelling
   (`spellingsOf`), and a rewrite writes the new path re-encoded (`spell`). `/gallery/a&amp;b.png`
   names `a&b.png` and can be rewritten.
-- Any other path stays `unsafe`, and so does one with a percent-escape beside its references, as
-  "Percent-encoded and entity-encoded paths" explains.
+- Any other path stays `unsafe`, and so does one whose references leave a percent-escape to
+  decode, beside them or made by them, as "Percent-encoded and entity-encoded paths" explains.
 - A `srcset` stays `unsafe`. It is a list, so its one range is not one path.
 
 A `style` attribute is CSS and never meets the external-URL test: `width: 100%` begins with letters

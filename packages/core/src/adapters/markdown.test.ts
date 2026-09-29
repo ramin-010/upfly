@@ -276,6 +276,7 @@ describe('markdownAdapter', () => {
     it.each([
       ['a misspelled name', '![a](/img/caf&eacut;.png)'],
       ['a reference beside a percent-escape', '![a](/img/caf&eacute;%20x.png)'],
+      ['a reference that decodes to a percent-escape', '![a](/img/hero&#37;20image.png)'],
       ['a link reference definition', '[a]: /img/caf&eacut;.png'],
       // `&period;` is a dot, so only the reading that decodes it shows `.png`.
       ['a name whose extension shows once read', '![a](/im&x;g/a&period;png)'],

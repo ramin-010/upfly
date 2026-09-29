@@ -372,12 +372,23 @@ export function spellingsOf(
 
 /**
  * Write `path` back in `spelling`, so a rewritten reference reads the way the author
- * wrote it.
+ * wrote it, and reads as `path` to the reader `spellingsOf` names.
  *
  * A rewrite builds the new text from the path on disk, so without this a file called
  * `hero image.png`, referenced as `hero%20image.png`, would be rewritten with a raw space.
+ *
+ * @param read The reference, or its kind alone, as `spellingsOf` takes it. A Markdown
+ * destination has a syntax of its own (`spellDestination`). Required, because a call that
+ * left it out would write a destination that ends early without a word.
  */
-export function spell(path: string, spelling: PathSpelling): string {
+export function spell(
+  path: string,
+  spelling: PathSpelling,
+  read: ReferenceKind | ReadingPosition,
+): string {
+  if ((typeof read === 'string' ? read : read.kind) === 'md') {
+    return spellDestination(path, spelling);
+  }
   switch (spelling) {
     case 'literal':
       return path;
@@ -398,6 +409,62 @@ export function spell(path: string, spelling: PathSpelling): string {
     default:
       return path;
   }
+}
+
+/**
+ * `path` as a Markdown destination that CommonMark reads as `path`, whether it sits bare or
+ * in angle brackets, which a reference does not record.
+ *
+ * No backslash escapes a space or a control character, either of which ends a bare
+ * destination; `#` and `?` would start a fragment or a query; and a server decodes a
+ * percent-escape the name holds. Each is written percent-encoded, and the whole path with it,
+ * since the resolver decodes one way or the other and never both. Parentheses are encoded too,
+ * as an unmatched one ends a bare destination. Otherwise every character CommonMark would read
+ * another way is escaped, and a literal path that holds none stays as written.
+ */
+function spellDestination(path: string, spelling: PathSpelling): string {
+  if (spelling === 'percent-encoded' || onlyPercentEncodingWrites(path)) {
+    return path
+      .split('/')
+      .map((segment) =>
+        encodeURIComponent(segment).replace(/[()]/g, (paren) => (paren === '(' ? '%28' : '%29')),
+      )
+      .join('/');
+  }
+  if (spelling === 'literal' && destinationReadsAsWritten(path)) return path;
+  const escaped = path.replace(/[\\()<>]/g, (character) => `\\${character}`);
+  // An ampersand is written as the author wrote the others: as a reference, or escaped.
+  return spelling === 'html-entities'
+    ? escaped.replaceAll('&', '&amp;')
+    : escaped.replaceAll('&', '\\&');
+}
+
+/**
+ * Whether a name holds what a Markdown destination can carry only percent-encoded: a space, a
+ * control character, `#`, `?`, or a percent-escape of its own.
+ */
+function onlyPercentEncodingWrites(path: string): boolean {
+  for (const character of path) {
+    const code = character.charCodeAt(0);
+    if (code <= 0x20 || code === 0x7f || character === '#' || character === '?') return true;
+  }
+  return PERCENT_ESCAPE.test(path);
+}
+
+/**
+ * Whether `path`, written raw, is read as `path` in either form of destination: no backslash,
+ * angle bracket or text in the shape of a character reference, which the Markdown adapter
+ * refuses when it names none, and parentheses only in matched pairs.
+ */
+function destinationReadsAsWritten(path: string): boolean {
+  if (/[\\<>]/.test(path) || decodeMarkdownDestination(path) !== path) return false;
+  let depth = 0;
+  for (const character of path) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
 }
 
 /**
@@ -577,13 +644,14 @@ export function isAsciiPunctuation(character: string): boolean {
 /**
  * Whether a path holds character references that no spelling the resolver tries decodes
  * completely, so which file it names is not known: one the decoder cannot read, such as
- * the misspelled `&eacut;`, or any beside a percent-escape, as in `caf&eacute;%20x.png`,
- * since the resolver decodes one way or the other and never both.
+ * the misspelled `&eacut;`, or any that leaves a percent-escape to decode, beside it as in
+ * `caf&eacute;%20x.png` or made by it as in `hero&#37;20image.png`, since the resolver
+ * decodes one way or the other and never both.
  */
 export function holdsUndecodableCharacterReference(path: string): boolean {
   const decoded = decodeCharacterReferences(path);
   if (decoded === null) return true;
-  return decoded !== path && PERCENT_ESCAPE.test(path);
+  return decoded !== path && PERCENT_ESCAPE.test(decoded);
 }
 
 const PERCENT_ESCAPE = /%[0-9A-Fa-f]{2}/;
@@ -591,13 +659,13 @@ const PERCENT_ESCAPE = /%[0-9A-Fa-f]{2}/;
 /**
  * `holdsUndecodableCharacterReference` for a Markdown destination, whose backslash escapes
  * are read too: true when a character reference cannot be decoded, unless a backslash
- * escapes its `&`, or when escapes or references sit beside a percent-escape, as in
- * `my\_photo%20x.png`, which names `my_photo x.png`.
+ * escapes its `&`, or when escapes or references leave a percent-escape to decode, as in
+ * `my\_photo%20x.png`, which names `my_photo x.png`, or `hero&#37;20image.png`.
  */
 export function holdsUndecodableMarkdownEscape(path: string): boolean {
   const decoded = decodeMarkdownDestination(path);
   if (decoded === null) return true;
-  return decoded !== path && PERCENT_ESCAPE.test(path);
+  return decoded !== path && PERCENT_ESCAPE.test(decoded);
 }
 
 /**

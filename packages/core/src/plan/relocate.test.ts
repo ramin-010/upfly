@@ -4,11 +4,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { defaultAdapters } from '../adapters/default-adapters.js';
+import { markdownAdapter } from '../adapters/markdown.js';
 import type { PathSpelling } from '../adapters/reference-path.js';
 import { discover } from '../discover/discover.js';
 import { buildGraph } from '../graph/graph.js';
 import { toPosix } from '../paths.js';
 import { type AliasMap, expandAlias, loadAliases } from '../resolve/aliases.js';
+import { linkedPaths } from '../resolve/reference.js';
 import { resolveReferences } from '../resolve/resolve.js';
 import { scanSources } from '../scan/scan.js';
 import type { Asset, RawReference, Reference } from '../types.js';
@@ -715,5 +717,122 @@ describe('relocate, and how a path is re-spelled', () => {
       expect(plan.refused).toEqual([]);
       expect(plan.rewrites[0]?.edits[0]?.replacement).toBe('/img/logo.png');
     });
+  });
+});
+
+/** Mulberry32, so a failing round can be replayed from its number alone. */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A moved file's new name, written into a Markdown page, read back by the Markdown adapter and
+ * the resolver as a later run would read it. The page is rewritten for real, so a name that
+ * ends a destination early, or decodes to another name, is caught where a user would meet it.
+ */
+describe('relocate, and a new name read back from a Markdown destination', () => {
+  const ROOT = toPosix(resolve('/repo'));
+  const PAGE = `${ROOT}/docs/guide.md`;
+  const ROUNDS = 200;
+  /** Spaces, parentheses, percent signs and ampersands, alone and as the escapes they form. */
+  const PIECES = [
+    'a',
+    'b',
+    '1',
+    'f',
+    '_',
+    ';',
+    ' ',
+    '(',
+    ')',
+    '()',
+    '%',
+    '%20',
+    '%4',
+    '&',
+    '&amp;',
+    '&#38;',
+  ];
+  /** A file the page names, written in each spelling the resolver records. */
+  const ORIGINS = [
+    { file: 'public/img/old.png', written: '/img/old.png' },
+    { file: 'public/img/old one.png', written: '/img/old%20one.png' },
+    { file: 'public/img/old_one.png', written: '/img/old\\_one.png' },
+    { file: 'public/img/old&one.png', written: '/img/old&amp;one.png' },
+  ];
+  /** The reference does not record which of the two a destination was written in. */
+  const FORMS = [
+    { form: 'bare', page: (written: string) => `![a](${written})\n` },
+    { form: 'in angle brackets', page: (written: string) => `![a](<${written}>)\n` },
+  ];
+
+  const asset = (relative: string): Asset => ({
+    path: `${ROOT}/${relative}`,
+    relative,
+    extension: '.png',
+    bytes: 1_000,
+  });
+  const read = (text: string, assets: readonly Asset[]) =>
+    resolveReferences(markdownAdapter.findReferences({ file: PAGE, text }), {
+      root: ROOT,
+      assets,
+      servingRoots: SERVING,
+      exists: () => false,
+    });
+
+  function nameFor(random: () => number): string {
+    const count = 1 + Math.floor(random() * 6);
+    return Array.from(
+      { length: count },
+      () => PIECES[Math.floor(random() * PIECES.length)] ?? 'a',
+    ).join('');
+  }
+
+  it('reads every origin in both forms before any move', () => {
+    for (const { file, written } of ORIGINS) {
+      for (const { page } of FORMS) {
+        const found = read(page(written), [asset(file)]).flatMap(linkedPaths);
+        expect(found, page(written)).toEqual([`${ROOT}/${file}`]);
+      }
+    }
+  });
+
+  it('writes a name with spaces, parentheses, % and & so that it reads back as the moved file', () => {
+    const failures: string[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const to = `public/img/${nameFor(seeded(round))}.png`;
+      for (const { file, written } of ORIGINS) {
+        for (const { form, page } of FORMS) {
+          const text = page(written);
+          const before = asset(file);
+          const graph = buildGraph({
+            root: ROOT,
+            assets: [before],
+            references: read(text, [before]),
+            unscannedFiles: [],
+          });
+          const plan = planRelocation({
+            graph,
+            moves: [{ from: file, to }],
+            servingRoots: SERVING,
+            aliases: NO_ALIASES,
+          });
+          const rewritten = markdownAdapter.rewrite({ text, edits: plan.rewrites[0]?.edits ?? [] });
+          const found = read(rewritten, [asset(to)]).flatMap(linkedPaths);
+          if (found.length !== 1 || found[0] !== `${ROOT}/${to}`) {
+            failures.push(`round ${round}, ${to} from ${written}, ${form}: ${rewritten.trim()}`);
+          }
+        }
+      }
+    }
+
+    expect(failures.slice(0, 8)).toEqual([]);
   });
 });

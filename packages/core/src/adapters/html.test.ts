@@ -495,7 +495,7 @@ describe('htmlAdapter', () => {
     // A lookup of any other spelling could report a file that exists as broken. parse5 also
     // decodes the legacy `&copy` before the dot, and the resolver decodes a reference or a
     // percent-escape, never both.
-    it.each(['caf&eacute;&copy.png', 'caf&eacute;%20x.png'])(
+    it.each(['caf&eacute;&copy.png', 'caf&eacute;%20x.png', 'hero&#37;20image.png'])(
       'refuses %s, whose decoded spelling is not what a browser reads',
       (written) => {
         const references = find(`<img src="/gallery/${written}">`);

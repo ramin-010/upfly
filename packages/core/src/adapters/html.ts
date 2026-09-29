@@ -706,8 +706,9 @@ function escapedIsSomebodyElses(raw: string, isSrcset: boolean): boolean {
  * when it writes. `/gallery/a&amp;b.png` names `a&b.png` and can be rewritten.
  *
  * That needs the decoded spelling to be parse5's reading, which a legacy name without its
- * semicolon breaks, and complete, which a percent-escape beside the references breaks. A
- * `high` ceiling means a lookup that can report `broken`, so any other path stays `unsafe`.
+ * semicolon breaks, and complete, which a percent-escape beside the references or made by
+ * them breaks. A `high` ceiling means a lookup that can report `broken`, so any other path
+ * stays `unsafe`.
  */
 function addCharacterReferenceReference(
   raw: string,

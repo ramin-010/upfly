@@ -431,7 +431,7 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
   // lookup knows which one matched.
   const spelling =
     reference.resolution === 'resolved' ? (reference.spelling ?? 'literal') : 'literal';
-  const asWritten = (target: string): string => spell(target, spelling);
+  const asWritten = (target: string): string => spell(target, spelling, reference);
 
   const rule = aliasRuleFor(path, toPosix(reference.file), input.aliases);
   if (rule !== null) {

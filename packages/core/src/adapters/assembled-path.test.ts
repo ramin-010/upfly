@@ -572,6 +572,15 @@ describe('holdsUndecodableCharacterReference', () => {
     expect(holdsUndecodableCharacterReference('caf&eacute;%20x.png')).toBe(true);
   });
 
+  // `&#37;20` reads `%20`, which a server decodes again, so the file is `hero image.png`: the
+  // resolver's one decoding reaches `hero%20image.png` instead.
+  it('is true for a reference that decodes to a percent-escape', () => {
+    expect(holdsUndecodableCharacterReference('hero&#37;20image.png')).toBe(true);
+    expect(holdsUndecodableCharacterReference('hero&percnt;41.png')).toBe(true);
+    // A percent sign that starts no escape is read the same once or twice.
+    expect(holdsUndecodableCharacterReference('100&#37;.png')).toBe(false);
+  });
+
   it('is false for a path that decodes, or that holds no reference at all', () => {
     expect(holdsUndecodableCharacterReference('caf&eacute;.png')).toBe(false);
     // A number past the last code point decodes, to U+FFFD.
@@ -589,6 +598,12 @@ describe('holdsUndecodableMarkdownEscape', () => {
   it('is true for a backslash escape beside a percent-escape', () => {
     expect(holdsUndecodableMarkdownEscape('/img/my\\_photo%20x.png')).toBe(true);
     expect(holdsUndecodableMarkdownEscape('/img/my\\%20photo.png')).toBe(true);
+  });
+
+  it('is true for a reference that decodes to a percent-escape', () => {
+    expect(holdsUndecodableMarkdownEscape('/img/hero&#37;20image.png')).toBe(true);
+    expect(holdsUndecodableMarkdownEscape('/img/my\\_hero&#37;20image.png')).toBe(true);
+    expect(holdsUndecodableMarkdownEscape('/img/100&#37;.png')).toBe(false);
   });
 
   it('is false for an ampersand a backslash escapes, which starts no reference', () => {
@@ -620,30 +635,34 @@ describe('holdsUndecodableMarkdownEscape', () => {
  */
 describe('spell', () => {
   it('re-encodes a percent-spelled path per segment, leaving the slashes alone', () => {
-    expect(spell('gallery/hero image.avif', 'percent-encoded')).toBe('gallery/hero%20image.avif');
-    expect(spell('gallery/hero image (2) copy.avif', 'percent-encoded')).toBe(
+    expect(spell('gallery/hero image.avif', 'percent-encoded', 'attr')).toBe(
+      'gallery/hero%20image.avif',
+    );
+    expect(spell('gallery/hero image (2) copy.avif', 'percent-encoded', 'attr')).toBe(
       'gallery/hero%20image%20(2)%20copy.avif',
     );
   });
 
   it('re-encodes an entity-spelled path', () => {
-    expect(spell('gallery/a&b.avif', 'html-entities')).toBe('gallery/a&amp;b.avif');
+    expect(spell('gallery/a&b.avif', 'html-entities', 'attr')).toBe('gallery/a&amp;b.avif');
   });
 
   it('escapes only a backslash and an ampersand in a Markdown-escaped path', () => {
-    expect(spell('img/my_photo.avif', 'markdown-escapes')).toBe('img/my_photo.avif');
-    expect(spell('img/a&amp;b\\_c.avif', 'markdown-escapes')).toBe('img/a\\&amp;b\\\\_c.avif');
+    expect(spell('img/my_photo.avif', 'markdown-escapes', 'md')).toBe('img/my_photo.avif');
+    expect(spell('img/a&amp;b\\_c.avif', 'markdown-escapes', 'md')).toBe(
+      'img/a\\&amp;b\\\\_c.avif',
+    );
   });
 
   it('leaves a literal path exactly as it is', () => {
-    expect(spell('gallery/hero image.avif', 'literal')).toBe('gallery/hero image.avif');
+    expect(spell('gallery/hero image.avif', 'literal', 'attr')).toBe('gallery/hero image.avif');
   });
 
   it('round-trips: every decoded spelling re-encodes to something that decodes back', () => {
     for (const written of ['/g/hero%20image.png', '/g/a&amp;b.png']) {
       for (const { spelling, path } of spellingsOf(written, 'attr')) {
         if (spelling === 'literal') continue;
-        const respelled = spell(path, spelling);
+        const respelled = spell(path, spelling, 'attr');
         expect(spellingsOf(respelled, 'attr').map((c) => c.path)).toContain(path);
       }
     }
@@ -657,7 +676,7 @@ describe('spell', () => {
 
     // The escaped backslash is one backslash to CommonMark, which the URL reads as a slash.
     expect(decoded?.path).toBe('/g/my_a&amp;b/c.png');
-    const respelled = spell(decoded?.path ?? '', 'markdown-escapes');
+    const respelled = spell(decoded?.path ?? '', 'markdown-escapes', 'md');
     expect(spellingsOf(respelled, 'md').map((c) => c.path)).toContain(decoded?.path);
   });
 });

@@ -704,7 +704,7 @@ function addReference(
       shape,
       ceiling: 'unsafe',
       asserted: true,
-      note: 'the path holds escapes that cannot be fully decoded, such as a misspelled character reference, or a character reference or backslash escape beside a percent-escape, so the file it names is not known',
+      note: 'the path holds escapes that cannot be fully decoded, such as a misspelled character reference, or a character reference or backslash escape beside a percent-escape or decoding to one, so the file it names is not known',
     });
     return;
   }
