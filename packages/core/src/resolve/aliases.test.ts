@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPosix } from '../paths.js';
-import { type AliasMap, expandAlias, loadAliases } from './aliases.js';
+import { type AliasMap, expandAlias, loadAliases, matchingRule } from './aliases.js';
 
 const ROOT = resolve('/project');
 
@@ -470,6 +470,35 @@ describe('expandAlias: Vite applies the first alias its config declares', () => 
       from('apps/web/src/x.png'),
     ]);
     expect(expandAlias(map, '~/x.png', from('src/a.ts'))).toEqual([from('shared/x.png')]);
+  });
+
+  it("does not apply an outer Vite config's alias inside a Vite project that declares none", async () => {
+    // Vite loads one config, `apps/web`'s, which has no `resolve.alias` at all.
+    const map = await load({
+      'vite.config.ts': "export default { resolve: { alias: { '~': '/shared' } } };\n",
+      'apps/web/vite.config.ts': 'export default { base: "/web/" };\n',
+    });
+
+    expect(expandAlias(map, '~/x.png', from('apps/web/src/a.ts'))).toEqual([]);
+    expect(matchingRule(map, '~/x.png', from('apps/web/src/a.ts'))).toBeNull();
+    expect(expandAlias(map, '~/x.png', from('src/a.ts'))).toEqual([from('shared/x.png')]);
+    expect(map.viteConfigs).toEqual([
+      { scope: from('apps/web'), root: from('apps/web') },
+      { scope: from(''), root: from('') },
+    ]);
+  });
+
+  it("records a Vite config's root, where it serves the project from", async () => {
+    const map = await load({
+      'apps/web/vite.config.ts': "export default { root: 'site' };\n",
+      'apps/docs/vite.config.ts': 'export default { root: process.cwd() };\n',
+    });
+
+    // A root Upfly cannot read leaves the config's own folder, as Vite's default does.
+    expect(map.viteConfigs).toEqual([
+      { scope: from('apps/docs'), root: from('apps/docs') },
+      { scope: from('apps/web'), root: from('apps/web/site') },
+    ]);
   });
 });
 

@@ -32,6 +32,11 @@ export interface ViteAliasUnread {
 export interface ViteAliases {
   readonly entries: readonly ViteAliasEntry[];
   readonly unread: readonly ViteAliasUnread[];
+  /**
+   * Absolute path of the folder Vite serves the project from: the config's `root` when it
+   * states one Upfly can read, else the config's own folder, as Vite's default is.
+   */
+  readonly root: string;
 }
 
 type Imported =
@@ -110,6 +115,7 @@ export function readViteAliases(text: string, configPath: string): ViteAliases {
     return {
       entries: [],
       unread: [{ line: null, reason: 'could not be parsed, so its aliases were not read' }],
+      root: dirname(configPath),
     };
   }
 
@@ -136,7 +142,18 @@ export function readViteAliases(text: string, configPath: string): ViteAliases {
     if (!(error instanceof OffTheList)) throw error;
     sink.unread.push({ line: error.line, reason: `${error.why}, so its aliases were not read` });
   }
-  return sink;
+  return { ...sink, root: servedRoot(program, context) };
+}
+
+/** Vite's root, or the config's own folder when the config states none Upfly can read. */
+function servedRoot(program: t.Program, context: Context): string {
+  try {
+    const config = configObject(program, context);
+    return config === null ? dirname(context.configPath) : rootOf(config, context);
+  } catch (error) {
+    if (!(error instanceof OffTheList)) throw error;
+    return dirname(context.configPath);
+  }
 }
 
 // ---------------------------------------------------------------------------

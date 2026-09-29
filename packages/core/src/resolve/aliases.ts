@@ -107,6 +107,13 @@ export interface AliasMap {
    * nearest config is the nearest with a key, and no `baseUrl` is known.
    */
   readonly tsconfigs?: readonly { readonly scope: string; readonly baseUrl: string | null }[];
+  /**
+   * Every Vite config's folder, with the absolute folder Vite serves its project from (the
+   * config's `root`, else its own folder), nearest first. Vite loads one config, so a file's
+   * nearest config bounds the Vite rules it may use even when that config declares no alias.
+   * Absent, as in a map built by hand, the nearest Vite config is the nearest with a rule.
+   */
+  readonly viteConfigs?: readonly { readonly scope: string; readonly root: string }[];
   readonly skipped: readonly AliasSkip[];
 }
 
@@ -145,6 +152,7 @@ const VITE_CONFIG = /^vite\.config\.(js|cjs|mjs|ts|cts|mts)$/;
 export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap> {
   const rules: AliasRule[] = [];
   const tsconfigs: { scope: string; baseUrl: string | null; path: string }[] = [];
+  const viteConfigs: { scope: string; root: string }[] = [];
   const skipped: PendingSkip[] = [];
   const context: TsContext = {
     options,
@@ -161,7 +169,7 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
     if (TS_CONFIG.test(name)) {
       tsConfigs.push(file.path);
     } else if (VITE_CONFIG.test(name)) {
-      await readViteConfig(file.path, options, rules, skipped);
+      viteConfigs.push(await readViteConfig(file.path, options, rules, skipped));
     }
   }
 
@@ -209,6 +217,9 @@ export async function loadAliases(options: LoadAliasesOptions): Promise<AliasMap
   return {
     rules: sorted,
     tsconfigs: byFolder(tsconfigs),
+    viteConfigs: viteConfigs.sort(
+      (a, b) => b.scope.length - a.scope.length || compareStrings(a.scope, b.scope),
+    ),
     skipped: skipped
       .map(({ what, reason, scopes }) => ({
         what,
@@ -248,11 +259,11 @@ export function expandAlias(
  */
 export function matchingRule(map: AliasMap, rawPath: string, fromFile: string): AliasRule | null {
   const from = toPosix(fromFile);
-  // The folder of the nearest config of each tool: TypeScript's from `tsconfigs`, where a
-  // config with no keys counts too; else from the first rule in scope, since the rules come
-  // nearest config first.
+  // The folder of the nearest config of each tool, from `viteConfigs` and `tsconfigs`, where a
+  // config with no alias or key counts too; else from the first rule in scope, since the rules
+  // come nearest config first.
   const nearest: Record<AliasRule['tool'], string | null> = {
-    vite: null,
+    vite: map.viteConfigs?.find((config) => serves(config.scope, from))?.scope ?? null,
     typescript: nearestTsconfig(map, from)?.scope ?? null,
   };
 
@@ -604,15 +615,17 @@ async function readViteConfig(
   options: LoadAliasesOptions,
   rules: AliasRule[],
   skipped: PendingSkip[],
-): Promise<void> {
+): Promise<{ scope: string; root: string }> {
   const source = relativePath(options.root, path);
+  const scope = toPosix(dirname(path));
   // Nothing extends a Vite config: what it could not read, its own folder loses.
   const skip = (reason: string) =>
-    skipped.push({ what: source, reason, scopes: new Set([toPosix(dirname(path))]), config: null });
+    skipped.push({ what: source, reason, scopes: new Set([scope]), config: null });
   const text = await readOrSkip(path, options, skip);
-  if (text === null) return;
+  // Vite still loads a config Upfly cannot read, so it bounds its folder all the same.
+  if (text === null) return { scope, root: scope };
 
-  const { entries, unread } = readViteAliases(text, path);
+  const { entries, unread, root } = readViteAliases(text, path);
   for (const { find, target } of entries) {
     rules.push(makeRule(find, [target], dirname(path), dirname(path), source, 'vite'));
     rules.push(
@@ -620,6 +633,7 @@ async function readViteConfig(
     );
   }
   for (const item of unread) skip(item.reason);
+  return { scope, root: toPosix(root) };
 }
 
 // ---------------------------------------------------------------------------

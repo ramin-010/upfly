@@ -65,6 +65,7 @@ describe('readViteAliases reads what Vite computes from the config location', ()
     expect(read(lines, name)).toEqual({
       entries: [{ find: '@', target: at('src'), line: expect.any(Number) }],
       unread: [],
+      root: FOLDER,
     });
   });
 
@@ -110,7 +111,7 @@ describe('readViteAliases reads what Vite computes from the config location', ()
         'const config = defineConfig({ resolve: { tsconfigPaths: true } })',
         'export default config',
       ]),
-    ).toEqual({ entries: [], unread: [] });
+    ).toEqual({ entries: [], unread: [], root: FOLDER });
   });
 });
 

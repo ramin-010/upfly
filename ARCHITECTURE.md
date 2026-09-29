@@ -556,7 +556,9 @@ other resolver, a plugin that reads tsconfig `paths` included, and applies the f
 config declares that matches, however long the others are: under `{ '@': 'src', '@/components':
 'lib/components' }`, `@/components/icon.png` is `src/components/icon.png`. So Vite's rules are
 tried first, only the nearest Vite config's, in the order it declares them (an object's in the
-order JavaScript enumerates its keys), and a Vite alias that matches is the only candidate: when its
+order JavaScript enumerates its keys). Vite loads that one config, so one that declares no alias
+leaves its folder with none, whatever a config above it declares; `loadAliases` records every Vite
+config's folder for this (`AliasMap.viteConfigs`). A Vite alias that matches is the only candidate: when its
 file is missing, the build fails there rather than trying another alias. A rewrite planned through
 any other rule would point the import at a file Vite never reads. `aliases.property.test.ts` checks
 this against Vite's own alias resolution, over alias sections drawn at random.
