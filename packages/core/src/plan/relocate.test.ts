@@ -843,6 +843,55 @@ describe('relocate, and how a path is re-spelled', () => {
     );
   });
 
+  it('counts the files the walk left out, by listing folders, when it is given a way to', () => {
+    // An ignore rule keeps public/img/x.png and apps/web/public/img/y.png out of the walk. A move
+    // onto the first would destroy it; from apps/web/src, `/img/y.png` reaches the second first.
+    const graph = graphFor({
+      assets: ['public/a.png', 'public/b.png'],
+      references: [
+        {
+          file: 'apps/web/src/App.tsx',
+          rawPath: '/a.png',
+          target: 'public/a.png',
+          via: 'serving-root',
+        },
+        {
+          file: 'apps/web/src/App.tsx',
+          rawPath: '/b.png',
+          target: 'public/b.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+    const listings = new Map<string, readonly string[]>([
+      [REPO, ['apps', 'public']],
+      [join(REPO, 'public'), ['a.png', 'b.png', 'img']],
+      [join(REPO, 'public', 'img'), ['x.png']],
+      [join(REPO, 'apps'), ['web']],
+      [join(REPO, 'apps', 'web'), ['public', 'src']],
+      [join(REPO, 'apps', 'web', 'public'), ['img']],
+      [join(REPO, 'apps', 'web', 'public', 'img'), ['y.png']],
+    ]);
+
+    const plan = planRelocation({
+      graph,
+      moves: [
+        { from: 'public/a.png', to: 'public/img/x.png' },
+        { from: 'public/b.png', to: 'public/img/y.png' },
+      ],
+      servingRoots: { declared: true, dirs: ['public', 'apps/web/public'] },
+      aliases: NO_ALIASES,
+      listDirectory: (path) => listings.get(path) ?? [],
+    });
+
+    expect(plan.moves).toEqual([]);
+    expect(plan.refused.map((refusal) => [refusal.from, refusal.code])).toEqual([
+      ['public/a.png', 'destination-occupied'],
+      ['public/b.png', 'rewrite-would-miss'],
+    ]);
+    expect(plan.refused[1]?.reason).toContain('which reaches apps/web/public/img/y.png first');
+  });
+
   it('declines a reference it may not edit, rather than moving in silence', () => {
     // The move happens and this reference will break. Saying so is the difference
     // between a dangling reference Upfly found and one it caused.

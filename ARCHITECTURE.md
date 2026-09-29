@@ -2058,7 +2058,11 @@ moves leave as written is read again too, before and after: one that would reach
 new path where today it loads another file, or none, would change a page nobody asked to change,
 so its move is refused as `redirects-a-reference`. A file moved into a nearer serving root, or to
 the name a broken reference asks for, does this. Refusing a move changes the files the others
-leave, so the check runs again until it refuses nothing.
+leave, so the check runs again until it refuses nothing. Given `listDirectory`, as the planner
+is, both checks and the destination test also count the files the walk did not index, such as
+images an ignore rule excluded, by listing the folders on the way to each path (`unindexedFiles`,
+shared with the planner): a destination one of them holds is occupied, and a path that reaches
+one first misses.
 
 Some references to a moved asset cannot be repointed: a template, a reference a rewrite rule forbids
 editing, or one whose new spelling cannot be worked out. They do not stop the move. Each is listed in

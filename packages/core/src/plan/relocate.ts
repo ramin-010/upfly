@@ -21,7 +21,7 @@ import { isLinked, linkedPaths } from '../resolve/reference.js';
 import { type ServingRoots, resolveReferences } from '../resolve/resolve.js';
 import type { Asset, RawReference, Reference } from '../types.js';
 import type { Declined } from '../write/manifest.js';
-import { patternCannotMove, servingRootOf } from './plan.js';
+import { type UnindexedFiles, patternCannotMove, servingRootOf, unindexedFiles } from './plan.js';
 import {
   type EditsInFile,
   NOT_UTF8,
@@ -114,6 +114,13 @@ export interface RelocateInput {
    */
   readonly aliases: AliasMap;
   readonly rootLinkPolicy?: RootLinkPolicy;
+  /**
+   * The names in a directory, or `[]` when it cannot be listed, as the planner takes it. With
+   * it, the files the walk did not index, such as images an ignore rule excluded, count: a
+   * destination one of them holds is occupied, and a rewritten path that reaches one first
+   * misses. No file is read. Absent, only the walk's images are counted.
+   */
+  readonly listDirectory?: (absolutePath: string) => readonly string[];
 }
 
 /**
@@ -125,11 +132,12 @@ export interface RelocateInput {
 export function planRelocation(input: RelocateInput): RelocationPlan {
   const refused: RefusedMove[] = [];
   const assets = assetIndex(input.graph);
+  const onDisk = unindexedFiles(input);
   const accepted = new Map<string, Move>();
   const claimed = new Map<string, string>();
 
   for (const move of [...input.moves].sort((a, b) => compareStrings(a.from, b.from))) {
-    const refusal = refuse(move, input, assets, claimed, accepted);
+    const refusal = refuse(move, input, assets, claimed, accepted, onDisk);
     if (refusal !== null) {
       refused.push(refusal);
       continue;
@@ -142,14 +150,14 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
   // on the whole plan. Refusing a move changes those files and drops its rewrites, so the
   // references are repointed again without it until the check refuses nothing.
   let repointing = repointAll(input, accepted);
-  let astray = astrayMoves(input, accepted, repointing.rewritten);
+  let astray = astrayMoves(input, accepted, repointing.rewritten, onDisk);
   while (astray.length > 0) {
     for (const refusal of astray) {
       accepted.delete(refusal.from);
       refused.push(refusal);
     }
     repointing = repointAll(input, accepted);
-    astray = astrayMoves(input, accepted, repointing.rewritten);
+    astray = astrayMoves(input, accepted, repointing.rewritten, onDisk);
   }
 
   return {
@@ -201,6 +209,7 @@ function misdirectedMoves(
   input: RelocateInput,
   accepted: ReadonlyMap<string, Move>,
   rewritten: ReadonlyMap<Reference, Rewritten>,
+  onDisk: UnindexedFiles | undefined,
 ): RefusedMove[] {
   const { root } = input.graph;
   const asRewritten = (reference: Reference, { replacement }: Rewritten): RawReference => ({
@@ -214,6 +223,7 @@ function misdirectedMoves(
       assets: assetsAfterMoves(input.graph, accepted),
       servingRoots: input.servingRoots,
       aliases: input.aliases,
+      ...(onDisk === undefined ? {} : { unindexed: onDisk }),
       foldCase: true,
       exists: () => false,
     },
@@ -262,12 +272,15 @@ function astrayMoves(
   input: RelocateInput,
   accepted: ReadonlyMap<string, Move>,
   rewritten: ReadonlyMap<Reference, Rewritten>,
+  onDisk: UnindexedFiles | undefined,
 ): RefusedMove[] {
-  const missed = misdirectedMoves(input, accepted, rewritten);
+  const missed = misdirectedMoves(input, accepted, rewritten, onDisk);
   const refused = new Set(missed.map((refusal) => refusal.from));
   return [
     ...missed,
-    ...redirectingMoves(input, accepted, rewritten).filter((refusal) => !refused.has(refusal.from)),
+    ...redirectingMoves(input, accepted, rewritten, onDisk).filter(
+      (refusal) => !refused.has(refusal.from),
+    ),
   ];
 }
 
@@ -285,6 +298,7 @@ function redirectingMoves(
   input: RelocateInput,
   accepted: ReadonlyMap<string, Move>,
   rewritten: ReadonlyMap<Reference, Rewritten>,
+  onDisk: UnindexedFiles | undefined,
 ): RefusedMove[] {
   const { root } = input.graph;
   const untouched = input.graph.references.filter(
@@ -300,6 +314,7 @@ function redirectingMoves(
         assets,
         servingRoots: input.servingRoots,
         aliases: input.aliases,
+        ...(onDisk === undefined ? {} : { unindexed: onDisk }),
         foldCase: true,
         exists: () => false,
       }).map((answer) => [placeOf(answer), linkedPaths(answer)[0]]),
@@ -391,6 +406,7 @@ function refuse(
   assets: AssetIndex,
   claimed: ReadonlyMap<string, string>,
   accepted: ReadonlyMap<string, Move>,
+  onDisk: UnindexedFiles | undefined,
 ): RefusedMove | null {
   const say = (code: RefusalCode, reason: string): RefusedMove => ({ ...move, code, reason });
 
@@ -438,6 +454,13 @@ function refuse(
     return say(
       'destination-occupied',
       `${there}. Moving ${move.from} onto it would destroy a file Upfly can see.`,
+    );
+  }
+  const unindexed = onDisk?.(join(input.graph.root, to)) ?? null;
+  if (unindexed !== null) {
+    return say(
+      'destination-occupied',
+      `${relativePath(input.graph.root, unindexed)} already exists, though the walk leaves it out. Moving ${move.from} onto it would destroy it.`,
     );
   }
 

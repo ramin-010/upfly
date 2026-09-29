@@ -607,7 +607,7 @@ function leadsTo(
 }
 
 /** The file at a path that exists on disk but is not one of the walk's images, or null. */
-type UnindexedFiles = (absolutePath: string) => string | null;
+export type UnindexedFiles = (absolutePath: string) => string | null;
 
 /**
  * The files inside the project that the walk did not index, such as those an ignore rule
@@ -616,7 +616,9 @@ type UnindexedFiles = (absolutePath: string) => string | null;
  * its case, as the resolver's folded index does. A walk image is never answered here: the
  * plan's own list says whether it is still there.
  */
-function unindexedFiles(input: PlanInput): UnindexedFiles | undefined {
+export function unindexedFiles(
+  input: Pick<PlanInput, 'graph' | 'aliases' | 'listDirectory'>,
+): UnindexedFiles | undefined {
   const list = input.listDirectory;
   if (list === undefined) return undefined;
 
