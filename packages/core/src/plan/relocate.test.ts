@@ -385,6 +385,44 @@ describe('relocate, and how a path is re-spelled', () => {
     ).toBe('~/img/houston.png');
   });
 
+  it('re-spells a bare import through the baseUrl that linked it, and refuses a place it cannot name', () => {
+    // `import logo from 'assets/logo.png'` with `"baseUrl": "src"` and no `paths` names
+    // src/assets/logo.png. A bare name stays bare: a URL or a relative path is another kind.
+    const aliases: AliasMap = {
+      rules: [],
+      skipped: [],
+      tsconfigs: [{ scope: REPO, baseUrl: `${REPO}/src` }],
+    };
+    const graph = graphFor({
+      assets: ['src/assets/logo.png'],
+      references: [
+        {
+          file: 'src/App.tsx',
+          rawPath: 'assets/logo.png',
+          target: 'src/assets/logo.png',
+          via: 'serving-root',
+          kind: 'import',
+        },
+      ],
+    });
+    const move = { from: 'src/assets/logo.png', to: 'src/img/logo.png' };
+
+    const within = replacementFor(graph, move, { aliases });
+    const served = replacementFor(graph, move, {
+      aliases,
+      servingRoots: { declared: true, dirs: ['src'] },
+    });
+    const outside = replacementFor(graph, { ...move, to: 'lib/logo.png' }, { aliases });
+
+    expect(within.plan.declined).toEqual([]);
+    expect(within.text).toBe('img/logo.png');
+    expect(served.text).toBe('img/logo.png');
+    expect(outside.plan.moves).toEqual([]);
+    expect(outside.plan.refused).toEqual([
+      expect.objectContaining({ code: 'crosses-serving-boundary' }),
+    ]);
+  });
+
   it('re-spells a Vite alias read from a real config through the key and its slash', async () => {
     // Vite's `@` maps `@` and `@/...`, never `@img/...`, which here is the tsconfig's own
     // alias for a folder holding another image of the same name.

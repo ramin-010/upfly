@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { spell, spellingsOf } from '../adapters/reference-path.js';
 import type { Graph } from '../graph/graph.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from '../paths.js';
-import { type AliasMap, type AliasRule, matchingRule } from '../resolve/aliases.js';
+import { type AliasMap, type AliasRule, expandAlias, matchingRule } from '../resolve/aliases.js';
 import { isLinked, linkedPaths } from '../resolve/reference.js';
 import { type ServingRoots, resolveReferences } from '../resolve/resolve.js';
 import type { Asset, RawReference, Reference } from '../types.js';
@@ -433,12 +433,36 @@ function aliasCannotExpress(move: Move, input: RelocateInput): string | null {
     if (!targets.includes(move.from)) continue;
 
     const rule = aliasRuleFor(reference, input.aliases);
-    if (rule === null) continue;
-    if (aliasTextFor(rule, move.to, root) !== null) continue;
-
-    return `\`${reference.rawPath}\` reaches ${move.from} through the \`${rule.prefix}\` alias, and that alias cannot express ${move.to}. The import would have to become a different kind of reference, and Upfly rewrites paths, not code.`;
+    if (rule !== null) {
+      if (aliasTextFor(rule, move.to, root) !== null) continue;
+      return `\`${reference.rawPath}\` reaches ${move.from} through the \`${rule.prefix}\` alias, and that alias cannot express ${move.to}. The import would have to become a different kind of reference, and Upfly rewrites paths, not code.`;
+    }
+    const base = baseUrlOf(reference, input);
+    if (base === null || nameUnder(base, move.to, root) !== null) continue;
+    return `\`${reference.rawPath}\` reaches ${move.from} through the tsconfig's baseUrl, ${relativePath(root, base) || 'the project root'}, and a module name under it cannot name ${move.to}. The import would have to become a different kind of reference, and Upfly rewrites paths, not code.`;
   }
   return null;
+}
+
+/**
+ * The folder a bare import was linked under through the nearest tsconfig's `baseUrl`, absolute
+ * and POSIX, or `null` when it was linked another way. TypeScript looks under `baseUrl` only
+ * when no `paths` key matches, so only a reference no alias rule covers can have one.
+ */
+function baseUrlOf(reference: Reference, input: RelocateInput): string | null {
+  if (reference.kind !== 'import' || reference.resolution !== 'resolved') return null;
+  if (reference.resolvedVia !== 'serving-root') return null;
+  if (aliasRuleFor(reference, input.aliases) !== null) return null;
+  const path = pathPartOf(reference.rawPath);
+  const [expanded] = expandAlias(input.aliases, path, toPosix(reference.file), { baseUrl: true });
+  if (expanded === undefined || expanded !== toPosix(reference.resolvedPath)) return null;
+  return expanded.endsWith(`/${path}`) ? expanded.slice(0, -(path.length + 1)) : null;
+}
+
+/** A project path as a module name under `base`, or `null` when it is not inside it. */
+function nameUnder(base: string, relative: string, root: string): string | null {
+  const target = toPosix(join(root, relative));
+  return target.startsWith(`${base}/`) ? target.slice(base.length + 1) : null;
 }
 
 /**
@@ -599,6 +623,14 @@ function repointed(reference: Reference, move: Move, input: RelocateInput): stri
     // Only what follows the alias is spelled: the prefix is written as the rule writes it,
     // whatever spelling hid it in the old text.
     return `${rule.prefix}${asWritten(aliased.slice(rule.prefix.length))}${suffix}`;
+  }
+
+  // A bare import stays a bare module name, never a URL: through `baseUrl`, it is the path
+  // under that folder.
+  const base = baseUrlOf(reference, input);
+  if (base !== null) {
+    const named = nameUnder(base, move.to, input.graph.root);
+    return named === null ? null : `${asWritten(named)}${suffix}`;
   }
 
   if (reference.resolution === 'resolved' && reference.resolvedVia === 'serving-root') {

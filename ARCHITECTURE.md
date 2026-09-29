@@ -2010,7 +2010,10 @@ as the planner reads a converted file's URL, and a relative path is re-derived f
 file's directory. A reference the resolver linked through an alias keeps the alias, found as the
 resolver found it: only an alias link counts, which the graph records as `serving-root`, so a
 relative link whose text an alias also matches stays relative, and the rule is asked of the
-spelling the lookup matched, so `%7E/assets/x.png` is read as `~/assets/x.png`. A leading `./`
+spelling the lookup matched, so `%7E/assets/x.png` is read as `~/assets/x.png`. A bare import
+the resolver linked through the nearest tsconfig's `baseUrl` (no `paths` key matched) stays a
+bare module name, the new path under that folder, and a move out of the folder is refused, since
+only a relative path could name it there. A leading `./`
 stays when the original had one, and a percent-encoded name stays encoded. A diff in which `./`
 comes and goes is one nobody can review, and a raw space written into a URL breaks it. Where the
 syntax around the path cannot hold a character of the new name, the whole path is written
