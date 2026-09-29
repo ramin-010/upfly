@@ -616,7 +616,7 @@ async function readViteConfig(
   for (const { find, target } of entries) {
     rules.push(makeRule(find, [target], dirname(path), dirname(path), source, 'vite'));
     rules.push(
-      makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source, 'vite'),
+      makeRule(`${find}/*`, [`${target}/*`], dirname(path), dirname(path), source, 'vite', true),
     );
   }
   for (const item of unread) skip(item.reason);
@@ -626,7 +626,13 @@ async function readViteConfig(
 // shared
 // ---------------------------------------------------------------------------
 
-/** Build one rule from a key in tsconfig's form: `@/*` matches a prefix, `react` the whole path. */
+/**
+ * Build one rule from a key in tsconfig's form: `@/*` matches a prefix, `react` the whole path.
+ *
+ * @param vitePrefix For a Vite alias, whether this is the rule for the key followed by `/`,
+ *   whose `*` the caller appended. Vite matches a key as written, so a key `@/*` is text: it
+ *   matches the path `@/*` itself, or that text and a slash before the rest, never `@/x.png`.
+ */
 function makeRule(
   from: string,
   targets: readonly string[],
@@ -634,22 +640,24 @@ function makeRule(
   scope: string,
   source: string,
   tool: AliasRule['tool'],
+  vitePrefix = false,
 ): AliasRule {
-  // TypeScript reads a key's one `*` wherever it is. A Vite key arrives as `@` or `@/*`, and
-  // any other `*` in it is text Vite matches as written.
+  // TypeScript reads a key's one `*` wherever it is. Vite reads none of a key's own.
   const starOf = (text: string) =>
-    tool === 'typescript' ? text.indexOf('*') : text.endsWith('*') ? text.length - 1 : -1;
+    tool === 'typescript' ? text.indexOf('*') : vitePrefix ? text.length - 1 : -1;
   const star = starOf(from);
   const common = { scope: toPosix(scope), source, tool };
 
   if (star === -1) {
+    // TypeScript puts what the key's absent `*` matched, nothing, where a target's `*` is;
+    // Vite uses a replacement whole.
+    const whole = (target: string) =>
+      tool === 'typescript' && target.endsWith('*') ? target.slice(0, -1) : target;
     return {
       ...common,
       prefix: from,
       wildcard: false,
-      targets: targets.map((target) =>
-        toPosix(resolvePath(base, target.endsWith('*') ? target.slice(0, -1) : target)),
-      ),
+      targets: targets.map((target) => toPosix(resolvePath(base, whole(target)))),
     };
   }
 

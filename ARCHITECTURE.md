@@ -533,7 +533,8 @@ Two details that are easy to get wrong:
   `src/icons/ui/star.svg`. TypeScript reads no key with a second `*`, and Upfly reports one. A
   Vite key replaces the whole path or the key followed by `/`, so `{ '@': '/src' }` maps `@` and
   `@/x.png` but never `@img/x.png`. Each Vite alias therefore makes two rules, the key and the
-  key with `/`.
+  key with `/`. A `*` in a Vite key is text: a key written `@/*` maps only a path that begins
+  with those three characters, then ends or goes on after a `/`, and never `@/x.png`.
 
 A config's aliases are its `paths` after `extends`, merged as TypeScript merges them: each base in
 order, then the config's own settings, a `paths` later in the chain replacing an earlier one whole.

@@ -266,18 +266,21 @@ describe('loadAliases against TypeScript', () => {
 });
 
 /**
- * Keys that begin one another (`@` and `@/components`), one ending in a slash, and two that
+ * Keys that begin one another (`@` and `@/components`), one ending in a slash, two ending in a
+ * `*`, which Vite matches as written rather than as a wildcard (`@/*`, `lib*`), and two that
  * JavaScript enumerates before the other keys of an object (`1`, `2`) beside one that only
  * starts like them (`1/a`).
  */
 const VITE_FINDS = [
   '@',
   '@/',
+  '@/*',
   '@/components',
   '@/components/icons',
   '~',
   '@components',
   '#img',
+  'lib*',
   '1',
   '1/a',
   '2',
