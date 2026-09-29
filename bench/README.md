@@ -26,6 +26,11 @@ commit, so each one sits about 30% above the slowest run measured. The price is 
 catches a regression larger than about 30% and cannot see a 10% one. A smaller change needs an A/B
 comparison run back to back in one session, which is what `bench/src/noise.ts` is for.
 
+A machine slower than CI's runners can measure unchanged HEAD over the ceiling, and the gate then
+fails before and after any change, so it judges none. Outside CI, a run over the ceiling says so
+under its verdict: as a fact when the tree measured is HEAD with no tracked file changed, and
+otherwise as a question to settle by running the gate on a clean tree.
+
 The headline is the median of three invocations, each a separate process that discards a warm-up
 pass and takes the median of three runs. The first pass meets a cold filesystem cache, and
 averaging it with warm passes measures neither state. Sampling inside one process controls that

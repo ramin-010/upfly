@@ -12,7 +12,9 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform } from 'node:os';
-import { argv, exit, stdout } from 'node:process';
+import { dirname, resolve } from 'node:path';
+import { argv, env, exit, stdout } from 'node:process';
+import { fileURLToPath } from 'node:url';
 import {
   type Adapter,
   type Asset,
@@ -36,6 +38,7 @@ import {
   renderExperiment,
   sampleBreakdowns,
 } from './breakdown.js';
+import { ceilingNote, headUnchangedAt } from './ceiling-note.js';
 import { TOTAL_FILES, TOTAL_IMAGES, generateTree } from './generate.js';
 import {
   type InvocationSample,
@@ -317,7 +320,18 @@ async function main(): Promise<void> {
       stdout.write('  (measure-only: not gating, so this cannot fail the build)\n\n');
       exit(0);
     }
-    exit(across.samplesAgree && across.medianMs <= BUDGET_MS ? 0 : 1);
+    // GitHub Actions sets CI to "true". `bench` builds before it runs, so an unchanged tree
+    // means the engine measured is HEAD's.
+    const over = across.medianMs > BUDGET_MS;
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    stdout.write(
+      ceilingNote({
+        over,
+        inCi: env.CI === 'true',
+        headUnchanged: over ? headUnchangedAt(repo) : undefined,
+      }),
+    );
+    exit(across.samplesAgree && !over ? 0 : 1);
   }
 
   const json = argv.includes('--json');
