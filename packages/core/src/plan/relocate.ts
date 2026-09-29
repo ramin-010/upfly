@@ -119,17 +119,17 @@ export interface RelocateInput {
  */
 export function planRelocation(input: RelocateInput): RelocationPlan {
   const refused: RefusedMove[] = [];
-  const byRelative = assetIndex(input.graph);
+  const assets = assetIndex(input.graph);
   const accepted = new Map<string, Move>();
   const claimed = new Map<string, string>();
 
   for (const move of [...input.moves].sort((a, b) => compareStrings(a.from, b.from))) {
-    const refusal = refuse(move, input, byRelative, claimed, accepted);
+    const refusal = refuse(move, input, assets, claimed, accepted);
     if (refusal !== null) {
       refused.push(refusal);
       continue;
     }
-    claimed.set(move.to.toLowerCase(), move.from);
+    claimed.set(caseFolded(toPosix(move.to)), move.from);
     accepted.set(move.from, move);
   }
 
@@ -268,24 +268,43 @@ function assetsAfterMoves(graph: Graph, accepted: ReadonlyMap<string, Move>): As
   });
 }
 
-/** Assets by POSIX-relative path, which is how a move names them. */
-function assetIndex(graph: Graph): Map<string, string> {
-  const index = new Map<string, string>();
-  for (const node of graph.assets) index.set(node.asset.relative, node.asset.path);
-  return index;
+/** The assets' POSIX-relative paths, as a move names them, and the same paths by `caseFolded`. */
+interface AssetIndex {
+  readonly exact: ReadonlySet<string>;
+  readonly folded: ReadonlyMap<string, readonly string[]>;
+}
+
+function assetIndex(graph: Graph): AssetIndex {
+  const exact = new Set<string>();
+  const folded = new Map<string, string[]>();
+  for (const { asset } of graph.assets) {
+    exact.add(asset.relative);
+    const key = caseFolded(asset.relative);
+    folded.set(key, [...(folded.get(key) ?? []), asset.relative]);
+  }
+  return { exact, folded };
+}
+
+/**
+ * A path as Windows and macOS compare one, whatever the case of its letters. A destination is
+ * compared this way on every platform, as the planner's collision check compares, so a plan
+ * does not depend on where it runs; `prepare` folds case for the same reason.
+ */
+function caseFolded(relative: string): string {
+  return relative.toLowerCase();
 }
 
 /** Why this move will not be made, or `null` when it will. */
 function refuse(
   move: Move,
   input: RelocateInput,
-  byRelative: ReadonlyMap<string, string>,
+  assets: AssetIndex,
   claimed: ReadonlyMap<string, string>,
   accepted: ReadonlyMap<string, Move>,
 ): RefusedMove | null {
   const say = (code: RefusalCode, reason: string): RefusedMove => ({ ...move, code, reason });
 
-  if (!byRelative.has(move.from)) {
+  if (!assets.exact.has(move.from)) {
     return say(
       'not-an-asset',
       `${move.from} is not an asset in this project, so Upfly cannot know what points at it.`,
@@ -311,20 +330,24 @@ function refuse(
     );
   }
 
-  const previous = claimed.get(to.toLowerCase());
+  const previous = claimed.get(caseFolded(to));
   if (previous !== undefined) {
-    // Case-insensitively, because two destinations differing only in case are one file
-    // on Windows and macOS. `prepare` folds case for the same reason.
     return say(
       'destination-claimed-twice',
       `${previous} is already being moved to ${move.to}, so this move would depend on which ran first.`,
     );
   }
 
-  if (byRelative.has(to) && to !== move.from) {
+  // The file that moves may be renamed to its own name in another case.
+  const occupant = assets.folded.get(caseFolded(to))?.find((path) => path !== move.from);
+  if (occupant !== undefined) {
+    const there =
+      occupant === to
+        ? `${move.to} already exists`
+        : `${occupant} already exists, and is the same file as ${move.to} on Windows and macOS`;
     return say(
       'destination-occupied',
-      `${move.to} already exists. Moving ${move.from} onto it would destroy a file Upfly can see.`,
+      `${there}. Moving ${move.from} onto it would destroy a file Upfly can see.`,
     );
   }
 

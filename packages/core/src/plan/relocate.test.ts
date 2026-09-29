@@ -805,6 +805,41 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(plan.refused.map((refusal) => refusal.code)).toEqual(['destination-claimed-twice']);
   });
 
+  it('refuses a destination that differs from a file already there only in case', () => {
+    // Windows and macOS find `src/logo.png` at `src/Logo.png`, so the move would write over
+    // it. Folded on every platform, as two claimed destinations are, so a plan does not
+    // depend on where it runs.
+    const graph = graphFor({ assets: ['src/a.png', 'src/logo.png'], references: [] });
+    const plan = planRelocation({
+      graph,
+      moves: [{ from: 'src/a.png', to: 'src/Logo.png' }],
+      servingRoots: SERVING,
+      aliases: NO_ALIASES,
+    });
+
+    expect(plan.moves).toEqual([]);
+    expect(plan.refused.map((refusal) => [refusal.code, refusal.reason])).toEqual([
+      [
+        'destination-occupied',
+        'src/logo.png already exists, and is the same file as src/Logo.png on Windows and macOS. Moving src/a.png onto it would destroy a file Upfly can see.',
+      ],
+    ]);
+  });
+
+  it('moves a file to its own name in another case', () => {
+    // The one file a folded destination may name is the file that moves.
+    const graph = graphFor({ assets: ['src/logo.png'], references: [] });
+    const plan = planRelocation({
+      graph,
+      moves: [{ from: 'src/logo.png', to: 'src/Logo.png' }],
+      servingRoots: SERVING,
+      aliases: NO_ALIASES,
+    });
+
+    expect(plan.refused).toEqual([]);
+    expect(plan.moves).toEqual([{ from: 'src/logo.png', to: 'src/Logo.png' }]);
+  });
+
   it('treats a project that serves from its own root as all one world', () => {
     // A serving directory of `''` is the project root: a hand-written static site with no
     // build step serves the repository it uploads, so there is only one side and nothing

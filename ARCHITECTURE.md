@@ -1964,8 +1964,10 @@ A template reference such as `` `./theme-${mode}.png` `` is one piece of text st
 it matches, so moving one of them breaks it for all of them. That move is refused as
 `binds-a-pattern`, naming the other files. Taking them along is not the fix: the user asked for one
 file. The remaining refusals guard the request itself: a source that is not an asset, a destination
-outside the project or already holding an asset, a destination claimed by two moves (compared
-case-insensitively, as `prepare` compares), and a source moved twice.
+outside the project or already holding an asset, a destination claimed by two moves, and a source
+moved twice. Both destination checks fold case on every platform, as the planner's collision check
+and `prepare` do: `src/Logo.png` is `src/logo.png` on Windows and macOS, so a move there is refused
+while `src/logo.png` exists, unless that is the file being renamed.
 
 Last, every rewritten reference is read again from the file that holds it, as a later run would
 read it, among the files the moves leave, with case folded as the planner folds it. A new text can
