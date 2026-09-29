@@ -44,6 +44,13 @@ const DECLARED: Readonly<Record<string, ServingRoots>> = {
 const FIXTURES = ['astro', 'eleventy', 'next-app', 'partial-pattern', 'plain-html', 'vite-react'];
 const POLICIES: readonly PublicPolicy[] = ['keep-original', 'replace'];
 
+/**
+ * Each test optimizes a whole fixture with real encodes. Alone one takes a few seconds, but in a
+ * full run on a loaded machine one has passed the shared 30-second limit, so these tests get
+ * their own. The limit only has to catch a hung test.
+ */
+const LIMIT_MS = 120_000;
+
 /** Dependencies and build output: nothing the engine reads, and slow to copy. */
 const NEVER_COPY = new Set(['node_modules', 'dist', '_site', '.next', 'out', 'build', '.astro']);
 
@@ -82,7 +89,7 @@ function deletesIn(result: OptimizeResult): number {
 /** How many originals each first `replace` run deleted, for the premise below. */
 const deletedByReplace: Record<string, number> = {};
 
-describe('optimize, run a second time', () => {
+describe('optimize, run a second time', { timeout: LIMIT_MS }, () => {
   for (const fixture of FIXTURES) {
     for (const policy of POLICIES) {
       it(`${fixture} under ${policy}: converts nothing, rewrites nothing, deletes nothing`, async () => {
@@ -123,7 +130,7 @@ describe('optimize, run a second time', () => {
   });
 });
 
-describe('the audit after a keep-original run', () => {
+describe('the audit after a keep-original run', { timeout: LIMIT_MS }, () => {
   it('lists each original kept beside its converted file apart from the unused images', async () => {
     const root = await copyOf('vite-react');
     try {
