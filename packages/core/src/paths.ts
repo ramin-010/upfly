@@ -114,12 +114,15 @@ const EXTENSION_ALTERNATION = IMAGE_EXTENSIONS.map((extension) =>
 
 /**
  * The characters a filename token holds: a letter or digit in any script, a combining mark (an
- * accent written decomposed, as macOS writes one), and `_`, `@`, `.` and `-`. Read with the
+ * accent written decomposed, as macOS writes one), an emoji with the joiner, skin tones and flag
+ * letters its sequences are built from, U+FFFD, which stands for bytes a name held that were not
+ * UTF-8, and `_`, `@`, `.` and `-`. Read with the
  * `u` flag; `\w` would not do, since it is ASCII alone with that flag or without it. No `/`,
  * so `{{ site.url }}/img/hero.png` yields `hero.png` and nothing longer, and no space, which
  * the walk over ` word` runs adds instead.
  */
-const FILENAME_CLASS = '[\\p{L}\\p{M}\\p{N}_@.\\-]';
+const FILENAME_CLASS =
+  '[\\p{L}\\p{M}\\p{N}\\p{Extended_Pictographic}\\p{Emoji_Modifier}\\p{Regional_Indicator}\\u{200D}\\u{FFFD}_@.\\-]';
 
 /**
  * Matches a tracked image extension where a name ends: `.png` in `hero (1).png`. Every pass

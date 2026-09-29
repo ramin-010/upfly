@@ -260,6 +260,19 @@ describe('imageFilenameCandidates', () => {
     expect(tokens('"/img/\u{10437}\u{10436}.png"')).toEqual(['\u{10437}\u{10436}.png']);
   });
 
+  it('spells a name holding an emoji or U+FFFD, as a file system allows', () => {
+    // An emoji can be several code points joined by U+200D, and U+FFFD stands for bytes a
+    // name held that were not UTF-8. Each is written as its code points here.
+    const party = `party-${String.fromCodePoint(0x1f389)}.png`;
+    const coder = `${String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb)}team.png`;
+    const waving = `hi-${String.fromCodePoint(0x1f44b, 0x1f3fd)}.png`;
+    const flag = `${String.fromCodePoint(0x1f1fa, 0x1f1e6)}-map.png`;
+    const replaced = `caf${String.fromCodePoint(0xfffd)}.png`;
+    for (const name of [party, coder, waving, flag, replaced]) {
+      expect(tokens(`<img src="/img/${name}">`), name).toEqual([name]);
+    }
+  });
+
   it('does not walk further left than the longest file name', () => {
     // No common file system allows a name over 255 characters. The bound also keeps a long
     // run from being walked again for every extension in it.
