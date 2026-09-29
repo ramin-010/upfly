@@ -109,7 +109,7 @@ async function main(): Promise<void> {
   stdout.write(`  images measured : ${rows.length}\n`);
   stdout.write(`  threw (R86)     : ${threw.length}\n`);
   for (const failure of threw.slice(0, 5)) {
-    stdout.write(`      ${failure.repo}/${failure.relative} — ${failure.why}\n`);
+    stdout.write(`      ${failure.repo}/${failure.relative}: ${failure.why}\n`);
   }
 
   const wins = rows.filter((row) => row.losslessWins);
@@ -153,10 +153,10 @@ async function main(): Promise<void> {
   stdout.write(`\n  corpus totals, all ${rows.length} images\n`);
   stdout.write(`    original                       : ${(original / 1048576).toFixed(1)} MB\n`);
   stdout.write(
-    `    today — webp ${LOSSY_QUALITY} always          : ${(today / 1048576).toFixed(1)} MB  (${pct((original - today) / original)} saved)\n`,
+    `    today (webp ${LOSSY_QUALITY} always)          : ${(today / 1048576).toFixed(1)} MB  (${pct((original - today) / original)} saved)\n`,
   );
   stdout.write(
-    `    proposed — smaller of the two  : ${(proposed / 1048576).toFixed(1)} MB  (${pct((original - proposed) / original)} saved)\n`,
+    `    proposed (smaller of the two)  : ${(proposed / 1048576).toFixed(1)} MB  (${pct((original - proposed) / original)} saved)\n`,
   );
   stdout.write(
     `    🔴 what the rule actually buys : ${pct((today - proposed) / today)} beyond today's default\n`,

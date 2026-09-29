@@ -222,9 +222,9 @@ function print(label: string, items: readonly ItemVerdict[], sample: number): vo
  * outside the target repository.
  */
 async function writeDetail(out: string, items: readonly ItemVerdict[]): Promise<void> {
-  const lines = ['# §5.1(j) — every unreferenced-asset verdict', ''];
+  const lines = ['# §5.1(j): every unreferenced-asset verdict', ''];
   for (const item of [...items].sort((a, b) => (a.subject < b.subject ? -1 : 1))) {
-    lines.push(`## ${item.subject} — ${item.kind} — **${item.verdict}**`);
+    lines.push(`## ${item.subject} (${item.kind}): **${item.verdict}**`);
     for (const line of item.evidence) lines.push(`    ${line}`);
     lines.push('');
   }

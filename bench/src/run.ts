@@ -218,20 +218,20 @@ function renderInvocations(
   runsEach: number,
 ): string {
   const verdict = !sample.samplesAgree
-    ? 'UNUSABLE (these invocations disagree — machine health, not drift)'
+    ? 'UNUSABLE (these invocations disagree: machine health, not drift)'
     : sample.medianMs <= BUDGET_MS
       ? 'within the regression ceiling'
       : 'OVER the regression ceiling';
 
   return [
     '',
-    'upfly-core bench — graph budget across separate invocations',
+    'upfly-core bench: graph budget across separate invocations',
     '',
     `  ${invocations} invocations x median of ${runsEach} runs, on ${platform()} with ${cpus().length} cores`,
     `  UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}`,
     '',
     `  headline: ${sample.medianMs} ms of ${BUDGET_MS} ms  ${verdict}`,
-    `  design target: ${DESIGN_TARGET_MS} ms — ${
+    `  design target: ${DESIGN_TARGET_MS} ms, ${
       sample.medianMs <= DESIGN_TARGET_MS
         ? 'met'
         : 'NOT met, and the ceiling above is not that target'
@@ -550,7 +550,7 @@ function render(result: BenchResult, generation: Timing): string {
     `  tree: ${result.tree.files} files, ${result.tree.images} images (generated in ${generation.ms} ms)`,
     `  machine: ${result.machine.platform}, ${result.machine.cpus} logical cores, UV_THREADPOOL_SIZE=${result.machine.uvThreadpoolSize}`,
     '',
-    `Graph budget — ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${verdict(result.graphBudget)}`,
+    `Graph budget: ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${verdict(result.graphBudget)}`,
     '',
     `  median of ${result.graphBudget.sample.runs} runs (one warm-up discarded): ${result.graphBudget.sample.allMs.join(', ')} ms`,
     `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.samplesAgree ? '' : '  ← SAMPLES DISAGREE'}`,
@@ -564,7 +564,7 @@ function render(result: BenchResult, generation: Timing): string {
   lines.push('Sweep (excluded from the budget)', '');
   lines.push(`  ${pad('sweep')} ${result.sweep.ms} ms`);
   lines.push(
-    `  ${result.sweep.candidates} zero-reference assets against ${result.sweep.unreadFiles} unread files — ${result.sweep.mentionsFound} rescued`,
+    `  ${result.sweep.candidates} zero-reference assets against ${result.sweep.unreadFiles} unread files, ${result.sweep.mentionsFound} rescued`,
     '',
   );
 
@@ -579,7 +579,7 @@ function render(result: BenchResult, generation: Timing): string {
   }
   lines.push('');
 
-  lines.push('Probe concurrency — 100 encodes', '');
+  lines.push('Probe concurrency: 100 encodes', '');
   for (const sample of result.probe.concurrencySamples) {
     lines.push(`  ${pad(`concurrency ${sample.concurrency}`)} ${sample.ms} ms`);
   }

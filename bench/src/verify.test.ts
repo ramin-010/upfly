@@ -295,7 +295,7 @@ describe('the oracle says what it could not read', () => {
       try {
         const result = await verifyFindings(own, deadReport('img/lonely.png'), ['']);
 
-        expect(result.unreadable).toEqual([expect.stringMatching(/^locked\/ — EACCES/)]);
+        expect(result.unreadable).toEqual([expect.stringMatching(/^locked\/: EACCES/)]);
       } finally {
         chmodSync(join(own, 'locked'), 0o755);
       }

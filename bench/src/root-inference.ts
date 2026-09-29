@@ -292,7 +292,7 @@ AD-HOC TREE: ${tree}
     return;
   }
 
-  stdout.write('\nR71-b — inferring a serving root by resolution rate\n\n');
+  stdout.write('\nR71-b: inferring a serving root by resolution rate\n\n');
   stdout.write("  the walk : every ancestor of a directory, plus each ancestor's children\n");
   stdout.write('  tested   : against the in-memory asset set, never the disk\n');
   stdout.write('  scored   : one source directory at a time, so every candidate answers\n');
@@ -316,7 +316,7 @@ AD-HOC TREE: ${tree}
   }
 
   if (only === undefined) {
-    stdout.write(`${'='.repeat(74)}\nALL FIVE REPOSITORIES — the number R71 turns on\n\n`);
+    stdout.write(`${'='.repeat(74)}\nALL FIVE REPOSITORIES: the number R71 turns on\n\n`);
     stdout.write(
       summarise(
         all.filter((v) => v.references >= MIN_REFERENCES),

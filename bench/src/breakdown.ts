@@ -410,7 +410,7 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
 
   return [
     '',
-    `  Where the time goes — ${VARIANT_LABEL[sample.variant]}, median of ${sample.passes} instrumented`,
+    `  Where the time goes: ${VARIANT_LABEL[sample.variant]}, median of ${sample.passes} instrumented`,
     '  passes in separate processes. NOT the gate number.',
     '',
     '    step              median  spread             share',
@@ -421,7 +421,7 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
     row('resolve', sample.resolve),
     row('graph', sample.graph),
     '',
-    `    per pass — scan: ${sample.scan.allMs.join(', ')} ms · parse: ${sample.parse.allMs.join(', ')} ms`,
+    `    per pass, scan: ${sample.scan.allMs.join(', ')} ms · parse: ${sample.parse.allMs.join(', ')} ms`,
     `    read occupancy ${sample.readOccupancy.medianMs} ms over ${sample.read.medianMs} ms wall = ${(
       sample.readOccupancy.medianMs / Math.max(1, sample.read.medianMs)
     ).toFixed(1)}x concurrency`,
@@ -441,7 +441,7 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
     '       on unchanged code and these steps drift with it, so a spread here is NOT the',
     '       attribution floor for a change measured against a PREVIOUS run. What beats that',
     experiment
-      ? '       drift is an A/B inside one run — which is what the experiment block below is.'
+      ? '       drift is an A/B inside one run, which is what the experiment block below is.'
       : '       drift is an A/B inside one run, which `--experiments` adds to this output.',
     '',
   ].join('\n');
@@ -464,7 +464,7 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 
   const lines: string[] = [
     '',
-    '  R141 experiment 1 — what `scan` costs with parsing stubbed to a no-op',
+    '  R141 experiment 1: what `scan` costs with parsing stubbed to a no-op',
     '',
     '    variant                     scan       spread        vs baseline',
   ];
@@ -472,7 +472,7 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
   for (const sample of partition) {
     const delta =
       sample === baseline
-        ? '—'
+        ? 'n/a'
         : `${percent(sample.scan.medianMs - baseline.scan.medianMs, baseline.scan.medianMs)}`;
     lines.push(
       `    ${VARIANT_LABEL[sample.variant].padEnd(24)} ${String(sample.scan.medianMs).padStart(6)} ms  ${`${sample.scan.spreadPercent}%`.padStart(5)}${
@@ -540,7 +540,7 @@ function verdict(
 
   if (floor === null) {
     return [
-      `    VERDICT: parsing is ${((parseCost / Math.max(1, baseline.scan.medianMs)) * 100).toFixed(1)}% of scan's wall clock — but this ran ONE pass`,
+      `    VERDICT: parsing is ${((parseCost / Math.max(1, baseline.scan.medianMs)) * 100).toFixed(1)}% of scan's wall clock, but this ran ONE pass`,
       '       per variant, so there is no spread to place it against. R141 expects ~−70%, which',
       '       survives one sample; nothing smaller does. Re-run with --breakdown-passes=3.',
     ];
@@ -551,7 +551,7 @@ function verdict(
   if (movePercent <= floorPercent) {
     return [
       `    VERDICT: NONE. The difference is ${movePercent.toFixed(1)}% and these variants' own spread is`,
-      `       ${floorPercent}%. A move inside the noise is not a finding — that is how R12's "26% off"`,
+      `       ${floorPercent}%. A move inside the noise is not a finding; that is how R12's "26% off"`,
       '       entered the spec and later measured zero. Raise the pass count and re-run.',
     ];
   }

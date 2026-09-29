@@ -515,7 +515,7 @@ async function writeReport(
 
   for (const cohort of ['proportional', 'text-heavy'] as const) {
     lines.push(
-      `## ${cohort === 'text-heavy' ? 'Text-heavy cohort — the one R47 was raised about' : 'Proportional cohort'}`,
+      `## ${cohort === 'text-heavy' ? 'Text-heavy cohort (the one R47 was raised about)' : 'Proportional cohort'}`,
       '',
       '| format | quality | median saving | worst saving | median PSNR | worst PSNR | median SSIM (textured) | worst SSIM (textured) | median SSIM (all windows) | below 35 dB |',
       '|---|---|---|---|---|---|---|---|---|---|',

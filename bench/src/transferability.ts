@@ -118,11 +118,11 @@ for (const repo of REPOS) {
 
 // Per repository and never averaged: `railsgirls-com` holds more references than the other
 // four together, so a mean would describe that one repository.
-stdout.write('\nR76b — transferability. Per repository, and DELIBERATELY NOT AVERAGED.\n');
+stdout.write('\nR76b: transferability. Per repository, and DELIBERATELY NOT AVERAGED.\n');
 stdout.write(
   '🔴 Coverage of our test shapes is NOT accuracy. These are counts of references whose SHAPE\n' +
     '   the tree has at least one instance of. They say nothing about whether those references\n' +
-    '   were resolved correctly — that is the matrix, and it is a different table.\n\n',
+    '   were resolved correctly; that is the matrix, and it is a different table.\n\n',
 );
 
 for (const result of results) {
@@ -132,7 +132,7 @@ for (const result of results) {
   stdout.write(`  in shapes the tree tests    ${result.inTestedShapes}\n`);
   stdout.write(`  in shapes it does NOT       ${outside}\n`);
   if (result.remainder.size === 0) {
-    stdout.write('  remainder: none — every shape in this repository has a tree instance\n\n');
+    stdout.write('  remainder: none (every shape in this repository has a tree instance)\n\n');
     continue;
   }
   stdout.write('  🔴 THE REMAINDER, NAMED rather than averaged away:\n');
@@ -157,7 +157,7 @@ stdout.write(
   '🔴 READ THIS BEFORE THE NUMBERS ABOVE: THE FRACTION IS NEAR-VACUOUS BY CONSTRUCTION, and\n' +
     '   saying so is the finding. A reference can only carry a shape an ADAPTER EMITS, and the\n' +
     "   vocabulary is held identical to the tree's by a red test (R76, R82). So the remainder can\n" +
-    '   only ever contain the handful of shapes already known to have no tree instance — three on\n' +
+    '   only ever contain the handful of shapes already known to have no tree instance: three on\n' +
     '   UNTESTED_SHAPE_IDS, three the key declares unkeyable with a reason. A shape NOBODY\n' +
     '   IMAGINED has no id at all, so it cannot appear here: it appears as nothing, which is\n' +
     "   R76's own objection reproduced inside the measurement built to escape it.\n" +

@@ -457,7 +457,7 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
         verdict: 'ambiguous',
         evidence: [
           'the exact filename appears nowhere, but the same name under another image',
-          'extension does — found by literal search, because the token index cannot',
+          'extension does, found by literal search, because the token index cannot',
           'represent the spelling the source used:',
           ...literal.slice(0, 5),
         ],
@@ -471,7 +471,7 @@ function verifyDead(asset: string, index: RepoIndex): ItemVerdict {
       verdict: 'ambiguous',
       evidence: [
         'the exact filename appears nowhere, but the same name under another image',
-        'extension does — which is either an unrelated asset or a reference someone',
+        'extension does, which is either an unrelated asset or a reference someone',
         'already converted by hand:',
         ...swapped.slice(0, 5).map((hit) => `  ${hit.file}:${hit.line}  ${hit.text}`),
       ],
@@ -508,7 +508,7 @@ function verifyHedge(
     const line = match?.[2] === undefined ? null : Number(match[2]);
 
     if (!index.files.has(file)) {
-      wrong.push(`${mention.where} — that file is not in the repository`);
+      wrong.push(`${mention.where}: that file is not in the repository`);
       continue;
     }
 
@@ -532,16 +532,16 @@ function verifyHedge(
     }
 
     if (inFile.length === 0) {
-      wrong.push(`${mention.where} — the file does not contain ${posix.basename(asset)}`);
+      wrong.push(`${mention.where}: the file does not contain ${posix.basename(asset)}`);
     } else if (line !== null && !inFile.some((hit) => hit.line === line)) {
       wrong.push(
-        `${mention.where} — the name is in that file but on line(s) ${inFile
+        `${mention.where}: the name is in that file but on line(s) ${inFile
           .map((hit) => hit.line)
           .slice(0, 4)
           .join(', ')}, not ${line}`,
       );
     } else {
-      checked.push(`${mention.where} (${mention.source}) — the name is there`);
+      checked.push(`${mention.where} (${mention.source}): the name is there`);
     }
   }
 
@@ -656,7 +656,7 @@ async function buildIndex(root: string): Promise<RepoIndex> {
 
   const unlistable = (directory: string, error: unknown): void => {
     const rel = relative(root, directory).replaceAll('\\', '/');
-    unreadable.push(`${rel}/ — ${error instanceof Error ? error.message : String(error)}`);
+    unreadable.push(`${rel}/: ${error instanceof Error ? error.message : String(error)}`);
   };
 
   let walked = 0;
@@ -683,17 +683,17 @@ async function buildIndex(root: string): Promise<RepoIndex> {
     try {
       text = await readFile(absolute, 'utf8');
     } catch (error) {
-      unreadable.push(`${rel} — ${error instanceof Error ? error.message : String(error)}`);
+      unreadable.push(`${rel}: ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
     if (text.length > MAX_GREP_BYTES) {
-      unreadable.push(`${rel} — larger than ${MAX_GREP_BYTES} bytes, not grepped`);
+      unreadable.push(`${rel}: larger than ${MAX_GREP_BYTES} bytes, not grepped`);
       continue;
     }
     // `String.fromCharCode(0)` rather than a literal NUL, which is invisible in the source
     // and easily corrupted.
     if (text.includes(String.fromCharCode(0))) {
-      unreadable.push(`${rel} — contains a NUL byte, treated as binary and not grepped`);
+      unreadable.push(`${rel}: contains a NUL byte, treated as binary and not grepped`);
       continue;
     }
     filesGrepped += 1;

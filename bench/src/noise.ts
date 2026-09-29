@@ -213,21 +213,21 @@ async function main(): Promise<void> {
   const injectMs = Number(flagValue('--inject-ms') ?? 0);
 
   stdout.write(
-    `\nnoise floor — ${platform()}, ${cpus().length} cores, UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}\n`,
+    `\nnoise floor: ${platform()}, ${cpus().length} cores, UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}\n`,
   );
   stdout.write('⚠️ Check for surviving node processes before trusting this (R49-b).\n');
 
   if (argv.includes('--pair')) {
-    stdout.write(`\nThe pair — identical work, one process, median of ${runs} each:\n`);
+    stdout.write(`\nThe pair (identical work, one process, median of ${runs} each):\n`);
     await pair(runs);
   }
 
   const invocations = Number(flagValue('--invocations') ?? 0);
   if (invocations > 0) {
     stdout.write(
-      `\nThe floor — ${repo}, ${invocations} separate processes, median of ${runs} each${
+      `\nThe floor (${repo}, ${invocations} separate processes, median of ${runs} each${
         injectMs > 0 ? `, +${injectMs} ms injected per run` : ''
-      }:\n`,
+      }):\n`,
     );
     const { across, internal } = await floor(invocations, runs, repo, injectMs);
     stdout.write(

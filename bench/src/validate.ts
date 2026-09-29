@@ -153,7 +153,7 @@ function partialSummary(
   }
 
   return [
-    '# ⚠️ PARTIAL RUN — this is not the §5.1 gate',
+    '# ⚠️ PARTIAL RUN: this is not the §5.1 gate',
     '',
     'Everything below was measured and is true. It is simply not all of it.',
     '**Re-run `pnpm validate` with no flags before quoting any of it as a result.**',
@@ -268,8 +268,8 @@ function skippedDifferences(a: Report, b: Report): string[] {
   const second = new Set(b.skipped.map(key));
 
   return [
-    ...[...first].filter((entry) => !second.has(entry)).map((entry) => `only in run 1 — ${entry}`),
-    ...[...second].filter((entry) => !first.has(entry)).map((entry) => `only in run 2 — ${entry}`),
+    ...[...first].filter((entry) => !second.has(entry)).map((entry) => `only in run 1: ${entry}`),
+    ...[...second].filter((entry) => !first.has(entry)).map((entry) => `only in run 2: ${entry}`),
   ].slice(0, 6);
 }
 
@@ -590,13 +590,13 @@ function worksheet(result: RepoResult): string {
   const needsHuman = result.unaccounted.filter((entry) => entry.explanation === null);
 
   const lines = [
-    `# ${labelOf(repo)} — §5.1(c)/(d) review worksheet`,
+    `# ${labelOf(repo)}: §5.1(c)/(d) review worksheet`,
     '',
     `Repo \`${repo.name}\` at \`${repo.sha}\`${repo.unconfigured === true ? ', run with NO configuration: serving roots detected and inferred exactly as a first run does (R147)' : ''}.`,
     `Root: \`${root}\``,
     '',
     'Every `broken` finding has been opened and every `dead` asset grepped **by machine**, against',
-    'an oracle that does not use the engine — its own directory index and its own grep, over the',
+    'an oracle that does not use the engine: its own directory index and its own grep, over the',
     `whole tree including pruned and ignored directories. ${verdictHeadline(result.verified)}`,
     '',
     '**What is left for you is below: the ambiguous items and the judgement calls.** A verdict of',
@@ -612,11 +612,11 @@ function worksheet(result: RepoResult): string {
   lines.push(...verdictSection('possibly-dead', '3. Possibly-dead citations', result.verified));
 
   lines.push(
-    `## 4. §5.1(b) false-negative sweep — ${needsHuman.length} hits need a decision`,
+    `## 4. §5.1(b) false-negative sweep: ${needsHuman.length} hits need a decision`,
     '',
     `Grepped the whole repo for every asset filename. ${result.unaccounted.length} hits were not`,
     `linked by the graph, and ${result.unaccounted.length - needsHuman.length} were explained`,
-    'mechanically — a file type no adapter reads, an absolute URL, a commented-out line, prose, or a',
+    'mechanically: a file type no adapter reads, an absolute URL, a commented-out line, prose, or a',
     'line naming a different file that shares a basename. The rest are below, **grouped by shape so',
     'the same decision is made once**.',
     '',
@@ -665,7 +665,7 @@ function verdictHeadline(verified: VerifyResult): string {
   // "0 confirmed-false" would not show that.
   const headline =
     wrong > 0
-      ? `**${wrong} of ${verified.items.length} came back confirmed-false — the gate is not passed.**`
+      ? `**${wrong} of ${verified.items.length} came back confirmed-false; the gate is not passed.**`
       : unclear === 0
         ? `All ${verified.items.length} came back confirmed-genuine.`
         : `None came back false; ${unclear} of ${verified.items.length} came back ambiguous, for you to decide.`;
@@ -684,7 +684,7 @@ function verdictHeadline(verified: VerifyResult): string {
 const BLIND_SPOT = [
   '> ⚠️ **What this pass cannot see.** Every check above searches for a *string*. An asset that is',
   '> alive with **no string naming it anywhere** is invisible to it exactly as it is invisible to the',
-  '> engine — a framework file convention (R17 was found this way, and this oracle confirmed one of',
+  '> engine: a framework file convention (R17 was found this way, and this oracle confirmed one of',
   '> the two as genuine), a build-config glob, a CMS, a filename assembled at runtime from data.',
   '> So "0 confirmed-false" bounds the machine\'s reach, not the truth.',
   '>',
@@ -705,7 +705,7 @@ function verdictSection(
   verified: VerifyResult,
 ): string[] {
   const items = verified.items.filter((item) => item.kind === kind);
-  const lines = [`## ${title} — ${items.length}`, ''];
+  const lines = [`## ${title} (${items.length})`, ''];
 
   if (items.length === 0) {
     lines.push('_None reported._', '');
@@ -718,8 +718,8 @@ function verdictSection(
 
     lines.push(
       verdict === 'confirmed-false'
-        ? `### ⚠️ ${group.length} confirmed FALSE — the oracle disagrees with the engine`
-        : `### ${group.length} ambiguous — your call`,
+        ? `### ⚠️ ${group.length} confirmed FALSE: the oracle disagrees with the engine`
+        : `### ${group.length} ambiguous: your call`,
       '',
     );
     // Same `group` means same decision. Rendering it once is the difference between
@@ -740,7 +740,7 @@ function verdictSection(
         continue;
       }
 
-      lines.push(`- [ ] \`${key}\` — ${bucket.length} references, one decision`);
+      lines.push(`- [ ] \`${key}\`: ${bucket.length} references, one decision`);
       for (const line of first.evidence) lines.push(`      ${line}`);
       lines.push('', '      Affected:');
       for (const item of bucket) lines.push(`        ${item.subject.split(' \u2192 ')[0] ?? ''}`);
@@ -751,7 +751,7 @@ function verdictSection(
   const genuine = items.filter((item) => item.verdict === 'confirmed-genuine');
   if (genuine.length > 0) {
     lines.push(
-      `### ${genuine.length} confirmed genuine — checked, nothing found`,
+      `### ${genuine.length} confirmed genuine: checked, nothing found`,
       '',
       'Spot-check two or three against the method rather than repeating the check.',
       '',
@@ -799,7 +799,7 @@ function groupResidue(entries: readonly Triaged[]): ResidueGroup[] {
   for (const [file, group] of byFile) {
     if (group.length > 1) {
       groups.push({
-        label: `\`${file}\` — ${group.length} hits (${shapesIn(group)})`,
+        label: `\`${file}\`: ${group.length} hits (${shapesIn(group)})`,
         entries: group,
       });
     } else if (group[0] !== undefined) {
@@ -819,8 +819,8 @@ function groupResidue(entries: readonly Triaged[]): ResidueGroup[] {
     groups.push({
       label:
         group.length === 1
-          ? `\`${first.file}\` — 1 hit (${first.shape ?? ''})`
-          : `\`${first.asset}\` — named once in each of ${group.length} files (${first.shape ?? ''})`,
+          ? `\`${first.file}\`: 1 hit (${first.shape ?? ''})`
+          : `\`${first.asset}\`: named once in each of ${group.length} files (${first.shape ?? ''})`,
       entries: group,
     });
   }
@@ -837,10 +837,10 @@ function shapesIn(entries: readonly Triaged[]): string {
 /** Every sweep hit and what triage made of it: the audit trail for the sweep itself. */
 function sweepLog(result: RepoResult): string {
   const lines = [
-    `# ${labelOf(result.repo)} — §5.1(b) sweep, every hit`,
+    `# ${labelOf(result.repo)}: §5.1(b) sweep, every hit`,
     '',
     `${result.unaccounted.length} grep hits the graph did not link. This is the complete list,`,
-    'including the ones triage explained — so the triage rules themselves can be reviewed rather',
+    'including the ones triage explained, so the triage rules themselves can be reviewed rather',
     'than trusted.',
     '',
   ];
@@ -852,19 +852,19 @@ function sweepLog(result: RepoResult): string {
     byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
   }
 
-  lines.push(`## Explained — ${explained.length}`, '');
+  lines.push(`## Explained (${explained.length})`, '');
   for (const [reason, count] of [...byReason].sort((a, b) => b[1] - a[1])) {
     lines.push(`- ${count} × ${reason}`);
   }
   lines.push('');
 
   for (const entry of explained) {
-    lines.push(`- \`${entry.file}:${entry.line}\` → \`${entry.asset}\` — ${entry.explanation}`);
+    lines.push(`- \`${entry.file}:${entry.line}\` → \`${entry.asset}\`: ${entry.explanation}`);
   }
   lines.push('');
 
   const residue = result.unaccounted.filter((entry) => entry.explanation === null);
-  lines.push(`## Needs a decision — ${residue.length}`, '');
+  lines.push(`## Needs a decision (${residue.length})`, '');
   for (const group of groupResidue(residue)) {
     lines.push(`### ${group.label}`, '');
     for (const entry of group.entries) {
@@ -902,7 +902,7 @@ function summarise(result: RepoResult): string {
 
 function overallSummary(results: readonly RepoResult[]): string {
   const lines = [
-    '# §5.1 validation — automated parts',
+    '# §5.1 validation: automated parts',
     '',
     'Produced by `bench/src/validate.ts`. Parts (c) and (d) need a person; see each',
     '`*.review.md` worksheet.',
@@ -922,7 +922,7 @@ function overallSummary(results: readonly RepoResult[]): string {
     '',
     '⚠️ **What the §5.1(d) verdicts cannot cover.** Every automated check searches for a string.',
     'An asset alive with no string naming it anywhere is invisible to the oracle exactly as it is',
-    'invisible to the engine — R17 is one, and the oracle confirmed one of its two instances as',
+    'invisible to the engine: R17 is one, and the oracle confirmed one of its two instances as',
     '*genuine*. A person still has to ask whether anything here is alive for a reason that is not',
     'a string.',
     '',

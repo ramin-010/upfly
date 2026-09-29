@@ -102,7 +102,7 @@ function explain(
   claimed: ReadonlySet<string>,
 ): string | null {
   if (!claimed.has(extension)) {
-    return `no adapter reads ${extension} — covered by unscannedExtensions and possibly-dead`;
+    return `no adapter reads ${extension} (covered by unscannedExtensions and possibly-dead)`;
   }
 
   const before = hit.text.slice(0, Math.max(0, indexOfToken(hit.text, token)));
