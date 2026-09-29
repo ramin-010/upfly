@@ -139,7 +139,7 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     });
     const { linked, checkable, rate, servingRootUnknown } = resolutionHealth(graph);
     const share = checkable === 0 ? 'n/a' : `${(rate * 100).toFixed(1)}%`;
-    return `${linked}/${checkable} root-relative linked (${share})${servingRootUnknown ? '  SERVING ROOT UNKNOWN' : ''}`;
+    return `${linked}/${checkable} root-relative linked (${share})${servingRootUnknown ? '  serving root unknown' : ''}`;
   };
 
   // `''` is the project root and is a real answer, not an absent one. Printed as a blank
@@ -149,7 +149,7 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
   const ties =
     decision.inferred.ties.length === 0
       ? ''
-      : `  ties refused (R132): ${decision.inferred.ties
+      : `  ties refused: ${decision.inferred.ties
           .map((tie) => `${name(tie.dir)} -> ${tie.candidates.map(name).join(' | ')}`)
           .join(' · ')}
 `;
@@ -160,21 +160,21 @@ async function delta(repo: RepoSpec, names: readonly string[] | undefined): Prom
     `${repo.name}: ${scanned.references.length} scanned, ${configured.length} resolved against`,
     // Read downwards from `guess`: each row answers the same question better than the one
     // above it, and `configured`, on top, is the answer itself.
-    `  configured: ${health(configured)}   <- the hand-tuned list, i.e. the ANSWER`,
+    `  configured: ${health(configured)}   <- the hand-tuned list, i.e. the answer`,
     `  guess:      ${health(guess)}   <- frozen ['public'], what validate.ts still does`,
     `  detected:   ${health(auto)}`,
     `  inferred:   ${health(inferred)}`,
     // Printed even when nothing was added: an inference that added nothing and one that had
     // no references to score give the same empty answer, and only the count tells them apart.
-    `  R132 added: ${added}   (from ${decision.assetReferences} root-relative asset references)`,
+    `  inference added: ${added}   (from ${decision.assetReferences} root-relative asset references)`,
     ties,
-    '  GUESS against configured:',
+    '  guess against configured:',
     ...table(configured, guess, 'guess'),
     ...changed(configured, guess),
-    '  DETECTED against configured:',
+    '  detected against configured:',
     ...table(configured, auto, 'detected'),
     ...changed(configured, auto),
-    '  INFERRED against configured:',
+    '  inferred against configured:',
     ...table(configured, inferred, 'inferred'),
     ...changed(configured, inferred),
   ];
@@ -242,7 +242,7 @@ function changed(configured: readonly Reference[], auto: readonly Reference[]): 
       const wasPath = pathOf(before);
       const nowPath = pathOf(now);
       if (wasPath !== null && nowPath !== null && wasPath !== nowPath) {
-        lines.push(`    RELINKED ${before.rawPath}: ${wasPath} -> ${nowPath}`);
+        lines.push(`    relinked ${before.rawPath}: ${wasPath} -> ${nowPath}`);
       }
       continue;
     }
@@ -269,7 +269,7 @@ function render(comparisons: readonly Comparison[]): string {
         String(row.detected.length).padStart(9),
         String(row.missed.length).padStart(7),
         String(row.extra.length).padStart(6),
-        agrees ? '  yes' : '  NO',
+        agrees ? '  yes' : '  no',
       ].join(''),
     );
   }

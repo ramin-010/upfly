@@ -126,7 +126,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
 
     const moves = movesFor(assets, before.servingRoots.dirs);
     if (moves.length === 0) {
-      stdout.write('  SKIPPED   no linked asset to move\n');
+      stdout.write('  skipped   no linked asset to move\n');
       return true;
     }
     for (const move of moves) stdout.write(`  move      ${move.from} -> ${move.to}\n`);
@@ -139,7 +139,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
     );
     stdout.write(`  manifest  ${manifest?.state ?? 'none written'}\n`);
     for (const refusal of plan.refused) {
-      stdout.write(`    REFUSED ${refusal.code}: ${refusal.reason.slice(0, 120)}\n`);
+      stdout.write(`    refused ${refusal.code}: ${refusal.reason.slice(0, 120)}\n`);
     }
     for (const rewrite of plan.rewrites.slice(0, 5)) {
       stdout.write(`    ${rewrite.file}  ${rewrite.edits.length} edit(s)\n`);
@@ -182,7 +182,7 @@ async function run(name: string, keep: boolean): Promise<boolean> {
 
     return !check.regressed;
   } catch (cause) {
-    stdout.write(`  FAILED    ${(cause as Error).message}\n`);
+    stdout.write(`  failed    ${(cause as Error).message}\n`);
     return false;
   } finally {
     if (keep) stdout.write(`  kept      ${root}\n`);
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
   let ok = true;
   for (const name of names) ok = (await run(name, keep)) && ok;
 
-  stdout.write(ok ? '\nNO REGRESSION\n' : '\nREGRESSION\n');
+  stdout.write(ok ? '\nno regression\n' : '\nregression\n');
   exit(ok ? 0 : 1);
 }
 

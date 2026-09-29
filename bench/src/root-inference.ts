@@ -186,7 +186,7 @@ export async function measureRepoAt(
       stdout.write(`\n    ${dir || '<project root>'}  (${refs.length} refs)\n`);
       for (const s of scored.slice(0, 6)) {
         stdout.write(
-          `      ${truthSet.has(s.dir) ? '✅' : '  '} ${(s.dir || '<project root>').padEnd(58)} ${(s.rate * 100).toFixed(1).padStart(6)}%  ${s.hits}/${refs.length}\n`,
+          `      ${truthSet.has(s.dir) ? 'true' : '    '} ${(s.dir || '<project root>').padEnd(58)} ${(s.rate * 100).toFixed(1).padStart(6)}%  ${s.hits}/${refs.length}\n`,
         );
       }
     }
@@ -229,21 +229,21 @@ function summarise(verdicts: readonly DirectoryVerdict[], label: string): string
   return [
     `  ${label}`,
     `    directories / references        : ${verdicts.length} / ${refs}`,
-    `    🔴 GAP, reference-weighted      : ${weighted >= 0 ? '+' : ''}${pct(weighted)} points`,
-    `    🔴 GAP, median directory        : ${median >= 0 ? '+' : ''}${pct(median)} points`,
+    `    gap, reference-weighted         : ${weighted >= 0 ? '+' : ''}${pct(weighted)} points`,
+    `    gap, median directory           : ${median >= 0 ? '+' : ''}${pct(median)} points`,
     `    worst / best directory gap      : ${pct(gaps[0] ?? 0)} / ${pct(gaps[gaps.length - 1] ?? 0)}`,
-    `    directories with NO daylight    : ${noDaylight.length} (${noDaylightRefs} refs)`,
+    `    directories with no daylight    : ${noDaylight.length} (${noDaylightRefs} refs)`,
     // No daylight has two causes that must stay apart. When nothing resolves, inference has
     // nothing to go on and declines, which is correct. When a wrong root resolves at least
     // as much as a true root that resolves something, the ambiguity is real, and that is
     // where a bar could choose wrong without anyone seeing.
     `      ...of those, tie above zero  : ${noDaylight.filter((v) => (v.bestTruth?.rate ?? 0) > 0).length}`,
     `      ...of those, nothing resolves: ${noDaylight.filter((v) => (v.bestTruth?.rate ?? 0) === 0 && (v.bestWrong?.rate ?? 0) === 0).length}`,
-    `    directories where a WRONG root WINS: ${verdicts.filter((v) => v.gap < 0).length}`,
+    `    directories where a wrong root wins: ${verdicts.filter((v) => v.gap < 0).length}`,
     `    top-ranked candidate is correct : ${argmax}/${verdicts.length} (${pct(argmax / verdicts.length)}%)`,
     `    true root not even reachable    : ${unreachable.length}`,
-    `    TRUE roots   min / p25 / med   : ${pct(truthRates[0] ?? 0)} / ${pct(at(truthRates, 0.25))} / ${pct(at(truthRates, 0.5))}`,
-    `    WRONG roots  med / p75 / max   : ${pct(at(wrongRates, 0.5))} / ${pct(at(wrongRates, 0.75))} / ${pct(wrongRates[wrongRates.length - 1] ?? 0)}`,
+    `    true roots   min / p25 / med   : ${pct(truthRates[0] ?? 0)} / ${pct(at(truthRates, 0.25))} / ${pct(at(truthRates, 0.5))}`,
+    `    wrong roots  med / p75 / max   : ${pct(at(wrongRates, 0.5))} / ${pct(at(wrongRates, 0.75))} / ${pct(wrongRates[wrongRates.length - 1] ?? 0)}`,
     '',
   ].join('\n');
 }
@@ -271,14 +271,14 @@ async function main(): Promise<void> {
       .map((entry) => (entry === '<root>' ? '' : entry));
     stdout.write(`
 ${'='.repeat(74)}
-AD-HOC TREE: ${tree}
+ad-hoc tree: ${tree}
 `);
     stdout.write(`  declared truth: ${declared.map((d) => d || '<project root>').join(', ')}
 
 `);
     const result = await measureRepoAt(tree, tree, declared, verbose);
     stdout.write(
-      `  root-relative ASSET references: ${result.references}   unscanned (R86): ${result.unscanned}
+      `  root-relative asset references: ${result.references}   files not scanned: ${result.unscanned}
 
 `,
     );
@@ -292,7 +292,7 @@ AD-HOC TREE: ${tree}
     return;
   }
 
-  stdout.write('\nR71-b: inferring a serving root by resolution rate\n\n');
+  stdout.write('\ninferring a serving root by resolution rate\n\n');
   stdout.write("  the walk : every ancestor of a directory, plus each ancestor's children\n");
   stdout.write('  tested   : against the in-memory asset set, never the disk\n');
   stdout.write('  scored   : one source directory at a time, so every candidate answers\n');
@@ -309,14 +309,16 @@ AD-HOC TREE: ${tree}
       `  truth: ${result.truth.map((d) => d || '<project root>').join(', ') || '(none)'}\n`,
     );
     stdout.write(
-      `  root-relative ASSET references: ${result.references}   unscanned (R86): ${result.unscanned}\n\n`,
+      `  root-relative asset references: ${result.references}   files not scanned: ${result.unscanned}\n\n`,
     );
     stdout.write(summarise(thick, `directories with >= ${MIN_REFERENCES} references`));
     stdout.write(summarise(result.directories, 'every directory, thin ones included'));
   }
 
   if (only === undefined) {
-    stdout.write(`${'='.repeat(74)}\nALL FIVE REPOSITORIES: the number R71 turns on\n\n`);
+    stdout.write(
+      `${'='.repeat(74)}\nall five repositories: the gap between true and wrong roots\n\n`,
+    );
     stdout.write(
       summarise(
         all.filter((v) => v.references >= MIN_REFERENCES),

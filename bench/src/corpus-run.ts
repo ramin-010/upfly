@@ -121,7 +121,7 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
 
     if (result.refusal !== null) {
-      stdout.write(`  REFUSED   ${result.refusal.code}: ${result.refusal.reason}\n`);
+      stdout.write(`  refused   ${result.refusal.code}: ${result.refusal.reason}\n`);
       return true;
     }
 
@@ -157,7 +157,7 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
     const after = await runEngine(root, undefined, false);
     const brokenAfter = after.graph.byResolution.broken.length;
     stdout.write(`  broken    ${brokenBefore} before, ${brokenAfter} after`);
-    stdout.write(brokenAfter > brokenBefore ? '   REGRESSION\n' : '   no regression\n');
+    stdout.write(brokenAfter > brokenBefore ? '   regression\n' : '   no regression\n');
 
     // The count above comes from the same graph that decided which references exist, so
     // it only shows that nothing Upfly can read broke. A file that fails to parse, as some
@@ -191,7 +191,7 @@ async function run(name: string, keep: boolean, replace: boolean): Promise<boole
 
     return brokenAfter <= brokenBefore;
   } catch (cause) {
-    stdout.write(`  FAILED    ${(cause as Error).message}\n`);
+    stdout.write(`  failed    ${(cause as Error).message}\n`);
     return false;
   } finally {
     if (keep) stdout.write(`  kept      ${root}\n`);
