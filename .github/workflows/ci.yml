@@ -138,7 +138,7 @@ jobs:
           UPFLY_BENCH_BUDGET_MS: ${{ matrix.budget }}
         # The run also prints a per-step breakdown (discover, scan with read against parse,
         # resolve, graph), each step sampled in three processes with a median, a spread, and
-        # `UNUSABLE` beside a step whose samples disagree. Read it to say which step moved,
+        # `unusable` beside a step whose samples disagree. Read it to say which step moved,
         # never as a figure: drift between runs cannot be seen from inside one run, and the
         # breakdown prints that warning itself. `--experiments` is left off, since it adds
         # about four minutes to a Windows run; it still works locally. The graph is built 18

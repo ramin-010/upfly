@@ -131,7 +131,7 @@ describe('the per-step summary', () => {
     expect(sample.parse.spreadPercent).toBe(11);
   });
 
-  it('marks a step UNUSABLE when its own samples disagree, and only that step', () => {
+  it('marks a step unusable when its own samples disagree, and only that step', () => {
     const sample = summariseBreakdowns([
       pass({ scanMs: 5_000, graphMs: 50 }),
       pass({ scanMs: 5_050, graphMs: 90 }),
@@ -142,7 +142,7 @@ describe('the per-step summary', () => {
     // and saying so is the whole point of printing a per-step spread.
     expect(sample.graph.spreadPercent).toBeGreaterThan(MAX_STEP_SPREAD_PERCENT);
     expect(sample.unusableSteps).toEqual(['graph']);
-    expect(renderBreakdown(sample)).toContain('UNUSABLE');
+    expect(renderBreakdown(sample)).toContain('unusable');
   });
 
   it('says nothing is unusable when every step agrees with itself', () => {
@@ -164,7 +164,7 @@ describe('the per-step summary', () => {
   it('keeps every distinct file count, so a changed tree cannot pass unnoticed', () => {
     const sample = summariseBreakdowns([pass({ files: 7_681 }), pass({ files: 7_600 })]);
     expect(sample.fileCounts).toEqual([7_681, 7_600]);
-    expect(renderBreakdown(sample)).toContain('THE PASSES SAW DIFFERENT TREES');
+    expect(renderBreakdown(sample)).toContain('The passes saw different trees');
   });
 
   it('refuses an empty set rather than reporting zeroes for it', () => {
@@ -179,8 +179,8 @@ describe('what every breakdown says about itself', () => {
     // instrument cannot see. So it says so unconditionally, not only when the spread
     // happens to be wide.
     const rendered = renderBreakdown(summariseBreakdowns([pass(), pass(), pass()]));
-    expect(rendered).toContain('WITHIN this run');
-    expect(rendered).toContain('NOT the');
+    expect(rendered).toContain('within this run only');
+    expect(rendered).toContain('a spread here is not the');
   });
 
   it('points at the experiment block only when the run prints one', () => {
@@ -198,7 +198,7 @@ describe('what every breakdown says about itself', () => {
 
   it('keeps the warning that read-wall and parse overlap and must not be added', () => {
     const rendered = renderBreakdown(summariseBreakdowns([pass()]));
-    expect(rendered).toContain('OVERLAP');
+    expect(rendered).toContain('read-wall and parse overlap');
     expect(rendered).toContain('Do not add them');
   });
 });
@@ -238,7 +238,7 @@ describe('what the experiment block concludes', () => {
         'no-parse-no-mentions': [2_500, 2_510, 2_520],
       }),
     );
-    expect(rendered).toContain('MAIN THREAD');
+    expect(rendered).toContain('The main thread is the');
   });
 
   it('says the parse is the wrong target when parse is a minority of scan', () => {
@@ -251,7 +251,7 @@ describe('what the experiment block concludes', () => {
       }),
     );
     expect(rendered).toContain('threadpool or the read strategy');
-    expect(rendered).not.toContain('MAIN THREAD');
+    expect(rendered).not.toContain('The main thread is the');
   });
 
   it('refuses a verdict when the difference is inside the variants’ own spread', () => {
@@ -264,8 +264,8 @@ describe('what the experiment block concludes', () => {
         'no-parse-no-mentions': [8_700, 9_700, 10_700],
       }),
     );
-    expect(rendered).toContain('VERDICT: NONE');
-    expect(rendered).not.toContain('MAIN THREAD');
+    expect(rendered).toContain('verdict: none');
+    expect(rendered).not.toContain('The main thread is the');
   });
 
   it('prints nothing at all when the variants it needs were not run', () => {
@@ -282,7 +282,7 @@ describe('one pass is not a floor', () => {
     const rendered = renderExperiment(
       experimentAt({ baseline: [10_000], 'no-parse': [4_000], 'no-parse-no-mentions': [3_000] }),
     );
-    expect(rendered).toContain('ONE pass');
-    expect(rendered).not.toContain('MAIN THREAD');
+    expect(rendered).toContain('this ran one pass');
+    expect(rendered).not.toContain('The main thread is the');
   });
 });

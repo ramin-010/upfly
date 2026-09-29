@@ -215,7 +215,9 @@ async function main(): Promise<void> {
   stdout.write(
     `\nnoise floor: ${platform()}, ${cpus().length} cores, UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE ?? '4 (default)'}\n`,
   );
-  stdout.write('⚠️ Check for surviving node processes before trusting this (R49-b).\n');
+  stdout.write(
+    'Check for surviving node processes before trusting this: stopping a run can leave its node child running.\n',
+  );
 
   if (argv.includes('--pair')) {
     stdout.write(`\nThe pair (identical work, one process, median of ${runs} each):\n`);
@@ -235,7 +237,7 @@ async function main(): Promise<void> {
         '',
         `  median of medians : ${across.medianMs} ms`,
         `  min / max         : ${across.minMs} / ${across.maxMs} ms`,
-        `  🔴 NOISE FLOOR    : ${across.spreadPercent}% between invocations of identical work`,
+        `  noise floor       : ${across.spreadPercent}% between invocations of identical work`,
         `  spread inside each: ${internal.map((value) => `${value}%`).join(', ')}`,
         '',
         `  Any optimisation claiming less than ${across.spreadPercent}% on this machine is not measurable here.`,

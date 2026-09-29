@@ -218,10 +218,10 @@ function renderInvocations(
   runsEach: number,
 ): string {
   const verdict = !sample.samplesAgree
-    ? 'UNUSABLE (these invocations disagree: machine health, not drift)'
+    ? 'unusable (these invocations disagree: machine health, not drift)'
     : sample.medianMs <= BUDGET_MS
       ? 'within the regression ceiling'
-      : 'OVER the regression ceiling';
+      : 'over the regression ceiling';
 
   return [
     '',
@@ -234,7 +234,7 @@ function renderInvocations(
     `  design target: ${DESIGN_TARGET_MS} ms, ${
       sample.medianMs <= DESIGN_TARGET_MS
         ? 'met'
-        : 'NOT met, and the ceiling above is not that target'
+        : 'not met, and the ceiling above is not that target'
     }`,
     `  per invocation: ${sample.medians.join(', ')} ms`,
     `  spread between invocations: ${sample.spreadPercent}% (min ${sample.minMs}, max ${sample.maxMs})`,
@@ -243,13 +243,13 @@ function renderInvocations(
     // Printed on every run, pass or fail. A tight spread above says these invocations
     // agreed with each other, not that the same commit will measure the same in the next
     // run, and that is the variation that matters.
-    `  ⚠️ Agreement above is WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
-    '     on unchanged code, and that is invisible from inside a single run. The ceiling',
-    '     carries headroom for it; the spread figure above does not protect against it.',
+    `  Agreement above is within this run only. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
+    '  on unchanged code, and that is invisible from inside a single run. The ceiling',
+    '  carries headroom for it; the spread figure above does not protect against it.',
     '',
     sample.samplesAgree
       ? ''
-      : '  ⚠️ These invocations disagree by more than 20%, which has never happened in CI.\n     Treat it as a machine-health problem with this run, not as drift.\n',
+      : '  These invocations disagree by more than 20%, which has never happened in CI.\n  Treat it as a machine-health problem with this run, not as drift.\n',
   ].join('\n');
 }
 
@@ -553,7 +553,7 @@ function render(result: BenchResult, generation: Timing): string {
     `Graph budget: ${result.graphBudget.totalMs} ms of ${result.graphBudget.budgetMs} ms  ${verdict(result.graphBudget)}`,
     '',
     `  median of ${result.graphBudget.sample.runs} runs (one warm-up discarded): ${result.graphBudget.sample.allMs.join(', ')} ms`,
-    `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.samplesAgree ? '' : '  ← SAMPLES DISAGREE'}`,
+    `  spread ${result.graphBudget.sample.spreadPercent}% (min ${result.graphBudget.sample.minMs}, max ${result.graphBudget.sample.maxMs})${result.graphBudget.sample.samplesAgree ? '' : '  ← samples disagree'}`,
     '',
     '  where the time goes (single pass):',
   ];
@@ -592,10 +592,10 @@ function render(result: BenchResult, generation: Timing): string {
   return lines.join('\n');
 }
 
-/** `OK`, `OVER`, or `UNUSABLE` when the samples disagree too much to say either. */
+/** Within or over budget, or `unusable` when the samples disagree too much to say either. */
 function verdict(budget: BenchResult['graphBudget']): string {
-  if (!budget.sample.samplesAgree) return 'UNUSABLE (samples disagree)';
-  return budget.withinBudget ? 'OK' : 'OVER';
+  if (!budget.sample.samplesAgree) return 'unusable (samples disagree)';
+  return budget.withinBudget ? 'within budget' : 'over budget';
 }
 
 function pad(label: string): string {

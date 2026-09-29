@@ -2,7 +2,7 @@
  * Where the graph build's time goes, sampled, so a step's movement can be attributed.
  * It says which step moved; it is never the gated figure.
  *
- * Each step gets a median and a spread over passes in separate processes, with `UNUSABLE`
+ * Each step gets a median and a spread over passes in separate processes, with `unusable`
  * beside a step whose passes disagree. Those spreads are within one run and cannot see
  * the drift between runs, so every run says so. `--experiments` adds the reading that
  * survives that drift: an A/B inside one run, timing `scan` under treatments that each
@@ -80,7 +80,7 @@ export const EXPERIMENT_2_CLOSED = true;
 
 export const VARIANT_SPEC: Readonly<Record<Variant, VariantSpec>> = {
   baseline: { label: 'baseline', stubParse: false, withMentions: true, env: {} },
-  'no-parse': { label: 'no parse (R141 exp. 1)', stubParse: true, withMentions: true, env: {} },
+  'no-parse': { label: 'no parse', stubParse: true, withMentions: true, env: {} },
   'no-parse-no-mentions': {
     label: 'no parse, no mentions',
     stubParse: true,
@@ -399,7 +399,7 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
   const share = (ms: number) => `${((ms / Math.max(1, total)) * 100).toFixed(1)}%`;
   const row = (label: string, summary: Summary) =>
     `    ${label.padEnd(14)} ${String(summary.medianMs).padStart(7)} ms   ${`${summary.spreadPercent}%`.padStart(5)}${
-      summary.spreadPercent > MAX_STEP_SPREAD_PERCENT ? ' UNUSABLE' : '         '
+      summary.spreadPercent > MAX_STEP_SPREAD_PERCENT ? ' unusable' : '         '
     }  ${share(summary.medianMs).padStart(6)}`;
 
   const top = [...sample.parseByExtension]
@@ -411,7 +411,7 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
   return [
     '',
     `  Where the time goes: ${VARIANT_LABEL[sample.variant]}, median of ${sample.passes} instrumented`,
-    '  passes in separate processes. NOT the gate number.',
+    '  passes in separate processes. This is not the gate number.',
     '',
     '    step              median  spread             share',
     row('discover', sample.discover),
@@ -425,24 +425,24 @@ export function renderBreakdown(sample: BreakdownSample, experiment = false): st
     `    read occupancy ${sample.readOccupancy.medianMs} ms over ${sample.read.medianMs} ms wall = ${(
       sample.readOccupancy.medianMs / Math.max(1, sample.read.medianMs)
     ).toFixed(1)}x concurrency`,
-    '    ⚠️ read-wall and parse OVERLAP and are not a partition of scan. Do not add them.',
+    '    read-wall and parse overlap and are not a partition of scan. Do not add them.',
     '',
     `    parse by extension: ${top}`,
     `    files an adapter could not parse: ${sample.adapterThrows}`,
     `    ${sample.fileCounts.join('/')} source files, ${sample.references} references`,
     ...(sample.fileCounts.length > 1
-      ? ['    🔴 THE PASSES SAW DIFFERENT TREES. Nothing below is comparable.']
+      ? ['    The passes saw different trees. Nothing below is comparable.']
       : []),
     '',
     // Printed on every run, pass or fail, for the same reason `renderInvocations` prints
     // its drift line: a tight spread here says these passes agreed inside one run, not
     // that a step holds still between runs, which this cannot see.
-    `    ⚠️ The spreads above are WITHIN this run. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
-    '       on unchanged code and these steps drift with it, so a spread here is NOT the',
-    '       attribution floor for a change measured against a PREVIOUS run. What beats that',
+    `    The spreads above are within this run only. The headline drifts ${MEASURED_BETWEEN_RUN_DRIFT}`,
+    '    on unchanged code and these steps drift with it, so a spread here is not the',
+    '    attribution floor for a change measured against a previous run. What beats that',
     experiment
-      ? '       drift is an A/B inside one run, which is what the experiment block below is.'
-      : '       drift is an A/B inside one run, which `--experiments` adds to this output.',
+      ? '    drift is an A/B inside one run, which is what the experiment block below is.'
+      : '    drift is an A/B inside one run, which `--experiments` adds to this output.',
     '',
   ].join('\n');
 }
@@ -464,7 +464,7 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
 
   const lines: string[] = [
     '',
-    '  R141 experiment 1: what `scan` costs with parsing stubbed to a no-op',
+    '  Experiment: what `scan` costs with parsing stubbed to a no-op',
     '',
     '    variant                     scan       spread        vs baseline',
   ];
@@ -476,7 +476,7 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
         : `${percent(sample.scan.medianMs - baseline.scan.medianMs, baseline.scan.medianMs)}`;
     lines.push(
       `    ${VARIANT_LABEL[sample.variant].padEnd(24)} ${String(sample.scan.medianMs).padStart(6)} ms  ${`${sample.scan.spreadPercent}%`.padStart(5)}${
-        sample.unusableSteps.includes('scan') ? ' UNUSABLE' : '         '
+        sample.unusableSteps.includes('scan') ? ' unusable' : '         '
       }  ${delta.padStart(10)}`,
     );
   }
@@ -497,12 +497,12 @@ export function renderExperiment(samples: readonly BreakdownSample[]): string {
         ]),
     '',
     `    read (wall) ${baseline.read.medianMs} → ${noParse.read.medianMs} ms with parse stubbed (${percent(noParse.read.medianMs - baseline.read.medianMs, baseline.read.medianMs)}).`,
-    "    🔴 R141's claim is that read-wall is inflated by parse because `timedRead`'s",
-    '       `finally` runs on the main thread. That line is the test of it: a read-wall',
-    '       that barely moves means the window really was waiting on a disk.',
+    "    The claim under test: read-wall is inflated by parse, because `timedRead`'s",
+    '    `finally` runs on the main thread. The line above tests it: a read-wall that',
+    '    barely moves means the window really was waiting on a disk.',
     '',
-    '    ✅ These rows ARE a partition: all of them are `scan` wall under three treatments,',
-    '       measured in the same job. read-wall and parse are not, and still must not be added.',
+    '    These rows are a partition: all of them are `scan` wall under three treatments,',
+    '    measured in the same job. read-wall and parse are not, and still must not be added.',
     '',
     ...verdict(baseline, noParse, parseCost),
     '',
@@ -540,9 +540,10 @@ function verdict(
 
   if (floor === null) {
     return [
-      `    VERDICT: parsing is ${((parseCost / Math.max(1, baseline.scan.medianMs)) * 100).toFixed(1)}% of scan's wall clock, but this ran ONE pass`,
-      '       per variant, so there is no spread to place it against. R141 expects ~−70%, which',
-      '       survives one sample; nothing smaller does. Re-run with --breakdown-passes=3.',
+      `    verdict: parsing is ${((parseCost / Math.max(1, baseline.scan.medianMs)) * 100).toFixed(1)}% of scan's wall clock, but this ran one pass`,
+      '       per variant, so there is no spread to place it against. Stubbing the parse is',
+      '       expected to cut scan by about 70%, large enough to survive one sample; nothing',
+      '       smaller does. Re-run with --breakdown-passes=3.',
     ];
   }
 
@@ -550,22 +551,23 @@ function verdict(
 
   if (movePercent <= floorPercent) {
     return [
-      `    VERDICT: NONE. The difference is ${movePercent.toFixed(1)}% and these variants' own spread is`,
-      `       ${floorPercent}%. A move inside the noise is not a finding; that is how R12's "26% off"`,
-      '       entered the spec and later measured zero. Raise the pass count and re-run.',
+      `    verdict: none. The difference is ${movePercent.toFixed(1)}% and these variants' own spread is`,
+      `       ${floorPercent}%. A move inside the noise is not a finding: a 26% saving from a larger`,
+      '       threadpool was once read from noise like this and later measured zero. Raise the',
+      '       pass count and re-run.',
     ];
   }
 
   const share = (parseCost / Math.max(1, baseline.scan.medianMs)) * 100;
   return share >= 50
     ? [
-        `    VERDICT: parsing is ${share.toFixed(1)}% of scan's wall clock. The MAIN THREAD is the`,
-        '       bottleneck, so a faster parse is the lever. That share is also the CEILING of',
+        `    verdict: parsing is ${share.toFixed(1)}% of scan's wall clock. The main thread is the`,
+        '       bottleneck, so a faster parse is the lever. That share is also the ceiling of',
         '       moving parsing elsewhere; a parse pool tried and was slower in every configuration.',
       ]
     : [
-        `    VERDICT: parsing is only ${share.toFixed(1)}% of scan's wall clock, so a faster parse`,
-        "       can recover that much at most and R141's second reading holds: the answer is the",
+        `    verdict: parsing is only ${share.toFixed(1)}% of scan's wall clock, so a faster parse`,
+        '       can recover that much at most; the rest is spent reading, so the answer is the',
         '       threadpool or the read strategy.',
       ];
 }
