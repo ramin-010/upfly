@@ -191,6 +191,41 @@ describe('verifyHedge asks every spelling too', () => {
   });
 });
 
+/**
+ * Names in any script, and a name written partly percent-encoded. A browser asks for
+ * `Рисунок2.png` whole, and a server decodes `Zaječar%20(2).jpg` to `Zaječar (2).jpg`. An oracle
+ * that read neither would call a correct engine wrong.
+ */
+describe('the oracle reads a name as the browser and the server do', () => {
+  let site = '';
+
+  beforeAll(() => {
+    site = mkdtempSync(join(tmpdir(), 'verify-scripts-'));
+    mkdirSync(join(site, 'images', 'lviv'), { recursive: true });
+    writeFileSync(join(site, 'images', '2.png'), 'x');
+    writeFileSync(join(site, 'images', 'lviv', 'Рисунок2.png'), 'x');
+    writeFileSync(join(site, 'images', 'Zaječar (2).jpg'), 'x');
+    writeFileSync(join(site, 'lviv.html'), '<img src="./images/lviv/Рисунок2.png">\n');
+    writeFileSync(
+      join(site, 'zajecar.html'),
+      '<meta content="https://example.org/images/Zaječar%20(2).jpg">\n',
+    );
+  });
+
+  it('does not read the end of a longer name in another script as the name', async () => {
+    const result = await verifyFindings(site, deadReport('images/2.png'), ['']);
+
+    expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+
+  it('accepts a citation whose line writes the name partly percent-encoded', async () => {
+    const report = hedgeReport('images/Zaječar (2).jpg', 'zajecar.html:1');
+    const result = await verifyFindings(site, report, ['']);
+
+    expect(result.items[0]?.verdict).toBe('confirmed-genuine');
+  });
+});
+
 describe('a name the token pattern cannot hold is searched for literally', () => {
   // `photo(1).png` holds parentheses, which the oracle's token pattern stops at, so only its
   // literal search can see the mention.

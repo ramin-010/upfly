@@ -268,6 +268,35 @@ function tokeniserCanRepresent(name: string, pattern: RegExp): boolean {
 }
 
 /**
+ * The first line of `text`, a file's lowercased text, that names a file literally in one of
+ * `spellings`, or, failing those, that names `name` once its percent-escapes are decoded, as a
+ * server decodes them: `Zaječar%20(2).jpg` names `Zaječar (2).jpg`. A run of escapes that is not
+ * UTF-8, or that decodes to a line break, is left as written, so every line keeps its number.
+ */
+function literalIn(
+  text: string,
+  spellings: readonly string[],
+  name: string,
+): { readonly line: number; readonly spelling: string } | null {
+  const lineAt = (searched: string, at: number) => searched.slice(0, at).split('\n').length;
+  for (const spelling of spellings) {
+    const at = text.indexOf(spelling.toLowerCase());
+    if (at !== -1) return { line: lineAt(text, at), spelling };
+  }
+  if (!text.includes('%')) return null;
+  const decoded = text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      const value = decodeURIComponent(run);
+      return /[\r\n]/.test(value) ? run : value;
+    } catch {
+      return run;
+    }
+  });
+  const at = decoded.indexOf(name.toLowerCase());
+  return at === -1 ? null : { line: lineAt(decoded, at), spelling: name };
+}
+
+/**
  * Every spelling a source file might name this asset by: as on disk, percent-encoded and
  * entity-encoded. A page that writes `hero%20image.png` references `hero image.png`, and
  * missing it confirms a false `dead`, which tells someone to delete a file their site serves.
@@ -345,13 +374,8 @@ function literalHits(asset: string, index: RepoIndex): ItemVerdict | null {
   const found: string[] = [];
   for (const [file, text] of index.lowerTexts) {
     if (file === asset) continue;
-    for (const spelling of unrepresentable) {
-      const at = text.indexOf(spelling.toLowerCase());
-      if (at === -1) continue;
-      const line = text.slice(0, at).split('\n').length;
-      found.push(`  ${file}:${line}  (as ${spelling})`);
-      break;
-    }
+    const hit = literalIn(text, unrepresentable, posix.basename(asset));
+    if (hit !== null) found.push(`  ${file}:${hit.line}  (as ${hit.spelling})`);
     if (found.length >= 5) break;
   }
 
@@ -499,21 +523,11 @@ function verifyHedge(
     // A spelling the token index cannot hold is looked for literally, in that file only.
     if (inFile.length === 0) {
       const text = index.lowerTexts.get(file);
-      if (text !== undefined) {
-        for (const spelling of spellings) {
-          if (index.canRepresent(spelling)) continue;
-          const at = text.indexOf(spelling.toLowerCase());
-          if (at === -1) continue;
-          inFile = [
-            {
-              file,
-              line: text.slice(0, at).split('\n').length,
-              text: spelling,
-              extensionSwapped: false,
-            },
-          ];
-          break;
-        }
+      const unrepresentable = spellings.filter((spelling) => !index.canRepresent(spelling));
+      const hit =
+        text === undefined ? null : literalIn(text, unrepresentable, posix.basename(asset));
+      if (hit !== null) {
+        inFile = [{ file, line: hit.line, text: hit.spelling, extensionSwapped: false }];
       }
     }
 
@@ -633,7 +647,9 @@ async function buildIndex(root: string): Promise<RepoIndex> {
   let filesGrepped = 0;
 
   const extensions = IMAGE_EXTENSIONS.map((extension) => extension.slice(1)).join('|');
-  const makePattern = () => new RegExp(`[\\w@.\\-]+\\.(?:${extensions})\\b`, 'gi');
+  // Letters, digits and marks of any script, as a name is written: an ASCII class would read
+  // `Рисунок2.png` as a mention of `2.png`.
+  const makePattern = () => new RegExp(`[\\p{L}\\p{N}\\p{M}_@.\\-]+\\.(?:${extensions})\\b`, 'giu');
   const pattern = makePattern();
 
   assertOracleSeesSpaces(makePattern);
