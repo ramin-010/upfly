@@ -12,13 +12,14 @@
  * See "Moving an asset" in ARCHITECTURE.md.
  */
 
+import { join } from 'node:path';
 import { spell } from '../adapters/reference-path.js';
 import type { Graph } from '../graph/graph.js';
-import { compareStrings, relativePath, toPosix } from '../paths.js';
+import { compareStrings, extensionOf, relativePath, toPosix } from '../paths.js';
 import { type AliasMap, type AliasRule, matchingRule } from '../resolve/aliases.js';
 import { isLinked, linkedPaths } from '../resolve/reference.js';
-import type { ServingRoots } from '../resolve/resolve.js';
-import type { Reference } from '../types.js';
+import { type ServingRoots, resolveReferences } from '../resolve/resolve.js';
+import type { Asset, RawReference, Reference } from '../types.js';
 import type { Declined } from '../write/manifest.js';
 import { patternCannotMove, servingRootOf } from './plan.js';
 import {
@@ -61,6 +62,11 @@ export type RefusalCode =
   | 'destination-claimed-twice'
   /** Two moves in one request move the same file to different places. */
   | 'source-claimed-twice'
+  /**
+   * A reference rewritten for the move would not reach the moved file: read again from its
+   * own file, among the files the moves leave, it reaches another file first, or none.
+   */
+  | 'rewrite-would-miss'
   /** The asset is not in the graph, so we cannot know what points at it. */
   | 'not-an-asset';
 
@@ -113,7 +119,6 @@ export interface RelocateInput {
  */
 export function planRelocation(input: RelocateInput): RelocationPlan {
   const refused: RefusedMove[] = [];
-  const declined: Declined[] = [];
   const byRelative = assetIndex(input.graph);
   const accepted = new Map<string, Move>();
   const claimed = new Map<string, string>();
@@ -128,21 +133,139 @@ export function planRelocation(input: RelocateInput): RelocationPlan {
     accepted.set(move.from, move);
   }
 
-  const edits = new Map<string, EditsInFile>();
-  for (const reference of input.graph.references) {
-    collectRepoint(reference, accepted, input, edits, declined);
+  // Where a rewritten reference leads depends on every file the moves leave, so it is checked
+  // on the whole plan. Refusing a move changes those files and drops its rewrites, so the
+  // references are repointed again without it until the check refuses nothing.
+  let repointing = repointAll(input, accepted);
+  let astray = misdirectedMoves(input, accepted, repointing.rewritten);
+  while (astray.length > 0) {
+    for (const refusal of astray) {
+      accepted.delete(refusal.from);
+      refused.push(refusal);
+    }
+    repointing = repointAll(input, accepted);
+    astray = misdirectedMoves(input, accepted, repointing.rewritten);
   }
 
   return {
     moves: [...accepted.values()],
-    rewrites: [...edits.entries()]
+    rewrites: [...repointing.edits.entries()]
       .map(([file, collected]) => plannedRewrite(file, collected, input.graph))
       .sort((a, b) => compareStrings(a.file, b.file)),
-    refused,
-    declined: declined.sort(
+    refused: refused.sort((a, b) => compareStrings(a.from, b.from) || compareStrings(a.to, b.to)),
+    declined: repointing.declined.sort(
       (a, b) => compareStrings(a.path, b.path) || compareStrings(a.reason, b.reason),
     ),
   };
+}
+
+/** A reference an edit rewrites: its new text, and the move it follows. */
+interface Rewritten {
+  readonly replacement: string;
+  readonly move: Move;
+}
+
+/** What a set of moves does to the references. */
+interface Repointing {
+  readonly edits: ReadonlyMap<string, EditsInFile>;
+  readonly rewritten: ReadonlyMap<Reference, Rewritten>;
+  readonly declined: Declined[];
+}
+
+/** Repoint every reference to a moved file, or record why it cannot be repointed. */
+function repointAll(input: RelocateInput, accepted: ReadonlyMap<string, Move>): Repointing {
+  const edits = new Map<string, EditsInFile>();
+  const rewritten = new Map<Reference, Rewritten>();
+  const declined: Declined[] = [];
+  for (const reference of input.graph.references) {
+    collectRepoint(reference, accepted, input, { edits, rewritten, declined });
+  }
+  return { edits, rewritten, declined };
+}
+
+/**
+ * The moves a rewritten reference would not follow, each refused naming the first such
+ * reference and counting the rest.
+ *
+ * Each new text is resolved again from the file that holds it, as a later run would read it,
+ * among the files the moves leave. It can reach another file first, in a nearer serving root
+ * or through a longer alias key, or reach none. Case is folded, as the planner folds it, so a
+ * plan does not depend on where it runs.
+ */
+function misdirectedMoves(
+  input: RelocateInput,
+  accepted: ReadonlyMap<string, Move>,
+  rewritten: ReadonlyMap<Reference, Rewritten>,
+): RefusedMove[] {
+  const { root } = input.graph;
+  const asRewritten = (reference: Reference, { replacement }: Rewritten): RawReference => ({
+    ...reference,
+    rawPath: replacement,
+  });
+  const answers = resolveReferences(
+    [...rewritten].map(([reference, entry]) => asRewritten(reference, entry)),
+    {
+      root,
+      assets: assetsAfterMoves(input.graph, accepted),
+      servingRoots: input.servingRoots,
+      aliases: input.aliases,
+      foldCase: true,
+      exists: () => false,
+    },
+  );
+  // A path that names no image is left out of the answers, so each is found by where its
+  // reference sits and what it says.
+  const reached = new Map(answers.map((answer) => [placeOf(answer), linkedPaths(answer)]));
+
+  const misses = new Map<string, { reference: Reference; outcome: string; count: number }>();
+  for (const [reference, entry] of rewritten) {
+    const [found] = reached.get(placeOf(asRewritten(reference, entry))) ?? [];
+    const lands = found === undefined ? null : relativePath(root, found);
+    if (lands === entry.move.to) continue;
+
+    const outcome =
+      lands === null
+        ? `would become \`${entry.replacement}\`, which names no file Upfly can find, so the reference would break.`
+        : `would become \`${entry.replacement}\`, which reaches ${lands} first, so the reference would load that file instead.`;
+    const first = misses.get(entry.move.from);
+    misses.set(
+      entry.move.from,
+      first === undefined ? { reference, outcome, count: 1 } : { ...first, count: first.count + 1 },
+    );
+  }
+
+  return [...misses].flatMap(([from, { reference, outcome, count }]) => {
+    const move = accepted.get(from);
+    if (move === undefined) return [];
+    const where = `\`${reference.rawPath}\` in \`${relativePath(root, reference.file)}\``;
+    const more = count === 1 ? '' : ` (and ${count - 1} more)`;
+    return [
+      {
+        ...move,
+        code: 'rewrite-would-miss' as const,
+        reason: `${where}${more} ${outcome} Move it elsewhere, or change the reference by hand first.`,
+      },
+    ];
+  });
+}
+
+/** Where a reference sits and what it says, the key its answer is found by. */
+function placeOf(reference: RawReference): string {
+  return `${reference.file}\n${reference.start}\n${reference.rawPath}`;
+}
+
+/** The assets once the moves are made, each moved file at its new path. */
+function assetsAfterMoves(graph: Graph, accepted: ReadonlyMap<string, Move>): Asset[] {
+  return graph.assets.map(({ asset }) => {
+    const move = accepted.get(asset.relative);
+    if (move === undefined) return asset;
+    return {
+      ...asset,
+      path: join(graph.root, move.to),
+      relative: move.to,
+      extension: extensionOf(move.to).toLowerCase(),
+    };
+  });
 }
 
 /** Assets by POSIX-relative path, which is how a move names them. */
@@ -336,9 +459,13 @@ function collectRepoint(
   reference: Reference,
   accepted: ReadonlyMap<string, Move>,
   input: RelocateInput,
-  edits: Map<string, EditsInFile>,
-  declined: Declined[],
+  into: {
+    edits: Map<string, EditsInFile>;
+    rewritten: Map<Reference, Rewritten>;
+    declined: Declined[];
+  },
 ): void {
+  const { edits, rewritten, declined } = into;
   const root = input.graph.root;
   const file = toPosix(relativePath(root, reference.file));
 
@@ -381,6 +508,8 @@ function collectRepoint(
     });
     return;
   }
+  // Checked even when the text stays as it is: it has to reach the file at its new path.
+  rewritten.set(reference, { replacement, move });
   if (replacement === reference.rawPath) return;
 
   collectEdit(edits, file, reference, replacement);

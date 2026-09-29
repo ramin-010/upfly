@@ -13,7 +13,7 @@ import { type AliasMap, expandAlias, loadAliases } from '../resolve/aliases.js';
 import { linkedPaths } from '../resolve/reference.js';
 import { resolveReferences } from '../resolve/resolve.js';
 import { scanSources } from '../scan/scan.js';
-import type { Asset, RawReference, Reference } from '../types.js';
+import type { Asset, Reference } from '../types.js';
 import { type Move, planRelocation } from './relocate.js';
 
 /**
@@ -32,6 +32,8 @@ const FIXTURE = join(
 );
 const SERVING = { declared: true, dirs: ['public'] } as const;
 const NO_ALIASES: AliasMap = { rules: [], skipped: [] };
+/** A project root as the resolver spells one, which on Windows starts at a drive. */
+const REPO = toPosix(resolve('/repo'));
 
 async function fixtureGraph() {
   const discovered = await discover({ root: FIXTURE, adapters: defaultAdapters });
@@ -167,25 +169,25 @@ function graphFor(input: {
     via?: 'file' | 'serving-root' | 'project-root' | 'speculative-root';
     spelling?: PathSpelling;
     confidence?: 'high' | 'unsafe';
+    /** How the file holds the path, which decides how it is read and written. */
+    kind?: 'attr' | 'md' | 'import';
   }[];
 }) {
-  const ROOT = '/repo';
+  const ROOT = REPO;
   const assets: Asset[] = input.assets.map((relative) => ({
     path: `${ROOT}/${relative}`,
     relative,
     extension: relative.slice(relative.lastIndexOf('.')),
     bytes: 1_000,
   }));
-  const raw: Omit<RawReference, 'file' | 'rawPath' | 'start' | 'end'> = {
-    kind: 'attr',
-    shape: 'html.img.src',
-    ceiling: 'high',
-    asserted: true,
-  };
+  const shapes = { attr: 'html.img.src', md: 'md.image', import: 'js.import.static' } as const;
   const references = input.references.map(
     (entry) =>
       ({
-        ...raw,
+        kind: entry.kind ?? 'attr',
+        shape: shapes[entry.kind ?? 'attr'],
+        ceiling: 'high',
+        asserted: true,
         file: `${ROOT}/${entry.file}`,
         rawPath: entry.rawPath,
         start: 10,
@@ -282,6 +284,7 @@ describe('relocate, and how a path is re-spelled', () => {
             target: 'public/img/my_photo.png',
             via: 'serving-root',
             spelling: 'markdown-escapes',
+            kind: 'md',
           },
         ],
       });
@@ -349,9 +352,9 @@ describe('relocate, and how a path is re-spelled', () => {
       rules: [
         {
           prefix: '~/',
-          targets: ['/repo/src'],
+          targets: [`${REPO}/src`],
           wildcard: true,
-          scope: '/repo',
+          scope: REPO,
           source: 'tsconfig.json',
           tool: 'typescript',
         },
@@ -383,7 +386,7 @@ describe('relocate, and how a path is re-spelled', () => {
     // alias for a folder holding another image of the same name.
     const files = new Map([
       [
-        '/repo/vite.config.ts',
+        `${REPO}/vite.config.ts`,
         [
           "import path from 'node:path';",
           "import { defineConfig } from 'vite';",
@@ -395,13 +398,13 @@ describe('relocate, and how a path is re-spelled', () => {
         ].join('\n'),
       ],
       [
-        '/repo/tsconfig.json',
+        `${REPO}/tsconfig.json`,
         '{ "compilerOptions": { "paths": { "@img/*": ["./shared/img/*"] } } }',
       ],
     ]);
     const aliases = await loadAliases({
-      root: '/repo',
-      files: [...files.keys()].map((path) => ({ path, relative: path.slice('/repo/'.length) })),
+      root: REPO,
+      files: [...files.keys()].map((path) => ({ path, relative: path.slice(`${REPO}/`.length) })),
       readFile: async (path) => {
         const text = files.get(toPosix(path));
         if (text === undefined) throw new Error(`not in this test: ${path}`);
@@ -430,8 +433,8 @@ describe('relocate, and how a path is re-spelled', () => {
     expect(aliases.skipped).toEqual([]);
     expect(text).toBe('@/img/x.png');
     // The new text reaches the file that moved, not `shared/img/x.png`.
-    expect(expandAlias(aliases, text ?? '', '/repo/src/App.tsx')[0]).toBe(
-      toPosix(resolve('/repo/src/img/x.png')),
+    expect(expandAlias(aliases, text ?? '', `${REPO}/src/App.tsx`)[0]).toBe(
+      `${REPO}/src/img/x.png`,
     );
   });
 
@@ -441,9 +444,9 @@ describe('relocate, and how a path is re-spelled', () => {
       rules: [
         {
           prefix: '@/',
-          targets: ['/repo/src'],
+          targets: [`${REPO}/src`],
           wildcard: true,
-          scope: '/repo',
+          scope: REPO,
           source: 'tsconfig.json',
           tool: 'typescript',
         },
@@ -483,9 +486,9 @@ describe('relocate, and how a path is re-spelled', () => {
       rules: [
         {
           prefix: '~/',
-          targets: ['/repo/src'],
+          targets: [`${REPO}/src`],
           wildcard: true,
-          scope: '/repo/src',
+          scope: `${REPO}/src`,
           source: 'x',
           tool: 'typescript',
         },
@@ -520,10 +523,10 @@ describe('relocate, and how a path is re-spelled', () => {
         {
           prefix: '@icons/',
           suffix: '.svg',
-          targets: ['/repo/src/icons'],
+          targets: [`${REPO}/src/icons`],
           targetPatterns: ['*.svg'],
           wildcard: true,
-          scope: '/repo',
+          scope: REPO,
           source: 'tsconfig.json',
           tool: 'typescript',
         },
@@ -559,9 +562,9 @@ describe('relocate, and how a path is re-spelled', () => {
       rules: [
         {
           prefix: '~/',
-          targets: ['/repo/src'],
+          targets: [`${REPO}/src`],
           wildcard: true,
-          scope: '/repo',
+          scope: REPO,
           source: 'tsconfig.json',
           tool: 'typescript',
         },
@@ -587,6 +590,85 @@ describe('relocate, and how a path is re-spelled', () => {
 
     expect(plan.moves).toEqual([]);
     expect(plan.refused[0]?.code).toBe('crosses-serving-boundary');
+  });
+
+  it('refuses a move when the rewritten alias path would reach another file first', () => {
+    // `@/img/*` is the longer key, so TypeScript reads `@/img/x.png` through it: the import
+    // re-spelled for `src/img/x.png` would load `assets/img/x.png`, another picture.
+    const aliases: AliasMap = {
+      rules: [
+        {
+          prefix: '@/img/',
+          targets: [`${REPO}/assets/img`],
+          wildcard: true,
+          scope: REPO,
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+        {
+          prefix: '@/',
+          targets: [`${REPO}/src`],
+          wildcard: true,
+          scope: REPO,
+          source: 'tsconfig.json',
+          tool: 'typescript',
+        },
+      ],
+      skipped: [],
+    };
+    const graph = graphFor({
+      assets: ['src/a/x.png', 'assets/img/x.png'],
+      references: [
+        { file: 'src/App.ts', rawPath: '@/a/x.png', target: 'src/a/x.png', via: 'serving-root' },
+        {
+          file: 'src/App.ts',
+          rawPath: '@/img/x.png',
+          target: 'assets/img/x.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+
+    const { plan } = replacementFor(
+      graph,
+      { from: 'src/a/x.png', to: 'src/img/x.png' },
+      { aliases },
+    );
+
+    expect(plan.moves).toEqual([]);
+    expect(plan.rewrites).toEqual([]);
+    expect(plan.refused.map((refusal) => [refusal.code, refusal.reason])).toEqual([
+      [
+        'rewrite-would-miss',
+        '`@/a/x.png` in `src/App.ts` would become `@/img/x.png`, which reaches assets/img/x.png first, so the reference would load that file instead. Move it elsewhere, or change the reference by hand first.',
+      ],
+    ]);
+  });
+
+  it('refuses a move when the rewritten URL would be served from a nearer root', () => {
+    // From `apps/web/src`, `/img/x.png` is looked for in `apps/web/public` first, where another
+    // image already has that name.
+    const graph = graphFor({
+      assets: ['public/a.png', 'apps/web/public/img/x.png'],
+      references: [
+        {
+          file: 'apps/web/src/App.tsx',
+          rawPath: '/a.png',
+          target: 'public/a.png',
+          via: 'serving-root',
+        },
+      ],
+    });
+
+    const { plan } = replacementFor(
+      graph,
+      { from: 'public/a.png', to: 'public/img/x.png' },
+      { servingRoots: { declared: true, dirs: ['public', 'apps/web/public'] } },
+    );
+
+    expect(plan.moves).toEqual([]);
+    expect(plan.refused.map((refusal) => refusal.code)).toEqual(['rewrite-would-miss']);
+    expect(plan.refused[0]?.reason).toContain('which reaches apps/web/public/img/x.png first');
   });
 
   it('declines a reference it may not edit, rather than moving in silence', () => {
@@ -738,7 +820,7 @@ function seeded(seed: number): () => number {
  * ends a destination early, or decodes to another name, is caught where a user would meet it.
  */
 describe('relocate, and a new name read back from a Markdown destination', () => {
-  const ROOT = toPosix(resolve('/repo'));
+  const ROOT = REPO;
   const PAGE = `${ROOT}/docs/guide.md`;
   const ROUNDS = 200;
   /** Spaces, parentheses, percent signs and ampersands, alone and as the escapes they form. */
