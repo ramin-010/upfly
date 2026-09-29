@@ -270,7 +270,7 @@ function templateSourceReason(text: string): string | null {
 
   for (const [opener, syntax] of TEMPLATE_OPENERS) {
     if (firstLine.startsWith(opener)) {
-      return `this looks like ${syntax} template source rather than JavaScript — it begins with \`${opener}\``;
+      return `this looks like ${syntax} template source rather than JavaScript (it begins with \`${opener}\`)`;
     }
   }
   return null;

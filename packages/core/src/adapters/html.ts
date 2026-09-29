@@ -498,8 +498,8 @@ function addStyleAttributeRefusal(
  */
 function describeUrlFunction(css: string): string {
   return CSS_URL_FUNCTION.test(css)
-    ? ' — and it contains a url-taking function, so a reference may be hidden in it'
-    : ` — and it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`;
+    ? '; it contains a url-taking function, so a reference may be hidden in it'
+    : `; it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`;
 }
 
 /**

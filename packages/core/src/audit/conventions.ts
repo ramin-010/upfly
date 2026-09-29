@@ -94,7 +94,7 @@ export function conventionLinkFor(
     return {
       asset,
       // No path here: the report prints this after the asset's own path.
-      reason: 'Next.js reads this from its route segment by filename — nothing references it',
+      reason: 'Next.js reads this from its route segment by filename; nothing references it',
     };
   }
 

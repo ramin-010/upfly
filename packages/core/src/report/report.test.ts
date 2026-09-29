@@ -399,8 +399,8 @@ describe('buildReport', () => {
     it('groups by the citing file and counts it, which is the actionable fact', () => {
       const text = renderReport(hedgedReport());
 
-      expect(text).toContain('src/data/logos.ts — 2 assets');
-      expect(text).toContain('src/components/SiteTitle.astro — 1 asset');
+      expect(text).toContain('src/data/logos.ts: 2 assets');
+      expect(text).toContain('src/components/SiteTitle.astro: 1 asset');
     });
 
     it('files an asset under its most actionable evidence, and still prints the rest', () => {
@@ -451,7 +451,7 @@ describe('buildReport', () => {
       );
       expect(text).not.toContain('config entry');
       expect(text).not.toContain('named by a path Upfly read but could not resolve');
-      expect(text).toContain('src/components/Sponsors.astro — 1 asset');
+      expect(text).toContain('src/components/Sponsors.astro: 1 asset');
       expect(text).toContain('named in src/data/logos.ts:80');
     });
   });
@@ -508,7 +508,7 @@ describe('buildReport', () => {
     it('says a shared reason once, with a count', () => {
       const text = renderReport(reportWithCapped(80));
 
-      expect(text).toContain('80 files — webp: not among the 100 largest');
+      expect(text).toContain('80 files: webp: not among the 100 largest');
       // Three places, each saying something different: the collapsed skip line, the
       // caveat, and the headline's floor clause.
       expect(text.match(/--probe-all/g)).toHaveLength(3);
@@ -933,8 +933,8 @@ describe('buildReport', () => {
       expect(caveat?.count).toBe(3);
       expect(caveat?.message).toContain('needed no measurement');
       expect(caveat?.detail).toEqual([
-        'vectors, where an encode would measure a rasterisation rather than a saving — 2',
-        'already in the format Upfly would convert to — 1',
+        'vectors, where an encode would measure a rasterisation rather than a saving: 2',
+        'already in the format Upfly would convert to: 1',
       ]);
     });
 
@@ -1087,7 +1087,7 @@ describe('buildReport', () => {
     it('keeps the one line when every counted reference is built at run time', () => {
       const text = renderReport(reportWith(['/view/${style}/${name}', '/api/${id}']));
 
-      expect(text).toContain('  none with a filename to check — each builds its path at runtime\n');
+      expect(text).toContain('  none with a filename to check: each builds its path at runtime\n');
     });
 
     function reportOf(
@@ -1369,7 +1369,7 @@ describe('buildReport', () => {
         { what: 'site.css', stage: 'scan', reason: `${reason}: ${detail}` },
       ]);
       expect(renderReport(report)).toContain(
-        '  could not be parsed:\n    site.css — invalid css syntax at line 2, column 17\n',
+        '  could not be parsed:\n    site.css: invalid css syntax at line 2, column 17\n',
       );
       expect(report.caveats.map((caveat) => caveat.code)).not.toContain('unscanned-extensions');
     });
@@ -3131,7 +3131,7 @@ describe('classifyReference: the four boxes of the accuracy table', () => {
         resolvedPath: null,
         rawPath: 'margin 0 0 0 15px',
         unread: true,
-        note: `could not parse the style attribute: … — and it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`,
+        note: `could not parse the style attribute: …; it contains no url() or image-set(), so ${NO_REFERENCE_TO_FIND}`,
       });
       expect(classifyReference(entry)).toBe('correctly-refused');
       expect(refusalReasonId(entry)).toBe('no-reference-in-it-to-find');
@@ -3182,7 +3182,7 @@ describe('classifyReference: the four boxes of the accuracy table', () => {
             confidence: 'unsafe',
             resolvedPath: null,
             rawPath: 'margin 0 0; background: url(/hero.png)',
-            note: 'could not parse the style attribute: … — and it contains a url-taking function, so a reference may be hidden in it',
+            note: 'could not parse the style attribute: …; it contains a url-taking function, so a reference may be hidden in it',
           }),
         ),
       ).toBe('missed-with-an-answer');

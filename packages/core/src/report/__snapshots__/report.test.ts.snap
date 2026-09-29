@@ -13,7 +13,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -145,7 +145,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
 exports[`buildReport > astro: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 5 source files and found 7 images, 83.8 KB in total
   7 of 7 references resolved, pointing at 6 of those images
@@ -153,7 +153,7 @@ exports[`buildReport > astro: matches the approved human rendering 1`] = `
 
 Nothing was skipped.
 
-Findings — 1 item
+Findings: 1 item
 
   unreferenced images (1)
     public/never-used.png  70 B
@@ -161,7 +161,7 @@ Findings — 1 item
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -173,7 +173,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -185,7 +185,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
       "code": "unscanned-extensions",
       "count": 2,
       "detail": [
-        ".njk — 2 files",
+        ".njk: 2 files",
       ],
       "message": "1 file type had no adapter, so 2 files went unread",
     },
@@ -537,22 +537,22 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
 exports[`buildReport > eleventy, with no serving root found: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 5 source files and found 8 images, 91.8 KB in total
   0 of 12 references resolved, pointing at 0 of those images
   8 images with no reference Upfly could follow
-  root-relative paths resolved from the project root — Upfly found no public directory and none was declared
+  root-relative paths resolved from the project root: Upfly found no public directory and none was declared
 
 1 reference had no answer to find
 
-  none of these is a path that points at a file — each is built at run time, or
+  none of these is a path that points at a file: each is built at run time, or
   names something deliberately outside what Upfly indexes
 
   (the file it was found in, then the path text as written)
 
   src/posts/first.md  {{ site.url }}/img/templated.png
-    dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
+    dynamic: contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
 
 What the counts above are known to get wrong
 
@@ -568,7 +568,7 @@ What the counts above are known to get wrong
     eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the
     engine have changed since, this bound has not been re-measured.
 
-Findings — 10 items
+Findings: 10 items
 
   Upfly could not work out where this project serves files from
     0 of 10 root-relative references resolved, so the rest cannot be judged
@@ -586,26 +586,26 @@ Findings — 10 items
       src/posts/second.md:11  /img/inline.png
       src/posts/second.md:11  /img/inline.png
 
-  broken references (1) — these point at nothing
+  broken references (1): these point at nothing
     src/posts/second.md:17  ../img/missing-on-purpose.png
 
   unreferenced images (1)
     src/img/unused.png  70 B
 
-  possibly unreferenced (7) — each is named somewhere, but not by a reference Upfly could follow
+  possibly unreferenced (7): each is named somewhere, but not by a reference Upfly could follow
 
     named in a file no adapter reads; an adapter for that file type would find these (3)
-      src/index.njk — 2 assets
+      src/index.njk: 2 assets
         src/img/hero.jpg  12.6 KB
           named in src/index.njk:6: hero.jpg
         src/img/logo.png  7.2 KB
           named in src/index.njk:5: logo.png
-      src/_includes/base.njk — 1 asset
+      src/_includes/base.njk: 1 asset
         src/img/favicon.png  70 B
           named in src/_includes/base.njk:4: favicon.png
 
     named by a path Upfly read but could not resolve; those files parse fine (4)
-      src/css/site.css — 3 assets
+      src/css/site.css: 3 assets
         src/img/diagram.png  71.7 KB
           named in src/css/site.css:12: /img/diagram.png
           named in src/css/site.css:8: /img/diagram.png
@@ -618,16 +618,16 @@ Findings — 10 items
           named in src/posts/second.md:11: /img/inline.png
         src/img/texture.png  70 B
           named in src/css/site.css:2: /img/texture.png
-      src/posts/first.md — 1 asset
+      src/posts/first.md: 1 asset
         src/img/templated.png  70 B
           named in src/posts/first.md:7: {{ site.url }}/img/templated.png
 
 Worth knowing
 
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   1 file type had no adapter, so 2 files went unread:
-    .njk — 2 files
+    .njk: 2 files
 "
 `;
 
@@ -644,7 +644,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -656,7 +656,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
       "code": "unscanned-extensions",
       "count": 2,
       "detail": [
-        ".njk — 2 files",
+        ".njk: 2 files",
       ],
       "message": "1 file type had no adapter, so 2 files went unread",
     },
@@ -868,7 +868,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
 exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 5 source files and found 8 images, 91.8 KB in total
   10 of 12 references resolved, pointing at 3 of those images
@@ -876,13 +876,13 @@ exports[`buildReport > eleventy: matches the approved human rendering 1`] = `
 
 1 reference had no answer to find
 
-  none of these is a path that points at a file — each is built at run time, or
+  none of these is a path that points at a file: each is built at run time, or
   names something deliberately outside what Upfly indexes
 
   (the file it was found in, then the path text as written)
 
   src/posts/first.md  {{ site.url }}/img/templated.png
-    dynamic — contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
+    dynamic: contains a Handlebars, Mustache, Vue or Jinja expression: the path is not known statically
 
 What the counts above are known to get wrong
 
@@ -898,38 +898,38 @@ What the counts above are known to get wrong
     eleventy-docs, shadcn-ui, railsgirls-com and scratch-www. If they or the
     engine have changed since, this bound has not been re-measured.
 
-Findings — 6 items
+Findings: 6 items
 
-  broken references (1) — these point at nothing
+  broken references (1): these point at nothing
     src/posts/second.md:17  ../img/missing-on-purpose.png
 
   unreferenced images (1)
     src/img/unused.png  70 B
 
-  possibly unreferenced (4) — each is named somewhere, but not by a reference Upfly could follow
+  possibly unreferenced (4): each is named somewhere, but not by a reference Upfly could follow
 
     named in a file no adapter reads; an adapter for that file type would find these (3)
-      src/index.njk — 2 assets
+      src/index.njk: 2 assets
         src/img/hero.jpg  12.6 KB
           named in src/index.njk:6: hero.jpg
         src/img/logo.png  7.2 KB
           named in src/index.njk:5: logo.png
-      src/_includes/base.njk — 1 asset
+      src/_includes/base.njk: 1 asset
         src/img/favicon.png  70 B
           named in src/_includes/base.njk:4: favicon.png
 
     named by a path Upfly read but could not resolve; those files parse fine (1)
-      src/posts/first.md — 1 asset
+      src/posts/first.md: 1 asset
         src/img/templated.png  70 B
           named in src/posts/first.md:7: {{ site.url }}/img/templated.png
 
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   1 file type had no adapter, so 2 files went unread:
-    .njk — 2 files
+    .njk: 2 files
 "
 `;
 
@@ -946,7 +946,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -1078,7 +1078,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
 exports[`buildReport > next-app: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 8 source files and found 10 images, 338.5 KB in total
   11 of 11 references resolved, pointing at 9 of those images
@@ -1086,7 +1086,7 @@ exports[`buildReport > next-app: matches the approved human rendering 1`] = `
 
 Nothing was skipped.
 
-Findings — 1 item
+Findings: 1 item
 
   unreferenced images (1)
     public/unreferenced.png  70 B
@@ -1094,7 +1094,7 @@ Findings — 1 item
 Worth knowing
 
   1 unreferenced image under the public directory may be linked from outside this repository
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -1106,7 +1106,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
   ],
   "coverage": {
@@ -1298,7 +1298,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -1438,7 +1438,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
 exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 3 source files and found 11 images, 152.5 KB in total
   10 of 11 references resolved, pointing at 9 of those images
@@ -1446,9 +1446,9 @@ exports[`buildReport > plain-html: matches the approved human rendering 1`] = `
 
 Nothing was skipped.
 
-Findings — 3 items
+Findings: 3 items
 
-  broken references (1) — these point at nothing
+  broken references (1): these point at nothing
     about.html:10  images/missing-on-purpose.png
 
   unreferenced images (2)
@@ -1458,7 +1458,7 @@ Findings — 3 items
 Worth knowing
 
   this project is served from its own root, so 2 unreferenced images may be linked from outside this repository, and Upfly cannot confidently call an unreferenced image here safe to remove
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
 "
 `;
@@ -1470,13 +1470,13 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "code": "unused-vectors",
       "count": 1,
       "detail": [],
-      "message": "1 unreferenced SVG totalling 307 B, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.",
+      "message": "1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.",
     },
     {
       "code": "duplicates-not-checked",
       "count": 0,
       "detail": [],
-      "message": "assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none",
+      "message": "assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none",
     },
     {
       "code": "not-probed",
@@ -1619,24 +1619,24 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
 exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
 "Upfly audit
 
-  savings not measured — images were not decoded (--no-probe)
+  savings not measured: images were not decoded (--no-probe)
 
   scanned 5 source files and found 12 images, 126.9 KB in total
   12 of 12 references resolved, pointing at 10 of those images
   2 images with no reference Upfly could follow
-  including 1 unreferenced SVG, 307 B — counted, not listed: Upfly will neither convert an SVG nor delete an asset
+  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly will neither convert an SVG nor delete an asset)
 
 Nothing was skipped.
 
-Findings — 1 item
+Findings: 1 item
 
   unreferenced images (1)
     src/assets/orphan.png  70 B
 
 Worth knowing
 
-  1 unreferenced SVG totalling 307 B, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
-  assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none
+  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
+  assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
 "

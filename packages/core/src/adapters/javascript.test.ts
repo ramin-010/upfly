@@ -683,7 +683,7 @@ describe('javascriptAdapter', () => {
         const error = failure('{% for x in y %}<img src="/a.png">{% endfor %}');
 
         expect(error?.message).toBe(
-          'Could not parse: this looks like Nunjucks, Jinja or Liquid template source rather than JavaScript — it begins with `{%`',
+          'Could not parse: this looks like Nunjucks, Jinja or Liquid template source rather than JavaScript (it begins with `{%`)',
         );
         expect(error?.diagnostic).toBe('Unexpected token (1:1)');
       });

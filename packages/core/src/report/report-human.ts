@@ -71,7 +71,7 @@ function servingRootLine(report: Report): string[] {
 
   if (dirs.length === 0) {
     return [
-      '  root-relative paths resolved from the project root — Upfly found no public directory and none was declared',
+      '  root-relative paths resolved from the project root: Upfly found no public directory and none was declared',
     ];
   }
 
@@ -95,7 +95,7 @@ function vectorLine(report: Report): string[] {
   const { count: vectors, bytes: vectorBytes } = report.unusedVectors;
   if (vectors === 0) return [];
   return [
-    `  including ${count(vectors, 'unreferenced SVG')}, ${bytes(vectorBytes)} — counted, not listed: Upfly will neither convert an SVG nor delete an asset`,
+    `  including ${count(vectors, 'unreferenced SVG')}, ${bytes(vectorBytes)} (counted, not listed: Upfly will neither convert an SVG nor delete an asset)`,
   ];
 }
 
@@ -120,12 +120,12 @@ function keptOriginalLine(report: Report): string[] {
  */
 function savingsLine(summary: Report['summary'], capped: number): string {
   if (!summary.probed) {
-    return 'savings not measured — images were not decoded (--no-probe)';
+    return 'savings not measured: images were not decoded (--no-probe)';
   }
   const failed = summary.unmeasuredAssets;
   if (capped > 0) {
     const more = failed === 0 ? '' : ` and ${failed} more could not be measured`;
-    return `${bytes(summary.potentialSavingBytes)} of savings found so far${atQuality(summary)} — ${capped} of ${count(summary.assets, 'image')} went unmeasured${more}, so there may be more (--probe-all)`;
+    return `${bytes(summary.potentialSavingBytes)} of savings found so far${atQuality(summary)}; ${capped} of ${count(summary.assets, 'image')} went unmeasured${more}, so there may be more (--probe-all)`;
   }
   if (failed > 0) {
     const across = `measured across ${summary.assets - failed} of ${count(summary.assets, 'image')}; ${failed} could not be measured`;
@@ -210,7 +210,7 @@ function skippedSection(report: Report): string[] {
   if (skipped.length > 0) {
     // A neutral heading, because not every entry is a failure: the encode cap is a choice
     // and the sweep's entries are a size limit. Each row carries its own reason.
-    lines.push(`Skipped — ${count(skipped.length, 'thing')}, each with its reason`, '');
+    lines.push(`Skipped: ${count(skipped.length, 'thing')}, each with its reason`, '');
     for (const [stage, items] of groupByStage(skipped)) {
       lines.push(`  ${STAGE_LABEL[stage]}:`);
       const readable =
@@ -229,7 +229,7 @@ function skippedSection(report: Report): string[] {
     if (report.diagnosticsFile !== null) {
       lines.push(
         `  What the underlying libraries said about these is in ${report.diagnosticsFile}.`,
-        '  It is their wording, not ours, and it can change when they are upgraded —',
+        '  It is their wording, not ours, and it can change when they are upgraded,',
         '  which is why it is there and not here.',
         '',
       );
@@ -267,7 +267,7 @@ function skippedSection(report: Report): string[] {
               '  Upfly indexes',
             ]
           : [
-              '  none of these is a path that points at a file — each is built at run time, or',
+              '  none of these is a path that points at a file: each is built at run time, or',
               '  names something deliberately outside what Upfly indexes',
             ]),
         '',
@@ -290,11 +290,11 @@ function skippedSection(report: Report): string[] {
     }
     for (const entry of listed) {
       lines.push(`  ${entry.file}  ${entry.rawPath}`);
-      lines.push(`    ${entry.resolution} — ${entry.reason}`);
+      lines.push(`    ${entry.resolution}: ${entry.reason}`);
       // Only for Upfly's own misses. A refusal's `reason` already says why it was refused;
       // what the reader cannot otherwise tell is which entries Upfly got wrong.
       if (entry.classification !== 'correctly-refused') {
-        lines.push('    — and this one is ours: an answer exists and we did not find it');
+        lines.push('    (this one is ours: an answer exists and we did not find it)');
       }
     }
     if (counted > 0) lines.push(...countedLines(unlisted, listed.length === 0));
@@ -417,7 +417,7 @@ function findingsSection(report: Report): string[] {
     return [`No findings, apart from ${counted.join(' and ')} counted above.`, ''];
   }
 
-  const lines = [`Findings — ${count(report.findings.length, 'item')}`, ''];
+  const lines = [`Findings: ${count(report.findings.length, 'item')}`, ''];
   lines.push(...staleConversionSection(report));
   let previous: Finding['kind'] | null = null;
 
@@ -475,7 +475,7 @@ const MENTION_RANK: readonly MentionSource[] = [
 const MENTION_HEADING: Record<MentionSource, string> = {
   'unscanned-file': 'in a file no adapter reads; an adapter for that file type would find these',
   'scanned-file':
-    'in text Upfly read but no adapter claimed — the weakest evidence; look if the asset matters',
+    'in text Upfly read but no adapter claimed, the weakest evidence; look if the asset matters',
   'unresolved-reference': 'by a path Upfly read but could not resolve; those files parse fine',
 };
 
@@ -492,7 +492,7 @@ function possiblyDeadSection(report: Report): string[] {
     (finding): finding is PossiblyDead => finding.kind === 'possibly-dead',
   );
   const lines = [
-    `  possibly unreferenced (${findings.length}) — each is named somewhere, but not by a reference Upfly could follow`,
+    `  possibly unreferenced (${findings.length}): each is named somewhere, but not by a reference Upfly could follow`,
   ];
 
   for (const source of MENTION_RANK) {
@@ -514,7 +514,7 @@ function possiblyDeadSection(report: Report): string[] {
     );
 
     for (const [file, assets] of files) {
-      lines.push(`      ${file} — ${count(assets.length, 'asset')}`);
+      lines.push(`      ${file}: ${count(assets.length, 'asset')}`);
       for (const finding of assets) {
         lines.push(`        ${finding.asset}  ${bytes(finding.bytes)}`);
         // Every mention, not only the one that filed it: the citation is the whole
@@ -578,7 +578,7 @@ function sizeSection(report: Report): string[] {
   const oversized = report.summary.findings.oversized;
   const opportunities = report.summary.findings['format-opportunity'];
   const lines = [
-    `  size — ${count(merged.size, 'image')}: ${oversized} over the limit, ${opportunities} smaller as another format (measured, not estimated)`,
+    `  size (${count(merged.size, 'image')}): ${oversized} over the limit, ${opportunities} smaller as another format (measured, not estimated)`,
     '',
   ];
 
@@ -596,7 +596,7 @@ function sizeSection(report: Report): string[] {
     }
     for (const opportunity of entry.opportunities) {
       lines.push(
-        `      ${bytes(opportunity.wouldBe)} as ${opportunity.to} — saves ${bytes(opportunity.savedBytes)}, ${opportunity.savedPercent}%`,
+        `      ${bytes(opportunity.wouldBe)} as ${opportunity.to} (saves ${bytes(opportunity.savedBytes)}, ${opportunity.savedPercent}%)`,
       );
     }
   }
@@ -612,7 +612,7 @@ function headingFor(kind: Finding['kind'], report: Report): string {
       // sentence about the whole run reads as though it were one of a list.
       return 'Upfly could not work out where this project serves files from';
     case 'broken':
-      return `broken references (${total}) — these point at nothing`;
+      return `broken references (${total}): these point at nothing`;
     case 'dead':
       return `unreferenced images (${total})`;
     case 'possibly-dead':
@@ -623,11 +623,11 @@ function headingFor(kind: Finding['kind'], report: Report): string {
     case 'oversized':
       return `oversized images (${total})`;
     case 'format-opportunity':
-      return `smaller as another format (${total}) — measured, not estimated`;
+      return `smaller as another format (${total}): measured, not estimated`;
     // The count is of sets, not images, and the heading says so, or it reads as a number
     // of files.
     case 'duplicate':
-      return `identical copies (${total} ${total === 1 ? 'set' : 'sets'}) — the same bytes shipped more than once`;
+      return `identical copies (${total} ${total === 1 ? 'set' : 'sets'}): the same bytes shipped more than once`;
     default: {
       const unhandled: never = kind;
       return unhandled;
@@ -659,7 +659,7 @@ function describe(finding: Finding): string[] {
       ];
     case 'oversized':
       return [
-        `    ${finding.asset}  ${bytes(finding.bytes)}${dimensions(finding.width, finding.height)} — over ${finding.exceeded.join(' and ')}`,
+        `    ${finding.asset}  ${bytes(finding.bytes)}${dimensions(finding.width, finding.height)} (over ${finding.exceeded.join(' and ')})`,
       ];
     case 'format-opportunity':
       return [
@@ -689,7 +689,7 @@ function countedLines(unlisted: readonly ReferenceEntry[], nothingListed: boolea
     ? '  none with a filename to check'
     : `  plus ${unlisted.length} with no filename to check`;
   if (unlisted.every((entry) => entry.refusalReason === 'assembled-at-runtime')) {
-    return [`${lead} — each builds its path at runtime`];
+    return [`${lead}: each builds its path at runtime`];
   }
   const kinds: readonly [string | null, string][] = [
     ['assembled-at-runtime', 'built at run time'],
@@ -786,11 +786,11 @@ function collapseByReason(items: readonly SkippedItem[]): string[] {
   const lines: string[] = [];
   for (const [reason, group] of byReason) {
     if (group.length > REPEAT_LIMIT) {
-      lines.push(`    ${count(group.length, 'file')} — ${reason}`);
+      lines.push(`    ${count(group.length, 'file')}: ${reason}`);
       for (const item of group) lines.push(`      ${item.what}`);
       continue;
     }
-    for (const item of group) lines.push(`    ${item.what} — ${item.reason}`);
+    for (const item of group) lines.push(`    ${item.what}: ${item.reason}`);
   }
 
   return lines;

@@ -906,7 +906,7 @@ function referenceReport(
         count,
         bound: reason.bound,
         // A bound with no recorded measurement says so, rather than printing nothing.
-        measuredAgainst: reason.measuredAgainst ?? 'not recorded — treat this bound as unverified',
+        measuredAgainst: reason.measuredAgainst ?? 'not recorded; treat this bound as unverified',
       });
     }
   }
@@ -1199,7 +1199,7 @@ function countDeterminations(input: ReportInput): { total: number; detail: strin
     // never has to agree with the label's grammar.
     detail: [...byCode]
       .sort((a, b) => b[1] - a[1] || compareStrings(a[0], b[0]))
-      .map(([code, count]) => `${label[code] ?? code} — ${count}`),
+      .map(([code, count]) => `${label[code] ?? code}: ${count}`),
   };
 }
 
@@ -1219,7 +1219,7 @@ function caveats(
     list.push({
       code: 'unused-vectors',
       count: vectors.demoted.length,
-      message: `${plural(vectors.demoted.length, 'unreferenced SVG')} totalling ${formatBytes(bytes)}, not listed — Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
+      message: `${plural(vectors.demoted.length, 'unreferenced SVG')} totalling ${formatBytes(bytes)}, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
       detail: [],
     });
   }
@@ -1256,7 +1256,7 @@ function caveats(
       code: 'framework-conventions',
       count: convention.length,
       message: `${plural(convention.length, 'unreferenced image')} not reported dead, because a framework reads each one by its filename`,
-      detail: convention.map((link) => `${link.asset} — ${link.reason}`),
+      detail: convention.map((link) => `${link.asset}: ${link.reason}`),
     });
   }
 
@@ -1275,7 +1275,7 @@ function caveats(
       code: 'duplicates-not-checked',
       count: 0,
       message:
-        'assets were not compared byte for byte, so identical copies are unknown — this run reports no duplicates because it looked for none',
+        'assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none',
       detail: [],
     });
   }
@@ -1296,7 +1296,7 @@ function caveats(
     list.push({
       code: 'encode-capped',
       count: capped,
-      message: `${plural(capped, 'image')} beyond the measurement cap ${were(capped)} not encoded — run with --probe-all to measure the rest`,
+      message: `${plural(capped, 'image')} beyond the measurement cap ${were(capped)} not encoded; run with --probe-all to measure the rest`,
       detail: [],
     });
   }
@@ -1357,7 +1357,7 @@ function caveats(
       message: `${plural(groups.adapterCould.length, 'file type')} had no adapter, so ${plural(files, 'file')} went unread`,
       detail: groups.adapterCould.map(
         (entry) =>
-          `${entry.ext === '' ? '(no extension)' : entry.ext} — ${plural(entry.fileCount, 'file')}`,
+          `${entry.ext === '' ? '(no extension)' : entry.ext}: ${plural(entry.fileCount, 'file')}`,
       ),
     });
   }
@@ -1369,7 +1369,7 @@ function caveats(
       count: files,
       // An invariant subject, so no verb has to agree with the count.
       message: `binary formats have no text for an adapter to read, so no adapter ever will (${plural(files, 'file')} here)`,
-      detail: groups.binary.map((entry) => `${entry.ext} — ${plural(entry.fileCount, 'file')}`),
+      detail: groups.binary.map((entry) => `${entry.ext}: ${plural(entry.fileCount, 'file')}`),
     });
   }
 

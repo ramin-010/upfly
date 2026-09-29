@@ -577,7 +577,7 @@ export const SHAPES = [
     emission: 'engine',
     adapterEmitsAs: ['json.webmanifest.icon'],
     needsToSee:
-      'which top-level array the entry sits in — `screenshots` and `shortcuts` rather than `icons`',
+      'which top-level array the entry sits in: `screenshots` and `shortcuts` rather than `icons`',
     why:
       "A web app manifest's `screenshots` entry or shortcut icon. The JSON adapter scans " +
       "string values without parsing the document's structure, so every path in a manifest " +
@@ -656,7 +656,7 @@ export const SHAPES = [
     label: 'a name one character from a real file',
     emission: 'declined',
     adapterEmitsAs: ['js.string.literal'],
-    needsToSee: 'whether the file exists — adapters never touch the disk, by design',
+    needsToSee: 'whether the file exists (adapters never touch the disk, by design)',
     why:
       'A string one character away from a real file, such as `/img/her.jpg` beside ' +
       '`/img/hero.jpg`. As text it cannot be told from a real path, so the adapter emits it as ' +
@@ -771,7 +771,7 @@ export const SHAPES = [
     label: 'a bare package specifier',
     emission: 'engine',
     adapterEmitsAs: ['js.string.literal'],
-    needsToSee: 'whether the first path segment is an installed package — node_modules',
+    needsToSee: 'whether the first path segment is an installed package (node_modules)',
     why:
       'A bare package specifier such as `some-ui-kit/dist/logo.png` names a file inside a ' +
       "dependency: real, but not the project's to rewrite, so it resolves `out-of-scope`. " +
