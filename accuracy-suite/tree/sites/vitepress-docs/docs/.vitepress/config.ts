@@ -2,6 +2,6 @@
 // public/, sits beside it in docs/ — and nothing beside that folder is a FILE a project
 // is known by: package.json is two levels up. R179: the directory is the marker.
 export default {
-  title: 'Coverage tree docs',
+  title: 'Accuracy suite docs',
   description: 'The VitePress shape: a config directory beside the served folder.',
 };

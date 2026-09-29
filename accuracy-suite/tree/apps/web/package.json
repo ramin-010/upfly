@@ -1,5 +1,5 @@
 {
-  "name": "@coverage-tree/web",
+  "name": "@accuracy-suite/web",
   "private": true,
   "version": "0.0.0",
   "description": "The web app: React and Vite. A member of the tree's root workspaces (apps/*), which npm and pnpm require to have a package.json of its own."

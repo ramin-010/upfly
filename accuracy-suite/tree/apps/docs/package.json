@@ -1,5 +1,5 @@
 {
-  "name": "@coverage-tree/docs",
+  "name": "@accuracy-suite/docs",
   "private": true,
   "version": "0.0.0",
   "description": "The docs site: Astro, with MDX content. A member of the tree's root workspaces (apps/*), which npm and pnpm require to have a package.json of its own."

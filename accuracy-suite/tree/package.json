@@ -1,5 +1,5 @@
 {
-  "name": "coverage-tree",
+  "name": "accuracy-suite",
   "private": true,
   "version": "0.0.0",
   "description": "A repository whose asset references are all known in advance.",
