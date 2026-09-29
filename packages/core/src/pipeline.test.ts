@@ -439,6 +439,51 @@ describe('the name search', () => {
   });
 });
 
+describe('a refused path hedges what it could name', () => {
+  const unusedKinds = async (files: Record<string, string>) => {
+    const output = await runPipeline({
+      root: project({ 'package.json': '{ "name": "site", "private": true }\n', ...files }),
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'dead' || finding.kind === 'possibly-dead'
+        ? [[finding.kind, finding.asset]]
+        : [],
+    );
+  };
+
+  it('a CSS url() written with an escape, by the name the escape decodes to', async () => {
+    // `\e9 ` is CSS for é, so the browser asks for `img/café.png`.
+    expect(
+      await unusedKinds({
+        'site.css': '.a { background: url(img/caf\\e9 .png); }\n',
+        'img/café.png': 'a cafe, never decoded',
+      }),
+    ).toEqual([['possibly-dead', 'img/café.png']]);
+  });
+
+  it('an HTML path refused for a character reference, by the value the browser reads', async () => {
+    // parse5 decodes the legacy `&copy` written without its semicolon; Upfly's decoder does not.
+    expect(
+      await unusedKinds({
+        'index.html': '<img src="img/caf&eacute;&copy.png">\n',
+        'img/café©.png': 'a cafe, never decoded',
+      }),
+    ).toEqual([['possibly-dead', 'img/café©.png']]);
+  });
+
+  it("a guessed JavaScript string holding another language's hole, by its fixed parts", async () => {
+    expect(
+      await unusedKinds({
+        'app.js': "export const photos = { first: '/img/photo-{{ n }}.png' };\n",
+        'img/photo-1.png': 'a photo, never decoded',
+      }),
+    ).toEqual([['possibly-dead', 'img/photo-1.png']]);
+  });
+});
+
 describe('a backslash as a folder separator', () => {
   it('refuses one Markdown keeps and an encoded one, and hedges the images they name', async () => {
     // Most Markdown renderers write `img\team.png` as `img%5Cteam.png`, and a browser keeps

@@ -724,7 +724,7 @@ function addCharacterReferenceReference(
     decoded?.path === readAsUrl(parserValue, 'attr') &&
     !holdsUndecodableCharacterReference(splitPathSuffix(raw).path);
   if (!decodable) {
-    addEntityEscapedReference(range, context, shape);
+    addEntityEscapedReference(range, context, shape, readAsUrl(parserValue, 'attr'));
     return;
   }
 
@@ -749,12 +749,18 @@ function addEntityEscapedReference(
   range: { start: number; end: number },
   context: Context,
   shape: ShapeId,
+  /**
+   * The path a browser reads there, parse5's value, for one URL: it travels for the name search
+   * to hedge by. Absent for a `srcset`, whose one range holds a list rather than a path.
+   */
+  browserReads?: string,
 ): void {
   context.references.push({
     file: context.file,
     start: range.start,
     end: range.end,
     rawPath: context.text.slice(range.start, range.end),
+    ...(browserReads === undefined ? {} : { assembledPath: splitPathSuffix(browserReads).path }),
     kind: 'attr',
     shape,
     ceiling: 'unsafe',

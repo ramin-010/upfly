@@ -463,6 +463,24 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
   return templateExpressionReason(rawPath);
 }
 
+/**
+ * Text as CSS reads its escapes (CSS Syntax Level 3, "consume an escaped code point"): a
+ * backslash and one to six hex digits, with one white space after them, is that code point, and
+ * a backslash before any other character is that character, so `caf\e9 .png` names `café.png`.
+ * Zero, a surrogate and a number past the last code point read as U+FFFD.
+ */
+function decodeCssEscapes(text: string): string {
+  return text.replace(
+    /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|([^\n\r\f]))/g,
+    (_match, hex: string | undefined, other: string | undefined) => {
+      if (hex === undefined) return other ?? '';
+      const code = Number.parseInt(hex, 16);
+      const valid = code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+      return String.fromCodePoint(valid ? code : 0xfffd);
+    },
+  );
+}
+
 function addReference(input: {
   text: string;
   start: number;
@@ -494,12 +512,16 @@ function addReference(input: {
 
   const reason = dynamicReason(text, quote !== '');
   if (reason !== null) {
-    // Reported with its reason and never rewritten: guessing here could corrupt a file.
+    // Reported with its reason and never rewritten: guessing here could corrupt a file. A path
+    // spelled with CSS escapes still names a file, so the path they decode to travels for the
+    // name search to hedge by, as an escaped JavaScript string's does.
+    const decoded = text.includes('\\') ? splitPathSuffix(decodeCssEscapes(text)).path : null;
     references.push({
       file,
       start,
       end: start + text.length,
       rawPath: text,
+      ...(decoded === null ? {} : { assembledPath: decoded }),
       kind: 'css-url',
       shape,
       ceiling: 'unsafe',

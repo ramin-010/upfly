@@ -835,7 +835,11 @@ escaped string names what its escapes decode to. That holds where a path is asse
 `import hero from './img/h\u00e9ro.png'`, `src={'./img/caf\u00e9.png'}` or an escaped
 `import.meta.glob` pattern, no range spells the decoded path, so the reference is `unsafe` and
 stays `dynamic`, and its decoded path travels as `assembledPath`, so `héro.png` is hedged rather
-than called dead.
+than called dead. Every refusal of a path that still names a file carries what it names the same
+way: a CSS `url(img/caf\e9 .png)` the path its escapes decode to, and an HTML path refused for a
+character reference parse5's value, the text a browser reads. A guessed JavaScript string holding
+another language's hole, `'/img/photo-{{ n }}.png'`, is kept as an unsafe guess rather than
+dropped, so its fixed parts are globbed as any such pattern is.
 
 A relative pattern that matched nothing is hedged the same way (`unmatchedRelativePatterns`). A
 script can build a path the browser reads from the folder of the page that loads it, `'img/icon-'

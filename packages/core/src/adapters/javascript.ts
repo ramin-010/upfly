@@ -37,6 +37,7 @@ import { parseFailure } from './parse-failure.js';
 import {
   ENCODED_BACKSLASH_REASON,
   NOT_GLOBBABLE_REASON,
+  TEMPLATE_HOLE_PATTERN,
   URL_LINE_BREAK_REASON,
   assembledPathIsGlobbable,
   foreignTemplateExpressionReason,
@@ -441,6 +442,7 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
   if (decline === null) return;
   const candidate = speculativeStringPath(node, context.text);
   if (candidate === null) {
+    if (collectTemplatedString(node, context, decline)) return;
     collectEscapedString(node, context, decline);
     return;
   }
@@ -468,6 +470,46 @@ function collectSpeculativeString(node: StringLiteral, context: Context): void {
       decline,
     ),
   );
+}
+
+/**
+ * A guessed string holding a hole another language's template fills in, such as
+ * `'/img/photo-{{ n }}.png'`, returned unsafe with the hole's reason. No file has that name, so it
+ * is never looked up, but the name search globs its fixed parts, and an image it could name is
+ * hedged rather than called unused. Returns whether the string was one.
+ */
+function collectTemplatedString(
+  node: StringLiteral,
+  context: Context,
+  decline: Decline | undefined,
+): boolean {
+  if (node.start === null || node.start === undefined) return false;
+  if (node.end === null || node.end === undefined) return false;
+  const start = node.start + 1;
+  const raw = context.text.slice(start, node.end - 1);
+  const reason = raw === node.value ? foreignTemplateExpressionReason(raw) : null;
+  if (reason === null) return false;
+  const { path } = splitPathSuffix(raw);
+  const fixed = path.replace(new RegExp(TEMPLATE_HOLE_PATTERN, 'g'), '*');
+  if (staticExtensionOf(path) === '' || !plausiblePathShape(fixed)) return false;
+
+  context.speculative.push(
+    filed(
+      {
+        file: context.file,
+        start,
+        end: start + path.length,
+        rawPath: path,
+        kind: 'string',
+        shape: 'js.string.literal',
+        ceiling: 'unsafe',
+        asserted: false,
+        note: `a path-shaped string literal, guessed rather than asserted: ${reason}`,
+      },
+      decline,
+    ),
+  );
+  return true;
 }
 
 /**
