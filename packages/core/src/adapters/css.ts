@@ -17,8 +17,10 @@ import type { Adapter, RawReference } from '../types.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
+  ENCODED_BACKSLASH_REASON,
   NOT_GLOBBABLE_REASON,
   assembledPathIsGlobbable,
+  holdsEncodedBackslash,
   interpolationChunks,
   isExternalUrl,
   plausiblePathShape,
@@ -455,6 +457,7 @@ function dynamicReason(rawPath: string, quoted: boolean): string | null {
   // of exactly the same length, so `url(${bg})` arrives here as `url(/*-*/)`.
   if (rawPath.includes('/*')) return 'contains a comment or interpolation, not a literal path';
   if (rawPath.includes('\\')) return 'contains a CSS escape sequence';
+  if (holdsEncodedBackslash(splitPathSuffix(rawPath).path)) return ENCODED_BACKSLASH_REASON;
   // A hole the dialect does not write, such as the Liquid `{{ site.baseurl }}` that Jekyll
   // fills in before Sass runs. Only SCSS and Less interpolations, above, can be globbed.
   return templateExpressionReason(rawPath);

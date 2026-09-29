@@ -1016,6 +1016,38 @@ describe('htmlAdapter', () => {
       expect(paths('<img srcset="/a/My Photo.png 2x">')).toEqual(['/a/My']);
     });
   });
+
+  /**
+   * The URL parser reads a backslash as a slash, so `img\photo.png` loads `img/photo.png` on
+   * every site. It keeps `%5C` as written, and only a Windows server decodes that to a folder
+   * separator: elsewhere the file looked for has a backslash in its name.
+   */
+  describe('a backslash in a URL', () => {
+    it('keeps a backslash the URL parser reads as a slash', () => {
+      const references = find('<img src="img\\photo.png">');
+
+      expect(references.map((reference) => reference.ceiling)).toEqual(['high']);
+    });
+
+    it.each([
+      ['img src', '<img src="img%5Cphoto.png">', ['img%5Cphoto.png']],
+      ['lower case', '<img src="img%5cphoto.png">', ['img%5cphoto.png']],
+      ['a srcset candidate', '<img srcset="img%5Cphoto.png 2x">', ['img%5Cphoto.png']],
+      ['a link preview', '<meta property="og:image" content="/img%5Cog.png">', ['/img%5Cog.png']],
+    ])('refuses an encoded backslash in %s as unsafe', (_name, source, expected) => {
+      const references = find(source);
+
+      expect(slices(source)).toEqual(expected);
+      expect(references.map((reference) => reference.ceiling)).toEqual(['unsafe']);
+      expect(references[0]?.note).toMatch(/%5C, an encoded backslash.*write \/ between folders/);
+    });
+
+    it('keeps an encoded backslash in a URL that names no image', () => {
+      const references = find('<video src="media%5Cclip.mp4"></video>');
+
+      expect(references.map((reference) => reference.ceiling)).toEqual(['high']);
+    });
+  });
 });
 
 /**

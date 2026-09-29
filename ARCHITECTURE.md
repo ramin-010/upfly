@@ -665,12 +665,22 @@ In a Markdown destination a backslash before an ASCII punctuation character is a
 CommonMark removes it in the same pass that decodes character references: `my\_photo.png` names
 `my_photo.png`, and `\&eacute;` is the text `&eacute;`, since an escaped `&` starts no reference.
 So for a reference of kind `md`, `spellingsOf` offers that reading, recorded as `markdown-escapes`
-when the path holds an escape. Nowhere else is a backslash an escape. In an HTML or Markdown URL
-(an attribute, a `new URL` name, a destination) one left after decoding is read as a slash, as
-the URL parser reads it on every platform (`readAsUrl`): `<img src="img\photo.png">` loads
-`img/photo.png` on Linux as on Windows, and `\\cdn/x.png` in an attribute is another host's. In
-CSS it is an escape, and the CSS adapter reports a path holding one as `unsafe`; a JavaScript
-string writes one only as an escape, and keeps it.
+when the path holds an escape. Nowhere else is a backslash an escape. In an attribute's URL (in
+HTML or JSX, or a `new URL` name) one left after decoding is read as a slash, as the URL parser
+reads it on every platform (`readAsUrl`): `<img src="img\photo.png">` loads `img/photo.png` on
+Linux as on Windows, and `\\cdn/x.png` in an attribute is another host's. A Markdown destination
+is not read that way. Most renderers (markdown-it, micromark, commonmark.js, cmark-gfm) write a
+backslash CommonMark keeps, as in `img\photo.png`, `img\\photo.png` or `img&#92;photo.png`, as
+`%5C`, and a browser keeps a `%5C` as written, so only a renderer that passes the backslash
+through, or a Windows server, finds the folder. The Markdown adapter refuses such a destination
+as `unsafe`, and every adapter refuses a `%5C` in a URL the same way (`holdsEncodedBackslash`),
+each only while the path could name an image: nothing rewrites it, and the name search hedges
+the image it names rather than calling it dead. A drive path names a place on a disk rather than
+a folder, and keeps its own reading. In CSS a backslash is an escape, and the CSS adapter reports
+a path holding one as `unsafe`; a JavaScript string writes one only as an escape, and keeps it.
+Whatever is left, the resolver looks up no spelling that still holds a backslash, since Windows
+path rules read one as a folder separator and every other platform's as part of a name; the
+drive path, read with Windows rules everywhere, is the exception.
 
 The spellings are tried one at a time, so a path that needs both decodings, such as
 `caf&eacute;%20x.png` for `café x.png`, has no spelling that reaches its file. A path holding a

@@ -1772,13 +1772,12 @@ describe('a character reference, decoded only where a reader decodes it', () => 
   });
 });
 
-describe('a backslash in an HTML or Markdown URL', () => {
+describe('a backslash in an HTML attribute', () => {
   // The URL parser reads it as a slash, so a page loads the same file on every platform:
   // `\banner.png` is served from the root, never looked for at the root of this disk.
   it.each([
     ['attr', 'html.img.src', 'index.html', '\\banner.png', 'public/banner.png'],
     ['attr', 'html.img.src', 'index.html', 'assets\\logo.png', 'src/assets/logo.png'],
-    ['md', 'md.image', 'page.md', '\\banner.png', 'public/banner.png'],
   ] as const)('%s: %s in %s reads %s as %s', (kind, shape, file, rawPath, target) => {
     const reference = resolveOne({
       rawPath,
@@ -1788,6 +1787,27 @@ describe('a backslash in an HTML or Markdown URL', () => {
       file: join(ROOT, 'src', file),
     });
     expect(expectResolution(reference, 'resolved').resolvedPath).toBe(join(ROOT, target));
+  });
+});
+
+describe('a backslash left in a spelling', () => {
+  // Windows path rules read it as a folder separator and every other platform's as part of a
+  // name, so a lookup would link a file on one machine and not on another. Where it is a
+  // separator, in an attribute's URL, it is a slash before any lookup; nowhere else is it one.
+  it.each([
+    ['an import holding an encoded backslash', 'import', 'js.import.static', './assets%5Clogo.png'],
+    ['a Markdown destination holding one', 'md', 'md.image', 'assets\\logo.png'],
+    ['a Markdown destination escaping one', 'md', 'md.image', 'assets\\\\logo.png'],
+  ] as const)('is looked up on no platform: %s', (_name, kind, shape, rawPath) => {
+    const reference = resolveOne({ rawPath, kind, shape, ceiling: 'high' });
+
+    expect(reference?.resolution).toBe('broken');
+  });
+
+  it('still reads a Windows drive path with Windows rules, on every platform', () => {
+    const reference = resolveOne({ rawPath: 'C:\\elsewhere\\logo.png', kind: 'md' });
+
+    expect(reference?.resolution).toBe('out-of-scope');
   });
 });
 

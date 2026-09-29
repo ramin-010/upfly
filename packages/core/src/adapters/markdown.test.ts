@@ -337,6 +337,49 @@ describe('markdownAdapter', () => {
     });
   });
 
+  /**
+   * A backslash CommonMark keeps as a character is written as `%5C` by most renderers
+   * (markdown-it, micromark, commonmark.js, cmark-gfm), so a Linux host looks for a file with a
+   * backslash in its name; only a renderer that passes it through, or a Windows server, finds
+   * the folder. A `%5C` the author wrote is the same case.
+   */
+  describe('a backslash as a folder separator', () => {
+    it.each([
+      ['a backslash before a letter', '![a](img\\photo.png)', 'img\\photo.png'],
+      ['an escaped backslash, which leaves one', '![a](img\\\\photo.png)', 'img\\\\photo.png'],
+      ['a character reference to one', '![a](img&#92;photo.png)', 'img&#92;photo.png'],
+      ['a root-relative path', '![a](\\banner.png)', '\\banner.png'],
+      ['a link reference definition', '[a]: img\\photo.png', 'img\\photo.png'],
+    ])('refuses %s as unsafe, with the reason in plain words', (_name, source, text) => {
+      const references = find(source);
+
+      expect(slices(source)).toEqual([text]);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/backslash.*folder separator.*write \/ between folders/);
+    });
+
+    it.each([
+      ['upper case', '![a](img%5Cphoto.png)'],
+      ['lower case', '![a](img%5cphoto.png)'],
+    ])('refuses an encoded backslash in %s as unsafe', (_name, source) => {
+      const references = find(source);
+
+      expect(references).toHaveLength(1);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/%5C, an encoded backslash/);
+    });
+
+    it('keeps a path whose backslashes are all escapes, and one that names no image', () => {
+      expect(find('![a](/img/my\\_photo.png)')[0]?.ceiling).toBe('high');
+      expect(find('[docs](docs\\page)')[0]?.ceiling).toBe('high');
+      expect(find('[docs](docs%5Cpage.html)')[0]?.ceiling).toBe('high');
+    });
+
+    it('keeps a Windows drive path, which names a place on a disk rather than a folder', () => {
+      expect(find('![a](C:\\site\\img\\photo.png)')[0]?.ceiling).toBe('high');
+    });
+  });
+
   describe('offsets are UTF-16 code units', () => {
     it('stays aligned after an emoji', () => {
       const source = '# Launch 🎉\n\n![Logo](./logo.png)';

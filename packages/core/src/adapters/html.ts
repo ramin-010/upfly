@@ -17,9 +17,11 @@ import type { Adapter, RawReference } from '../types.js';
 import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import {
+  ENCODED_BACKSLASH_REASON,
   URL_LINE_BREAK_REASON,
   attributeCouldNameAnImage,
   decodeCharacterReferencesWithMap,
+  holdsEncodedBackslash,
   holdsUndecodableCharacterReference,
   isExternalUrl,
   parseSrcset,
@@ -812,6 +814,9 @@ function addAttributeReference(raw: string, start: number, context: Context, sha
 
   const { path, suffix } = splitPathSuffix(raw);
   if (path === '') return;
+  // A `%5C` is a folder separator only to a Windows server, so which file loads depends on
+  // the site. It is refused, with its image left to the name search, never rewritten.
+  const encodedBackslash = holdsEncodedBackslash(path);
 
   context.references.push({
     file: context.file,
@@ -824,8 +829,12 @@ function addAttributeReference(raw: string, start: number, context: Context, sha
     // break a percent-encoded path (a filename with spaces, say) is the decoder, not `<img src>`.
     // A position that keeps the file's format outranks both, as in `charrefShape`.
     shape: isPercentEncoded(path) && whyFormatKept(shape) === null ? 'html.percent-encoded' : shape,
-    ceiling: 'high',
+    ceiling: encodedBackslash ? 'unsafe' : 'high',
     asserted: true,
-    ...(suffix === '' ? {} : { note: `query or fragment preserved: ${suffix}` }),
+    ...(encodedBackslash
+      ? { note: ENCODED_BACKSLASH_REASON }
+      : suffix === ''
+        ? {}
+        : { note: `query or fragment preserved: ${suffix}` }),
   });
 }

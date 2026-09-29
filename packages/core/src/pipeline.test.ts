@@ -439,6 +439,43 @@ describe('the name search', () => {
   });
 });
 
+describe('a backslash as a folder separator', () => {
+  it('refuses one Markdown keeps and an encoded one, and hedges the images they name', async () => {
+    // Most Markdown renderers write `img\team.png` as `img%5Cteam.png`, and a browser keeps
+    // `%5C` as written, so only some renderers and Windows servers load these images.
+    const root = project({
+      'package.json': '{ "name": "site", "private": true }\n',
+      'docs/page.md': '![Team](img\\team.png)\n',
+      'docs/index.html': '<img src="img%5Clogo.png">\n',
+      'docs/img/team.png': 'a team photo, never decoded',
+      'docs/img/logo.png': 'a logo, never decoded',
+    });
+    const output = await runPipeline({
+      root,
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+    expect(
+      output.references.map(({ rawPath, resolution, note }) => [rawPath, resolution, note]),
+    ).toEqual([
+      ['img%5Clogo.png', 'dynamic', expect.stringContaining('%5C, an encoded backslash')],
+      ['img\\team.png', 'dynamic', expect.stringContaining('Markdown renderers')],
+    ]);
+    expect(
+      output.audit.findings.flatMap((finding) =>
+        finding.kind === 'dead' || finding.kind === 'possibly-dead'
+          ? [[finding.kind, finding.asset]]
+          : [],
+      ),
+    ).toEqual([
+      ['possibly-dead', 'docs/img/logo.png'],
+      ['possibly-dead', 'docs/img/team.png'],
+    ]);
+  });
+});
+
 describe('an escaped string where a path is asserted', () => {
   it('stays dynamic and hedges the image its decoded text names', async () => {
     const root = project({

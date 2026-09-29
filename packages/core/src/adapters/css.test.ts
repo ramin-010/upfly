@@ -135,6 +135,25 @@ describe('cssAdapter', () => {
     });
   });
 
+  describe('an encoded backslash', () => {
+    // A browser keeps `%5C` as written, and only a Windows server reads it as a folder
+    // separator, so which file loads depends on the server.
+    it.each([
+      ['unquoted', 'a { background: url(img%5Chero.png); }', 'img%5Chero.png'],
+      ['quoted, in lower case', 'a { background: url("img%5chero.png"); }', 'img%5chero.png'],
+    ])('is unsafe %s, with the reason in plain words', (_name, source, path) => {
+      const references = find(source);
+
+      expect(slices(source, references)).toEqual([path]);
+      expect(references[0]?.ceiling).toBe('unsafe');
+      expect(references[0]?.note).toMatch(/%5C, an encoded backslash/);
+    });
+
+    it('is kept in a URL that names no image, which the resolver drops', () => {
+      expect(find('@font-face { src: url(fonts%5Cinter.woff2); }')[0]?.ceiling).toBe('high');
+    });
+  });
+
   describe('never mistakes commented-out code for a reference', () => {
     it('ignores a whole-line comment', () => {
       expect(find('/* a { background: url(old.png); } */\na { color: red; }')).toEqual([]);

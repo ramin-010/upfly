@@ -53,18 +53,58 @@ export function isExternalUrl(rawPath: string, kind: ReferenceKind): boolean {
   if (isDrivePath(rawPath)) return false;
   // In an attribute `\\cdn/x.png` is protocol-relative, as the URL parser reads it. In a
   // Markdown destination `\\` is one escaped backslash, so its text is not read this way.
-  const url = kind === 'attr' ? readAsUrl(rawPath, kind) : rawPath;
+  const url = readAsUrl(rawPath, kind);
   return url.startsWith('//') || URL_SCHEME.test(rawPath);
 }
 
 /**
- * A path as the URL parser reads it where the kind is a URL: in an HTML or JSX attribute, a
- * `new URL` name or a Markdown destination, a backslash is a slash on every platform, so
- * `img\photo.png` loads `img/photo.png`. CSS reads a backslash as an escape and a JavaScript
- * string writes one only as an escape, so their kinds keep it as written.
+ * A path as the URL parser reads it where the text reaches that parser as written: in an HTML
+ * or JSX attribute or a `new URL` name, a backslash is a slash on every platform, so
+ * `img\photo.png` loads `img/photo.png`. Most Markdown renderers write a backslash as `%5C`,
+ * which the parser keeps, CSS reads one as an escape, and a JavaScript string writes one only
+ * as an escape, so their kinds keep it as written.
  */
 export function readAsUrl(path: string, kind: ReferenceKind): string {
-  return kind === 'attr' || kind === 'md' ? path.replaceAll('\\', '/') : path;
+  return kind === 'attr' ? path.replaceAll('\\', '/') : path;
+}
+
+/**
+ * Why a Markdown destination holding a backslash is `unsafe`, worded for the report. Most
+ * renderers write one that CommonMark keeps as `%5C`, and only a renderer that passes it
+ * through, or a Windows server, reads it as a folder separator.
+ */
+export const MARKDOWN_BACKSLASH_REASON =
+  'the path holds a backslash, which only some Markdown renderers and Windows servers read as a folder separator, so on most sites the image would not load; write / between folders';
+
+/**
+ * Why a URL holding `%5C`, an encoded backslash, is `unsafe`, worded for the report. A browser
+ * keeps it as written, so a Windows server reads a folder separator and any other a file with
+ * a backslash in its name.
+ */
+export const ENCODED_BACKSLASH_REASON =
+  'the path holds %5C, an encoded backslash, which only a Windows server reads as a folder separator, so on most sites the image would not load; write / between folders';
+
+/**
+ * Whether a URL's path holds `%5C`, in either case, while a reading of it ends in an image
+ * extension, as written or percent-decoded. An adapter refuses such a URL with
+ * `ENCODED_BACKSLASH_REASON`; one that names no image is left to the resolver, which drops it.
+ */
+export function holdsEncodedBackslash(path: string): boolean {
+  if (!ENCODED_BACKSLASH.test(path)) return false;
+  return [path, decodePercent(path)].some(
+    (reading) => reading !== null && isImageExtension(extensionOf(reading)),
+  );
+}
+
+const ENCODED_BACKSLASH = /%5c/i;
+
+/**
+ * Whether a Markdown destination, as CommonMark reads it, holds a backslash: one before
+ * anything but ASCII punctuation, one escaped as `\\`, or one written as `&#92;`. CommonMark
+ * removes only the backslash that escapes punctuation, so `my\_photo.png` holds none.
+ */
+export function markdownReadingHoldsBackslash(path: string): boolean {
+  return (decodeMarkdownDestination(path, true) ?? path).includes('\\');
 }
 
 /**
@@ -329,7 +369,8 @@ function decodeNamedReference(name: string): string | null {
  * `css-url` as a stylesheet's. It picks the decoder (`characterReferencesReadIn`). Only in a
  * Markdown destination (`'md'`) is a backslash before ASCII punctuation an escape, decoded with
  * the character references in one pass, as CommonMark reads it. A backslash left after that is
- * a slash in an HTML or Markdown URL (`readAsUrl`), and is kept as written anywhere else.
+ * a slash in an attribute's URL (`readAsUrl`), and is kept as written anywhere else; one a
+ * percent-escape decodes to is kept everywhere, since a browser keeps `%5C` as written.
  * Required, because a call that left it out would lose a spelling without a word.
  */
 export function spellingsOf(
@@ -355,16 +396,19 @@ export function spellingsOf(
     candidates.push({ spelling: escaped ? 'markdown-escapes' : 'html-entities', path: decoded });
   }
 
-  const percent = decodePercent(rawPath);
-  if (percent !== null && percent !== rawPath) {
+  // The URL parser reads a backslash in an attribute as a slash before a server decodes any
+  // percent-escape, so the escapes are decoded from that reading, and a `%5C` stays a backslash.
+  const asUrl = readAsUrl(rawPath, kind);
+  const percent = decodePercent(asUrl);
+  if (percent !== null && percent !== asUrl) {
     candidates.push({ spelling: 'percent-encoded', path: percent });
   }
 
-  // Read last, so a Markdown escape is decoded before its backslash could become a slash. A
-  // spelling that then reads as an earlier one adds nothing to try.
+  // Read last, so a character reference is decoded before its backslash could become a slash.
+  // A spelling that then reads as an earlier one adds nothing to try.
   const urls: { spelling: PathSpelling; path: string }[] = [];
   for (const { spelling, path } of candidates) {
-    const url = readAsUrl(path, kind);
+    const url = spelling === 'percent-encoded' ? path : readAsUrl(path, kind);
     if (!urls.some((earlier) => earlier.path === url)) urls.push({ spelling, path: url });
   }
   return urls;

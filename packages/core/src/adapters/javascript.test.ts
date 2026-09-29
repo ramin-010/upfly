@@ -274,6 +274,24 @@ describe('javascriptAdapter', () => {
       }
     });
 
+    it('keeps a URL holding an encoded backslash unsafe, and says why', () => {
+      // A browser keeps `%5C` as written; only a Windows server reads it as a folder separator.
+      const sources = [
+        '<img src="img%5Cphoto.png" />',
+        '<img srcSet="img%5cphoto.png 2x" />',
+        "new URL('img%5Cphoto.png', import.meta.url);",
+      ];
+      for (const source of sources) {
+        const references = find(source);
+
+        expect(
+          references.map((reference) => reference.ceiling),
+          source,
+        ).toEqual(['unsafe']);
+        expect(references[0]?.note, source).toContain('%5C, an encoded backslash');
+      }
+    });
+
     it('finds nothing in a value that is only whitespace, or another host with some around it', () => {
       expect(find('<img src=" \n " />')).toEqual([]);
       expect(find('<img src="\n  https://cdn.example.com/a.png" />')).toEqual([]);

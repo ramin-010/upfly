@@ -454,7 +454,7 @@ describe('spellingsOf', () => {
    */
   it('reads the backslash escapes of a Markdown destination and of nothing else', () => {
     expect(spellingsOf('/img/my\\_photo.png', 'md')).toEqual([
-      { spelling: 'literal', path: '/img/my/_photo.png' },
+      { spelling: 'literal', path: '/img/my\\_photo.png' },
       { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
     ]);
     expect(spellingsOf('/img/my\\_photo.png', 'attr')).toEqual([
@@ -472,30 +472,43 @@ describe('spellingsOf', () => {
       { spelling: 'literal', path: '/img/caf&eacute;.png' },
       { spelling: 'html-entities', path: `/img/caf${String.fromCodePoint(0xe9)}.png` },
     ]);
-    // A backslash before a letter escapes nothing, and the URL reads it as a slash.
+    // A backslash before a letter escapes nothing, and stays as written.
     expect(spellingsOf('C:\\site\\hero.png', 'md')).toEqual([
-      { spelling: 'literal', path: 'C:/site/hero.png' },
+      { spelling: 'literal', path: 'C:\\site\\hero.png' },
     ]);
   });
 
-  it('reads a backslash as a slash in an HTML or Markdown URL, and nowhere else', () => {
-    // The URL parser reads `img\photo.png` as `img/photo.png` on every platform. CSS reads a
-    // backslash as an escape, and a JavaScript string writes one only as an escape.
-    for (const kind of ['attr', 'md'] as const) {
-      expect(spellingsOf('img\\photo.png', kind), kind).toEqual([
-        { spelling: 'literal', path: 'img/photo.png' },
-      ]);
-    }
-    for (const kind of ['css-url', 'import', 'string', 'json'] as const) {
+  it("reads a backslash as a slash in an attribute's URL, and nowhere else", () => {
+    // The URL parser reads `img\photo.png` as `img/photo.png` on every platform. Most Markdown
+    // renderers write a backslash as `%5C`, CSS reads one as an escape, and a JavaScript string
+    // writes one only as an escape.
+    expect(spellingsOf('img\\photo.png', 'attr')).toEqual([
+      { spelling: 'literal', path: 'img/photo.png' },
+    ]);
+    // A percent-escape beside it is decoded from that reading, as the server decodes it.
+    expect(spellingsOf('img\\photo%20x.png', 'attr')).toEqual([
+      { spelling: 'literal', path: 'img/photo%20x.png' },
+      { spelling: 'percent-encoded', path: 'img/photo x.png' },
+    ]);
+    for (const kind of ['md', 'css-url', 'import', 'string', 'json'] as const) {
       expect(spellingsOf('img\\photo.png', kind), kind).toEqual([
         { spelling: 'literal', path: 'img\\photo.png' },
       ]);
     }
-    // In Markdown, after CommonMark's escapes: a backslash before punctuation still escapes it.
+    // In Markdown a backslash before punctuation is an escape, and any other stays as written.
     expect(spellingsOf('/img\\my\\_photo.png', 'md')).toEqual([
-      { spelling: 'literal', path: '/img/my/_photo.png' },
-      { spelling: 'markdown-escapes', path: '/img/my_photo.png' },
+      { spelling: 'literal', path: '/img\\my\\_photo.png' },
+      { spelling: 'markdown-escapes', path: '/img\\my_photo.png' },
     ]);
+  });
+
+  it('never reads an encoded backslash as a slash, since a browser keeps it as written', () => {
+    for (const kind of ['attr', 'md', 'css-url', 'import'] as const) {
+      expect(spellingsOf('img%5Cphoto.png', kind), kind).toEqual([
+        { spelling: 'literal', path: 'img%5Cphoto.png' },
+        { spelling: 'percent-encoded', path: 'img\\photo.png' },
+      ]);
+    }
   });
 
   it('cannot be asked without a kind, since the kind decides the spellings', () => {
@@ -674,8 +687,8 @@ describe('spell', () => {
       ({ spelling }) => spelling === 'markdown-escapes',
     );
 
-    // The escaped backslash is one backslash to CommonMark, which the URL reads as a slash.
-    expect(decoded?.path).toBe('/g/my_a&amp;b/c.png');
+    // The escaped backslash is one backslash to CommonMark, kept as a character.
+    expect(decoded?.path).toBe('/g/my_a&amp;b\\c.png');
     const respelled = spell(decoded?.path ?? '', 'markdown-escapes', 'md');
     expect(spellingsOf(respelled, 'md').map((c) => c.path)).toContain(decoded?.path);
   });

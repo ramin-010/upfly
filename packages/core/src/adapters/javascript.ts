@@ -35,10 +35,12 @@ import { findCssReferences } from './css.js';
 import { defineAdapter } from './define.js';
 import { parseFailure } from './parse-failure.js';
 import {
+  ENCODED_BACKSLASH_REASON,
   NOT_GLOBBABLE_REASON,
   URL_LINE_BREAK_REASON,
   assembledPathIsGlobbable,
   foreignTemplateExpressionReason,
+  holdsEncodedBackslash,
   interpolationChunks,
   isDrivePath,
   isExternalUrl,
@@ -1705,6 +1707,8 @@ function addReference(input: {
 
   const { path, suffix } = splitPathSuffix(rawPath);
   if (path === '') return;
+  // A URL holding `%5C` loads a file only a Windows server finds, so it is refused.
+  const encodedBackslash = kind === 'attr' && holdsEncodedBackslash(path);
 
   into.push(
     filed(
@@ -1717,9 +1721,13 @@ function addReference(input: {
         rawPath: path,
         kind,
         shape,
-        ceiling,
+        ceiling: encodedBackslash ? 'unsafe' : ceiling,
         asserted,
-        note: suffix === '' ? note : `${note}; query or fragment preserved: ${suffix}`,
+        note: encodedBackslash
+          ? `${note}: ${ENCODED_BACKSLASH_REASON}`
+          : suffix === ''
+            ? note
+            : `${note}; query or fragment preserved: ${suffix}`,
       },
       decline,
     ),

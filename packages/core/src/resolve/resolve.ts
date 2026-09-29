@@ -211,6 +211,13 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   // Rungs 3, 4 and 5 ask about the same spellings. Without the kind, `spellingsOf` would not
   // read a Markdown destination's backslash escapes.
   const spellings = spellingsOf(path, raw);
+  // Windows path rules read a backslash as a folder separator and every other platform's as
+  // part of a name, so a spelling that still holds one would link a file on one machine and
+  // not on another. Where a browser reads it as a slash, `spellingsOf` already has; a drive
+  // path is read with Windows rules on every platform.
+  const lookedUp = spellings.filter(
+    ({ path: spelled }) => isDrivePath(spelled) || !spelled.includes('\\'),
+  );
 
   // 3. Not a file we track. Dropped entirely, with no report line. Every spelling is asked,
   //    not only the written one: `hero%2Epng` shows its extension only once decoded.
@@ -224,7 +231,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   // 4a. A name given to `new URL(name, import.meta.url)` goes through the nearest Vite
   //     config's aliases before anything else, as Vite's asset plugin reads it.
   if (raw.shape === 'js.new-url') {
-    const viaVite = throughViteAlias(spellings, raw, context);
+    const viaVite = throughViteAlias(lookedUp, raw, context);
     if (viaVite !== null) return viaVite;
   }
 
@@ -232,7 +239,7 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //    file with a percent sign in its name, while `hero%20image.png` can name
   //    `hero image.png`. Only literal-then-decoded gets both right, and the accuracy suite
   //    holds the pair so the order is tested.
-  for (const { spelling, path: candidate } of spellings) {
+  for (const { spelling, path: candidate } of lookedUp) {
     const found = index.lookup(candidate, raw, root, publicDirs);
     if (found === null) continue;
     return {
@@ -250,12 +257,12 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
   //     path is alias-shaped is asked of every spelling, since an encoding or an escape can
   //     hide an alias's first character.
   const viaAlias = aliasShapedIn(spellings, raw.kind)
-    ? resolveThroughAlias(spellings, raw, context)
+    ? resolveThroughAlias(lookedUp, raw, context)
     : null;
   if (viaAlias !== null) return viaAlias;
 
   // 5. Points at a real file we deliberately do not index, in any spelling.
-  const excluded = outOfScope(path, spellings, raw, context);
+  const excluded = outOfScope(path, lookedUp, raw, context);
   if (excluded !== null) return excluded;
 
   // 5b. A `new URL` name that missed beside the module is looked for as a package next, as

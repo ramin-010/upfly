@@ -16,12 +16,17 @@ import { defineAdapter } from './define.js';
 import { htmlAdapter } from './html.js';
 import { findJavaScriptReferences, javaScriptParseOutcome } from './javascript.js';
 import {
+  ENCODED_BACKSLASH_REASON,
+  MARKDOWN_BACKSLASH_REASON,
   TEMPLATE_HOLES,
   TEMPLATE_HOLE_PATTERN,
+  holdsEncodedBackslash,
   holdsUndecodableMarkdownEscape,
   isAsciiPunctuation,
+  isDrivePath,
   isExternalUrl,
   markdownDestinationCouldNameAnImage,
+  markdownReadingHoldsBackslash,
   splitPathSuffix,
   templateExpressionReason,
 } from './reference-path.js';
@@ -705,6 +710,31 @@ function addReference(
       ceiling: 'unsafe',
       asserted: true,
       note: 'the path holds escapes that cannot be fully decoded, such as a misspelled character reference, or a character reference or backslash escape beside a percent-escape or decoding to one, so the file it names is not known',
+    });
+    return;
+  }
+
+  // A backslash CommonMark keeps, which most renderers write as `%5C`, and a `%5C` the author
+  // wrote, are folder separators only to a pass-through renderer or a Windows server, so the
+  // file loaded depends on the site. A drive path names a place on a disk, not a folder.
+  const backslash = isDrivePath(path)
+    ? null
+    : markdownReadingHoldsBackslash(path)
+      ? MARKDOWN_BACKSLASH_REASON
+      : holdsEncodedBackslash(path)
+        ? ENCODED_BACKSLASH_REASON
+        : null;
+  if (backslash !== null && markdownDestinationCouldNameAnImage(path)) {
+    references.push({
+      file,
+      start,
+      end: start + path.length,
+      rawPath: path,
+      kind: 'md',
+      shape,
+      ceiling: 'unsafe',
+      asserted: true,
+      note: backslash,
     });
     return;
   }
