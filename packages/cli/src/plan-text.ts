@@ -106,3 +106,25 @@ export function writtenByKind(manifest: Manifest): {
 export function count(value: number, noun: string): string {
   return `${value} ${noun}${value === 1 ? '' : 's'}`;
 }
+
+/**
+ * How many of a file's references move, in words: `its 1 reference moves to ...`, `all 3 of
+ * its references move to ...`, `1 of its 2 references moves to ...`, or that they stay.
+ *
+ * @param moved how many move
+ * @param total how many name the file, at least one
+ * @param to where they move, such as `to the kept copy`
+ */
+export function movingText(moved: number, total: number, to: string): string {
+  if (moved === 0) {
+    return total === 1
+      ? 'its 1 reference stays as written'
+      : `its ${total} references stay as written`;
+  }
+  if (moved === total) {
+    return total === 1
+      ? `its 1 reference moves ${to}`
+      : `all ${total} of its references move ${to}`;
+  }
+  return `${moved} of its ${count(total, 'reference')} ${moved === 1 ? 'moves' : 'move'} ${to}`;
+}

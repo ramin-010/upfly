@@ -28,7 +28,7 @@ import {
   unfinishedRun,
 } from './optimize.js';
 import { type Io, emit, progressReporter, stopWith } from './output.js';
-import { count, writtenByKind } from './plan-text.js';
+import { count, movingText, writtenByKind } from './plan-text.js';
 
 /**
  * Plans keeping one copy of each set of identical images and, with `--apply`, writes it.
@@ -236,7 +236,7 @@ function setLines(set: DedupeSet): string[] {
     lines.push(
       copy.references === 0
         ? `      ${copy.path}  no reference names it`
-        : `      ${copy.path}  ${copy.moved} of ${count(copy.references, 'reference')} ${copy.moved === 1 ? 'moves' : 'move'} to the kept copy`,
+        : `      ${copy.path}  ${movingText(copy.moved, copy.references, 'to the kept copy')}`,
     );
     for (const stay of copy.stays) {
       lines.push(`        ${stay.where}  ${stay.text} stays as written: ${stay.why}`);

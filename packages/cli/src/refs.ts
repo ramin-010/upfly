@@ -24,7 +24,7 @@ import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { type Io, emit, progressReporter, stopWith } from './output.js';
-import { count } from './plan-text.js';
+import { movingText } from './plan-text.js';
 
 /** One reference to the image: where it is, what it says, and whether a run could move it. */
 interface ReferenceAnswer {
@@ -241,7 +241,7 @@ function verdictText(
       const original = verdict.removesOriginal
         ? 'the original is removed, since every reference to it moves'
         : 'the original stays beside it';
-      return `converts to ${verdict.to}, ${formatBytes(node.asset.bytes)} to ${after}. ${moving} of its ${count(references.length, 'reference')} ${moving === 1 ? 'moves' : 'move'} to the new file; ${original}.`;
+      return `converts to ${verdict.to}, ${formatBytes(node.asset.bytes)} to ${after}. ${capitalise(movingText(moving, references.length, 'to the new file'))}; ${original}.`;
     }
     case 'not-converted':
       return `not converted: ${verdict.why}.`;
@@ -250,4 +250,8 @@ function verdictText(
     case 'possibly-unused':
       return `possibly unused. No reference Upfly can follow reaches it, but its name appears in ${verdict.mentions.map((mention) => mention.where).join(', ')}.`;
   }
+}
+
+function capitalise(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }

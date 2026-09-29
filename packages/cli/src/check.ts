@@ -280,7 +280,7 @@ function unusedNote(unused: number): string | null {
 function unreadNote(unread: number): string | null {
   if (unread === 0) return null;
   const one = unread === 1;
-  return `${count(unread, 'file')} could not be read, so no reference in ${one ? 'it' : 'them'} was checked; \`upfly audit\` names ${one ? 'it with the reason' : 'them with the reasons'}.`;
+  return `${count(unread, 'file')} could not be parsed or read, so no reference in ${one ? 'it' : 'them'} was checked; \`upfly audit\` names ${one ? 'it with the reason' : 'them with the reasons'}.`;
 }
 
 function uncheckedNote(unchecked: number): string | null {

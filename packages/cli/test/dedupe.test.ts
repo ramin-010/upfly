@@ -57,7 +57,7 @@ describe('upfly dedupe', () => {
         '',
         '  Keep one copy of each set of identical images: 1 set',
         '    img/logo-copy.png  7.2 KB, kept: more references use it than any other copy',
-        '      img/logo.png  1 of 1 reference moves to the kept copy',
+        '      img/logo.png  its 1 reference moves to the kept copy',
         '  Update references: 1 reference in 1 file',
         '    index.html  1 reference',
         '  Not deleted: 1 copy no reference names once this is written, 7.2 KB. Upfly never',

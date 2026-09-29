@@ -179,6 +179,17 @@ describe('upfly check', () => {
     );
   });
 
+  it('counts a file it could not parse, since no reference in it was checked', () => {
+    const root = site({ 'src/broken.scss': '.a { color: red' });
+
+    const run = upfly(['check', root]);
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain(
+      '1 file could not be parsed or read, so no reference in it was checked; `upfly audit` names it with the reason.',
+    );
+  });
+
   it('refuses with exit 3 when it cannot tell where the site is served from', () => {
     const root = tempFolder(roots, 'upfly-check-unknown-root-');
     const missing = Array.from({ length: 10 }, (_, n) => `<img src="/pictures/missing-${n}.png">`);
