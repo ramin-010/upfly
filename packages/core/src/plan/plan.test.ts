@@ -6,7 +6,13 @@ import { compareStrings, toPosix } from '../paths.js';
 import type { AssetProbe } from '../probe/probe.js';
 import type { AliasMap } from '../resolve/aliases.js';
 import type { Asset, RawReference, Reference } from '../types.js';
-import { type PlanInput, patternTargets, planOptimization } from './plan.js';
+import {
+  type LinkedReference,
+  type PlanInput,
+  patternTargets,
+  planOptimization,
+  whyReferenceStays,
+} from './plan.js';
 
 // Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
 // Windows `path.resolve` gives a bare '/repo' the current drive, which no asset here would have.
@@ -98,6 +104,32 @@ function input(
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
   };
 }
+
+describe('why a reference stays as it is', () => {
+  it('is the answer the planner gives: none for a reference it moves, the reason for each it leaves', () => {
+    const plain = resolved('index.html', 'img/logo.png', 'img/logo.png');
+    const guess = resolved('app.js', 'img/logo.png', 'img/logo.png', {
+      resolvedVia: 'speculative-root',
+    });
+    const template = pattern('app.js', '`img/${name}.png`', ['img/logo.png', 'img/other.png']);
+    const bare = resolved('app.js', 'img/logo', 'img/logo.png');
+    const planned = input({
+      assets: [asset('img/logo.png'), asset('img/other.png')],
+      references: [plain, guess, template, bare],
+    });
+
+    expect(whyReferenceStays(plain as LinkedReference, planned)).toBeNull();
+    expect(whyReferenceStays(guess as LinkedReference, planned)).toBe(
+      'the path is a guess that happened to resolve against the project root, which shows the asset is alive but not that this text may be edited',
+    );
+    expect(whyReferenceStays(template as LinkedReference, planned)).toBe(
+      'a template reference is assembled at runtime, so its text cannot be repointed',
+    );
+    expect(whyReferenceStays(bare as LinkedReference, planned)).toBe(
+      'the path has no extension, so there is nothing in it to change',
+    );
+  });
+});
 
 describe('a path holding a backslash', () => {
   it('swaps the extension after an escaped dot in a Markdown destination, as on every platform', () => {

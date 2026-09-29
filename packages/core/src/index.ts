@@ -69,7 +69,12 @@ export { SHAPES, SHAPE_IDS, UNTESTED_SHAPE_IDS, shapeById } from './adapters/sha
 export type { ShapeDeclaration, ShapeEmission } from './adapters/shapes.js';
 export { findDuplicates, hashCandidates } from './audit/duplicates.js';
 export type { DuplicateSet } from './audit/duplicates.js';
-export { isUnderPublicDir, patternTargets, planOptimization } from './plan/plan.js';
+export {
+  isUnderPublicDir,
+  patternTargets,
+  planOptimization,
+  whyReferenceStays,
+} from './plan/plan.js';
 export { moveOperationsFor, planRelocation } from './plan/relocate.js';
 export type {
   Move,
@@ -102,6 +107,7 @@ export type {
   OptimizeProjectResult,
 } from './optimize-project.js';
 export type {
+  LinkedReference,
   OptimizationPlan,
   PlanInput,
   PlanRefusal,

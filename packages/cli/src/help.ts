@@ -15,6 +15,9 @@ Commands:
   check [dir]      Fail, for continuous integration, when a reference names an image that
                    does not exist. Changes nothing.
   init [dir]       Write upfly.config.json with the folders Upfly works out, and say why.
+  refs <image> [dir]
+                   List where one image is referenced, whether Upfly could rewrite each
+                   reference, and what optimize would do with it. Changes nothing.
 
 Options for every command:
   --json         Print one JSON object per line: progress, then the result
@@ -143,12 +146,34 @@ Exit status: 0 when the file was written; 2 for a usage error; 3 when a configur
 file already exists, which the message names; 4 for a failure Upfly did not anticipate.
 `;
 
+const REFS = `Usage: upfly refs <image> [dir] [options]
+
+Lists the references Upfly can read to one image: the file and line, the path as written,
+and, for one optimize would leave as it is, why. Then the verdict: what optimize would do
+with the image, with the configured format and policy, or that it is unused. It reads the
+whole project, measures only that image, and changes nothing.
+
+image is a path from the current folder, and must be inside the project.
+
+Options:
+  --public <dir>         A folder the site is served from, such as public; repeat it for
+                         several, and use . for the project root itself
+  --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
+  --json                 Print one JSON object per line: progress, then the answer
+  --no-color             Plain text; also when NO_COLOR is set
+
+Exit status: 0 with the answer; 2 when the image does not exist, is outside the project or
+is not an image Upfly found, or for a usage or configuration error; 3 when the
+configuration file belongs to another tool; 4 for a failure Upfly did not anticipate.
+`;
+
 const TEXT: Record<CommandName, string> = {
   audit: AUDIT,
   optimize: OPTIMIZE,
   undo: UNDO,
   check: CHECK,
   init: INIT,
+  refs: REFS,
 };
 
 /** The help for one command, or the general help when `command` is null. */

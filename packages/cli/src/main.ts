@@ -8,6 +8,7 @@ import { helpText } from './help.js';
 import { runInit } from './init.js';
 import { runOptimize } from './optimize.js';
 import { type Io, colourFor, emit, paint } from './output.js';
+import { runRefs } from './refs.js';
 import { runUndo } from './undo.js';
 
 /**
@@ -75,5 +76,7 @@ function run(options: CommandOptions, io: Io): Promise<ExitCode> {
       return runCheck(options, io);
     case 'init':
       return runInit(options, io);
+    case 'refs':
+      return runRefs(options, io);
   }
 }

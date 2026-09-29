@@ -2312,6 +2312,15 @@ never converts, and every other rule holds unchanged, so under `--replace` an or
 only when every reference to it moved. The result names the images matched and each path or
 pattern that matched none, and the CLI says both.
 
+**`refs <image>` asks the planner about one image.** It runs `optimizeProject` as a dry run with
+`only: { paths: [image] }`, so the whole project is read and only that image measured, and
+answers from what the run produced: each linked reference, cited, with `whyReferenceStays`, the
+planner's own rule (`obstacleTo`) turned into a sentence, and a verdict taken from the plan (the
+conversion, or its decline) or, for an image nothing links, from the audit (`dead` is unused,
+`possibly-dead` names where its file name appears). No second rule is written for the CLI, so
+the answer cannot drift from what `optimize` does. The `--json` answer is kept small: the
+image, its size, the references, the verdict.
+
 **`init` writes down the decision a run would make.** It calls `decideServingRoots` inside the
 pipeline, as every run without declared folders does, and writes `upfly.config.json` with the
 schema, the folders and the format, giving each folder's reason: the project file a detected

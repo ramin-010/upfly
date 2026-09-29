@@ -7,7 +7,7 @@
 import { parseArgs } from 'node:util';
 import { normaliseServedDir } from './config.js';
 
-export type CommandName = 'audit' | 'optimize' | 'undo' | 'check' | 'init';
+export type CommandName = 'audit' | 'optimize' | 'undo' | 'check' | 'init' | 'refs';
 
 export interface CommonOptions {
   /** The project directory, as given; the current directory when none is. */
@@ -75,12 +75,19 @@ export interface InitOptions extends CommonOptions {
   readonly command: 'init';
 }
 
+export interface RefsOptions extends CommonOptions, ScopeOptions {
+  readonly command: 'refs';
+  /** The image to answer for, as the user wrote it: resolved from the current folder. */
+  readonly image: string;
+}
+
 export type CommandOptions =
   | AuditOptions
   | OptimizeOptions
   | UndoOptions
   | CheckOptions
-  | InitOptions;
+  | InitOptions
+  | RefsOptions;
 
 export type Parsed =
   | { readonly kind: 'run'; readonly options: CommandOptions }
@@ -98,7 +105,7 @@ export type Parsed =
  */
 export const DEFAULT_MAX_ENCODES = 100;
 
-const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check', 'init'];
+const COMMANDS: readonly CommandName[] = ['audit', 'optimize', 'undo', 'check', 'init', 'refs'];
 
 const COMMON = {
   json: { type: 'boolean' },
@@ -144,6 +151,8 @@ const CHECK = {
   changed: { type: 'string' },
 } as const;
 
+const REFS = { ...COMMON, ...SCOPE } as const;
+
 /**
  * Parses `argv`, the arguments after `upfly`.
  *
@@ -168,7 +177,47 @@ export function parseCommandLine(argv: readonly string[]): Parsed {
   if (command === 'audit') return parseAudit(rest);
   if (command === 'optimize') return parseOptimize(rest);
   if (command === 'check') return parseCheck(rest);
+  if (command === 'refs') return parseRefs(rest);
   return parseCommonOnly(command, rest);
+}
+
+function parseRefs(args: readonly string[]): Parsed {
+  const command = 'refs';
+  let parsed: ReturnType<typeof parseRefsArgs>;
+  try {
+    parsed = parseRefsArgs(args);
+  } catch (error) {
+    return { kind: 'usage-error', command, message: plainParseError(error) };
+  }
+  const { values, positionals } = parsed;
+  if (values.help === true) return { kind: 'help', command };
+  const [image, ...rest] = positionals;
+  if (image === undefined) {
+    return {
+      kind: 'usage-error',
+      command,
+      message: 'refs needs the path of an image, such as `upfly refs public/hero.png`',
+    };
+  }
+  const dir = directoryOf(rest);
+  if (dir.problem !== null) return { kind: 'usage-error', command, message: dir.problem };
+  const scope = scopeOf(values);
+  if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
+  return {
+    kind: 'run',
+    options: {
+      command,
+      image,
+      dir: dir.value,
+      json: values.json === true,
+      noColor: values['no-color'] === true,
+      ...scope,
+    },
+  };
+}
+
+function parseRefsArgs(args: readonly string[]) {
+  return parseArgs({ args: [...args], options: REFS, allowPositionals: true, strict: true });
 }
 
 function parseCheck(args: readonly string[]): Parsed {

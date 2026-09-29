@@ -1029,7 +1029,11 @@ function collectRewrite(reference: Reference, context: RewriteContext): Repointi
 }
 
 /** A reference that links at least one asset: the only kind a plan could move. */
-type LinkedReference = Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>;
+/** A reference the resolver linked to one asset, or to several through a pattern. */
+export type LinkedReference = Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>;
+
+/** What the rules for moving one reference read from the plan's input. */
+type RuleInput = Pick<PlanInput, 'graph' | 'servingRoots' | 'rootLinkPolicy' | 'format'>;
 
 /** Why a plan leaves a linked reference where it is, even when its asset converts. */
 type Obstacle =
@@ -1050,7 +1054,7 @@ type Obstacle =
  * at. Nothing here depends on which other assets convert, which is what lets the second
  * question be asked before the plan exists.
  */
-function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | null {
+function obstacleTo(reference: LinkedReference, input: RuleInput): Obstacle | null {
   // The shape's rule sits apart from `rewriteRefusal`, whose tests `relocate.ts` repeats:
   // a move keeps the file's format, so a link preview still follows its image there.
   const refusal = rewriteRefusal(reference, input) ?? whyFormatKept(reference.shape);
@@ -1060,6 +1064,28 @@ function obstacleTo(reference: LinkedReference, input: PlanInput): Obstacle | nu
     return { kind: 'unchanged' };
   }
   return null;
+}
+
+/**
+ * Why a plan converting this reference's image would leave the reference as it is, or null
+ * when it would move the reference to the converted file: the rule the planner applies, for a
+ * caller that explains one image's references.
+ *
+ * @param reference a reference the resolver linked
+ * @param input the graph, serving roots, root-link policy and format the plan is made with
+ * @returns a sentence a user can act on, or null
+ */
+export function whyReferenceStays(reference: LinkedReference, input: RuleInput): string | null {
+  const obstacle = obstacleTo(reference, input);
+  if (obstacle === null) return null;
+  switch (obstacle.kind) {
+    case 'refused':
+      return obstacle.why;
+    case 'pattern':
+      return patternCannotMove(reference);
+    case 'unchanged':
+      return 'the path has no extension, so there is nothing in it to change';
+  }
 }
 
 /**
@@ -1119,7 +1145,7 @@ function usedByNoMove(node: AssetNode, input: PlanInput): string | null {
  * join that string to a different directory. `rewriteRefusalFor` in `relocate.ts` applies
  * the same tests, so a change here belongs there too.
  */
-function rewriteRefusal(reference: LinkedReference, input: PlanInput): string | null {
+function rewriteRefusal(reference: LinkedReference, input: RuleInput): string | null {
   if (reference.confidence === 'unsafe') {
     return 'the reference has no static path to replace';
   }
