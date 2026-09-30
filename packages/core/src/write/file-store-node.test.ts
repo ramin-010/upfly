@@ -77,6 +77,26 @@ describe('on a real filesystem', () => {
     });
   });
 
+  describe('listDirectory and removeDirectory', () => {
+    it("lists a folder's entries by name, and none for a folder that is not there", async () => {
+      await store.writeText('.upfly/runs/r0/staged/a.webp', 'A');
+      await store.writeText('.upfly/runs/r1/backup/b.png', 'B');
+
+      expect([...(await store.listDirectory('.upfly/runs'))].sort()).toEqual(['r0', 'r1']);
+      expect(await store.listDirectory('.upfly/none')).toEqual([]);
+    });
+
+    it('removes a folder and everything in it, and does nothing for one that is not there', async () => {
+      await store.writeText('.upfly/runs/r0/staged/a.webp', 'A');
+      await store.writeText('.upfly/runs/r1/backup/b.png', 'B');
+
+      await store.removeDirectory('.upfly/runs/r0');
+      await store.removeDirectory('.upfly/runs/r0');
+      expect(await store.listDirectory('.upfly/runs')).toEqual(['r1']);
+      expect(await store.hash('.upfly/runs/r1/backup/b.png')).not.toBeNull();
+    });
+  });
+
   describe('writeText', () => {
     it('creates the directories leading to a file nothing has written yet', async () => {
       await store.writeText('a/b/c/deep.txt', 'DEEP');

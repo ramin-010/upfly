@@ -1958,7 +1958,10 @@ actually there. `revert` checks the same backups before its first write and refu
 gone since, so an undo never stops part way through putting originals back. **The run directory
 therefore survives commit**: deleting it would throw away the only copy of anything the `replace`
 policy removed. A run refused before it writes, while staging or in `prepare`, is the opposite
-case: nothing will ever read what it staged, so its encodes and backups are removed.
+case: nothing will ever read what it staged, so its encodes and backups are removed. And once a
+run commits, every earlier run's directory is removed: `undo` restores only the run the manifest
+names, and the committed manifest has just replaced the last one, so nothing can restore from an
+earlier directory again. A run that stops part way removes none, its own included.
 
 On top of all that, `upfly optimize --apply` refuses a project folder with uncommitted changes
 unless forced, and `--commit` produces exactly one commit, making `git revert` the real undo

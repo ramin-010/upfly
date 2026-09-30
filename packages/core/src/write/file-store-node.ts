@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import type { FileStore } from './transaction.js';
 
@@ -47,6 +47,10 @@ export interface FileOperations {
   copy(from: string, to: string): Promise<void>;
   /** Tolerates an absent path, so undo is safe to repeat. */
   remove(path: string): Promise<void>;
+  /** A folder's entries by name; none for a folder that is not there. */
+  list(path: string): Promise<string[]>;
+  /** A folder and everything in it; tolerates an absent path. */
+  removeTree(path: string): Promise<void>;
 }
 
 /** The operations a real run uses. */
@@ -75,6 +79,15 @@ export const nodeFileOperations: FileOperations = {
   // is a plan error, and overwriting it would lose somebody's file.
   copy: (from, to) => copyFile(from, to, constants.COPYFILE_EXCL),
   remove: (path) => rm(path, { force: true }),
+  list: async (path) => {
+    try {
+      return await readdir(path);
+    } catch (error) {
+      if (isMissing(error)) return [];
+      throw error;
+    }
+  },
+  removeTree: (path) => rm(path, { recursive: true, force: true }),
 };
 
 /**
@@ -134,6 +147,12 @@ export function createFileStoreOn(operations: FileOperations, root: string): Fil
 
     async remove(path: string): Promise<void> {
       await retryWhileBusy(() => operations.remove(absolute(path)));
+    },
+    listDirectory(path: string): Promise<readonly string[]> {
+      return operations.list(absolute(path));
+    },
+    async removeDirectory(path: string): Promise<void> {
+      await retryWhileBusy(() => operations.removeTree(absolute(path)));
     },
   };
 }

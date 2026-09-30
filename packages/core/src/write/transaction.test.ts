@@ -89,6 +89,11 @@ function interruptible(store: FileStore): {
         mutate();
         await store.remove(path);
       },
+      listDirectory: (path) => store.listDirectory(path),
+      async removeDirectory(path) {
+        mutate();
+        await store.removeDirectory(path);
+      },
     },
   };
 }
@@ -124,6 +129,18 @@ function memoryFiles(files: Map<string, string>): FileStore {
     },
     async remove(path) {
       files.delete(path);
+    },
+    async listDirectory(path) {
+      const prefix = `${path}/`;
+      const names = [...files.keys()].flatMap((file) =>
+        file.startsWith(prefix) ? [file.slice(prefix.length).split('/')[0] ?? ''] : [],
+      );
+      return [...new Set(names)];
+    },
+    async removeDirectory(path) {
+      for (const file of [...files.keys()]) {
+        if (file.startsWith(`${path}/`)) files.delete(file);
+      }
     },
   };
 }
@@ -369,6 +386,39 @@ describe('commit', () => {
         reason: 'the reference is assembled at runtime and cannot be rewritten safely',
       },
     ]);
+  });
+});
+
+/**
+ * `undo` restores only the run the manifest names, and a committed manifest replaces the
+ * last one, so once a run commits no earlier run's folder can be restored from again.
+ */
+describe('the folders of earlier runs, each holding its staged files and backups', () => {
+  const EARLIER = '.upfly/runs/r0';
+  const withEarlier = () => ({
+    ...tree(),
+    [`${EARLIER}/backup/gone.png`]: 'GONE-BYTES',
+    [`${EARLIER}/staged/gone.webp`]: 'WEBP',
+  });
+  const runFolders = (files: Map<string, string>) =>
+    [
+      ...new Set([...files.keys()].flatMap((path) => /^\.upfly\/runs\/[^/]+/.exec(path) ?? [])),
+    ].sort();
+
+  it('go once this run commits, and its own stays for undo', async () => {
+    const harness = memoryStore(withEarlier());
+    const manifest = await commit(plan(), harness.store, context());
+
+    expect(runFolders(harness.files)).toEqual([RUN_DIR]);
+    await revert(manifest, harness.store);
+    expect(harness.files.get('images/old.png')).toBe('OLD-BYTES');
+  });
+
+  it('stay when the commit stops part way, since that run is the one undo must follow', async () => {
+    const harness = memoryStore(withEarlier(), 3);
+    await expect(commit(plan(), harness.store, context())).rejects.toThrow(/injected failure/);
+
+    expect(runFolders(harness.files)).toEqual([EARLIER, RUN_DIR]);
   });
 });
 

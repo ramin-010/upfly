@@ -22,6 +22,7 @@ import {
   type Manifest,
   type MoveOperation,
   type Operation,
+  UPFLY_DIRECTORY,
   parseManifest,
   serialiseManifest,
 } from './manifest.js';
@@ -65,6 +66,10 @@ export interface FileStore {
   createExclusive(path: string, text: string): Promise<boolean>;
   copy(from: string, to: string): Promise<void>;
   remove(path: string): Promise<void>;
+  /** The names of a folder's entries; none for a folder that is not there. */
+  listDirectory(path: string): Promise<readonly string[]>;
+  /** Remove a folder and everything in it; nothing happens for one that is not there. */
+  removeDirectory(path: string): Promise<void>;
 }
 
 /**
@@ -250,7 +255,31 @@ async function commitUnderLock(
 
   const committed: Manifest = { ...pending, state: 'committed', completedAt: context.now() };
   await store.writeText(MANIFEST_PATH, serialiseManifest(committed));
+  await pruneEarlierRuns(store, context.runDir);
   return committed;
+}
+
+/** Where each run keeps its staged files and backups, one folder per run. */
+const RUNS_DIRECTORY = `${UPFLY_DIRECTORY}/runs`;
+
+/**
+ * Remove the folder of every run but this one. `undo` restores only the run the manifest
+ * names, and this run's committed manifest has just replaced the last one, so no earlier
+ * folder can be restored from again; kept, they would grow with every run. Only after the
+ * commit: a run that stops part way leaves every folder, its own included, for `undo`. A
+ * folder that cannot be removed now stays, and the next committed run tries again, since
+ * the run itself has already succeeded.
+ */
+async function pruneEarlierRuns(store: FileStore, runDir: string): Promise<void> {
+  for (const name of await store.listDirectory(RUNS_DIRECTORY)) {
+    const folder = `${RUNS_DIRECTORY}/${name}`;
+    if (folder === runDir) continue;
+    try {
+      await store.removeDirectory(folder);
+    } catch {
+      // Left for the next committed run; see above.
+    }
+  }
 }
 
 /**

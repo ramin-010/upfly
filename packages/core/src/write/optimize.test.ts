@@ -114,6 +114,18 @@ function harness(initial: Record<string, string>) {
     async remove(path) {
       tree.delete(path);
     },
+    async listDirectory(path) {
+      const prefix = `${path}/`;
+      const names = [...tree.keys()].flatMap((file) =>
+        file.startsWith(prefix) ? [file.slice(prefix.length).split('/')[0] ?? ''] : [],
+      );
+      return [...new Set(names)];
+    },
+    async removeDirectory(path) {
+      for (const file of [...tree.keys()]) {
+        if (file.startsWith(`${path}/`)) tree.delete(file);
+      }
+    },
   };
 
   const probe: ImageProbe = {

@@ -63,6 +63,18 @@ function memoryStore(files = new Map<string, string>()) {
     async remove(path) {
       files.delete(path);
     },
+    async listDirectory(path) {
+      const prefix = `${path}/`;
+      const names = [...files.keys()].flatMap((file) =>
+        file.startsWith(prefix) ? [file.slice(prefix.length).split('/')[0] ?? ''] : [],
+      );
+      return [...new Set(names)];
+    },
+    async removeDirectory(path) {
+      for (const file of [...files.keys()]) {
+        if (file.startsWith(`${path}/`)) files.delete(file);
+      }
+    },
   };
   return { files, store };
 }
