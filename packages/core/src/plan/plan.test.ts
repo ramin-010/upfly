@@ -408,17 +408,53 @@ describe('a reference whose shape keeps the format: a link preview, a link to an
     }
   });
 
-  it('reads the rule from the shape table, where the preview and link shapes alone carry it', () => {
+  it('reads the rule from the shape table, where previews, links, icons and manifests alone carry it', () => {
     const kept = SHAPES.filter((shape) => whyFormatKept(shape.id) !== null).map((s) => s.id);
     expect(kept).toEqual([
+      'html.link.href.icon',
       'html.meta.content.image',
       'html.a.href.image',
       'js.jsx.meta.content.image',
       'js.jsx.a.href.image',
+      'js.jsx.link.href.icon',
       'md.link',
       'md.reference-definition.link',
+      'json.webmanifest.icon',
+      'json.webmanifest.other',
     ]);
   });
+});
+
+/**
+ * Browsers and phones read an icon, a Windows tile and a web app manifest's images outside
+ * the page, and not all of them read a converted format: iOS shows a home-screen icon only as
+ * PNG. So no plan repoints such a reference, and an image nothing else names stays as it is.
+ */
+describe('an image a platform reads outside the page: an icon, a tile, a manifest entry', () => {
+  const assets = [asset('public/icons/touch.png')];
+
+  it.each([
+    ['index.html', 'html.link.href.icon', 'attr'],
+    ['src/Head.jsx', 'js.jsx.link.href.icon', 'attr'],
+    ['index.html', 'html.meta.content.image', 'attr'],
+    ['public/site.webmanifest', 'json.webmanifest.icon', 'json'],
+  ] as const)(
+    'is not converted when %s names it only as %s, under either policy',
+    (file, shape, kind) => {
+      const only = resolved(file, '/icons/touch.png', 'public/icons/touch.png', { shape, kind });
+      for (const publicPolicy of ['keep-original', 'replace'] as const) {
+        const plan = planOptimization(input({ assets, references: [only], publicPolicy }));
+        const reason = reasonsByPath(plan)['public/icons/touch.png'];
+
+        expect(plan.conversions, publicPolicy).toEqual([]);
+        expect(plan.rewrites, publicPolicy).toEqual([]);
+        expect(reason, publicPolicy).toContain(
+          `\`${file}\` names it as \`/icons/touch.png\`, and this run does not rewrite that reference`,
+        );
+        expect(reason, publicPolicy).toContain(`${whyFormatKept(shape)}`);
+      }
+    },
+  );
 });
 
 describe('a path that resolved through its decoded spelling', () => {

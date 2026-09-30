@@ -28,10 +28,10 @@ Upfly never deletes an image; deleting is the user's decision.
 
 1. `git status --porcelain` must print nothing. If it does, ask the user to commit or
    stash first; Upfly refuses to write over uncommitted changes.
-2. `npx upfly optimize` writes nothing and prints the plan. Show it to the user. The
-   plan can include images that must stay PNG or JPEG, such as the icon an
-   `apple-touch-icon` link names, which iOS reads only as PNG, or an image in an email:
-   offer to leave each out with `--exclude <path>`.
+2. `npx upfly optimize` writes nothing and prints the plan. Show it to the user. Icons,
+   a web app manifest's images and link previews keep their format on their own. An image
+   in an email does not, and Outlook shows no WebP: offer to leave a folder of email
+   templates out with `--exclude <path>`.
 3. Only with the user's yes: `npx upfly optimize --apply --commit`.
 4. Run the project's own build, then `npx upfly check`.
 5. If anything is wrong: `npx upfly undo` puts every file back.

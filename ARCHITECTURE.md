@@ -343,9 +343,13 @@ would be a skip nobody could see.
 
 One more thing decides it, and it is the reference's shape rather than how it resolved. A shape
 that declares `formatKept` in `SHAPES` is one `optimize` never repoints at a converted file: a
-link preview's image in `<meta content>` and an image in `<a href>`, in HTML and in JSX. The
+link preview's image or a Windows tile in `<meta content>`, an image in `<a href>`, an icon a
+`<link rel>` names, in HTML and in JSX, and an image a web app manifest names. Each is read by
+something other than the page, whether another site, a phone or a person following a link, and
+not all of them read a converted format: iOS shows a home-screen icon only as PNG. The
 reference is linked, so its asset is never reported dead; the planner declines to move it and says
-why, and under `replace` the original it names is kept. This is not one of `rewriteRefusal`'s
+why, and under `replace` the original it names is kept. An image no other reference names is not
+converted at all. This is not one of `rewriteRefusal`'s
 tests, which `relocate.ts` repeats, because a move keeps the format: `planRelocation` still
 repoints such a reference to the file's new place.
 
@@ -958,7 +962,9 @@ An attribute names a file in JSX exactly where it does in HTML, because both ada
 list, `URL_POSITIONS` in `url-attributes.ts`. A position is a tag, an attribute and, where those
 two do not decide, a claim read from the element: a `<link href>` names an image only when its
 `rel` says it is an icon or a preloaded image (`linkImageClaim`). Each row names the shape
-each adapter gives its reference, so a row added to the list is read in both, and
+each adapter gives its reference, and where one claim can assert two things that need different
+JSX shapes, as an icon, which keeps its format, and a preloaded image, which does not, the row
+maps each claimed shape to its JSX shape (`jsxClaimed`). So a row added to the list is read in both, and
 `url-attributes.test.ts` checks that the same markup yields the same paths at the same offsets in
 a page and in a component. JSX keeps one rule of its own beside the list: `src`, `srcSet` and
 `poster` are read on any element, because a component such as `<Image>` hands them on to an

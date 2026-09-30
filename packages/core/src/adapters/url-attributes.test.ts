@@ -92,26 +92,24 @@ describe('every position in the shared list', () => {
     // The planner reads the rule from the shape, so a position whose two shapes disagreed
     // would be rewritten in a page and left alone in a component, or the other way round.
     for (const position of URL_POSITIONS) {
-      const html = htmlShapeOf(position);
-      const kept = [html, position.jsx].map(
-        (shape) => shape !== null && whyFormatKept(shape) !== null,
+      const shapes = shapesOf(position);
+      const kept = [shapes?.html, shapes?.jsx].map(
+        (shape) => shape !== undefined && shape !== 'srcset' && whyFormatKept(shape) !== null,
       );
       expect(kept[0], nameOf(position)).toBe(kept[1]);
     }
   });
 });
 
-/** The HTML shape a position gives the example markup above, or `null` for a list. */
-function htmlShapeOf(position: UrlPosition): string | null {
-  if (position.html === 'srcset') return null;
-  if (typeof position.html !== 'function') return position.html;
+/** The shapes a position gives the example markup above, its claim settled. */
+function shapesOf(position: UrlPosition) {
   const attributes: Record<string, string> = {};
   for (const [, name = '', value = ''] of (CLAIMING[nameOf(position)] ?? '').matchAll(
     /([\w:-]+)="([^"]*)"/g,
   )) {
     attributes[name] = value;
   }
-  return position.html(element(attributes, '/img/a.png'));
+  return urlPosition(position.tag, position.attribute, element(attributes, '/img/a.png'));
 }
 
 /** An element holding these other attributes, its judged value spelled `value`. */
@@ -138,6 +136,19 @@ describe('urlPosition', () => {
     );
     expect(urlPosition('link', 'href', element({ rel: 'stylesheet' }))).toBeNull();
     expect(urlPosition('link', 'href', none)).toBeNull();
+  });
+
+  it('gives an icon its own shape in a component too, and a preloaded image the plain one', () => {
+    // An icon keeps its format and a preloaded image does not, so one JSX shape for both
+    // would rewrite a component's icon or leave its preload behind.
+    expect(urlPosition('link', 'href', element({ rel: 'apple-touch-icon' }))).toEqual({
+      html: 'html.link.href.icon',
+      jsx: 'js.jsx.link.href.icon',
+    });
+    expect(urlPosition('link', 'href', element({ rel: 'preload', as: 'image' }))).toEqual({
+      html: 'html.link.href.preload',
+      jsx: 'js.jsx.attribute',
+    });
   });
 
   it('knows nothing of an attribute no position lists', () => {
@@ -219,6 +230,12 @@ describe('a vector at a position that keeps the format', () => {
   // An SVG named only here would otherwise be counted unused while a page links to it.
   it.each([
     ['a link', '<a href="/icons/mask.svg">x</a>', 'html.a.href.image', 'js.jsx.a.href.image'],
+    [
+      'an icon',
+      '<link rel="mask-icon" href="/icons/mask.svg" />',
+      'html.link.href.icon',
+      'js.jsx.link.href.icon',
+    ],
     [
       'a link preview',
       '<meta property="og:image" content="/icons/mask.svg" />',

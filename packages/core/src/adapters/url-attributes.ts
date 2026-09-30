@@ -53,6 +53,11 @@ export interface UrlPosition {
   readonly html: ShapeId | 'srcset' | Claim;
   /** The shape of a reference the JavaScript adapter finds at this position in JSX. */
   readonly jsx: ShapeId;
+  /**
+   * The JSX shape for a claimed HTML shape, where it differs from `jsx`. An icon keeps its
+   * format and a preloaded image does not, so one `<link>` position needs two JSX shapes.
+   */
+  readonly jsxClaimed?: Readonly<Partial<Record<ShapeId, ShapeId>>>;
 }
 
 /**
@@ -76,7 +81,13 @@ export const URL_POSITIONS: readonly UrlPosition[] = [
   { tag: 'input', attribute: 'src', html: 'html.input.src', jsx: 'js.jsx.attribute' },
   { tag: 'object', attribute: 'data', html: 'html.object.data', jsx: 'js.jsx.attribute' },
   { tag: 'track', attribute: 'src', html: 'html.track.src', jsx: 'js.jsx.attribute' },
-  { tag: 'link', attribute: 'href', html: linkImageClaim, jsx: 'js.jsx.attribute' },
+  {
+    tag: 'link',
+    attribute: 'href',
+    html: linkImageClaim,
+    jsx: 'js.jsx.attribute',
+    jsxClaimed: { 'html.link.href.icon': 'js.jsx.link.href.icon' },
+  },
 
   // A link preview's image and a link to an image. Their shapes keep the file's format, so
   // `optimize` never repoints them; see `formatKept` in `shapes.ts`.
@@ -122,7 +133,8 @@ export function urlPosition(
   if (position === undefined) return null;
   if (typeof position.html !== 'function') return { html: position.html, jsx: position.jsx };
   const claimed = position.html(element);
-  return claimed === null ? null : { html: claimed, jsx: position.jsx };
+  if (claimed === null) return null;
+  return { html: claimed, jsx: position.jsxClaimed?.[claimed] ?? position.jsx };
 }
 
 /**

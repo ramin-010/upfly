@@ -89,9 +89,20 @@ export interface ShapeDeclaration {
   readonly formatKept?: string;
 }
 
-/** Said of a link-preview image, which other sites fetch as the page names it. */
+/**
+ * Said of a link-preview image and a Windows tile, each read outside the page, by the sites
+ * that fetch previews or by Windows.
+ */
 const PREVIEW_FORMAT_KEPT =
-  'a link preview names this image, and the sites that fetch previews may not read a converted format';
+  'a link preview or a Windows tile names this image, and what reads it outside the page may not read a converted format';
+
+/** Said of an icon, which a browser or a phone reads outside the page. */
+const ICON_FORMAT_KEPT =
+  'an icon link names this image, and browsers and phones read icons outside the page, some only as PNG, as iOS does for a home-screen icon';
+
+/** Said of an image a web app manifest names, which the browser reads to install the app. */
+const MANIFEST_FORMAT_KEPT =
+  'a web app manifest names this image, and the browsers and phones that install the app may not read a converted format';
 
 /** Said of a link to an image, which hands over the file itself. */
 const LINK_FORMAT_KEPT =
@@ -142,6 +153,12 @@ export const SHAPES = [
     id: 'html.link.href.icon',
     label: 'link@href asserted as an icon',
     emission: 'engine',
+    formatKept: ICON_FORMAT_KEPT,
+    why:
+      'An icon a browser tab, a bookmark or a phone shows, claimed by the icon branch of ' +
+      '`linkImageClaim` in `url-attributes.ts`: any `rel` token holding "icon", which covers ' +
+      '`icon`, `shortcut icon`, `apple-touch-icon` and `mask-icon`. It links its asset, so the ' +
+      'image is never reported dead, and `optimize` never repoints it.',
   },
   {
     id: 'html.link.href.preload',
@@ -162,9 +179,9 @@ export const SHAPES = [
       'stylesheet or a web app manifest. `linkImageClaim` refuses it and nothing is emitted: ' +
       'the file is real, but it is read as a source file, not indexed as an image.',
   },
-  // The two positions whose format is kept. Each keeps its shape through a percent-encoded
-  // or entity-encoded spelling and through a host's relabelling, because the shape is where
-  // the planner reads the rule.
+  // A link preview and a link to an image keep the file's format, as an icon does. Each such
+  // position keeps its shape through a percent-encoded or entity-encoded spelling and through
+  // a host's relabelling, because the shape is where the planner reads the rule.
   {
     id: 'html.meta.content.image',
     label: 'meta@content naming a link-preview image',
@@ -451,6 +468,17 @@ export const SHAPES = [
       'does an image path found inside another value, the claim asked of that path.',
   },
   {
+    id: 'js.jsx.link.href.icon',
+    label: 'a JSX link@href asserted as an icon',
+    emission: 'engine',
+    formatKept: ICON_FORMAT_KEPT,
+    why:
+      'The icon of `html.link.href.icon`, written by a layout component. The claim is the ' +
+      "same, but a preloaded image's link keeps the plain `js.jsx.attribute`, so the JSX " +
+      'shape follows the claim (`urlPosition`). A template value, and a path found inside ' +
+      'another value, keep this shape, as for the link-preview image.',
+  },
+  {
     id: 'js.jsx.attribute.other',
     label: 'a path in a JSX attribute read as text',
     emission: 'declined',
@@ -570,11 +598,17 @@ export const SHAPES = [
     id: 'json.webmanifest.icon',
     label: 'a webmanifest icon entry',
     emission: 'engine',
+    formatKept: MANIFEST_FORMAT_KEPT,
+    why:
+      'An image a web app manifest names, read by the browser to install the app, and whose ' +
+      "entry states its format in `type`. The JSON adapter's candidate; one that resolves " +
+      'links its asset, and `optimize` never repoints it.',
   },
   {
     id: 'json.webmanifest.other',
     label: 'a webmanifest screenshot or shortcut icon',
     emission: 'engine',
+    formatKept: MANIFEST_FORMAT_KEPT,
     adapterEmitsAs: ['json.webmanifest.icon'],
     needsToSee:
       'which top-level array the entry sits in: `screenshots` and `shortcuts` rather than `icons`',
@@ -908,6 +942,7 @@ const IMAGE_ASSERTING_SHAPES: ReadonlySet<string> = new Set<ShapeId>([
   'md.image',
   'md.image.reference-style',
   'js.jsx.meta.content.image',
+  'js.jsx.link.href.icon',
   'js.jsx.srcset',
 ]);
 

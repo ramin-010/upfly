@@ -432,8 +432,28 @@ describe('javascriptAdapter', () => {
 
     it('gives each shared position the JSX shape the list names for it', () => {
       expect(find('<object data="/img/chart.png" />')[0]?.shape).toBe('js.jsx.attribute');
-      expect(find('<link rel="icon" href="/favicon.png" />')[0]?.shape).toBe('js.jsx.attribute');
+      expect(find('<link rel="icon" href="/favicon.png" />')[0]?.shape).toBe(
+        'js.jsx.link.href.icon',
+      );
+      expect(find('<link rel="preload" as="image" href="/img/hero.jpg" />')[0]?.shape).toBe(
+        'js.jsx.attribute',
+      );
       expect(find('<svg><image href="/a/hero.png" /></svg>')[0]?.shape).toBe('js.jsx.svg');
+    });
+
+    it('keeps an icon link its shape whatever form its value takes', () => {
+      // The planner reads from the shape that an icon is never rewritten, so a template's
+      // shape or a guess's would let `optimize` convert the icon.
+      const shapes = (source: string) => find(source).map(({ rawPath, shape }) => [rawPath, shape]);
+      expect(shapes('<link rel="apple-touch-icon" href={`/icons/touch.png`} />')).toEqual([
+        ['/icons/touch.png', 'js.jsx.link.href.icon'],
+      ]);
+      expect(
+        shapes("<link rel=\"icon\" href={dark ? '/icons/dark.png' : '/icons/light.png'} />"),
+      ).toEqual([
+        ['/icons/dark.png', 'js.jsx.link.href.icon'],
+        ['/icons/light.png', 'js.jsx.link.href.icon'],
+      ]);
     });
 
     it.each([

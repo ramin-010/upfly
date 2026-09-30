@@ -25,10 +25,11 @@ reads the folder given after it, or the current folder, and prints plain text; a
    ones to review. If there are changes, ask the user to commit or stash them.
 2. Run `npx upfly optimize`. It writes nothing and prints the plan: which images convert,
    how much smaller they get, which files change, and why anything is left alone. Show the
-   user that plan, and the notes at its end. Look at where each converted image is used:
-   some readers show no WebP. iOS reads the icon an `apple-touch-icon` link names only as
-   PNG, and Outlook shows no WebP in an email. The plan does not leave such images out on
-   its own, so offer to leave each out with `--exclude <path>`.
+   user that plan, and the notes at its end. The plan leaves alone an image that a browser,
+   a phone or another site reads outside the page (an icon, a web app manifest's images, a
+   link preview's image), since some of them show no WebP. It cannot tell which images an
+   email uses, and Outlook shows no WebP: if the project holds email templates, offer to
+   leave their folder out with `--exclude <path>`.
 3. Only when the user says yes: `npx upfly optimize --apply --commit`. The run's files go
    into one commit, which `git revert` undoes.
 4. Check the result: run the project's own build if it has one, then `npx upfly check`,
@@ -95,7 +96,8 @@ often a `reason` to branch on:
   touch it. Tell the user; after a committed run, `git revert` is the other way back.
 - `CONFIG_EXISTS`: `init` found a config file. Edit that file instead.
 - `V2_EXTENSION_CONFIG`: `upfly.config.json` belongs to the Upfly VS Code extension (v2).
-  Leave it alone; this CLI reads `upfly.config.ts` instead.
+  Leave it alone; this CLI reads `upfly.config.ts` instead, or a JSON config that carries
+  the `$schema` line `npx upfly init` writes.
 
 ## The JSON
 

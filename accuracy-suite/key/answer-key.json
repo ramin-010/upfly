@@ -382,6 +382,11 @@
       "motivation": "The same link, written in a component. Its own row for the reason the meta tag has one: the JSX reader is a second reader of the shared list."
     },
     {
+      "id": "js.jsx.link.href.icon",
+      "label": "a JSX link@href asserted as an icon",
+      "motivation": "The icon link of `html.link.href.icon`, written by a layout component. Its own row because the JSX shape follows the claim: an icon keeps its format and a preloaded image does not, so the JSX reader can give a component's icon the preload's shape without the HTML row noticing."
+    },
+    {
       "id": "js.jsx.attribute.other",
       "label": "a path in a JSX attribute read as text",
       "motivation": "A path written where an attribute is display text or a component's own prop. The JSX reader declines it however it is spelled, and a declined value must never become a link, so the row reads backwards: an outcome other than discarded is the failure."
@@ -2252,9 +2257,9 @@
         {
           "raw": "/img/avatar.png",
           "occurrence": 1,
-          "shape": "astro.template.literal",
+          "shape": "html.link.href.icon",
           "expect": "resolved",
-          "why": "A link rel=icon in the template body.",
+          "why": "A link rel=icon in the template body. It keeps the icon's shape rather than the body's, as a link preview does, because the shape is where the planner reads that an icon is never rewritten.",
           "target": "apps/docs/public/img/avatar.png",
           "offset": 496,
           "line": 17,
@@ -7043,13 +7048,40 @@
         {
           "raw": "/favicon.png",
           "occurrence": 1,
-          "shape": "js.jsx.attribute",
+          "shape": "js.jsx.link.href.icon",
           "expect": "resolved",
           "why": "An icon link names a file wherever it is written, and the HTML adapter reads this element in index.html. A layout component that writes the page head in JSX holds the same link, so the icon is as used here as it is there.",
           "target": "apps/web/public/favicon.png",
           "offset": 164,
           "line": 3,
           "column": 33
+        }
+      ]
+    },
+    {
+      "path": "apps/web/src/components/HeadIcons.tsx",
+      "entries": [
+        {
+          "raw": "/icons/icon-192.png",
+          "occurrence": 1,
+          "shape": "js.jsx.link.href.icon",
+          "expect": "resolved",
+          "why": "An apple-touch-icon link in a component: the icon iOS shows on a home screen, and reads only as PNG.",
+          "target": "apps/web/public/icons/icon-192.png",
+          "offset": 196,
+          "line": 5,
+          "column": 58
+        },
+        {
+          "raw": "/favicon.png",
+          "occurrence": 1,
+          "shape": "js.jsx.link.href.icon",
+          "expect": "resolved",
+          "why": "A shortcut icon whose value is a string in braces, still one path at the icon's position.",
+          "target": "apps/web/public/favicon.png",
+          "offset": 259,
+          "line": 6,
+          "column": 40
         }
       ]
     },

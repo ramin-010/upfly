@@ -133,6 +133,17 @@ describe('htmlAdapter', () => {
     it('ignores a link with no rel at all', () => {
       expect(paths('<link href="mystery.png">')).toEqual([]);
     });
+
+    it('keeps the icon shape on an encoded path, where the spelling shape would lose it', () => {
+      // The planner reads from the shape that an icon is never rewritten, so a spelling
+      // shape here would let `optimize` convert the icon a phone's home screen shows.
+      const percent = find('<link rel="apple-touch-icon" href="/icons/my%20touch.png">');
+      const entity = find('<link rel="icon" href="./c&amp;s.png">');
+      expect([...percent, ...entity].map(({ shape, ceiling }) => [shape, ceiling])).toEqual([
+        ['html.link.href.icon', 'high'],
+        ['html.link.href.icon', 'high'],
+      ]);
+    });
   });
 
   describe('link previews and links to images', () => {
@@ -365,7 +376,7 @@ describe('htmlAdapter', () => {
         for (const source of [
           '<video poster="./c&amp;s.png"></video>',
           '<object data="./c&amp;s.svg"></object>',
-          '<link rel="icon" href="./c&amp;s.png">',
+          '<link rel="preload" as="image" href="./c&amp;s.png">',
           '<input type="image" src="./c&amp;s.png">',
         ]) {
           expect(find(source).map((reference) => reference.shape)).toEqual(['path.charref']);
