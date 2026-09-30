@@ -25,12 +25,12 @@ import {
   type LinkedReference,
   type UnindexedFiles,
   patternCannotMove,
+  rewriteRefusal,
   servingRootOf,
   unindexedFiles,
 } from './plan.js';
 import {
   type EditsInFile,
-  NOT_UTF8,
   type PlannedRewrite,
   type RootLinkPolicy,
   collectEdit,
@@ -665,7 +665,7 @@ function collectRepoint(
     return;
   }
 
-  const refusal = rewriteRefusalFor(reference, input);
+  const refusal = rewriteRefusal(reference, input);
   if (refusal !== null) {
     declined.push({
       path: file,
@@ -692,27 +692,6 @@ function collectRepoint(
   if (replacement === reference.rawPath) return;
 
   collectEdit(edits, file, reference, replacement);
-}
-
-/**
- * Why this reference may not be edited, or `null` when it may.
- *
- * The same tests and sentences as `rewriteRefusal` in `plan.ts`; each caller adds its own
- * ending. The conditions must not drift, so a change to either belongs in both.
- */
-function rewriteRefusalFor(reference: LinkedReference, input: RewriteContext): string | null {
-  if (reference.confidence === 'unsafe') return 'the reference has no static path to replace';
-  if (input.graph.texts.get(reference.file)?.holdsReplacementCharacter === true) return NOT_UTF8;
-  if (reference.resolvedVia === 'speculative-root') {
-    return 'the path is a guess that happened to resolve against the project root, which shows the asset is alive but not that this text may be edited';
-  }
-  if (reference.resolvedVia === 'project-root') {
-    const policy = input.rootLinkPolicy ?? 'when-no-serving-root';
-    if (policy === 'never' || (policy === 'when-no-serving-root' && input.servingRoots.declared)) {
-      return 'the path is root-relative and missed the configured serving root, so its existing at the project root may be coincidence rather than a link';
-    }
-  }
-  return null;
 }
 
 /**
@@ -932,7 +911,7 @@ function whyStaysAsWritten(
   input: RewriteContext,
 ): string | null {
   if (reference.resolution === 'resolved-pattern') return patternCannotMove(reference);
-  const refusal = rewriteRefusalFor(reference, input);
+  const refusal = rewriteRefusal(reference, input);
   if (refusal !== null) return refusal;
   const from = servingRootOf(repoint.from, input.servingRoots);
   const into = servingRootOf(repoint.to, input.servingRoots);

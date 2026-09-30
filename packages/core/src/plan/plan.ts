@@ -1149,10 +1149,12 @@ function usedByNoMove(node: AssetNode, input: PlanInput): string | null {
  *
  * An unsafe reference has no static path to replace. A guess that happened to resolve
  * against the project root shows the asset is alive and nothing more, because the code may
- * join that string to a different directory. `rewriteRefusalFor` in `relocate.ts` applies
- * the same tests, so a change here belongs there too.
+ * join that string to a different directory. A move asks the same, through `relocate.ts`.
  */
-function rewriteRefusal(reference: LinkedReference, input: RuleInput): string | null {
+export function rewriteRefusal(
+  reference: LinkedReference,
+  input: Pick<RuleInput, 'graph' | 'servingRoots' | 'rootLinkPolicy'>,
+): string | null {
   if (reference.confidence === 'unsafe') {
     return 'the reference has no static path to replace';
   }
