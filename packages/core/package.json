@@ -21,7 +21,7 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist/", "README.md", "LICENSE"],
+  "files": ["dist/", "!dist/.tsbuildinfo", "!dist/**/*.map", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc --build",
     "prepack": "node ../../tools/prepack.mjs LICENSE",

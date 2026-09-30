@@ -33,7 +33,16 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist/", "schema/", "skill/", "README.md", "AGENTS.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.map",
+    "schema/",
+    "skill/",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc --build",
     "prepack": "node ../../tools/prepack.mjs README.md LICENSE",

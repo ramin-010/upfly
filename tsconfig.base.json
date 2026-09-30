@@ -18,8 +18,6 @@
     "verbatimModuleSyntax": true,
 
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "composite": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true

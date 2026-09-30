@@ -2,7 +2,9 @@
 // @ts-check
 /**
  * Checks that a packed tarball holds everything its package's `files` list names, so a
- * package is never published without its README, its licence, its schemas or its build.
+ * package is never published without its README, its licence, its schemas or its build,
+ * and that it holds no build cache and no source map, which point at a `src/` it does not
+ * ship.
  *
  * Usage: `node tools/pack-check.mjs <package folder> <tarball>`.
  */
@@ -58,7 +60,7 @@ function field(header, start, length) {
 
 /**
  * The entries of a `files` list that a tarball does not hold. A folder counts as held when a
- * file inside it is.
+ * file inside it is, and an entry starting with `!` leaves files out rather than naming one.
  *
  * @param {readonly string[]} files the package's `files` list
  * @param {readonly string[]} paths the tarball's paths, each under `package/`
@@ -67,9 +69,23 @@ function field(header, start, length) {
 export function missingFromPack(files, paths) {
   const held = paths.map((file) => file.replace(/^package\//, ''));
   return files.filter((entry) => {
+    if (entry.startsWith('!')) return false;
     const bare = entry.replace(/\/+$/, '');
     return !held.some((file) => file === bare || file.startsWith(`${bare}/`));
   });
+}
+
+/**
+ * The files in a tarball that no user needs: the compiler's build cache (`.tsbuildinfo`) and
+ * source maps (`.map`), which point at a `src/` the package does not ship.
+ *
+ * @param {readonly string[]} paths the tarball's paths, each under `package/`
+ * @returns {string[]}
+ */
+export function unwantedInPack(paths) {
+  return paths
+    .map((file) => file.replace(/^package\//, ''))
+    .filter((file) => file.endsWith('.tsbuildinfo') || file.endsWith('.map'));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -81,10 +97,18 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(2);
   }
   const manifest = JSON.parse(readFileSync(path.join(folder, 'package.json'), 'utf8'));
-  const missing = missingFromPack(manifest.files ?? [], tarPaths(readFileSync(tarball)));
+  const paths = tarPaths(readFileSync(tarball));
+  const missing = missingFromPack(manifest.files ?? [], paths);
   if (missing.length > 0) {
     process.stderr.write(
       `pack-check: ${path.basename(tarball)} does not hold ${missing.join(', ')}, which the files list of ${manifest.name} names.\n`,
+    );
+    process.exit(1);
+  }
+  const unwanted = unwantedInPack(paths);
+  if (unwanted.length > 0) {
+    process.stderr.write(
+      `pack-check: ${path.basename(tarball)} holds ${unwanted.join(', ')}, a build cache or source maps no user of ${manifest.name} needs.\n`,
     );
     process.exit(1);
   }
