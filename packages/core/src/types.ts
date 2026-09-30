@@ -449,6 +449,13 @@ export interface DiscoveryResult {
    * are not here, since the walk never looks inside one; `listExcludedFiles` finds them.
    */
   readonly excludedFiles: readonly string[];
+  /**
+   * Every image an ignore rule excluded by name, POSIX-relative and sorted. A reference to
+   * one points into a file the run was told to leave out, which the report says apart from
+   * the references with no answer. Images inside an excluded directory are not here, since
+   * the walk never looks inside one; `excludedRoots` covers them.
+   */
+  readonly excludedImages: readonly string[];
   /** Everything skipped with a reason, sorted by `relative`. */
   readonly skipped: readonly SkippedEntry[];
   /**

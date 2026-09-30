@@ -110,6 +110,7 @@ interface WalkState {
   readonly unscannedFiles: UnscannedFile[];
   ignoredCount: number;
   readonly excludedFiles: string[];
+  readonly excludedImages: string[];
 }
 
 /**
@@ -133,6 +134,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     unscannedFiles: [],
     ignoredCount: 0,
     excludedFiles: [],
+    excludedImages: [],
   };
   const ignoreFileName = options.ignoreFile ?? IGNORE_FILE_NAME;
   const ignoreFilePath = join(root, ignoreFileName);
@@ -148,6 +150,7 @@ export async function discover(options: DiscoverOptions): Promise<DiscoveryResul
     directories: state.directories.sort(compareStrings),
     ignoredCount: state.ignoredCount,
     excludedFiles: state.excludedFiles.sort(compareStrings),
+    excludedImages: state.excludedImages.sort(compareStrings),
     skipped: state.skipped.sort(byRelativePath),
     excludedRoots: state.excludedRoots.sort(byRelativePath),
     unscannedFiles: state.unscannedFiles.sort(byRelativePath),
@@ -438,6 +441,8 @@ function classifyEntry(
     if (!isImageExtension(extension) || extension === SVG_EXTENSION) {
       input.state.excludedFiles.push(relative);
     }
+    // Kept so that a reference to it reads as pointing where the run was told not to go.
+    if (isImageExtension(extension)) input.state.excludedImages.push(relative);
     return;
   }
 

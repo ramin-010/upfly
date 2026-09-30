@@ -48,7 +48,7 @@ import type { Declined } from '../write/manifest.js';
  * type that the JSON does not show, such as a new `ProbeSkipCode`, is versioned with the
  * package instead.
  */
-export const REPORT_SCHEMA_VERSION = 6;
+export const REPORT_SCHEMA_VERSION = 7;
 
 /** The run's headline numbers. */
 export interface ReportSummary {
@@ -277,8 +277,17 @@ export interface ReferenceReport {
    * Every `dynamic`, `unresolved-alias` and `out-of-scope` reference, listed in full: the
    * references Upfly could not safely rewrite. `broken` references are findings instead,
    * each a `broken` finding or an entry in a `serving-root-unknown` finding's `suppressed`.
+   * A reference into what the project's own rules left out is in `leftOut` instead.
    */
   readonly unsafe: readonly ReferenceEntry[];
+  /**
+   * Every `out-of-scope` reference into what the project's own ignore rules left out, such
+   * as an image passed to `--exclude`: the run was told to leave its target alone, so it
+   * wants no answer. Each `reason` names the rule, or says an ignore rule left the image out.
+   * A directory pruned by name, such as `node_modules`, is not the project's rule, and a
+   * reference into one stays in `unsafe`.
+   */
+  readonly leftOut: readonly ReferenceEntry[];
   /**
    * Speculative path-shaped strings that did not resolve.
    *
@@ -631,7 +640,12 @@ export function buildReport(input: ReportInput): Report {
     staleConversions: vectors.staleConversions,
     declined: declinedReport(input),
     declinedReferences: declinedReferencesReport(input),
-    references: referenceReport(input.graph, input.aliases, input.includeDiscarded ?? false),
+    references: referenceReport(
+      input.graph,
+      input.aliases,
+      input.includeDiscarded ?? false,
+      leftOutBy(input.discovery),
+    ),
     coverage: coverageReport(input),
     skipped: collectSkips(input),
     diagnosticsFile: input.diagnosticsFile ?? null,
@@ -855,6 +869,7 @@ function referenceReport(
   graph: Graph,
   aliases: AliasMap,
   includeDiscarded: boolean,
+  leftOutReason: (reference: Reference) => string | null,
 ): ReferenceReport {
   const references = liveReferences(graph);
   const discardedReferences = references.filter(
@@ -911,24 +926,7 @@ function referenceReport(
     }
   }
 
-  const unsafe: ReferenceEntry[] = [];
-  for (const reference of references) {
-    if (
-      reference.resolution !== 'dynamic' &&
-      reference.resolution !== 'unresolved-alias' &&
-      reference.resolution !== 'out-of-scope'
-    ) {
-      continue;
-    }
-    unsafe.push({
-      file: relativePath(graph.root, reference.file),
-      rawPath: reference.rawPath,
-      resolution: reference.resolution,
-      reason: unlinkedReason(reference, aliases),
-      classification: classifyReference(reference),
-      refusalReason: refusalReasonId(reference),
-    });
-  }
+  const { unsafe, leftOut } = unlinkedEntries(references, graph.root, aliases, leftOutReason);
 
   const discarded = includeDiscarded
     ? discardedReferences.map((reference) => ({
@@ -949,9 +947,63 @@ function referenceReport(
     refusalAccuracyIsNotSelfAssessable: true,
     classificationBounds,
     unsafe,
+    leftOut,
     discardedCount: byResolution.discarded,
     discarded,
     declinedValues: declinedValueReport(graph, includeDiscarded),
+  };
+}
+
+/**
+ * The `dynamic`, `unresolved-alias` and `out-of-scope` references, as entries: those the
+ * project's own rules left out apart from the rest, each listed with its rule.
+ */
+function unlinkedEntries(
+  references: readonly Reference[],
+  root: string,
+  aliases: AliasMap,
+  leftOutReason: (reference: Reference) => string | null,
+): { unsafe: ReferenceEntry[]; leftOut: ReferenceEntry[] } {
+  const unsafe: ReferenceEntry[] = [];
+  const leftOut: ReferenceEntry[] = [];
+  for (const reference of references) {
+    if (
+      reference.resolution !== 'dynamic' &&
+      reference.resolution !== 'unresolved-alias' &&
+      reference.resolution !== 'out-of-scope'
+    ) {
+      continue;
+    }
+    const rule = leftOutReason(reference);
+    (rule === null ? unsafe : leftOut).push({
+      file: relativePath(root, reference.file),
+      rawPath: reference.rawPath,
+      resolution: reference.resolution,
+      reason: rule ?? unlinkedReason(reference, aliases),
+      classification: classifyReference(reference),
+      refusalReason: refusalReasonId(reference),
+    });
+  }
+  return { unsafe, leftOut };
+}
+
+/** Said of a reference to an image an ignore rule excluded by name. */
+const LEFT_OUT_IMAGE = 'an ignore rule leaves this image out';
+
+/**
+ * The rule of the project's own that left out an `out-of-scope` reference's target, or null
+ * when none did: a directory an ignore rule excluded, or an image one excluded by name. The
+ * directories pruned by name, such as `node_modules`, are not the project's rules.
+ */
+function leftOutBy(discovery: DiscoveryResult): (reference: Reference) => string | null {
+  const byRule = discovery.excludedRoots.filter(excludedByRule);
+  const images = new Set(discovery.excludedImages);
+  return (reference) => {
+    if (reference.resolution !== 'out-of-scope') return null;
+    const target = toPosix(reference.resolvedPath);
+    const root = byRule.find((excluded) => target.startsWith(`${toPosix(excluded.path)}/`));
+    if (root !== undefined) return root.reason;
+    return images.has(relativePath(discovery.root, reference.resolvedPath)) ? LEFT_OUT_IMAGE : null;
   };
 }
 

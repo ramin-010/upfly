@@ -263,6 +263,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -362,6 +363,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -439,6 +441,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -486,6 +489,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -645,6 +649,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -805,6 +810,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -904,6 +910,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1011,6 +1018,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: {
@@ -1114,6 +1122,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1269,6 +1278,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1353,6 +1363,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1441,6 +1452,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1585,6 +1597,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1713,6 +1726,7 @@ describe('buildReport', () => {
           skipped: [],
           excludedRoots: [],
           excludedFiles: [],
+          excludedImages: [],
           unscannedFiles: [],
         },
         sweep: { mentions: new Map(), skipped: [] },
@@ -1972,6 +1986,7 @@ describe('byResolvedVia: the field that says which links may be rewritten', () =
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -2076,6 +2091,7 @@ describe('the headline reads correctly at a count of one', () => {
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -2127,6 +2143,7 @@ describe('the serving roots the report discloses', () => {
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -2351,6 +2368,7 @@ describe('what a path that did not resolve names, in a project held in memory', 
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep,
@@ -2777,6 +2795,7 @@ describe('the assets a plan examined and did not convert', () => {
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -2962,6 +2981,7 @@ describe('the public-dir caveat counts what the report lists', () => {
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -3021,6 +3041,7 @@ describe('the framework caveat at a count of one', () => {
         skipped: [],
         excludedRoots: [],
         excludedFiles: [],
+        excludedImages: [],
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
@@ -3432,10 +3453,15 @@ describe('what the ignore rules left out', () => {
     reason: 'a dependency directory',
   };
 
-  function reportExcluding(excludedRoots: ExcludedRoot[], excludedFiles: string[]) {
+  function reportExcluding(
+    excludedRoots: ExcludedRoot[],
+    excludedFiles: string[],
+    references: Reference[] = [],
+    excludedImages: string[] = [],
+  ) {
     return buildReport({
       aliases: { rules: [], skipped: [] },
-      graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
+      graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
       audit: {
         findings: [],
         publicDirDeadCount: 0,
@@ -3453,12 +3479,75 @@ describe('what the ignore rules left out', () => {
         skipped: [],
         excludedRoots,
         excludedFiles,
+        excludedImages,
         unscannedFiles: [],
       },
       sweep: { mentions: new Map(), skipped: [] },
       servingRoots: { dirs: ['public'], declared: true },
     });
   }
+
+  /** A reference the resolver found on disk, outside the images the run indexed. */
+  function outOfScope(rawPath: string, target: string, exclusionReason: string): Reference {
+    return {
+      file: `${ROOT}/index.html`,
+      rawPath,
+      start: 0,
+      end: rawPath.length,
+      kind: 'attr',
+      shape: 'html.img.src',
+      ceiling: 'high',
+      asserted: true,
+      resolution: 'out-of-scope',
+      confidence: 'unsafe',
+      resolvedPath: `${ROOT}/${target}`,
+      exclusionReason,
+    };
+  }
+
+  const TOUCH = outOfScope(
+    '/icons/touch.png',
+    'public/icons/touch.png',
+    'resolved outside the indexed asset set',
+  );
+
+  it('lists a reference into what the rules left out on its own, never with those that had no answer', () => {
+    // The run was asked to leave these files alone, so nothing about the reference wants an
+    // answer, and among the unanswered ones it reads as a problem.
+    const report = reportExcluding(
+      [LEGACY, DEPENDENCIES],
+      [],
+      [
+        TOUCH,
+        outOfScope('/legacy/old.png', 'legacy/old.png', "the ignore rule 'legacy/'"),
+        outOfScope(
+          'pkg/logo.png',
+          'node_modules/pkg/logo.png',
+          "a dependency directory named 'node_modules'",
+        ),
+      ],
+      ['public/icons/touch.png'],
+    );
+
+    expect(report.references.leftOut.map((entry) => [entry.rawPath, entry.reason])).toEqual([
+      ['/legacy/old.png', "the ignore rule 'legacy/'"],
+      ['/icons/touch.png', 'an ignore rule leaves this image out'],
+    ]);
+    expect(report.references.unsafe.map((entry) => entry.rawPath)).toEqual(['pkg/logo.png']);
+
+    const rendered = renderReport(report);
+    expect(rendered).toContain('2 references point into files this run leaves out, as asked.\n');
+    expect(rendered).toContain('1 reference had no answer to find\n');
+    expect(rendered).not.toContain('/icons/touch.png');
+  });
+
+  it('says so in the singular after saying that nothing was skipped', () => {
+    const rendered = renderReport(reportExcluding([], [], [TOUCH], ['public/icons/touch.png']));
+
+    expect(rendered).toContain(
+      'Nothing was skipped.\n1 reference points into a file this run leaves out, as asked.\n',
+    );
+  });
 
   it("names the paths the project's rules left out, and not the directories pruned by name", () => {
     // Upfly never reads them, so an image only they use is reported as unreferenced.

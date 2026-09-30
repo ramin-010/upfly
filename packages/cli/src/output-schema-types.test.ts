@@ -368,6 +368,7 @@ describe('the report schema and the Report type agree', () => {
         refusalAccuracyIsNotSelfAssessable: 'required',
         classificationBounds: 'required',
         unsafe: 'required',
+        leftOut: 'required',
         discardedCount: 'required',
         discarded: 'required',
         declinedValues: 'required',

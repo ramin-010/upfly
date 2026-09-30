@@ -107,6 +107,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
@@ -138,7 +139,7 @@ exports[`buildReport > astro: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -490,6 +491,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [
       {
@@ -530,7 +532,7 @@ exports[`buildReport > eleventy, with no serving root found: matches the approve
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -821,6 +823,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [
       {
@@ -861,7 +864,7 @@ exports[`buildReport > eleventy: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -1040,6 +1043,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
@@ -1071,7 +1075,7 @@ exports[`buildReport > next-app: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -1234,6 +1238,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
@@ -1281,7 +1286,7 @@ exports[`buildReport > partial-pattern: matches the approved JSON shape, lossles
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -1400,6 +1405,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
@@ -1431,7 +1437,7 @@ exports[`buildReport > plain-html: matches the approved JSON shape 1`] = `
     "bytes": 0,
     "count": 0,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 
@@ -1581,6 +1587,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     },
     "discarded": null,
     "discardedCount": 0,
+    "leftOut": [],
     "refusalAccuracyIsNotSelfAssessable": true,
     "unsafe": [],
   },
@@ -1612,7 +1619,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
     "bytes": 307,
     "count": 1,
   },
-  "version": 6,
+  "version": 7,
 }
 `;
 

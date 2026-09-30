@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Upfly report, version 6",
+  "title": "Upfly report, version 7",
   "description": "What Upfly found in a project: its images, the references to them, and each finding with its reason. It is the report in the --json result of upfly audit and upfly optimize. Every path is relative to the project and written with /. Every list is sorted, so the same project gives the same report. version says which version of this schema a report follows.",
   "type": "object",
   "required": [
@@ -22,7 +22,7 @@
   "properties": {
     "version": {
       "description": "The version of the report's shape. It changes when a field changes meaning or goes away, never when one is added.",
-      "const": 6
+      "const": 7
     },
     "summary": { "$ref": "#/definitions/summary" },
     "findings": {
@@ -575,6 +575,7 @@
         "refusalAccuracyIsNotSelfAssessable",
         "classificationBounds",
         "unsafe",
+        "leftOut",
         "discardedCount",
         "discarded",
         "declinedValues"
@@ -663,7 +664,12 @@
           }
         },
         "unsafe": {
-          "description": "Every dynamic, unresolved-alias and out-of-scope reference: the ones Upfly never rewrites.",
+          "description": "Every dynamic, unresolved-alias and out-of-scope reference: the ones Upfly never rewrites. A reference into a file the project's own ignore rules left out is in leftOut instead.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/referenceEntry" }
+        },
+        "leftOut": {
+          "description": "Every out-of-scope reference into a file the project's own ignore rules left out, such as an image passed to --exclude. The run was told to leave the file alone, so there is nothing to answer. Each reason names the rule, or says an ignore rule left the image out.",
           "type": "array",
           "items": { "$ref": "#/definitions/referenceEntry" }
         },

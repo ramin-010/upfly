@@ -177,6 +177,28 @@ describe('discover', () => {
     ]);
   });
 
+  it('records each image an ignore rule excluded by name, apart from the files it reads', async () => {
+    const root = await makeTree({
+      '.upflyignore': ['public/icons/touch.png', '*.svg', 'drafts/'].join('\n'),
+      'public/icons/touch.png': '',
+      'public/logo.svg': '',
+      'public/og.jpg': '',
+      'public/hero.png': '',
+      'drafts/old.png': '',
+    });
+
+    const result = await discover({ root, adapters, extraIgnores: ['public/og.jpg'] });
+
+    // A reference to one of these points into a file the run was asked to leave out. An
+    // image inside an excluded directory is not listed: the walk never looks inside one.
+    expect(result.excludedImages).toEqual([
+      'public/icons/touch.png',
+      'public/logo.svg',
+      'public/og.jpg',
+    ]);
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['public/hero.png']);
+  });
+
   it('leaves excludedRoots empty when nothing was excluded', async () => {
     const root = await makeTree({ 'a.png': '', 'src/b.png': '' });
 
@@ -472,6 +494,7 @@ describe('discover', () => {
       directories: ['empty'],
       ignoredCount: 0,
       excludedFiles: [],
+      excludedImages: [],
       skipped: [],
       excludedRoots: [],
       unscannedFiles: [],

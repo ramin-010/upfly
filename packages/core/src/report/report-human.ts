@@ -180,6 +180,16 @@ const STAGE_LABEL: Record<SkipStage, string> = {
 };
 
 /**
+ * The sentence for the references into what the project's rules left out, apart from the
+ * references with no answer: the run was told to leave their targets alone.
+ */
+function leftOutLine(references: number): string[] {
+  if (references === 0) return [];
+  const into = references === 1 ? 'points into a file' : 'point into files';
+  return [`${count(references, 'reference')} ${into} this run leaves out, as asked.`];
+}
+
+/**
  * What the engine declined to do, printed before the findings.
  *
  * The unsafe references are here too. They are not failures, but they are paths the
@@ -187,6 +197,7 @@ const STAGE_LABEL: Record<SkipStage, string> = {
  */
 function skippedSection(report: Report): string[] {
   const { skipped, references } = report;
+  const leftOut = leftOutLine(references.leftOut.length);
   // The discarded and declined counts are part of this guard: a repository with no skips and
   // no unsafe references often still has a `package.json` full of path-shaped strings, and
   // the count lines for those are at the end of this section.
@@ -201,6 +212,7 @@ function skippedSection(report: Report): string[] {
       excluded
         ? 'Nothing was skipped apart from the paths your ignore rules left out, listed under Worth knowing.'
         : 'Nothing was skipped.',
+      ...leftOut,
       '',
     ];
   }
@@ -235,6 +247,8 @@ function skippedSection(report: Report): string[] {
       );
     }
   }
+
+  if (leftOut.length > 0) lines.push(...leftOut, '');
 
   if (references.unsafe.length > 0) {
     // Listed only when the path shows an image filename; counted otherwise. The resolver

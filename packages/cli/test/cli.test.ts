@@ -151,7 +151,7 @@ describe('upfly audit', () => {
 
     expect(result.status).toBe(0);
     expect(lines.at(-1)).toMatchObject({ type: 'result', command: 'audit', exitCode: 0 });
-    expect(lines.at(-1).report.version).toBe(6);
+    expect(lines.at(-1).report.version).toBe(7);
     expect(lines.slice(0, -1).map((line) => [line.type, line.stage])).toEqual([
       ['progress', 'discovered'],
       ['progress', 'scanned'],

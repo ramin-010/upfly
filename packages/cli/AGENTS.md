@@ -70,7 +70,9 @@ Upfly never deletes an image. The decision, and the deletion, are the user's.
 - `unsafe`: a reference Upfly never rewrites and always reports. The report lists each one
   under `references.unsafe` with its reason: `dynamic` paths, aliases no config Upfly
   reads maps (`unresolved-alias`), and paths into files Upfly leaves alone, such as those
-  in `node_modules` (`out-of-scope`).
+  in `node_modules` (`out-of-scope`). A path into a file the run was told to leave out,
+  with `--exclude` or the config's `exclude`, is listed under `references.leftOut`
+  instead: nothing is wrong with it.
 
 ## Exit codes
 

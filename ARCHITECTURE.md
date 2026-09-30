@@ -1433,7 +1433,8 @@ pattern that matched. It keeps the raw pattern list to do that, because `ignore`
 a path matches but not *which* pattern did, and "excluded by some rule you wrote" is a much worse
 report line than "excluded by `legacy/`" when someone is working out where their asset went. The
 resolver prefix-tests references against these to produce `out-of-scope` instead of a false
-`broken`.
+`broken`. Each image a rule excluded by name lands in `excludedImages`, so the report can tell a
+reference into what the project asked to leave out from one with no answer.
 
 It records what it **did not read**, too. Every file no adapter claimed lands in `unscannedFiles`
 with its path, which is what the audit sweeps to decide `dead` against `possibly-dead`. Ignored
@@ -2210,7 +2211,9 @@ Two calls about references are worth knowing:
 
 - The unsafe bucket (`dynamic`, `unresolved-alias`, `out-of-scope`) is **listed in full**. It is
   the "N references I couldn't safely rewrite" number, and it is the honesty that earns trust for
-  everything else on the page.
+  everything else on the page. An `out-of-scope` reference into what the project's own ignore
+  rules left out is listed apart, in `references.leftOut`, with a sentence of its own: the run was
+  told to leave that file alone, and among the unanswered references it reads as a problem.
 - `discarded` is **counted, not listed**. A real repository produces thousands of them from lockfiles
   and i18n bundles, and listing them buries everything else. The count is still there, because it is
   what tells a user the JSON adapter has started eating something real.
