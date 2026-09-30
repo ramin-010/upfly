@@ -42,18 +42,18 @@ Upfly audit
 [...]
 Examined and not converted
 
-  10 images, 682.2 KB, each with its reason (use --include-declined to list them)
+  11 images, 683.3 KB, each with its reason (use --include-declined to list them)
 [...]
 Plan
 
-  Convert to WebP: 19 images, 5.1 MB now and 1.3 MB after
+  Convert to WebP: 18 images, 5.1 MB now and 1.3 MB after
 [...]
     src/blog/six-million.jpg → src/blog/six-million.webp  2.2 MB → 489.3 KB
 [...]
-  Update references: 19 references in 14 files
+  Update references: 18 references in 13 files
 [...]
-Written as run 20260929T074344-5d68: 19 files created, 14 changed, 0 removed. `upfly undo` puts them all back.
-Committed as 01b31064d520, one commit holding exactly those files. `git revert 01b31064d520` undoes it.
+Written as run 20260930T135421-dfa5: 18 files created, 13 changed, 0 removed. `upfly undo` puts them all back.
+Committed as 2a7f0b165b2a, one commit holding exactly those files. `git revert 2a7f0b165b2a` undoes it.
 ```
 
 Saying what it could not follow is what makes the 19 references it did rewrite trustworthy.
