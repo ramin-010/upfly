@@ -204,6 +204,9 @@ describe('the script itself', () => {
     ['output-reference', BENCH, "console.log('unscanned (R141)');\n"],
     ['output-em-dash', SHIPPED, `export const label = 'one ${EM_DASH} two';\n`],
     ['output-emoji', BENCH, "console.log('\u{1f534} slow');\n"],
+    ['output-em-dash', 'packages/demo/AGENTS.md', `Run it ${EM_DASH} then stop.\n`],
+    ['output-reference', 'packages/demo/skill/demo/SKILL.md', 'As ruled in R80.\n'],
+    ['output-emoji', 'packages/demo/schema/demo.json', '{ "description": "\u{1f534} careful" }\n'],
   ])(
     'fails on one planted %s in %s, naming the rule, the file and the line',
     (rule, file, text) => {
@@ -227,6 +230,18 @@ describe('the script itself', () => {
     expect(status).toBe(1);
     expect(output).toContain('Comment check: 1 file with findings.');
     expect(output).toContain('vitest.config.ts: em-dash, 1.');
+  });
+
+  it("reads a package's own documents, but not a README it copies in when packed", () => {
+    const root = tree({
+      'packages/demo/AGENTS.md': 'Run **this** first, see https://example.com/R2/.\n',
+      'packages/demo/README.md': `Copied from the root ${EM_DASH} not this package's.\n`,
+      'packages/demo/schema/demo.json': '{ "pattern": "^[A-Z]:" }\n',
+    });
+    expect(run(root)).toEqual({
+      status: 0,
+      output: 'Comment check: 2 files checked, no findings.\n',
+    });
   });
 
   it('passes a clean tree, and the inputs that must not trip it', () => {

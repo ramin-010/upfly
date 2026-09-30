@@ -2,6 +2,8 @@
 // @ts-check
 /**
  * Holds source files to the comment standard: one finding in any scanned file fails the check.
+ * The documents a package ships for people and agents to read, its `AGENTS.md`, its skills and
+ * its JSON schemas, are held to the rules for printed text, line by line.
  *
  * Comments and strings come from the TypeScript parser, so a `//` inside a string or a
  * regular expression is never read as a comment.
@@ -32,10 +34,11 @@ export const RULES = /** @type {const} */ ({
   'long-comment':
     'lines past the tenth in one comment block, not counting @param, @returns, @throws or @example sections. A design note belongs in ARCHITECTURE.md with a one-line pointer',
   'output-reference':
-    'an internal reference in a string a package ships or a bench tool prints. People read these; write the fact itself',
+    'an internal reference in a string or document a package ships, or a string a bench tool prints. People read these; write the fact itself',
   'output-em-dash':
-    'an em dash in a string a package ships or a bench tool prints. Use a comma, a colon, or two sentences',
-  'output-emoji': 'an emoji in a string a package ships or a bench tool prints',
+    'an em dash in a string or document a package ships, or a string a bench tool prints. Use a comma, a colon, or two sentences',
+  'output-emoji':
+    'an emoji in a string or document a package ships, or a string a bench tool prints',
 });
 
 /** @type {readonly Rule[]} */
@@ -48,6 +51,9 @@ const PACKAGE_DIRS = ['src', 'test'];
 const OTHER_DIRS = ['bench/src', 'accuracy-suite/tools', 'tools'];
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|js|mjs|cjs)$/;
 const SKIPPED_DIRS = new Set(['node_modules', 'dist', '__snapshots__']);
+// A package's own documents, relative to its folder. A README a package copies in from the
+// repository's root when it is packed is not its own, so it is not here.
+const DOCUMENT = /^packages\/[^/]+\/(?:AGENTS\.md|skill\/.+\.md|schema\/.+\.json)$/;
 
 // URLs are removed before looking for references, so nothing inside a link counts as one.
 export const URL_PATTERN = /\bhttps?:\/\/[^\s)>\]'"`]+/g;
@@ -95,6 +101,7 @@ const API_TAG =
  * @returns {Finding[]} in source order; `count` says how many times the rule matched there
  */
 export function analyseSource(text, file) {
+  if (DOCUMENT.test(file)) return analyseDocument(text);
   const sourceFile = ts.createSourceFile(
     file,
     text,
@@ -157,6 +164,29 @@ export function analyseSource(text, file) {
 }
 
 /**
+ * Finds the printed-text findings in a document a package ships, line by line.
+ *
+ * @param {string} text the document's contents
+ * @returns {Finding[]} in line order
+ */
+function analyseDocument(text) {
+  /** @type {Finding[]} */
+  const findings = [];
+  text.split('\n').forEach((content, index) => {
+    /** @type {[Rule, number][]} */
+    const counts = [
+      ['output-reference', matches(content.replace(URL_PATTERN, ' '), INTERNAL_REFERENCE)],
+      ['output-em-dash', matches(content, EM_DASH)],
+      ['output-emoji', matches(content, EMOJI)],
+    ];
+    for (const [rule, count] of counts) {
+      if (count > 0) findings.push({ rule, line: index + 1, count, text: content });
+    }
+  });
+  return findings;
+}
+
+/**
  * Totals findings per rule, leaving out rules with none.
  *
  * @param {readonly Finding[]} findings
@@ -192,7 +222,32 @@ export function filesInScope(root) {
           !relative.split('/').some((segment) => SKIPPED_DIRS.has(segment)),
       );
   });
-  return [...configs, ...files].sort(byCodeUnit);
+  return [...configs, ...files, ...documentsIn(root)].sort(byCodeUnit);
+}
+
+/**
+ * The documents each package ships for people and agents to read.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+function documentsIn(root) {
+  const packages = path.join(root, 'packages');
+  if (!existsSync(packages)) return [];
+  return readdirSync(packages, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const base = `packages/${entry.name}`;
+      const found = [`${base}/AGENTS.md`].filter((file) => existsSync(path.join(root, file)));
+      for (const dir of ['skill', 'schema']) {
+        const absolute = path.join(root, base, dir);
+        if (!existsSync(absolute)) continue;
+        for (const file of readdirSync(absolute, { recursive: true, encoding: 'utf8' })) {
+          found.push(`${base}/${dir}/${file.split(path.sep).join('/')}`);
+        }
+      }
+      return found.filter((relative) => DOCUMENT.test(relative));
+    });
 }
 
 /**

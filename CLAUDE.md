@@ -57,7 +57,8 @@ it is the only channel between chats and a chat can end at any moment.
     carries an internal reference. The standard, with examples: `../notes/15-comment-standard.md`.
     `pnpm comments:check` runs inside `pnpm check` and fails on any finding in any scanned file:
     each package's `src` and `test`, `bench/src`, `accuracy-suite/tools`, `tools`, and the source
-    files at the repository's root. There is no baseline and no exemption.
+    files at the repository's root. Each package's `AGENTS.md`, `skill/` and `schema/` are held
+    to the rules for output text. There is no baseline and no exemption.
 
 ## Two things that decide whether this product is trusted
 
