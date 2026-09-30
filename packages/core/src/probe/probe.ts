@@ -283,6 +283,12 @@ export interface ProbeOptions {
    * append to a list or write a line and do nothing more.
    */
   readonly onDiagnostic?: (diagnostic: ProbeDiagnostic) => void;
+  /**
+   * Called as each image's measurement ends, with how many have ended and how many there
+   * are, so a caller can show progress. The counts rise by one each time, whichever image
+   * finished; a sink that throws makes `probeAssets` reject.
+   */
+  readonly onMeasured?: (done: number, total: number) => void;
 }
 
 const DEFAULT_CONCURRENCY = 4;
@@ -358,13 +364,20 @@ export async function probeAssets(
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
   const withinCap = assetsWithinCap(assets, options);
   const results: AssetProbe[] = [];
+  let done = 0;
+  const measure = async (asset: Asset): Promise<AssetProbe> => {
+    const probe = await probeOne(asset, options, withinCap);
+    done += 1;
+    options.onMeasured?.(done, assets.length);
+    return probe;
+  };
 
   for (let index = 0; index < assets.length; index += concurrency) {
     const batch = assets.slice(index, index + concurrency);
     // `Promise.all` preserves input order, so the output order follows the asset list,
     // not which encode finished first. The cap changes which assets are encoded, never
     // the order they come back in.
-    results.push(...(await Promise.all(batch.map((asset) => probeOne(asset, options, withinCap)))));
+    results.push(...(await Promise.all(batch.map(measure))));
   }
 
   return results;

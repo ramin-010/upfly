@@ -759,6 +759,7 @@ describe('the command schemas and the types each command prints agree', () => {
         discovered: true,
         scanned: true,
         resolved: true,
+        measuring: true,
         measured: true,
         audited: true,
         planned: true,
@@ -773,6 +774,11 @@ describe('the command schemas and the types each command prints agree', () => {
       }),
       scanned: fields<StageOf<'scanned'>>({ stage: 'required', references: 'required' }),
       resolved: fields<StageOf<'resolved'>>({ stage: 'required', linked: 'required' }),
+      measuring: fields<StageOf<'measuring'>>({
+        stage: 'required',
+        done: 'required',
+        total: 'required',
+      }),
       measured: fields<StageOf<'measured'>>({ stage: 'required', images: 'required' }),
       audited: fields<StageOf<'audited'>>({ stage: 'required', findings: 'required' }),
       planned: fields<StageOf<'planned'>>({

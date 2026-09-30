@@ -100,10 +100,13 @@ describe('upfly optimize without --apply', () => {
     const lines = jsonLines(run.stdout);
 
     expect(run.status).toBe(0);
-    expect(lines.slice(0, -1).map((line) => line.stage)).toEqual([
+    // One `measuring` line per image here, so repeats are collapsed to the order alone.
+    const stages = lines.slice(0, -1).map((line) => line.stage);
+    expect(stages.filter((stage, index) => stage !== stages[index - 1])).toEqual([
       'discovered',
       'scanned',
       'resolved',
+      'measuring',
       'measured',
       'audited',
       'planned',

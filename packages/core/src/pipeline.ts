@@ -63,7 +63,10 @@ export interface PipelineInput {
    * only to a fresh literal. `null` rather than an empty object, because `audit` reads the
    * presence of probes as "was probed".
    */
-  readonly probeOptions: Omit<ProbeOptions, 'probe' | 'alwaysMeasure' | 'onDiagnostic'> | null;
+  readonly probeOptions: Omit<
+    ProbeOptions,
+    'probe' | 'alwaysMeasure' | 'onDiagnostic' | 'onMeasured'
+  > | null;
   /**
    * Which images to measure, by POSIX-relative path; every image when absent. The rest are
    * still walked, read for references and audited, only never measured.
@@ -71,7 +74,10 @@ export interface PipelineInput {
   readonly measureOnly?: (relative: string) => boolean;
   /** More paths to leave out, in `.gitignore` syntax, on top of the project's `.upflyignore`. */
   readonly extraIgnores?: readonly string[];
-  /** Called as each stage finishes, with what it counted, so a caller can show progress. */
+  /**
+   * Called as each stage finishes, with what it counted, and while images are measured, with
+   * how many are done, so a caller can show progress.
+   */
   readonly onProgress?: (event: PipelineProgress) => void;
 }
 
@@ -80,8 +86,25 @@ export type PipelineProgress =
   | { readonly stage: 'discovered'; readonly images: number; readonly files: number }
   | { readonly stage: 'scanned'; readonly references: number }
   | { readonly stage: 'resolved'; readonly linked: number }
+  /**
+   * While images are measured: how many are done, of how many. Reported for every
+   * twentieth of the images and for the last, so a big project gives twenty lines.
+   */
+  | { readonly stage: 'measuring'; readonly done: number; readonly total: number }
   | { readonly stage: 'measured'; readonly images: number }
   | { readonly stage: 'audited'; readonly findings: number };
+
+/**
+ * Whether to report the measuring count at `done` of `total`: when `done` enters a new
+ * twentieth of `total`, and always at the last. A project of twenty images or fewer reports
+ * each one. The same counts every run, whichever image finishes first.
+ *
+ * @param done how many images are measured, from 1
+ * @param total how many there are
+ */
+export function reportsMeasuring(done: number, total: number): boolean {
+  return done === total || Math.floor((done * 20) / total) > Math.floor(((done - 1) * 20) / total);
+}
 
 /**
  * The serving roots a run uses: the folders the project declared, or, when it declared none,
@@ -223,6 +246,9 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
             probe: await createSharpProbe(),
             ...input.probeOptions,
             onDiagnostic: (entry) => diagnostics.push(entry),
+            onMeasured: (done, total) => {
+              if (reportsMeasuring(done, total)) progress({ stage: 'measuring', done, total });
+            },
           },
         );
   if (probes !== undefined) progress({ stage: 'measured', images: probes.length });

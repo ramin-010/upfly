@@ -59,7 +59,16 @@ describe('optimizeProject', () => {
       now: () => '2026-09-26T00:00:00.000Z',
     });
 
-    expect(stages).toEqual(['discovered', 'scanned', 'resolved', 'measured', 'audited', 'planned']);
+    // One `measuring` event per image here, so repeats are collapsed to the order alone.
+    expect(stages.filter((stage, index) => stage !== stages[index - 1])).toEqual([
+      'discovered',
+      'scanned',
+      'resolved',
+      'measuring',
+      'measured',
+      'audited',
+      'planned',
+    ]);
     expect(pipeline.servingRoots).toEqual({ dirs: [''], declared: true });
     expect(pipeline.discovery.sourceFiles.map((file) => file.relative)).not.toContain('about.html');
     expect(optimize.runId).toBe('run-fixed');

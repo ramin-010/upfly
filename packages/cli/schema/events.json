@@ -14,7 +14,7 @@
     },
     "count": { "type": "integer", "minimum": 0 },
     "progress": {
-      "description": "One stage of the run finished, with what it counted.",
+      "description": "One stage of the run finished, with what it counted, or, while the images are measured, how many are done.",
       "oneOf": [
         {
           "type": "object",
@@ -48,6 +48,18 @@
             "command": { "$ref": "#/definitions/command" },
             "stage": { "const": "resolved" },
             "linked": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "done", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "measuring" },
+            "done": { "$ref": "#/definitions/count" },
+            "total": { "$ref": "#/definitions/count" }
           }
         },
         {

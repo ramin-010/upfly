@@ -59,6 +59,13 @@ describe('progressReporter', () => {
     expect(err).toEqual(['\r\u001b[2Kscanned: 12 references', '\r\u001b[2K']);
   });
 
+  it('counts the images while they are measured, in words', () => {
+    const { io, err } = capture(true);
+    const progress = progressReporter(io, 'optimize', false);
+    progress.update({ stage: 'measuring', done: 120, total: 2910 });
+    expect(err).toEqual(['\r\u001b[2Kmeasuring images: 120 of 2910']);
+  });
+
   it('says nothing when stderr is a file or a pipe', () => {
     const { io, out, err } = capture(false);
     const progress = progressReporter(io, 'audit', false);

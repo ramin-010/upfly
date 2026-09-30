@@ -121,6 +121,7 @@ export function progressReporter(
 }
 
 function describeProgress(event: ProgressEvent): string {
+  if (event.stage === 'measuring') return `measuring images: ${event.done} of ${event.total}`;
   const counts = Object.entries(event)
     .filter(([key]) => key !== 'stage')
     .map(([key, value]) => `${value} ${key}`)

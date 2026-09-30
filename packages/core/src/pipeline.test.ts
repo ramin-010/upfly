@@ -4,7 +4,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { toPosix } from './paths.js';
-import { type PipelineProgress, runPipeline, servingRootsFor } from './pipeline.js';
+import {
+  type PipelineProgress,
+  reportsMeasuring,
+  runPipeline,
+  servingRootsFor,
+} from './pipeline.js';
 import { buildReport } from './report/report.js';
 
 const roots: string[] = [];
@@ -274,6 +279,36 @@ describe('runPipeline', () => {
       { stage: 'resolved', linked: 2 },
       { stage: 'audited', findings: 0 },
     ]);
+  });
+
+  it('counts the images as it measures them, before saying they are measured', async () => {
+    const events: PipelineProgress[] = [];
+    await runPipeline({
+      root: site(),
+      servingRoots: servingRootsFor(),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: { formats: ['webp'] },
+      onProgress: (event) => events.push(event),
+    });
+
+    const measuring = events.filter(({ stage }) => stage === 'measuring' || stage === 'measured');
+    expect(measuring).toEqual([
+      { stage: 'measuring', done: 1, total: 2 },
+      { stage: 'measuring', done: 2, total: 2 },
+      { stage: 'measured', images: 2 },
+    ]);
+  });
+
+  it('reports the count at most once per twentieth of the images, and always the last', () => {
+    const reported = (total: number) =>
+      Array.from({ length: total }, (_, index) => index + 1).filter((done) =>
+        reportsMeasuring(done, total),
+      );
+
+    expect(reported(7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(reported(1000)).toEqual(Array.from({ length: 20 }, (_, index) => (index + 1) * 50));
+    expect(reported(2910).at(-1)).toBe(2910);
+    expect(reported(2910)).toHaveLength(20);
   });
 
   it('decides the serving roots itself unless they are declared', async () => {
