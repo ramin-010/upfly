@@ -13,6 +13,7 @@
 import { dirname, isAbsolute, join } from 'node:path';
 import { splitPathSuffix } from '../adapters/reference-path.js';
 import { whyFormatKept } from '../adapters/shapes.js';
+import { whySavingTooSmall } from '../audit/audit.js';
 import { resolutionHealth } from '../audit/resolution-health.js';
 import type { AssetNode, Graph } from '../graph/graph.js';
 import { compareStrings, extensionOf, relativePath, toPosix } from '../paths.js';
@@ -807,6 +808,11 @@ function convertDecision(
       reason: `converting it would delete the original, and ${unread} could not be read to rule out a mention of it`,
     };
   }
+
+  // Last, so that this reason is given only for an image nothing else keeps, and the plan
+  // converts exactly the savings the report counts.
+  const tooSmall = whySavingTooSmall(node.asset.bytes, saving.savedBytes);
+  if (tooSmall !== null) return { convert: false, reason: tooSmall };
 
   return {
     convert: true,

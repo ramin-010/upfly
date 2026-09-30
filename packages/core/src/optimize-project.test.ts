@@ -258,7 +258,8 @@ describe('only some images', () => {
     });
 
     const named = ['images/hero.jpg', 'images/hero@2x.jpg', 'images/logo.png', 'images/team.jpg'];
-    expect(byPattern.optimize.plan.conversions.map((c) => c.asset)).toEqual(named);
+    // team.jpg is measured, and its saving is too small to count, so it stays as it is.
+    expect(byPattern.optimize.plan.conversions.map((c) => c.asset)).toEqual(named.slice(0, 3));
     expect(byPattern.pipeline.probes?.map((probe) => probe.relative).sort()).toEqual(named);
     expect(byPattern.only).toEqual({ images: named, unmatched: ['images/nope.png'] });
     // A path is a path: `hero.jpg` names the file at the project root, which does not exist.
@@ -279,13 +280,13 @@ describe('only some images', () => {
       format: 'webp',
       publicPolicy: 'replace',
       apply: false,
-      only: { patterns: ['images/logo.png', 'images/team.jpg'] },
+      only: { patterns: ['images/logo.png', 'images/inline.png'] },
     });
 
     const conversions = optimize.plan.conversions.map((c) => [c.asset, c.replacesOriginal]);
     expect(conversions).toEqual([
+      ['images/inline.png', true],
       ['images/logo.png', false],
-      ['images/team.jpg', true],
     ]);
   });
 
@@ -488,6 +489,36 @@ describe('an image a link preview or a download link names', () => {
     expect(optimize.plan.declined.filter((entry) => entry.path === 'ShareImage.jsx')).toEqual([
       { path: 'ShareImage.jsx', line: null, reason: expect.stringContaining('link preview') },
     ]);
+  });
+});
+
+describe('the saving a run counts', () => {
+  const VITE_REACT = join(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/vite-react');
+
+  it('is one figure: the plan converts exactly the savings the report counts', async () => {
+    // vite-react holds images whose conversion saves under 1 KB, which the report does not
+    // count as a saving. Converted all the same, they made the plan's total larger than
+    // the report's.
+    const root = await mkdtemp(join(tmpdir(), 'upfly-optimize-project-'));
+    roots.push(root);
+    await cp(VITE_REACT, root, {
+      recursive: true,
+      filter: (source) => !source.includes('node_modules'),
+    });
+
+    const { pipeline, optimize } = await optimizeProject({
+      root,
+      format: 'webp',
+      publicPolicy: 'keep-original',
+      apply: false,
+    });
+
+    const reported = pipeline.audit.findings.flatMap((finding) =>
+      finding.kind === 'format-opportunity' ? [finding.savedBytes] : [],
+    );
+    const planned = optimize.plan.conversions.map((conversion) => conversion.savedBytes);
+    expect(planned.length).toBeGreaterThan(0);
+    expect(planned.reduce((a, b) => a + b, 0)).toBe(reported.reduce((a, b) => a + b, 0));
   });
 });
 

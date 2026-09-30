@@ -1841,6 +1841,13 @@ stay, which is the pair of files the policy exists to avoid. The conversion half
 no saving, and the report's savings count only what a visitor downloads less of. Only the first and
 second rows differ there, since `keep-original` never deletes an original.
 
+A saving too small for the report to count is not converted either. The audit counts a saving from
+1 KB, and then only when it is 10% of the file or 100 KB in all; the planner asks the same function,
+`whySavingTooSmall`, last of its checks, so every conversion is a saving the report counts. The two
+totals differ only by the images the plan declines for a reason of its own, each listed with it.
+Converting a 70-byte icon to save 34 bytes would rewrite a reference, and under `replace` delete an
+original, for nothing a visitor would notice.
+
 The report counts the plan's declines in two places: images under `declined`, with their sizes,
 and the references a plan left as written under `declinedReferences`, so a pattern that stays as
 written is never counted as an image.

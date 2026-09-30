@@ -338,7 +338,7 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
     expect(run.status).toBe(3);
     expect(result(run.stdout)).toMatchObject({
       reason: 'IGNORED_BY_GIT',
-      message: expect.stringContaining('this run would write: images/badge.webp'),
+      message: expect.stringContaining('this run would write: images/hero.webp'),
     });
     expect(snapshot(root, ['.git'])).toEqual(before);
   });
@@ -375,10 +375,10 @@ describe('upfly optimize --only', () => {
     };
 
     expect(run.status).toBe(0);
+    // team.jpg is measured, and its saving is too small to count, so it stays as it is.
     expect(final.plan.conversions.map((c) => c.asset)).toEqual([
       'images/hero.jpg',
       'images/hero@2x.jpg',
-      'images/team.jpg',
     ]);
     expect(final.only).toEqual({
       images: ['images/hero.jpg', 'images/hero@2x.jpg', 'images/team.jpg'],

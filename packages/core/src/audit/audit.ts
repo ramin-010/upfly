@@ -12,6 +12,7 @@
  * a line.
  */
 
+import { formatBytes } from '../format.js';
 import type { Graph } from '../graph/graph.js';
 import { unreferencedAssets } from '../graph/graph.js';
 import { compareStrings } from '../paths.js';
@@ -496,16 +497,7 @@ function* opportunities(
   for (const encoded of probe.encoded) {
     const savedBytes = bytes - encoded.bytes;
 
-    // Floored whole percent: a report number, and one that two runs agree on
-    // without anyone reasoning about float formatting.
-    const savedPercent = Math.floor((savedBytes / bytes) * 100);
-
-    // The floor, and then either arm: a small file that shrinks a lot, or a large one
-    // that shrinks a little. See `AuditThresholds.largeSavingBytes`.
-    if (savedBytes < thresholds.minSavingBytes) continue;
-    if (savedPercent < thresholds.minSavingPercent && savedBytes < thresholds.largeSavingBytes) {
-      continue;
-    }
+    if (whySavingTooSmall(bytes, savedBytes, thresholds) !== null) continue;
 
     yield {
       kind: 'format-opportunity',
@@ -516,9 +508,45 @@ function* opportunities(
       bytes,
       wouldBe: encoded.bytes,
       savedBytes,
-      savedPercent,
+      savedPercent: percentOf(savedBytes, bytes),
     };
   }
+}
+
+/**
+ * Floored whole percent: a report number, and one that two runs agree on without anyone
+ * reasoning about float formatting.
+ */
+function percentOf(savedBytes: number, bytes: number): number {
+  return Math.floor((savedBytes / bytes) * 100);
+}
+
+/**
+ * Why a measured saving is too small to report or to convert, or null when it counts. A
+ * saving counts from `minSavingBytes`, and then when it is `minSavingPercent` of the file
+ * or `largeSavingBytes` in all: a small file that shrinks a lot, or a large one that
+ * shrinks a little. The audit's findings and the plan's conversions both ask, so the report
+ * and the plan count the same savings.
+ *
+ * @param bytes the file's size now, above zero
+ * @param savedBytes how much smaller the converted file would be
+ * @returns a sentence for a plan's declined list, or null
+ */
+export function whySavingTooSmall(
+  bytes: number,
+  savedBytes: number,
+  thresholds: Required<AuditThresholds> = DEFAULT_THRESHOLDS,
+): string | null {
+  const reach = 'a saving must reach to be reported or converted';
+  const saves = `converting it would save ${formatBytes(savedBytes)}`;
+  if (savedBytes < thresholds.minSavingBytes) {
+    return `${saves}, under the ${formatBytes(thresholds.minSavingBytes)} ${reach}`;
+  }
+  const percent = percentOf(savedBytes, bytes);
+  if (percent < thresholds.minSavingPercent && savedBytes < thresholds.largeSavingBytes) {
+    return `${saves}, ${percent}% of the file, under the ${thresholds.minSavingPercent}% of the file or ${formatBytes(thresholds.largeSavingBytes)} ${reach}`;
+  }
+  return null;
 }
 
 /**

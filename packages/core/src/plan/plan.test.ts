@@ -457,6 +457,46 @@ describe('an image a platform reads outside the page: an icon, a tile, a manifes
   );
 });
 
+/**
+ * The report counts a saving only from 1 KB, and then only when it is 10% of the file or
+ * 100 KB. A conversion below that is not counted there, so converting it made the plan's
+ * saving differ from the report's.
+ */
+describe('a saving too small for the report to count', () => {
+  const reference = resolved('index.html', '/img/a.png', 'public/img/a.png');
+  const plan = (bytes: number, after: number) =>
+    planOptimization(
+      input({
+        assets: [asset('public/img/a.png', bytes)],
+        references: [reference],
+        probes: [probe('public/img/a.png', after)],
+      }),
+    );
+
+  it('is not converted when it is under 1 KB, with the reason', () => {
+    const small = plan(10_000, 9_200);
+
+    expect(small.conversions).toEqual([]);
+    expect(reasonsByPath(small)['public/img/a.png']).toBe(
+      'converting it would save 800 B, under the 1 KB a saving must reach to be reported or converted',
+    );
+  });
+
+  it('is not converted when it is under 10% of the file and under 100 KB, with the reason', () => {
+    const slight = plan(50_000, 47_000);
+
+    expect(slight.conversions).toEqual([]);
+    expect(reasonsByPath(slight)['public/img/a.png']).toBe(
+      'converting it would save 3 KB, 6% of the file, under the 10% of the file or 100 KB a saving must reach to be reported or converted',
+    );
+  });
+
+  it('is converted from 1 KB and 10%, and from 100 KB at any share, as the report counts it', () => {
+    expect(plan(10_000, 8_976).conversions.map((c) => c.savedBytes)).toEqual([1_024]);
+    expect(plan(2_000_000, 1_890_000).conversions.map((c) => c.savedBytes)).toEqual([110_000]);
+  });
+});
+
 describe('a path that resolved through its decoded spelling', () => {
   it('is rewritten as the author spelled it, so it decodes to the converted file', () => {
     // Only the extension is swapped, so the reference still spells the accent the same way.
@@ -816,7 +856,7 @@ describe('a template reference standing for many assets', () => {
     // A plain reference moves to each target, so both convert.
     const plan = planOptimization(
       input({
-        assets,
+        assets: [asset('public/a-light.png'), asset('public/a-dark.png')],
         references: [
           ...references,
           resolved('a.html', '/a-light.png', 'public/a-light.png'),
