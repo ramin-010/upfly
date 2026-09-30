@@ -97,6 +97,15 @@ describe('comparing two versions of the key', () => {
       'files.*.entries.*.knownGap': 2,
     });
   });
+
+  it("reads Unicode's C0 and C1 controls as the terms they are, and a stage name still as one", () => {
+    const prose = (why: string) =>
+      referencesInProse({ files: [{ path: 'a.html', entries: [{ why }] }] });
+
+    expect(prose('HTML reads &#128; as the euro sign, not as the C1 control U+0080.')).toEqual({});
+    expect(prose('The C0 controls and the C1 controls are stripped.')).toEqual({});
+    expect(prose('Found by C1 and fixed in C3a.')).toEqual({ 'files.*.entries.*.why': 2 });
+  });
 });
 
 describe('the script itself', () => {

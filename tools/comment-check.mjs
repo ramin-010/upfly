@@ -63,7 +63,8 @@ export const INTERNAL_REFERENCE = new RegExp(
     // digits after the letter is a name.
     String.raw`\bR\d+(?:-?[a-z])?\b`,
     '§',
-    String.raw`\b(?:B\d{1,2}|C[1-4][ab]?)\b`,
+    // A stage name, but not Unicode's C1 controls (U+0080 to U+009F), which prose names.
+    String.raw`\b(?:B\d{1,2}|C[1-4][ab]?)\b(?!\s+controls?\b)`,
     String.raw`\bnotes\/`,
     String.raw`\bparent chat\b`,
     String.raw`\b6a-[a-z]+\b`,
