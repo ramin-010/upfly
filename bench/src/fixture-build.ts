@@ -110,6 +110,8 @@ interface FixtureSpec {
    * source folder by convention, so no detector should claim it by name; the user is told
    * to declare it, as a real eleventy user does once. Left undeclared, the fixture's only
    * write-path test would repeat a failure that unit tests and eleventy-docs already cover.
+   * plain-html is the other: a static site is served from its own folder, which Upfly takes
+   * as served only when told, so undeclared, `replace` would delete no original there.
    */
   readonly publicDirs?: readonly string[];
   readonly mutations: readonly Mutation[];
@@ -236,6 +238,8 @@ const FIXTURES: readonly FixtureSpec[] = [
     name: 'plain-html',
     buildScript: null,
     outputDir: '.',
+    // Declared, for the reason given at `FixtureSpec.publicDirs`.
+    publicDirs: [''],
     mutations: [
       {
         referenceClass: 'public-root-relative',
