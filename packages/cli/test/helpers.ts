@@ -16,10 +16,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const BIN = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
-export const NO_NETWORK = fileURLToPath(new URL('./no-network.cjs', import.meta.url));
+export const NO_NETWORK = fileURLToPath(new URL('./no-network.mjs', import.meta.url));
 export const FIXTURES = fileURLToPath(new URL('../../../fixtures/', import.meta.url));
 
 /**
@@ -40,7 +40,7 @@ export function upfly(
   for (const key of ['NO_COLOR', 'FORCE_COLOR']) if (!(key in (options.env ?? {}))) delete env[key];
   const result = spawnSync(
     process.execPath,
-    [...(options.preload ? ['--require', options.preload] : []), BIN, ...args],
+    [...(options.preload ? ['--import', pathToFileURL(options.preload).href] : []), BIN, ...args],
     { encoding: 'utf8', env, ...(options.cwd === undefined ? {} : { cwd: options.cwd }) },
   );
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };

@@ -16,11 +16,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const BIN = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
-const NO_NETWORK = fileURLToPath(new URL('./no-network.cjs', import.meta.url));
+const NO_NETWORK = fileURLToPath(new URL('./no-network.mjs', import.meta.url));
 const KILL_SWITCH = readFileSync(fileURLToPath(new URL('./v2-kill-switch.json', import.meta.url)));
 /** A one-pixel PNG. */
 const PNG = Buffer.from(
@@ -62,7 +62,7 @@ function upfly(
   for (const key of ['NO_COLOR', 'FORCE_COLOR']) if (!(key in (options.env ?? {}))) delete env[key];
   const result = spawnSync(
     process.execPath,
-    [...(options.preload ? ['--require', options.preload] : []), BIN, ...args],
+    [...(options.preload ? ['--import', pathToFileURL(options.preload).href] : []), BIN, ...args],
     { encoding: 'utf8', env },
   );
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -195,7 +195,12 @@ describe('upfly audit', () => {
     // The preload works: a script that fetches is caught and logged.
     spawnSync(
       process.execPath,
-      ['--require', NO_NETWORK, '-e', "fetch('https://example.com').catch(() => {})"],
+      [
+        '--import',
+        pathToFileURL(NO_NETWORK).href,
+        '-e',
+        "fetch('https://example.com').catch(() => {})",
+      ],
       { env: { ...process.env, ...env } },
     );
     expect(readFileSync(log, 'utf8')).toBe('fetch\n');

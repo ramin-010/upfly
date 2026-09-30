@@ -1,21 +1,29 @@
-// Preloaded with `node --require` to prove a run touches no network. Every way Node offers
-// to open a connection or resolve a name throws, and each attempt is also appended to the
-// file named by UPFLY_NETWORK_LOG, so an attempt that some library catches still shows.
-const fs = require('node:fs');
+// Loaded with `node --import` to prove a run touches no network. Every way Node offers to open
+// a connection or resolve a name throws, and each attempt is also appended to the file named by
+// UPFLY_NETWORK_LOG, so an attempt that some library catches still shows.
+import { appendFileSync } from 'node:fs';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const log = process.env.UPFLY_NETWORK_LOG;
 
+/** @param {string} api */
 function refuse(api) {
   return function refused() {
-    if (log) fs.appendFileSync(log, `${api}\n`);
+    if (log) appendFileSync(log, `${api}\n`);
     throw new Error(`network access attempted: ${api}`);
   };
 }
 
+/**
+ * @param {string} moduleName
+ * @param {readonly string[]} names
+ */
 function block(moduleName, names) {
   const target = require(moduleName);
+  const label = moduleName.replace(/^node:/, '');
   for (const name of names) {
-    if (typeof target[name] === 'function') target[name] = refuse(`${moduleName}.${name}`);
+    if (typeof target[name] === 'function') target[name] = refuse(`${label}.${name}`);
   }
   return target;
 }
@@ -47,3 +55,7 @@ for (const name of Object.keys(dns.promises)) {
 // The real `fetch` reports failure by rejecting, so the refusal does too.
 const refuseFetch = refuse('fetch');
 globalThis.fetch = async () => refuseFetch();
+
+// An ES module that imports `connect` from `node:net` reads the export as it stood when the
+// builtin was first loaded; this brings every such export up to date with the replacements.
+syncBuiltinESMExports();
