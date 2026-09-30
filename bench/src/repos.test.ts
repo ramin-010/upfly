@@ -7,9 +7,48 @@
  * relative path, a path walking back in through `..`, and a different capitalisation.
  */
 
-import { join, resolve, sep } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
+import {
+  VALIDATION_ROOT,
+  refuseValidationCorpus,
+  validationOutFrom,
+  validationRootFrom,
+} from './repos.js';
+
+describe('where the corpus and the reports are', () => {
+  const repository = resolve('/work/upfly');
+  const nothing = () => false;
+
+  it('takes the corpus from UPFLY_VALIDATION_ROOT when it is set', () => {
+    const env = { UPFLY_VALIDATION_ROOT: '/data/corpus' };
+    expect(validationRootFrom(env, repository, nothing)).toBe(resolve('/data/corpus'));
+  });
+
+  it('otherwise looks beside the repository, then beside its parent folder', () => {
+    expect(validationRootFrom({}, repository, nothing)).toBe(resolve('/work/upfly-validation'));
+    const besideParent = resolve('/upfly-validation');
+    const found = (path: string) => path === besideParent;
+    expect(validationRootFrom({}, repository, found)).toBe(besideParent);
+  });
+
+  it('writes the reports to UPFLY_VALIDATION_OUT, or beside the corpus', () => {
+    const root = resolve('/data/corpus');
+    expect(validationOutFrom({ UPFLY_VALIDATION_OUT: '/data/out' }, root)).toBe(
+      resolve('/data/out'),
+    );
+    expect(validationOutFrom({}, root)).toBe(resolve('/data/upfly-validation-reports'));
+  });
+
+  it('names no folder of one machine in the bench source', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (const file of readdirSync(here).filter((name) => name.endsWith('.ts'))) {
+      expect(readFileSync(join(here, file), 'utf8'), file).not.toMatch(/[A-Z]:\/PERSONAL_/);
+    }
+  });
+});
 
 describe('refuseValidationCorpus', () => {
   it('refuses the corpus root itself', () => {

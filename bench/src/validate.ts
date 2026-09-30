@@ -37,7 +37,7 @@ import {
   linkedPaths,
 } from 'upfly-core/internal';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
-import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
+import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf, validationOutFrom } from './repos.js';
 import { assetPathUnder, searchableText } from './sweep-files.js';
 import { type Triaged, hitsIn, triage } from './triage.js';
 import { type ItemVerdict, type VerifyResult, verifyFindings } from './verify.js';
@@ -100,7 +100,7 @@ interface RepoResult {
 async function main(): Promise<void> {
   const only = argv.find((argument) => argument.startsWith('--repo='))?.slice('--repo='.length);
   const probed = !argv.includes('--no-probe');
-  const outDir = join(VALIDATION_ROOT, '..', 'upfly', 'notes', 'validation');
+  const outDir = validationOutFrom(process.env, VALIDATION_ROOT);
   await mkdir(outDir, { recursive: true });
 
   const results: RepoResult[] = [];
@@ -384,7 +384,7 @@ async function validateRepo(repo: RepoSpec, probed: boolean): Promise<RepoResult
 /**
  * That no absolute path reaches the output.
  *
- * `JSON.stringify` escapes a native Windows path to `E:\\PERSONAL…`, so the root is
+ * `JSON.stringify` escapes a native Windows path to `C:\\work…`, so the root is
  * searched for in both its escaped and its POSIX spelling, alongside any Windows
  * absolute path or drive letter. It returns what it found, so a failure names itself
  * instead of being one boolean.

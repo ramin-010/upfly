@@ -7,9 +7,53 @@
  * validation, and write its output directory, as a side effect.
  */
 
+import { existsSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
+/**
+ * Where the validation corpus is: `UPFLY_VALIDATION_ROOT` when set, otherwise a folder named
+ * `upfly-validation` beside the repository, or beside the repository's parent folder when only
+ * that one exists. Each repository in `REPOS` is cloned there under its name and checked out
+ * at its `sha`; `bench/README.md` says how.
+ *
+ * @param env the environment to read the setting from
+ * @param repository the repository's root folder
+ * @param exists whether a folder exists, asked of the two defaults
+ */
+export function validationRootFrom(
+  env: Readonly<Record<string, string | undefined>>,
+  repository: string,
+  exists: (path: string) => boolean,
+): string {
+  const set = env.UPFLY_VALIDATION_ROOT;
+  if (set !== undefined && set !== '') return resolve(set);
+  const beside = resolve(repository, '..', 'upfly-validation');
+  const besideParent = resolve(repository, '..', '..', 'upfly-validation');
+  return !exists(beside) && exists(besideParent) ? besideParent : beside;
+}
+
+/**
+ * Where `validate` writes its reports: `UPFLY_VALIDATION_OUT` when set, otherwise a folder
+ * named `upfly-validation-reports` beside the corpus.
+ *
+ * @param env the environment to read the setting from
+ * @param root the corpus folder
+ */
+export function validationOutFrom(
+  env: Readonly<Record<string, string | undefined>>,
+  root: string,
+): string {
+  const set = env.UPFLY_VALIDATION_OUT;
+  return set !== undefined && set !== ''
+    ? resolve(set)
+    : resolve(root, '..', 'upfly-validation-reports');
+}
+
+/** The repository's root: this module is `bench/src/repos.ts`, or `bench/dist/repos.js`. */
+const REPOSITORY = fileURLToPath(new URL('../..', import.meta.url));
+
+export const VALIDATION_ROOT = validationRootFrom(process.env, REPOSITORY, existsSync);
 
 /**
  * Refuse to let a writing run point at the pinned corpus.

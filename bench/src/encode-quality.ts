@@ -15,10 +15,10 @@ import { readdir, stat } from 'node:fs/promises';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import { argv, stdout } from 'node:process';
 import sharp from 'sharp';
+import { REPOS as CORPUS, VALIDATION_ROOT } from './repos.js';
 
-const VALIDATION_ROOT = 'E:/PERSONAL_PROJECTS/upfly-validation';
-
-const REPOS = ['astro-docs', 'eleventy-docs', 'railsgirls-com', 'scratch-www', 'shadcn-ui'];
+/** The corpus's repositories by name, each once: `CORPUS` lists some twice, configured or not. */
+const REPOS = [...new Set(CORPUS.map((repo) => repo.name))].sort();
 
 const SKIP_DIRECTORIES = new Set([
   'node_modules',

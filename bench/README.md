@@ -94,6 +94,25 @@ and copied. The sizes are long-tailed, mostly icons and a few large heroes, beca
 selects the largest first and a uniform tree would make the cap look idle.
 
 
+## The validation corpus
+
+`pnpm validate`, `corpus-run` and the other tools that read real repositories use five public
+repositories, each pinned at the commit in `src/repos.ts`:
+
+| folder | repository |
+|---|---|
+| `astro-docs` | https://github.com/withastro/docs |
+| `eleventy-docs` | https://github.com/11ty/docs |
+| `railsgirls-com` | https://github.com/railsgirls/railsgirls.com |
+| `scratch-www` | https://github.com/scratchfoundation/scratch-www |
+| `shadcn-ui` | https://github.com/shadcn-ui/ui |
+
+Clone each into one folder under the name in the first column and check out its `sha`. The tools
+look for that folder in `UPFLY_VALIDATION_ROOT`, or else as `upfly-validation` beside the
+repository, or beside the repository's parent folder. It must stay outside the repository, and
+every tool that writes works on a copy and refuses the corpus itself. `pnpm validate` writes its
+reports to `UPFLY_VALIDATION_OUT`, or else to `upfly-validation-reports` beside the corpus.
+
 ## Verifying findings from outside the engine
 
 `bench/src/verify.ts` checks a report's findings against the repository itself. It resolves each
