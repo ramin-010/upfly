@@ -10,3 +10,7 @@ coverage/
 fixtures/**/build/
 fixtures/**/.next/
 fixtures/**/dist/
+# Copied in from the repository root by each package's prepack script.
+packages/cli/README.md
+packages/cli/LICENSE
+packages/core/LICENSE

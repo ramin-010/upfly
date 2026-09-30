@@ -24,6 +24,7 @@
   "files": ["dist/", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc --build",
+    "prepack": "node ../../tools/prepack.mjs LICENSE",
     "clean": "tsc --build --clean"
   },
   "dependencies": {
