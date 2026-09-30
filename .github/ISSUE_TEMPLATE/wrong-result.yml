@@ -1,0 +1,45 @@
+name: Wrong result
+description: Upfly called an image unused that is used, reported a reference broken that works, or rewrote one it should have left alone.
+labels: ["wrong result"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A wrong answer about a reference is the most serious kind of bug here, because a user
+        may act on it: delete an image, or ship a rewrite. Each report becomes a test.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What was wrong
+      options:
+        - An image reported unused (or possibly unused) that the project uses
+        - A reference reported broken that works
+        - A reference rewritten that should have been left alone
+        - A reference left alone that Upfly could have rewritten
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: The reference
+      description: |
+        The file and line where the image is used, the text as written there, and the image's
+        path in the project. `npx upfly refs <image> --json` prints what Upfly knows about one image.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: project
+    attributes:
+      label: The smallest project that shows it
+      description: The files, with their paths, and their contents, or a link to a repository.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The output of `npx upfly --version` and `node --version`, and your operating system.
+    validations:
+      required: true

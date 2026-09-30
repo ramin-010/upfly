@@ -1,0 +1,38 @@
+name: A file type to read
+description: Your project names images in a file type Upfly does not read yet.
+labels: ["file type"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Upfly reads HTML, CSS, SCSS, Less, JavaScript and TypeScript (JSX included), Markdown
+        and MDX, Astro and JSON. An image named only in another file type is reported as
+        possibly unused, and its references are never rewritten.
+        Vue, Svelte, PHP, ERB, Liquid, Nunjucks and YAML frontmatter already have an issue each:
+        add to that one rather than opening a new one.
+  - type: input
+    id: type
+    attributes:
+      label: The file type
+      placeholder: .twig
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: How it names images
+      description: A few real lines from your project, each way the file type names an image.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where it is used
+      description: The framework or tool that reads these files, and a public project that uses them, if you know one.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Writing the reader
+      options:
+        - label: I would like to write the reader myself (CONTRIBUTING.md says how).

@@ -1,0 +1,42 @@
+name: Bug
+description: Upfly crashed, refused something it should do, or printed something wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The report that gets fixed fastest holds the smallest project
+        that shows the bug: a few files and the command, so it can become a test.
+        If Upfly got a reference or an image wrong (called an image unused that a page uses,
+        or rewrote a reference it should not have), use "Wrong result" instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, and what Upfly printed. Paste the output as text.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: project
+    attributes:
+      label: The smallest project that shows it
+      description: |
+        The files, with their paths, and their contents (or a link to a repository). Remove
+        everything the bug does not need; an image can be any small file with the right name.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The output of `npx upfly --version` and `node --version`, and your operating system.
+      placeholder: upfly 3.0.0, Node 22.14.0, Windows 11
+    validations:
+      required: true
