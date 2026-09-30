@@ -21,25 +21,30 @@ import {
 describe('where the corpus and the reports are', () => {
   const repository = resolve('/work/upfly');
   const nothing = () => false;
+  /** An absolute path written with `/`, as the tools print it on every platform. */
+  const posix = (path: string) => resolve(path).split(sep).join('/');
 
   it('takes the corpus from UPFLY_VALIDATION_ROOT when it is set', () => {
     const env = { UPFLY_VALIDATION_ROOT: '/data/corpus' };
-    expect(validationRootFrom(env, repository, nothing)).toBe(resolve('/data/corpus'));
+    expect(validationRootFrom(env, repository, nothing)).toBe(posix('/data/corpus'));
   });
 
   it('otherwise looks beside the repository, then beside its parent folder', () => {
-    expect(validationRootFrom({}, repository, nothing)).toBe(resolve('/work/upfly-validation'));
+    expect(validationRootFrom({}, repository, nothing)).toBe(posix('/work/upfly-validation'));
     const besideParent = resolve('/upfly-validation');
-    const found = (path: string) => path === besideParent;
-    expect(validationRootFrom({}, repository, found)).toBe(besideParent);
+    const found = (path: string) => resolve(path) === besideParent;
+    expect(validationRootFrom({}, repository, found)).toBe(posix(besideParent));
   });
 
   it('writes the reports to UPFLY_VALIDATION_OUT, or beside the corpus', () => {
-    const root = resolve('/data/corpus');
-    expect(validationOutFrom({ UPFLY_VALIDATION_OUT: '/data/out' }, root)).toBe(
-      resolve('/data/out'),
-    );
-    expect(validationOutFrom({}, root)).toBe(resolve('/data/upfly-validation-reports'));
+    const root = posix('/data/corpus');
+    expect(validationOutFrom({ UPFLY_VALIDATION_OUT: '/data/out' }, root)).toBe(posix('/data/out'));
+    expect(validationOutFrom({}, root)).toBe(posix('/data/upfly-validation-reports'));
+  });
+
+  it('writes both with / on every platform, so a worksheet prints the same root everywhere', () => {
+    expect(validationRootFrom({}, repository, nothing)).not.toContain('\\');
+    expect(validationOutFrom({}, resolve('/data/corpus'))).not.toContain('\\');
   });
 
   it('names no folder of one machine in the bench source', () => {

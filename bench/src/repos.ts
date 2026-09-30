@@ -27,10 +27,10 @@ export function validationRootFrom(
   exists: (path: string) => boolean,
 ): string {
   const set = env.UPFLY_VALIDATION_ROOT;
-  if (set !== undefined && set !== '') return resolve(set);
+  if (set !== undefined && set !== '') return withSlashes(resolve(set));
   const beside = resolve(repository, '..', 'upfly-validation');
   const besideParent = resolve(repository, '..', '..', 'upfly-validation');
-  return !exists(beside) && exists(besideParent) ? besideParent : beside;
+  return withSlashes(!exists(beside) && exists(besideParent) ? besideParent : beside);
 }
 
 /**
@@ -45,9 +45,19 @@ export function validationOutFrom(
   root: string,
 ): string {
   const set = env.UPFLY_VALIDATION_OUT;
-  return set !== undefined && set !== ''
-    ? resolve(set)
-    : resolve(root, '..', 'upfly-validation-reports');
+  return withSlashes(
+    set !== undefined && set !== ''
+      ? resolve(set)
+      : resolve(root, '..', 'upfly-validation-reports'),
+  );
+}
+
+/**
+ * An absolute path written with `/`, which every platform's file functions accept, so a
+ * worksheet that prints it reads the same on Windows as elsewhere.
+ */
+function withSlashes(path: string): string {
+  return path.split(sep).join('/');
 }
 
 /** The repository's root: this module is `bench/src/repos.ts`, or `bench/dist/repos.js`. */
