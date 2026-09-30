@@ -1,4 +1,4 @@
-import { compareStrings } from 'upfly-core';
+import { compareStrings } from 'upfly-core/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import type { Triaged } from './triage.js';

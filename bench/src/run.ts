@@ -15,12 +15,11 @@ import { cpus, platform } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { argv, env, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { type Adapter, buildReport } from 'upfly-core';
 import {
-  type Adapter,
   type Asset,
   audit,
   buildGraph,
-  buildReport,
   createSharpProbe,
   defaultAdapters,
   discover,
@@ -28,7 +27,7 @@ import {
   resolveReferences,
   scanSources,
   sweepForMentions,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import {
   type Breakdown,
   VARIANTS,

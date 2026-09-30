@@ -106,6 +106,10 @@ export type OperationStatus =
    */
   | 'foreign';
 
+/**
+ * One operation of a run, as `inspect` finds it before an undo: done, half done, never done,
+ * or changed since by something other than the run, which `revert` then leaves alone.
+ */
 export interface OperationState {
   readonly operation: Operation;
   readonly status: OperationStatus;

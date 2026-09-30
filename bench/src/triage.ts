@@ -11,7 +11,7 @@
  */
 
 import { posix } from 'node:path';
-import { imageFilenameCandidates } from 'upfly-core';
+import { imageFilenameCandidates } from 'upfly-core/internal';
 
 /** A grep hit the graph did not link, as the sweep produced it. */
 export interface Hit {

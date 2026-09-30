@@ -29,6 +29,10 @@ import {
 } from './write/optimize.js';
 import type { LockPorts } from './write/transaction.js';
 
+/**
+ * What `optimizeProject` needs: the project, the format, what happens to originals, and whether to
+ * write.
+ */
 export interface OptimizeProjectInput {
   /** The project directory. */
   readonly root: string;
@@ -65,6 +69,10 @@ export interface OnlyImages {
   readonly patterns?: readonly string[];
 }
 
+/**
+ * What `optimizeProject` returns: the engine's findings, the run with its plan, and the images
+ * `only` named.
+ */
 export interface OptimizeProjectResult {
   /** What the plan was made from: the graph, audit and measurements a report is built on. */
   readonly pipeline: PipelineOutput;

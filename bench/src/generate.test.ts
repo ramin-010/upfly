@@ -12,7 +12,7 @@
  * lose is a reference the adapter finds.
  */
 
-import { defaultAdapters } from 'upfly-core';
+import { defaultAdapters } from 'upfly-core/internal';
 import { describe, expect, it } from 'vitest';
 import { buildFileText } from './generate.js';
 

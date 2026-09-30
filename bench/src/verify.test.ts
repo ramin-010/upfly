@@ -10,8 +10,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DEFAULT_IGNORED_DIRECTORIES } from 'upfly-core';
-import type { BrokenFinding, DeadFinding, Mention, PossiblyDeadFinding, Report } from 'upfly-core';
+import type { BrokenFinding, DeadFinding, PossiblyDeadFinding, Report } from 'upfly-core';
+import { DEFAULT_IGNORED_DIRECTORIES } from 'upfly-core/internal';
+import type { Mention } from 'upfly-core/internal';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ORACLE_SKIPS, verifyFindings } from './verify.js';
 

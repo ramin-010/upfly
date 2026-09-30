@@ -17,15 +17,15 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { Adapter } from 'upfly-core';
 import {
-  type Adapter,
   type Asset,
   buildGraph,
   defaultAdapters,
   discover,
   resolveReferences,
   scanSources,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { MEASURED_BETWEEN_RUN_DRIFT } from './invocations.js';
 import { type Summary, summarise } from './samples.js';
 

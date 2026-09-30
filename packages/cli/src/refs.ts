@@ -7,18 +7,16 @@
 import { statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { type EncodeFormat, type OptimizeProjectResult, optimizeProject } from 'upfly-core';
 import {
   type AssetNode,
-  type EncodeFormat,
   type LinkedReference,
-  type OptimizeProjectResult,
   citeReferences,
   formatBytes,
   isLinked,
-  optimizeProject,
   relativePath,
   whyReferenceStays,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import type { RefsOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';

@@ -141,6 +141,10 @@ export type OptimizeProgress =
  */
 const FOLDER_GITIGNORE = `${UPFLY_DIRECTORY}/.gitignore`;
 
+/**
+ * What a run did, or would do: its plan and, when it wrote, its record, or the refusal that
+ * stopped it.
+ */
 export interface OptimizeResult {
   /** Every decision, identical on a dry run and an applied one. */
   readonly plan: OptimizationPlan;

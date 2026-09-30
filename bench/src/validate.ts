@@ -17,23 +17,25 @@ import { basename, join, relative } from 'node:path';
 import { argv, chdir, cwd, stdout } from 'node:process';
 import {
   type Adapter,
+  type PipelineOutput,
+  type RawReference,
+  type Report,
+  type ServingRoots,
+  buildReport,
+  runPipeline as enginePipeline,
+  renderReport,
+} from 'upfly-core';
+import {
   type DiscoveryResult,
   type Graph,
   IMAGE_EXTENSIONS,
-  type PipelineOutput,
   type ProbeDiagnostic,
-  type RawReference,
   type Reference,
-  type Report,
   type ScanDiagnostic,
-  type ServingRoots,
-  buildReport,
   decideServingRoots,
   defaultAdapters,
-  runPipeline as enginePipeline,
   linkedPaths,
-  renderReport,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { byFileLineAsset, byGroupSize } from './artefact-order.js';
 import { REPOS, type RepoSpec, VALIDATION_ROOT, labelOf } from './repos.js';
 import { assetPathUnder, searchableText } from './sweep-files.js';

@@ -114,6 +114,10 @@ export interface Declined {
  */
 export type ManifestState = 'pending' | 'committed' | 'reverted';
 
+/**
+ * The record of a run that wrote files, kept in `.upfly/manifest.json`: every file it created,
+ * changed or removed, which `revert` follows to put each back.
+ */
 export interface Manifest {
   readonly schemaVersion: number;
   /**

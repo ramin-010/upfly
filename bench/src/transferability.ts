@@ -23,7 +23,7 @@ import {
   loadAliases,
   resolveReferences,
   scanSources,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
 
 /** The shapes the accuracy suite has at least one instance of, read from its answer key. */

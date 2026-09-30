@@ -8,6 +8,11 @@ export default defineConfig({
       // reached the package by name would otherwise run whatever build was made last, and
       // could pass against code that has since changed; coverage would measure the build.
       // `packages/core/test/smoke.test.ts` loads the built entry point by file path instead.
+      // The more specific name first: an alias matches a prefix, and `upfly-core` alone would
+      // turn `upfly-core/internal` into a path inside `index.ts`.
+      'upfly-core/internal': fileURLToPath(
+        new URL('./packages/core/src/internal.ts', import.meta.url),
+      ),
       'upfly-core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
     },
   },
@@ -33,9 +38,9 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['packages/core/src/**/*.ts'],
-      // `.d.ts` files, `types.ts` and `index.ts` hold only types and re-exports, so counting
-      // them as uncovered would be noise.
-      exclude: ['**/*.test.ts', '**/*.d.ts', '**/types.ts', '**/index.ts'],
+      // `.d.ts` files, `types.ts`, `index.ts` and `internal.ts` hold only types and
+      // re-exports, so counting them as uncovered would be noise.
+      exclude: ['**/*.test.ts', '**/*.d.ts', '**/types.ts', '**/index.ts', '**/internal.ts'],
       // Core stays at 90% or above on every measure; CI's coverage job fails below it.
       thresholds: {
         lines: 90,

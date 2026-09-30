@@ -23,6 +23,10 @@ import type { Manifest } from './write/manifest.js';
 import { newRunId, writeRewrites } from './write/optimize.js';
 import type { LockPorts } from './write/transaction.js';
 
+/**
+ * What `dedupeProject` needs: the project, whether to write, and optionally the copy of a set to
+ * keep.
+ */
 export interface DedupeProjectInput {
   /** The project directory. */
   readonly root: string;
@@ -92,12 +96,20 @@ export interface DedupeSet {
   readonly copies: readonly DedupeCopy[];
 }
 
+/**
+ * What a dedupe run changes: each set of identical copies with the copy it keeps, and the edits
+ * that point references at it.
+ */
 export interface DedupePlan {
   readonly sets: readonly DedupeSet[];
   /** The edits, one entry per file, in path order. */
   readonly rewrites: readonly PlannedRewrite[];
 }
 
+/**
+ * What `dedupeProject` returns: the engine's findings, the plan, and the run's record when it
+ * wrote.
+ */
 export interface DedupeProjectResult {
   /** What the plan was made from. */
   readonly pipeline: PipelineOutput;

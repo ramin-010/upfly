@@ -86,6 +86,9 @@ export type SuppressedBroken = Omit<BrokenFinding, 'kind'>;
 /** Which limit an asset exceeded. */
 export type OversizeDimension = 'bytes' | 'width' | 'height';
 
+/**
+ * An image over the size or dimension limit: its size, its dimensions, and which limit it crosses.
+ */
 export interface OversizedFinding {
   readonly kind: 'oversized';
   readonly asset: string;
@@ -141,6 +144,9 @@ export interface ServingRootUnknownFinding {
   readonly suppressed: readonly SuppressedBroken[];
 }
 
+/**
+ * Anything the audit found to act on. `kind` tells the kinds apart, and each has its own type.
+ */
 export type Finding =
   | DeadFinding
   | PossiblyDeadFinding

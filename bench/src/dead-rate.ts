@@ -16,18 +16,17 @@ import { appendFileSync, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
+import { type Adapter, buildReport } from 'upfly-core';
 import {
-  type Adapter,
   audit,
   buildGraph,
-  buildReport,
   defaultAdapters,
   detectConventionRoots,
   discover,
   resolveReferences,
   scanSources,
   sweepForMentions,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { type ItemVerdict, verifyFindings } from './verify.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;

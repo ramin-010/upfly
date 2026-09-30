@@ -8,23 +8,25 @@
 
 import { resolve } from 'node:path';
 import {
-  LOCK_PATH,
   type Manifest,
   type OptimizationPlan,
   type OptimizeProjectResult,
   type PublicPolicy,
-  UPFLY_DIRECTORY,
   UpflyError,
   buildReport,
   createNodeFileStore,
-  formatBytes,
   optimizeProject,
-  pathsTouched,
-  processIsAlive,
-  readLockHolder,
   readManifest,
   renderReport,
 } from 'upfly-core';
+import {
+  LOCK_PATH,
+  UPFLY_DIRECTORY,
+  formatBytes,
+  pathsTouched,
+  processIsAlive,
+  readLockHolder,
+} from 'upfly-core/internal';
 import type { OptimizeOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { type UpflyConfig, loadConfig } from './config.js';

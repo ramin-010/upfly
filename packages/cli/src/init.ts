@@ -6,13 +6,13 @@
 
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { runPipeline } from 'upfly-core';
 import {
   type DiscoveryResult,
   PROJECT_MARKERS,
   type ServingRootDecision,
   decideServingRoots,
-  runPipeline,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import type { InitOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { CONFIG_FILES, CONFIG_SCHEMA, loadConfig } from './config.js';

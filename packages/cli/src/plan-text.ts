@@ -1,12 +1,7 @@
 /** The plan as `upfly optimize` prints it after the report, and what an applied run wrote. */
 
-import {
-  type Graph,
-  type Manifest,
-  type OptimizationPlan,
-  type PublicPolicy,
-  formatBytes,
-} from 'upfly-core';
+import type { Manifest, OptimizationPlan, PublicPolicy } from 'upfly-core';
+import { type Graph, formatBytes } from 'upfly-core/internal';
 
 /**
  * The plan as text: what converts, which files change, and what happens to each original.

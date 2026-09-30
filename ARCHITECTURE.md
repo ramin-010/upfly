@@ -2446,9 +2446,17 @@ The promise is that the run's changes are the only ones a reviewer has to look a
 | `packages/vscode` | `upfly-vscode` | the editor surface (not yet written). |
 
 `packages/core/src` is grouped by pipeline stage. At the top, `index.ts` is the public entry,
-`pipeline.ts` (`runPipeline`) and `optimize-project.ts` (`optimizeProject`) wire the stages, and
+`internal.ts` the entry `upfly-core/internal`, `pipeline.ts` (`runPipeline`) and
+`optimize-project.ts` (`optimizeProject`) wire the stages, and
 `types.ts`, `errors.ts`, `paths.ts` and `format.ts` are shared by all of them. A test sits beside
 the code it tests; the tests that run the whole engine sit at the top.
+
+The public entry holds only what a library user needs for a documented task: running the audit
+and reading its report, `optimizeProject`, `dedupeProject`, undoing a run, and writing an adapter.
+Every name there is documented and covered by semver, and `package-entry.test.ts` lists its values
+and fails on an undocumented name. What the CLI, `bench/` and the accuracy suite need beyond that
+comes from `upfly-core/internal`, which promises nothing. A name moves into the public entry when a
+documented task needs it; moving one out is a breaking change.
 
 | Folder | Holds |
 |---|---|

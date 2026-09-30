@@ -14,7 +14,6 @@ import {
   type Edit,
   type EncodeFormat,
   type Finding,
-  type Mention,
   type OptimizationPlan,
   type OptimizeProgress,
   type OptimizeProjectResult,
@@ -22,20 +21,23 @@ import {
   type PlanRefusal,
   type PlannedConversion,
   type PlannedRewrite,
-  type ProbeDiagnostic,
   REPORT_SCHEMA_VERSION,
   type ReferenceEntry,
   type ReferenceReport,
   type Report,
   type ReportSummary,
   type Resolution,
-  type ScanDiagnostic,
-  type ServingRootDecision,
   type ServingRoots,
   type SkippedItem,
-  type UnscannedExtension,
 } from 'upfly-core';
 import type { DedupeCopy, DedupePlan, DedupeSet, KeptBecause, StayingReference } from 'upfly-core';
+import type {
+  Mention,
+  ProbeDiagnostic,
+  ScanDiagnostic,
+  ServingRootDecision,
+  UnscannedExtension,
+} from 'upfly-core/internal';
 import { describe, expect, it } from 'vitest';
 import type { TooLargeFinding } from './check.js';
 import type { Reason } from './init.js';

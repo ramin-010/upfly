@@ -14,12 +14,11 @@ import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv, stdout } from 'node:process';
+import type { Adapter, ServingRoots } from 'upfly-core';
 import {
-  type Adapter,
   type Asset,
   CONVENTIONAL_SERVING_ROOTS,
   type Reference,
-  type ServingRoots,
   buildGraph,
   decideServingRoots,
   defaultAdapters,
@@ -29,7 +28,7 @@ import {
   resolutionHealth,
   resolveReferences,
   scanSources,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { REPOS, type RepoSpec, VALIDATION_ROOT } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;

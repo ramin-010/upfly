@@ -3,7 +3,7 @@
  * two machines that validate the same corpus write the same bytes.
  */
 
-import { compareStrings } from 'upfly-core';
+import { compareStrings } from 'upfly-core/internal';
 import type { Triaged } from './triage.js';
 
 export function byFileLineAsset(a: Triaged, b: Triaged): number {

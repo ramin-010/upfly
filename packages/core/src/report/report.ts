@@ -243,6 +243,10 @@ export interface ClassificationBound {
   readonly measuredAgainst: string;
 }
 
+/**
+ * The report's references: counted by outcome, confidence and class, with each one Upfly could not
+ * link listed.
+ */
 export interface ReferenceReport {
   readonly byResolution: Readonly<Record<Resolution, number>>;
   readonly byConfidence: Readonly<Record<Confidence, number>>;
@@ -525,6 +529,11 @@ export interface Caveat {
   readonly detail: readonly string[];
 }
 
+/**
+ * The audit's report, as `upfly audit --json` prints it: headline numbers, findings, and every
+ * reference and image Upfly declined, each with its reason. The `upfly` package ships its JSON
+ * Schema, `schema/report.json`.
+ */
 export interface Report {
   readonly version: number;
   readonly summary: ReportSummary;
@@ -566,6 +575,9 @@ export interface Report {
   readonly caveats: readonly Caveat[];
 }
 
+/**
+ * What `buildReport` reads: the output of `runPipeline`, and what to list in full.
+ */
 export interface ReportInput {
   readonly graph: Graph;
   readonly audit: AuditResult;

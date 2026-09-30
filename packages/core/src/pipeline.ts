@@ -35,6 +35,10 @@ import type { Adapter, Asset, DiscoveryResult, Reference } from './types.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;
 
+/**
+ * What `runPipeline` reads: the project, where it serves files from, what to measure, and what to
+ * leave out.
+ */
 export interface PipelineInput {
   readonly root: string;
   /**
@@ -101,6 +105,9 @@ export function servingRootsFor(declared?: ServingRoots): PipelineInput['serving
     }).servingRoots;
 }
 
+/**
+ * Everything one run of the engine found, which `buildReport` turns into a report.
+ */
 export interface PipelineOutput {
   readonly discovery: DiscoveryResult;
   readonly scanned: Awaited<ReturnType<typeof scanSources>>;

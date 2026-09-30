@@ -17,7 +17,8 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { argv, stdout } from 'node:process';
 import sharp from 'sharp';
-import { type Adapter, defaultAdapters, discover } from 'upfly-core';
+import type { Adapter } from 'upfly-core';
+import { defaultAdapters, discover } from 'upfly-core/internal';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;

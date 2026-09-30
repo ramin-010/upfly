@@ -63,7 +63,7 @@ if (process.argv.includes('--skip-strict')) {
 }
 
 // ---- the engine ----------------------------------------------------------------
-const DIST = join(HERE, '..', '..', 'packages', 'core', 'dist', 'index.js');
+const DIST = join(HERE, '..', '..', 'packages', 'core', 'dist', 'internal.js');
 if (!existsSync(DIST)) {
   process.stderr.write(`${DIST} is missing. Run \`pnpm build\` first.\n`);
   process.exit(1);

@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import ts from 'typescript';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as source from './index.js';
+import * as internal from './internal.js';
 
 const run = promisify(execFile);
 
@@ -51,6 +53,59 @@ describe('the package entry, imported the way a user imports it', () => {
 
     expect(JSON.parse(names)).toEqual(Object.keys(source).sort());
   }, 30_000);
+
+  it('gives an import of the internal entry everything the internal index exports', async () => {
+    const names = await inProject(
+      `const m = await import('${manifest.name}/internal'); console.log(JSON.stringify(Object.keys(m).sort()));`,
+    );
+
+    expect(JSON.parse(names)).toEqual(Object.keys(internal).sort());
+  }, 30_000);
+
+  it('exports as values only what the documented tasks need, so any change to them is seen', () => {
+    // Running the audit and reading its report, optimizeProject, dedupeProject, undo, the
+    // errors they throw, and writing an adapter. Everything else is in upfly-core/internal.
+    expect(Object.keys(source).sort()).toEqual([
+      'REPORT_SCHEMA_VERSION',
+      'UpflyError',
+      'buildReport',
+      'createNodeFileStore',
+      'dedupeProject',
+      'defineAdapter',
+      'inspect',
+      'optimizeProject',
+      'readManifest',
+      'renderReport',
+      'revert',
+      'rewriteByEdits',
+      'runPipeline',
+      'servingRootsFor',
+    ]);
+    const shared = Object.keys(internal).filter((name) => name in source);
+    expect(shared).toEqual([]);
+  });
+
+  it('documents every name the public entry exports, as its declaration', () => {
+    const entry = join(PACKAGE, manifest.exports['.']?.types ?? '');
+    const program = ts.createProgram([entry], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+    });
+    const checker = program.getTypeChecker();
+    const file = program.getSourceFile(entry);
+    const module = file === undefined ? undefined : checker.getSymbolAtLocation(file);
+    const undocumented = (module === undefined ? [] : checker.getExportsOfModule(module))
+      .filter((symbol) => {
+        const target =
+          symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+        return ts.displayPartsToString(target.getDocumentationComment(checker)).trim() === '';
+      })
+      .map((symbol) => symbol.getName());
+
+    expect(module).toBeDefined();
+    expect(undocumented).toEqual([]);
+  });
 
   it('refuses a path inside the package that the map does not name', async () => {
     const outcome = await inProject(

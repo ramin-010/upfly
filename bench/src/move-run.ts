@@ -18,7 +18,7 @@ import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import sharp from 'sharp';
-import { type Move, checkMoveRegression, findSurvivingPaths } from 'upfly-core';
+import { type Move, checkMoveRegression, findSurvivingPaths } from 'upfly-core/internal';
 import { relocateTree, runEngine } from './engine-run.js';
 import { REPOS, VALIDATION_ROOT, refuseValidationCorpus } from './repos.js';
 

@@ -9,28 +9,30 @@
 
 import { createHash } from 'node:crypto';
 import {
+  type Manifest,
+  type OptimizeResult,
+  type PublicPolicy,
+  type ServingRoots,
+  createNodeFileStore,
+  optimizeProject,
+  runPipeline,
+  servingRootsFor,
+} from 'upfly-core';
+import {
   type AliasMap,
   type AssetProbe,
   type AuditResult,
   type DiscoveryResult,
   type Graph,
-  type Manifest,
   type Move,
-  type OptimizeResult,
   type PlannedOperation,
-  type PublicPolicy,
   type RelocationPlan,
-  type ServingRoots,
   applyEdits,
   commit,
-  createNodeFileStore,
   newRunId,
-  optimizeProject,
   planRelocation,
   prepare,
-  runPipeline,
-  servingRootsFor,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { refuseValidationCorpus } from './repos.js';
 
 export interface EngineRun {

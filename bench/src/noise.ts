@@ -21,10 +21,9 @@ import { join } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { Adapter, ServingRoots } from 'upfly-core';
 import {
-  type Adapter,
   type Asset,
-  type ServingRoots,
   buildGraph,
   defaultAdapters,
   detectServingRoots,
@@ -32,7 +31,7 @@ import {
   loadAliases,
   resolveReferences,
   scanSources,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { VALIDATION_ROOT } from './repos.js';
 import { type Summary, summarise } from './samples.js';
 

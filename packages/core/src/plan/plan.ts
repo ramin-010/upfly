@@ -229,6 +229,10 @@ export interface KeptOriginal {
   readonly reason: string;
 }
 
+/**
+ * What a run converts and rewrites, what it declines and why, and which originals it keeps, or the
+ * refusal that stopped it.
+ */
 export interface OptimizationPlan {
   readonly conversions: readonly PlannedConversion[];
   readonly rewrites: readonly PlannedRewrite[];

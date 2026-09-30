@@ -6,14 +6,8 @@
  */
 
 import { isAbsolute, resolve } from 'node:path';
-import {
-  type BrokenFinding,
-  type PipelineOutput,
-  formatBytes,
-  relativePath,
-  runPipeline,
-  servingRootsFor,
-} from 'upfly-core';
+import { type BrokenFinding, type PipelineOutput, runPipeline, servingRootsFor } from 'upfly-core';
+import { formatBytes, relativePath } from 'upfly-core/internal';
 import type { CheckOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';

@@ -1,4 +1,5 @@
-import { type Asset, type Manifest, type OptimizationPlan, buildGraph } from 'upfly-core';
+import type { Manifest, OptimizationPlan } from 'upfly-core';
+import { type Asset, buildGraph } from 'upfly-core/internal';
 import { describe, expect, it } from 'vitest';
 import { count, movingText, renderPlan, writtenByKind } from './plan-text.js';
 

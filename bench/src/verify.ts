@@ -14,7 +14,8 @@ import { appendFileSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
-import { IMAGE_EXTENSIONS, type ReferenceKind, type Report, spell, spellingsOf } from 'upfly-core';
+import type { ReferenceKind, Report } from 'upfly-core';
+import { IMAGE_EXTENSIONS, spell, spellingsOf } from 'upfly-core/internal';
 
 export type Verdict = 'confirmed-genuine' | 'confirmed-false' | 'ambiguous';
 

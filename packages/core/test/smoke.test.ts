@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const BUILT_ENTRY = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const BUILT_INTERNAL = fileURLToPath(new URL('../dist/internal.js', import.meta.url));
 
 /**
  * Fail with an instruction rather than a module-resolution stack trace.
@@ -20,13 +21,13 @@ const BUILT_ENTRY = fileURLToPath(new URL('../dist/index.js', import.meta.url));
  * A missing `dist` is a forgotten `pnpm build`. It fails rather than skips: a smoke test
  * that passes when the artefact is absent tests nothing.
  */
-async function loadBuiltPackage(): Promise<Record<string, unknown>> {
-  if (!existsSync(BUILT_ENTRY)) {
+async function loadBuiltPackage(entry = BUILT_ENTRY): Promise<Record<string, unknown>> {
+  if (!existsSync(entry)) {
     throw new Error(
       'packages/core/dist is not built, so the packaged artefact cannot be tested. Run `pnpm build` (or `pnpm typecheck`, which builds) and try again. This test is the only one that loads dist; every other test runs source through the vitest alias.',
     );
   }
-  return (await import(BUILT_ENTRY)) as Record<string, unknown>;
+  return (await import(entry)) as Record<string, unknown>;
 }
 
 /**
@@ -56,26 +57,23 @@ describe('the built package', () => {
     'exports the functions the CLI and the extension import by name',
     async () => {
       const built = await loadBuiltPackage();
+      const internal = await loadBuiltPackage(BUILT_INTERNAL);
 
-      // A representative slice across the modules an outside caller actually reaches:
-      // discovery, planning, the transaction, the report and the probe. A name missing
-      // here means the emitted entry point does not match the source's public surface.
-      for (const name of [
-        'discover',
-        'planOptimization',
-        'buildReport',
-        'renderReport',
-        'optimize',
-        'prepare',
-        'commit',
-        'probeAssets',
-        'createSharpProbe',
-        'parseManifest',
-        'serialiseManifest',
-      ]) {
-        expect(typeof built[name], `${name} is missing from the built entry point`).toBe(
-          'function',
-        );
+      // Every function of the public entry, and a slice of the internal one across the
+      // stages the CLI reaches: discovery, scanning, resolution, the probe and the
+      // transaction. A name missing here means an emitted entry does not match its source.
+      const expected = [
+        [built, 'runPipeline', 'buildReport', 'renderReport', 'optimizeProject'],
+        [built, 'dedupeProject', 'readManifest', 'inspect', 'revert', 'createNodeFileStore'],
+        [internal, 'discover', 'scanSources', 'resolveReferences', 'probeAssets'],
+        [internal, 'createSharpProbe', 'prepare', 'commit'],
+      ] as const;
+      for (const [entry, ...names] of expected) {
+        for (const name of names) {
+          expect(typeof entry[name], `${name} is missing from a built entry point`).toBe(
+            'function',
+          );
+        }
       }
     },
     LOAD_TIMEOUT_MS,
@@ -84,7 +82,7 @@ describe('the built package', () => {
   it(
     'exports the adapter set, which is a value rather than a function',
     async () => {
-      const built = await loadBuiltPackage();
+      const built = await loadBuiltPackage(BUILT_INTERNAL);
       const adapters = built.defaultAdapters as readonly {
         readonly id: string;
         readonly extensions: readonly string[];
@@ -110,12 +108,17 @@ describe('the built package', () => {
     'runs compiled code, not just resolves it',
     async () => {
       const built = await loadBuiltPackage();
-      const isExternalUrl = built.isExternalUrl as (path: string) => boolean;
+      const rewrite = built.rewriteByEdits as (input: {
+        text: string;
+        edits: { start: number; end: number; replacement: string }[];
+      }) => string;
 
       // A pure function with no dependencies, so a failure here is the build being
       // wrong rather than an environment being unusual.
-      expect(isExternalUrl('https://example.com/hero.png')).toBe(true);
-      expect(isExternalUrl('./hero.png')).toBe(false);
+      const text = '<img src="hero.png">';
+      expect(rewrite({ text, edits: [{ start: 10, end: 18, replacement: 'hero.webp' }] })).toBe(
+        '<img src="hero.webp">',
+      );
     },
     LOAD_TIMEOUT_MS,
   );
@@ -123,7 +126,10 @@ describe('the built package', () => {
   it(
     'serialises a manifest through the built code, which is the format on disk',
     async () => {
-      const built = await loadBuiltPackage();
+      // No entry exports these two, so the built module is loaded by its path.
+      const built = await loadBuiltPackage(
+        fileURLToPath(new URL('../dist/write/manifest.js', import.meta.url)),
+      );
       const serialise = built.serialiseManifest as (manifest: unknown) => string;
       const parse = built.parseManifest as (text: string) => unknown;
       const version = built.MANIFEST_SCHEMA_VERSION as number;

@@ -17,15 +17,14 @@ import { argv, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 // `isRootRelative` and `looksLikeAsset` are the engine's own filters, so this scores the same
 // references `decideServingRoots` does.
+import type { Adapter, RawReference } from 'upfly-core';
 import {
-  type Adapter,
-  type RawReference,
   defaultAdapters,
   discover,
   isRootRelative,
   looksLikeAsset,
   scanSources,
-} from 'upfly-core';
+} from 'upfly-core/internal';
 import { REPOS, VALIDATION_ROOT } from './repos.js';
 
 const ADAPTERS: readonly Adapter[] = defaultAdapters;

@@ -11,9 +11,8 @@ import {
   type KeptBecause,
   type Manifest,
   dedupeProject,
-  formatBytes,
-  pathsTouched,
 } from 'upfly-core';
+import { formatBytes, pathsTouched } from 'upfly-core/internal';
 import type { DedupeOptions } from './args.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { type GitState, RUN_TRAILER, commitPaths, gitState, ignoredPaths } from './git.js';
