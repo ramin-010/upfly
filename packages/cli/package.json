@@ -33,7 +33,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist/", "README.md", "AGENTS.md", "LICENSE"],
+  "files": ["dist/", "schema/", "README.md", "AGENTS.md", "LICENSE"],
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean"
@@ -42,5 +42,8 @@
     "c12": "3.3.4",
     "confbox": "0.2.4",
     "upfly-core": "workspace:*"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
   }
 }
