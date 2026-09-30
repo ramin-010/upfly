@@ -1,8 +1,8 @@
 # Using Upfly from a coding agent
 
 Upfly finds every image in a project and every place the project refers to one, converts
-images to WebP or AVIF, and rewrites the references so that nothing breaks. It never
-deletes an image. It makes no network calls and sends nothing anywhere.
+images to WebP or AVIF, and rewrites the references, reporting each one it cannot rewrite
+safely. It never deletes an image. It makes no network calls and sends nothing anywhere.
 
 In a project that has Upfly installed, run it as `npx upfly <command>`. Every command
 reads the folder given after it, or the current folder, and prints plain text; add
@@ -25,7 +25,10 @@ reads the folder given after it, or the current folder, and prints plain text; a
    ones to review. If there are changes, ask the user to commit or stash them.
 2. Run `npx upfly optimize`. It writes nothing and prints the plan: which images convert,
    how much smaller they get, which files change, and why anything is left alone. Show the
-   user that plan, and the notes at its end.
+   user that plan, and the notes at its end. Look at where each converted image is used:
+   some readers show no WebP. iOS reads the icon an `apple-touch-icon` link names only as
+   PNG, and Outlook shows no WebP in an email. The plan does not leave such images out on
+   its own, so offer to leave each out with `--exclude <path>`.
 3. Only when the user says yes: `npx upfly optimize --apply --commit`. The run's files go
    into one commit, which `git revert` undoes.
 4. Check the result: run the project's own build if it has one, then `npx upfly check`,

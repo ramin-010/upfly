@@ -16,8 +16,8 @@ import { upfly } from './helpers.js';
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = ['AGENTS.md', 'skill/upfly/SKILL.md'];
 const COMMANDS = ['audit', 'optimize', 'undo', 'check', 'init', 'refs', 'dedupe'];
-/** Words written in code style that name folders rather than anything in the JSON. */
-const NOT_JSON = new Set(['public', 'node_modules']);
+/** Words written in code style that are not in the JSON: folder names and HTML. */
+const NOT_JSON = new Set(['public', 'node_modules', 'apple-touch-icon']);
 
 type Schema = { readonly [keyword: string]: unknown };
 
