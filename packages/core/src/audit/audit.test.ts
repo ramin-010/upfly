@@ -89,6 +89,11 @@ function graphOf(input: {
   });
 }
 
+/** How many `dead` findings sit under a public directory. */
+function deadInPublic(result: { readonly findings: readonly Finding[] }): number {
+  return result.findings.filter((finding) => finding.kind === 'dead' && finding.inPublicDir).length;
+}
+
 function kinds(findings: readonly Finding[]): string[] {
   return findings.map((finding) => finding.kind);
 }
@@ -240,7 +245,7 @@ describe('audit', () => {
       });
 
       expect(kinds(result.findings)).toEqual(['dead', 'dead']);
-      expect(result.publicDirDeadCount).toBe(1);
+      expect(deadInPublic(result)).toBe(1);
       expect(
         result.findings.map((finding) => finding.kind === 'dead' && finding.inPublicDir),
       ).toEqual([true, false]);
@@ -258,7 +263,7 @@ describe('audit', () => {
         publicDirs: [''],
       });
 
-      expect(result.publicDirDeadCount).toBe(2);
+      expect(deadInPublic(result)).toBe(2);
       expect(result.findings.every((f) => f.kind !== 'dead' || f.inPublicDir)).toBe(true);
     });
 
@@ -272,7 +277,7 @@ describe('audit', () => {
         publicDirs: [],
       });
 
-      expect(result.publicDirDeadCount).toBe(0);
+      expect(deadInPublic(result)).toBe(0);
     });
 
     it('does not count a hedged public asset: only confident ones need the caveat', async () => {
@@ -298,7 +303,7 @@ describe('audit', () => {
       });
 
       expect(kinds(result.findings)).toEqual(['possibly-dead']);
-      expect(result.publicDirDeadCount).toBe(0);
+      expect(deadInPublic(result)).toBe(0);
     });
   });
 
@@ -480,21 +485,6 @@ describe('audit', () => {
       });
 
       expect(result.findings[0]).toMatchObject({ kind: 'oversized', width: null, height: null });
-    });
-
-    it('honours configured thresholds', async () => {
-      const result = await audit({
-        graph: graphOf({
-          assets: [asset('small.png', 2_000)],
-          references: [resolved('a.html', './small.png', 'small.png')],
-        }),
-        sweep: NO_SWEEP,
-        readFile: files(),
-        probes: [probe('small.png')],
-        thresholds: { maxBytes: 1_000 },
-      });
-
-      expect(kinds(result.findings)).toEqual(['oversized']);
     });
   });
 
@@ -770,7 +760,6 @@ describe('audit', () => {
 
     expect(result).toEqual({
       findings: [],
-      publicDirDeadCount: 0,
       conventionLinked: [],
       unreadableSources: [],
       probed: false,

@@ -79,7 +79,7 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
   const holder: LockHolder = { pid, startedAt: now(), runId };
 
   if (await store.createExclusive(LOCK_PATH, `${JSON.stringify(holder, null, 2)}\n`)) {
-    return { reentered: false, release: () => releaseIfOwner(store, runId, pid, isAlive) };
+    return { reentered: false, release: () => releaseIfOwner(store, runId, pid) };
   }
 
   const current = await readLock(store);
@@ -115,7 +115,7 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
 
   await store.remove(LOCK_PATH);
   if (await store.createExclusive(LOCK_PATH, `${JSON.stringify(holder, null, 2)}\n`)) {
-    return { reentered: false, release: () => releaseIfOwner(store, runId, pid, isAlive) };
+    return { reentered: false, release: () => releaseIfOwner(store, runId, pid) };
   }
 
   // Someone else cleared the same stale lock and took it first. One retry, never a
@@ -131,12 +131,7 @@ export async function acquireLock(options: LockOptions): Promise<LockHandle> {
  * cleared as stale would delete its successor's lock on the way out, and a third run
  * would find the project free while two runs are writing.
  */
-async function releaseIfOwner(
-  store: FileStore,
-  runId: string,
-  pid: number,
-  _isAlive: ProcessLiveness,
-): Promise<void> {
+async function releaseIfOwner(store: FileStore, runId: string, pid: number): Promise<void> {
   const current = await readLockHolder(store);
   if (current === null) return;
   if (current.runId !== runId || current.pid !== pid) return;

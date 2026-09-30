@@ -248,7 +248,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
@@ -348,7 +347,6 @@ describe('buildReport', () => {
               mention('scanned-file', 'src/content/tutorial.mdx:119', 'arc.webp'),
             ]),
           ],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -426,7 +424,6 @@ describe('buildReport', () => {
               ],
             },
           ],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -474,7 +471,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
@@ -634,7 +630,6 @@ describe('buildReport', () => {
                       ]
                     : []),
                 ],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: over.probed ?? true,
@@ -795,7 +790,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings,
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
@@ -895,7 +889,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: true,
@@ -1003,7 +996,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1107,7 +1099,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1263,7 +1254,6 @@ describe('buildReport', () => {
         }),
         audit: {
           findings: deadAssets.map(dead),
-          publicDirDeadCount: deadAssets.length,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1348,7 +1338,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1437,7 +1426,6 @@ describe('buildReport', () => {
         graph: discardedGraph(),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1582,7 +1570,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets, references, unscannedFiles: [] }),
         audit: {
           findings: [],
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1711,7 +1698,6 @@ describe('buildReport', () => {
         graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
         audit: {
           findings,
-          publicDirDeadCount: 0,
           conventionLinked: [],
           unreadableSources: [],
           probed: false,
@@ -1971,7 +1957,6 @@ describe('byResolvedVia: the field that says which links may be rewritten', () =
       graph: buildGraph({ root: ROOT, assets: [ASSET], references, unscannedFiles: [] }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
@@ -2076,7 +2061,6 @@ describe('the headline reads correctly at a count of one', () => {
       }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
@@ -2128,7 +2112,6 @@ describe('the serving roots the report discloses', () => {
       graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
@@ -2780,7 +2763,6 @@ describe('the assets a plan examined and did not convert', () => {
       }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [],
         unreadableSources: [],
         probed: true,
@@ -2966,7 +2948,6 @@ describe('the public-dir caveat counts what the report lists', () => {
           { kind: 'dead', asset: 'b.svg', bytes: 10, inPublicDir: true },
         ],
         // What the audit produces, before this report demotes the vector.
-        publicDirDeadCount: 2,
         conventionLinked: [],
         unreadableSources: [],
         probed: false,
@@ -3026,7 +3007,6 @@ describe('the framework caveat at a count of one', () => {
       graph: buildGraph({ root: ROOT, assets: [], references: [], unscannedFiles: [] }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [{ asset: 'app/icon.png', reason: 'a framework reads it by its name' }],
         unreadableSources: [],
         probed: false,
@@ -3464,7 +3444,6 @@ describe('what the ignore rules left out', () => {
       graph: buildGraph({ root: ROOT, assets: [], references, unscannedFiles: [] }),
       audit: {
         findings: [],
-        publicDirDeadCount: 0,
         conventionLinked: [],
         unreadableSources: [],
         probed: false,

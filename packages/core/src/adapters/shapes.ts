@@ -899,6 +899,7 @@ export const UNTESTED_SHAPE_IDS: readonly string[] = [
   'md.style-element',
 ];
 
+/** The declaration of a shape by its id, or `undefined` when no shape has that id. */
 export function shapeById(id: string): ShapeDeclaration | undefined {
   return SHAPES.find((shape) => shape.id === id);
 }

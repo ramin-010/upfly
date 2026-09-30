@@ -1,7 +1,10 @@
 /** Stable, machine-readable error codes. Part of the public contract. */
 export type UpflyErrorCode =
+  /** An edit's offsets are not whole numbers, or its range is not a slice of the text. */
   | 'INVALID_EDIT_RANGE'
+  /** Two edits to one text overlap, so no order of applying them is right. */
   | 'OVERLAPPING_EDITS'
+  /** Two edits start at one offset, so the result would depend on which is applied first. */
   | 'AMBIGUOUS_EDITS'
   /**
    * An edit's range does not hold the text the edit was worked out from, so applying it

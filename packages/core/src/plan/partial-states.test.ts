@@ -10,7 +10,7 @@ import { createSharpProbe } from '../probe/probe-sharp.js';
 import { probeAssets } from '../probe/probe.js';
 import { resolveReferences } from '../resolve/resolve.js';
 import { scanSources } from '../scan/scan.js';
-import { type PublicPolicy, patternTargets, planOptimization } from './plan.js';
+import { type PublicPolicy, planOptimization } from './plan.js';
 
 /**
  * Planning a tree that is half working, which real repositories rarely are.
@@ -77,7 +77,10 @@ describe('a partial-failure state, built by hand because no real repository has 
       // for while still passing.
       const { graph } = await planFor('replace');
 
-      expect(patternTargets(graph).map((path) => path.split(/[\\/]/).pop())).toEqual([
+      const targets = graph.references.flatMap((reference) =>
+        reference.resolution === 'resolved-pattern' ? reference.resolvedPaths : [],
+      );
+      expect(targets.map((path) => path.split(/[\\/]/).pop()).sort()).toEqual([
         'theme-dark.png',
         'theme-light.png',
         'theme-not-an-image.png',

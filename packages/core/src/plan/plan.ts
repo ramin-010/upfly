@@ -278,16 +278,11 @@ function unrewritable(reference: Reference): string {
   return 'a path assembled at runtime that no run can rewrite';
 }
 
-/** Every asset a pattern reference could match, as sorted absolute paths. */
-export function patternTargets(graph: Graph): readonly string[] {
-  const targets = new Set<string>();
-  for (const reference of graph.references) {
-    if (reference.resolution !== 'resolved-pattern') continue;
-    for (const path of reference.resolvedPaths) targets.add(path);
-  }
-  return [...targets].sort();
-}
-
+/**
+ * The plan for one run: which images convert, which references move to the converted
+ * files, what is declined and why, and which originals `replace` keeps. Pure: it reads the
+ * graph and the measurements and touches no disk.
+ */
 export function planOptimization(input: PlanInput): OptimizationPlan {
   // Before anything else. Rewriting references on a graph whose root-relative paths
   // did not resolve means repointing whatever did resolve while the majority stays

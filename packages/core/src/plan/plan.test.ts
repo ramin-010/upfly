@@ -9,7 +9,6 @@ import type { Asset, RawReference, Reference } from '../types.js';
 import {
   type LinkedReference,
   type PlanInput,
-  patternTargets,
   planOptimization,
   whyReferenceStays,
 } from './plan.js';
@@ -869,15 +868,6 @@ describe('a template reference standing for many assets', () => {
     expect(plan.conversions).toHaveLength(2);
     expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['a.html', 'b.html']);
     expect(plan.declined.some((d) => d.reason.includes('assembled at runtime'))).toBe(true);
-  });
-
-  it('names every asset a pattern could match, so a caller can measure exactly those', () => {
-    const graph = buildGraph({ root: ROOT, assets, references, unscannedFiles: [] });
-
-    expect(patternTargets(graph)).toEqual([
-      `${ROOT}/public/a-dark.png`,
-      `${ROOT}/public/a-light.png`,
-    ]);
   });
 });
 

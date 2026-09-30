@@ -231,7 +231,6 @@ export interface AuditOptions {
    * off the disk. Absent means the check does not run.
    */
   readonly conventionRoots?: readonly ConventionRoot[];
-  readonly thresholds?: AuditThresholds;
   /**
    * Content hashes by POSIX-relative path, for the `duplicate` finding. Absent means the
    * check did not run, which `AuditResult.duplicatesChecked` reports.
@@ -246,8 +245,6 @@ export interface AuditOptions {
 export interface AuditResult {
   /** Every finding, ordered for the report. */
   readonly findings: readonly Finding[];
-  /** How many `dead` findings sit under a public directory. See `DeadFinding.inPublicDir`. */
-  readonly publicDirDeadCount: number;
   /**
    * Unreferenced assets a framework reads by filename, and why.
    *
@@ -270,7 +267,8 @@ export interface AuditResult {
 
 /**
  * Product judgement rather than measurements, so they are documented defaults, not
- * settled numbers. A caller overrides any of them through `AuditOptions.thresholds`.
+ * settled numbers. The planner reads the saving thresholds too, through `whySavingTooSmall`,
+ * so the report and the plan count the same savings.
  */
 const DEFAULT_THRESHOLDS = {
   maxBytes: 500_000,
@@ -283,7 +281,7 @@ const DEFAULT_THRESHOLDS = {
 
 /** Produce every finding the available evidence supports. */
 export async function audit(options: AuditOptions): Promise<AuditResult> {
-  const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
+  const thresholds = DEFAULT_THRESHOLDS;
   const publicPrefixes = normalisePublicDirs(options.publicDirs);
 
   const { findings: broken, rootRelative, unreadableSources } = await brokenFindings(options);
@@ -320,8 +318,6 @@ export async function audit(options: AuditOptions): Promise<AuditResult> {
 
   return {
     findings: [...dead, ...reported, ...probeFindings, ...duplicates].sort(byReportOrder),
-    publicDirDeadCount: dead.filter((finding) => finding.kind === 'dead' && finding.inPublicDir)
-      .length,
     conventionLinked,
     unreadableSources,
     probed: options.probes !== undefined,

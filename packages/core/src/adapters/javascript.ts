@@ -188,9 +188,7 @@ export function findJavaScriptReferences(input: {
     // A decline is read during the walk instead: the construct that declines a literal
     // contains it, and `walk` visits a node before its children.
     const claimed = new Set(context.references.map((reference) => reference.start));
-    const guesses = context.speculative.filter(
-      (reference) => !claimed.has(reference.start) && !claimed.has(reference.start + 1),
-    );
+    const guesses = context.speculative.filter((reference) => !claimed.has(reference.start));
 
     return [...context.references, ...guesses]
       .map((reference) => withPositionShape(reference, context))

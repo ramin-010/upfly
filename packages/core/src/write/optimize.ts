@@ -25,14 +25,12 @@ import {
   type PlannedRewrite,
   type PublicPolicy,
   type RootLinkPolicy,
-  patternTargets,
   planOptimization,
 } from '../plan/plan.js';
 import type { AssetProbe, EncodeFormat, ImageProbe } from '../probe/probe.js';
 import type { AliasMap } from '../resolve/aliases.js';
 import type { ServingRoots } from '../resolve/resolve.js';
 import { hashText } from '../scan/text-hash.js';
-import type { Asset } from '../types.js';
 import { applyEdits } from './edits.js';
 import { acquireLock } from './lock.js';
 import { type Declined, type Manifest, UPFLY_DIRECTORY, pathsTouched } from './manifest.js';
@@ -261,37 +259,6 @@ export function newRunId(now: Date, random: () => number = Math.random): string 
     .toString(16)
     .padStart(4, '0');
   return `${stamp}-${suffix}`;
-}
-
-/**
- * Assets a pattern reference could match, as objects rather than as paths.
- *
- * `patternTargets` returns absolute paths, the planner speaks in project-relative ones,
- * and the probe's cap is keyed on absolute ones. They line up by convention only, and an
- * exemption that matches nothing looks exactly like no exemption. So a target that names
- * no asset throws: the two sides have drifted, a fault in the engine, not the project.
- */
-function patternTargetAssets(graph: Graph): readonly Asset[] {
-  const byPath = new Map(graph.assets.map((node) => [node.asset.path, node.asset]));
-  const targets = patternTargets(graph);
-
-  return targets.map((path) => {
-    const asset = byPath.get(path);
-    if (asset === undefined) {
-      throw new Error(
-        `patternTargets named ${path}, which is not in the asset set. The resolver and the planner disagree about whether an asset path is absolute or project-relative.`,
-      );
-    }
-    return asset;
-  });
-}
-
-/**
- * Every asset a pattern reference could match, for a caller that measures them whatever the
- * encode cap says.
- */
-export function alwaysMeasureFor(graph: Graph): readonly Asset[] {
-  return patternTargetAssets(graph);
 }
 
 export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {

@@ -383,7 +383,7 @@ describe('framework fixtures', () => {
         // request it. With no evidence of that it stays `dead`, and the report counts it.
         const result = await auditTree('astro', false);
 
-        expect(result.publicDirDeadCount).toBe(1);
+        expect(result.findings.filter((f) => f.kind === 'dead' && f.inPublicDir)).toHaveLength(1);
       });
 
       it.each(['next-app', 'plain-html'] as const)(

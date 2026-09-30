@@ -1287,9 +1287,8 @@ function caveats(
       detail: [],
     });
   }
-  // Counted over the findings this report lists. The audit's `publicDirDeadCount` also
-  // counts the vectors and kept originals moved out of `findings`, so quoting it would
-  // give a number the listed findings cannot account for.
+  // Counted over the findings this report lists, leaving out the vectors and kept
+  // originals moved out of `findings`, so every one counted is one listed.
   const demotedAssets = new Set([...vectors.demoted, ...kept].map((entry) => entry.asset));
   const deadInPublic = input.audit.findings.filter(
     (finding) =>

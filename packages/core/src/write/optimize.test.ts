@@ -16,13 +16,7 @@ import type { ScannedText } from '../scan/scan.js';
 import type { Asset, RawReference, Reference } from '../types.js';
 import { LOCK_PATH } from './lock.js';
 import { MANIFEST_PATH } from './manifest.js';
-import {
-  type OptimizeInput,
-  type OptimizeProgress,
-  alwaysMeasureFor,
-  newRunId,
-  optimize,
-} from './optimize.js';
+import { type OptimizeInput, type OptimizeProgress, newRunId, optimize } from './optimize.js';
 import { type FileStore, type RunContext, commit } from './transaction.js';
 
 // Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
@@ -144,7 +138,6 @@ function inputFor(
   const references = [resolved('src/App.jsx', './logo.png', 'src/logo.png')];
   const audit: AuditResult = {
     findings: [],
-    publicDirDeadCount: 0,
     conventionLinked: [],
     unreadableSources: [],
     probed: true,
@@ -308,55 +301,6 @@ describe('an edit whose offsets do not cover its reference', () => {
 
     await expect(run).rejects.toMatchObject({ code: 'EDIT_TEXT_MISMATCH' });
     expect(project.tree.get('src/App.jsx')).toBe(SOURCE);
-  });
-});
-
-describe('the pattern-target lookup', () => {
-  it('returns the assets a pattern could match', () => {
-    const assets = [asset('src/a.png'), asset('src/b.png')];
-    const pattern = {
-      ...RAW,
-      file: `${ROOT}/src/App.jsx`,
-      rawPath: './${name}.png',
-      start: 0,
-      end: 10,
-      ceiling: 'medium',
-      resolution: 'resolved-pattern',
-      confidence: 'medium',
-      resolvedPaths: [`${ROOT}/src/a.png`, `${ROOT}/src/b.png`],
-      resolvedVia: 'file',
-    } as unknown as Reference;
-
-    const targets = alwaysMeasureFor(
-      buildGraph({ root: ROOT, assets, references: [pattern], unscannedFiles: [] }),
-    );
-
-    expect(targets.map((target) => target.relative)).toEqual(['src/a.png', 'src/b.png']);
-  });
-
-  it('is the objects themselves, so no path convention has to line up', () => {
-    // The trap this exists to remove: patternTargets returns absolute paths, the
-    // planner speaks relative ones, and the probe cap is keyed on absolute. Handing
-    // the probe Asset objects means there is no string to be the wrong kind.
-    const assets = [asset('src/a.png')];
-    const pattern = {
-      ...RAW,
-      file: `${ROOT}/src/App.jsx`,
-      rawPath: './${name}.png',
-      start: 0,
-      end: 10,
-      ceiling: 'medium',
-      resolution: 'resolved-pattern',
-      confidence: 'medium',
-      resolvedPaths: [`${ROOT}/src/a.png`],
-      resolvedVia: 'file',
-    } as unknown as Reference;
-
-    const [target] = alwaysMeasureFor(
-      buildGraph({ root: ROOT, assets, references: [pattern], unscannedFiles: [] }),
-    );
-
-    expect(target).toBe(assets[0]);
   });
 });
 

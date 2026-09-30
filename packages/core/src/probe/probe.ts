@@ -340,8 +340,7 @@ function headerFailureCode(asset: Asset): 'not-an-image' | 'svg-unreadable' {
  * strip, so a ten-frame GIF presents ten times its own area to the limit. False when the
  * header never read: that asset already has a header code.
  */
-function isBeyondPixelBudget(metadata: ImageMetadata | null): boolean {
-  if (metadata === null) return false;
+function isBeyondPixelBudget(metadata: ImageMetadata): boolean {
   return metadata.width * metadata.height * Math.max(1, metadata.pages) > MAX_ENCODE_PIXELS;
 }
 

@@ -18,7 +18,7 @@ import { isExternalUrl, plausiblePathShape, splitPathSuffix } from './reference-
 import type { ShapeId } from './shapes.js';
 
 /** A JSON string literal, including its quotes. */
-const STRING = /"(?:[^"\\]|\\.)*"/dg;
+const STRING = /"(?:[^"\\]|\\.)*"/g;
 
 export const jsonAdapter: Adapter = defineAdapter({
   id: 'json',
