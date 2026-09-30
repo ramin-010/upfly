@@ -33,7 +33,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist/", "schema/", "README.md", "AGENTS.md", "LICENSE"],
+  "files": ["dist/", "schema/", "skill/", "README.md", "AGENTS.md", "LICENSE"],
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean"

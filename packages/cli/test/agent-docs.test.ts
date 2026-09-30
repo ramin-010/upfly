@@ -6,7 +6,7 @@
  * letter, so a flag that was renamed would send it into a usage error.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ import { EXIT_CODES } from '../src/exit-codes.js';
 import { upfly } from './helpers.js';
 
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
-const DOCS = ['AGENTS.md'];
+const DOCS = ['AGENTS.md', 'skill/upfly/SKILL.md'];
 const COMMANDS = ['audit', 'optimize', 'undo', 'check', 'init', 'refs', 'dedupe'];
 /** Words written in code style that name folders rather than anything in the JSON. */
 const NOT_JSON = new Set(['public', 'node_modules']);
@@ -136,11 +136,12 @@ describe.each(DOCS)('%s says only what the built CLI does', (doc) => {
     }
   });
 
-  it('gives the exit codes the CLI returns', () => {
-    for (const code of Object.values(EXIT_CODES)) expect(text).toContain(`\n| ${code} |`);
-    expect([...text.matchAll(/\n\| (\d+) \|/g)].map((match) => Number(match[1]))).toEqual(
-      Object.values(EXIT_CODES),
-    );
+  it('gives the exit codes the CLI returns, in full where it lists them', () => {
+    const rows = [...text.matchAll(/\n\| (\d+) \|/g)].map((match) => Number(match[1]));
+    if (doc === 'AGENTS.md' || rows.length > 0) expect(rows).toEqual(Object.values(EXIT_CODES));
+    for (const match of text.matchAll(/\bexit(?:s| code) (\d+)/gi)) {
+      expect(Object.values(EXIT_CODES) as number[], match[0]).toContain(Number(match[1]));
+    }
   });
 
   it('names only refusals the code gives, and only schemas the package ships', () => {
@@ -150,6 +151,19 @@ describe.each(DOCS)('%s says only what the built CLI does', (doc) => {
     }
     for (const file of spans.filter((span) => /^[a-z]+\.json$/.test(span))) {
       expect(Object.keys(schemas), file).toContain(file);
+    }
+  });
+
+  it('points only at files the package ships', () => {
+    const manifest = JSON.parse(readFileSync(join(PACKAGE, 'package.json'), 'utf8'));
+    for (const span of spans.filter((span) => span.startsWith('node_modules/upfly/'))) {
+      const inside = span.slice('node_modules/upfly/'.length).replace(/[/]$/, '');
+      expect(existsSync(join(PACKAGE, inside)), span).toBe(true);
+      const top = inside.split('/')[0];
+      expect(
+        (manifest.files as string[]).some((entry) => entry.replace(/[/]$/, '') === top),
+        `${span} is not in the package's files`,
+      ).toBe(true);
     }
   });
 
@@ -165,5 +179,20 @@ describe.each(DOCS)('%s says only what the built CLI does', (doc) => {
       if (COMMANDS.includes(word) || NOT_JSON.has(word)) continue;
       expect(words.has(word), word).toBe(true);
     }
+  });
+});
+
+describe('the Agent Skill', () => {
+  it('is named for its folder and describes when to use it, within the format limits', () => {
+    const text = readFileSync(join(PACKAGE, 'skill', 'upfly', 'SKILL.md'), 'utf8');
+    const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text)?.[1] ?? '';
+    const field = (key: string) => new RegExp(`^${key}: (.+)$`, 'm').exec(front)?.[1]?.trim();
+
+    // Agent Skills: a name of lowercase letters, digits and hyphens, at most 64 characters,
+    // and a description of at most 1,024.
+    expect(field('name')).toBe('upfly');
+    expect(field('name')).toMatch(/^[a-z0-9-]{1,64}$/);
+    expect(field('description')?.length ?? 0).toBeGreaterThan(0);
+    expect(field('description')?.length ?? 0).toBeLessThanOrEqual(1024);
   });
 });

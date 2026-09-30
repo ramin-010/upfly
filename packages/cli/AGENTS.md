@@ -125,3 +125,9 @@ unused. Apply it the way `optimize` is applied: with the user's yes,
 Upfly works them out, and says why it chose each. Show the user the file: a wrong folder
 is the likeliest reason for a wrong result.
 
+
+## The Agent Skill
+
+The package also ships a short form of this file as an Agent Skill, which an agent loads
+when a task involves the project's images. To install it, copy the folder
+`node_modules/upfly/skill/upfly` into the project's `.claude/skills/` folder.
