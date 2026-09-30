@@ -83,6 +83,44 @@ describe('renderPlan', () => {
       '',
     ]);
   });
+
+  it('lists the first twenty of a long list, keeps every count, and says where the rest are', () => {
+    const names = Array.from(
+      { length: 25 },
+      (_, index) => `images/p${String(index).padStart(2, '0')}`,
+    );
+    const big = buildGraph({
+      root: '/site',
+      assets: names.map((name) => asset(`${name}.png`, 2_000)),
+      references: [],
+      unscannedFiles: [],
+    });
+    const long: OptimizationPlan = {
+      ...plan,
+      conversions: names.map((name) => ({
+        asset: `${name}.png`,
+        target: `${name}.webp`,
+        format: 'webp',
+        quality: 80,
+        savedBytes: 1_500,
+        replacesOriginal: false,
+      })),
+      rewrites: names.map((name) => ({
+        file: `${name}.html`,
+        edits: [{ start: 0, end: 10, replacement: 'x' }],
+      })),
+      keptOriginals: [],
+    };
+
+    const lines = renderPlan(long, big, 'keep-original');
+    const more = '    ... and 5 more; the JSON output, `--json`, lists every one';
+
+    expect(lines).toContain('  Convert to WebP: 25 images, 50 KB now and 12.5 KB after');
+    expect(lines).toContain('  Update references: 25 references in 25 files');
+    expect(lines.filter((line) => line.includes('.png → '))).toHaveLength(20);
+    expect(lines.filter((line) => line.endsWith('.html  1 reference'))).toHaveLength(20);
+    expect(lines.filter((line) => line === more)).toHaveLength(2);
+  });
 });
 
 describe('writtenByKind', () => {

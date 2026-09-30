@@ -25,12 +25,13 @@ export function renderPlan(plan: OptimizationPlan, graph: Graph, policy: PublicP
     lines.push(
       `  Convert to ${format}: ${count(plan.conversions.length, 'image')}, ${formatBytes(before)} now and ${formatBytes(before - saved)} after`,
     );
-    for (const conversion of plan.conversions) {
+    for (const conversion of plan.conversions.slice(0, LISTED)) {
       const size = sizes.get(conversion.asset) ?? 0;
       lines.push(
         `    ${conversion.asset} → ${conversion.target}  ${formatBytes(size)} → ${formatBytes(size - conversion.savedBytes)}`,
       );
     }
+    lines.push(...moreThanListed(plan.conversions.length));
   }
 
   if (plan.rewrites.length > 0) {
@@ -38,13 +39,26 @@ export function renderPlan(plan: OptimizationPlan, graph: Graph, policy: PublicP
     lines.push(
       `  Update references: ${count(references, 'reference')} in ${count(plan.rewrites.length, 'file')}`,
     );
-    for (const rewrite of plan.rewrites) {
+    for (const rewrite of plan.rewrites.slice(0, LISTED)) {
       lines.push(`    ${rewrite.file}  ${count(rewrite.edits.length, 'reference')}`);
     }
+    lines.push(...moreThanListed(plan.rewrites.length));
   }
 
   lines.push(...originalsLines(plan, policy), '');
   return lines;
+}
+
+/**
+ * How many items of a list the plan prints. The counts above each list stay whole; a big
+ * project's thousands of lines would bury them, and `--json` holds every item.
+ */
+const LISTED = 20;
+
+/** The line under a list cut at `LISTED`, or none when it was not cut. */
+function moreThanListed(total: number): string[] {
+  if (total <= LISTED) return [];
+  return [`    ... and ${total - LISTED} more; the JSON output, \`--json\`, lists every one`];
 }
 
 function originalsLines(plan: OptimizationPlan, policy: PublicPolicy): string[] {
@@ -61,13 +75,17 @@ function originalsLines(plan: OptimizationPlan, policy: PublicPolicy): string[] 
     lines.push(
       `  Remove originals: ${count(removed.length, 'image')}, each once every reference to it has moved`,
     );
-    for (const conversion of removed) lines.push(`    ${conversion.asset}`);
+    for (const conversion of removed.slice(0, LISTED)) lines.push(`    ${conversion.asset}`);
+    lines.push(...moreThanListed(removed.length));
   }
   if (plan.keptOriginals.length > 0) {
     lines.push(
       `  Keep originals: ${count(plan.keptOriginals.length, 'image')}, each for its reason`,
     );
-    for (const kept of plan.keptOriginals) lines.push(`    ${kept.asset}  ${kept.reason}`);
+    for (const kept of plan.keptOriginals.slice(0, LISTED)) {
+      lines.push(`    ${kept.asset}  ${kept.reason}`);
+    }
+    lines.push(...moreThanListed(plan.keptOriginals.length));
   }
   return lines;
 }
