@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly check --json: the result",
+  "description": "The last line upfly check --json prints when the check runs. It fails, with exit code 1, when a reference names an image that does not exist, or an image a reference uses is larger than check.maxImageBytes; an unused image never fails it. Progress and diagnostic lines come before it (events.json); a check that cannot run prints an error line instead (events.json).",
+  "type": "object",
+  "required": [
+    "type",
+    "command",
+    "exitCode",
+    "passed",
+    "findings",
+    "maxImageBytes",
+    "changed",
+    "leftOut",
+    "unusedOverLimit",
+    "unchecked"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "check" },
+    "exitCode": {
+      "description": "0 when it passed, 1 when a finding failed it.",
+      "enum": [0, 1]
+    },
+    "passed": {
+      "description": "true exactly when findings is empty and exitCode is 0.",
+      "type": "boolean"
+    },
+    "findings": {
+      "description": "What failed the check.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "report.json#/definitions/brokenFinding" },
+          { "$ref": "#/definitions/tooLargeFinding" }
+        ]
+      }
+    },
+    "maxImageBytes": {
+      "description": "The limit check.maxImageBytes set in the config file, or null when none is set.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "changed": {
+      "description": "With --changed: the git ref the change was measured from (null for the uncommitted changes) and how many files it touched. null without --changed.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["against", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "against": { "type": ["string", "null"] },
+            "files": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "leftOut": {
+      "description": "Findings --changed left out, since the change did not touch their files. A reference to an image the change deleted is kept wherever it is.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "unusedOverLimit": {
+      "description": "Images over the limit that no reference uses. They never fail the check.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "unchecked": {
+      "description": "References that could not be checked, since Upfly cannot know which file each names, such as a path built at runtime. upfly audit lists them.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "unread": {
+      "description": "Files that could not be parsed or read, so no reference in them was checked. Absent when there are none; upfly audit names them.",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "definitions": {
+    "tooLargeFinding": {
+      "description": "An image a reference uses whose file is larger than check.maxImageBytes.",
+      "type": "object",
+      "required": ["kind", "asset", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "too-large" },
+        "asset": { "type": "string" },
+        "bytes": { "description": "Its size on disk.", "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

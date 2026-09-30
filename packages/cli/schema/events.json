@@ -1,0 +1,163 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly --json: the lines before the result, and the error line",
+  "description": "With --json, stdout carries one JSON object per line and nothing else. Progress lines come as each stage of the run finishes; audit, optimize and check add diagnostic lines, which carry the image and parsing libraries' own messages. The last line is the result, whose schema is the command's own (audit.json, optimize.json and so on), or, when the command stops, an error line. Every line has type and command.",
+  "oneOf": [
+    { "$ref": "#/definitions/progress" },
+    { "$ref": "#/definitions/diagnostic" },
+    { "$ref": "#/definitions/error" }
+  ],
+  "definitions": {
+    "command": {
+      "type": "string",
+      "enum": ["audit", "optimize", "undo", "check", "init", "refs", "dedupe"]
+    },
+    "count": { "type": "integer", "minimum": 0 },
+    "progress": {
+      "description": "One stage of the run finished, with what it counted.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "images", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "discovered" },
+            "images": { "$ref": "#/definitions/count" },
+            "files": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "references"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "scanned" },
+            "references": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "linked"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "resolved" },
+            "linked": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "images"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "measured" },
+            "images": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "findings"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "audited" },
+            "findings": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "conversions", "rewrites"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "planned" },
+            "conversions": { "$ref": "#/definitions/count" },
+            "rewrites": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "stage", "files"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "progress" },
+            "command": { "$ref": "#/definitions/command" },
+            "stage": { "const": "written" },
+            "files": { "$ref": "#/definitions/count" }
+          }
+        }
+      ]
+    },
+    "diagnostic": {
+      "description": "What a library said about one file, in its own words, which change between versions. The report's reason for the same file is Upfly's own.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "command", "source", "asset", "measurement", "code", "detail"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "diagnostic" },
+            "command": { "$ref": "#/definitions/command" },
+            "source": { "const": "image" },
+            "asset": { "description": "The image being measured.", "type": "string" },
+            "measurement": {
+              "description": "Reading its header, or encoding it to that format.",
+              "type": "string",
+              "enum": ["metadata", "webp", "avif"]
+            },
+            "code": {
+              "type": "string",
+              "enum": ["not-an-image", "svg-unreadable", "too-large-to-encode", "encode-failed"]
+            },
+            "detail": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "command", "source", "relative", "adapterId", "detail"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "diagnostic" },
+            "command": { "$ref": "#/definitions/command" },
+            "source": { "const": "parser" },
+            "relative": { "description": "The file that would not parse.", "type": "string" },
+            "adapterId": { "description": "The reader that was reading it.", "type": "string" },
+            "detail": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "error": {
+      "description": "Why the command stopped, in place of a result. The exit code is the process's own: 2 for a usage or configuration error, 3 when Upfly refused to act for safety, 4 when something failed that Upfly did not anticipate.",
+      "type": "object",
+      "required": ["type", "command", "exitCode", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "error" },
+        "command": {
+          "description": "null when the command line named no command.",
+          "oneOf": [{ "$ref": "#/definitions/command" }, { "type": "null" }]
+        },
+        "exitCode": { "enum": [2, 3, 4] },
+        "reason": {
+          "description": "A stable name for why it stopped, for a script to branch on, such as UNCOMMITTED_CHANGES, NO_REPOSITORY, SERVING_ROOT_UNKNOWN, CONFIG_EXISTS or TRANSACTION_INTERRUPTED. Absent when the stop has none, as for a mistyped flag.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "message": {
+          "description": "What happened and what to do about it, in sentences.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

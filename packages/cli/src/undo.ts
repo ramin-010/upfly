@@ -31,7 +31,7 @@ const REFUSALS = new Set([
 ]);
 
 /** What undo put back, by kind. */
-interface Undone {
+export interface Undone {
   readonly id: string;
   readonly startedAt: string;
   /** Originals the run had removed, back in place. */

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly audit --json: the result",
+  "description": "The last line upfly audit --json prints when the audit runs. Progress and diagnostic lines come before it (events.json); a run that stops prints an error line instead (events.json).",
+  "type": "object",
+  "required": ["type", "command", "exitCode", "report"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "audit" },
+    "exitCode": {
+      "description": "Always 0: what the audit finds does not change it.",
+      "const": 0
+    },
+    "report": { "$ref": "report.json" }
+  }
+}

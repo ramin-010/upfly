@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly undo --json: the result",
+  "description": "The line upfly undo --json prints when it finishes: what it put back, or null when there was nothing to undo. A run that refuses, because a file changed since the run or another run is going, prints an error line instead (events.json) and changes nothing.",
+  "type": "object",
+  "required": ["type", "command", "exitCode", "undone", "commit", "notes"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "undo" },
+    "exitCode": { "const": 0 },
+    "undone": {
+      "description": "The run undone, or null when no run was left to undo.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["id", "startedAt", "restored", "reverted", "removed"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "description": "The run's id.", "type": "string" },
+            "startedAt": { "type": "string" },
+            "restored": {
+              "description": "Originals the run had removed, back in place.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "reverted": {
+              "description": "Files whose references are as they were again.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "removed": {
+              "description": "Files the run had created, gone again.",
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "commit": {
+      "description": "The commit --commit made for that run, or null. It stays in the history, so the files undo put back show as uncommitted changes.",
+      "type": ["string", "null"]
+    },
+    "notes": {
+      "description": "Each a sentence: why there was nothing to undo, or what to do about the commit.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

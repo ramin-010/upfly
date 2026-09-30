@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const BIN = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
@@ -61,9 +61,16 @@ export function tempFolder(roots: string[], prefix: string): string {
   return root;
 }
 
-/** A copy of a fixture at `into`, which must not exist yet or must be empty. */
+/**
+ * A copy of a fixture at `into`, which must not exist yet or must be empty. Its
+ * `node_modules` is left out: pnpm fills it with links, which Windows lets only some users
+ * create, and Upfly never reads it.
+ */
 export function copyFixture(name: string, into: string): string {
-  cpSync(join(FIXTURES, name), into, { recursive: true });
+  cpSync(join(FIXTURES, name), into, {
+    recursive: true,
+    filter: (source) => basename(source) !== 'node_modules',
+  });
   return into;
 }
 

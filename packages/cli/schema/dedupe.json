@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly dedupe --json: the result",
+  "description": "The last line upfly dedupe --json prints when the run finishes: for each set of identical images, the copy kept and the references pointed at it. Without --apply nothing is written and run is null. Nothing is ever deleted: a copy no reference names afterwards stays on disk. Progress lines come before it (events.json); a run that stops or refuses prints an error line instead (events.json).",
+  "type": "object",
+  "required": [
+    "type",
+    "command",
+    "exitCode",
+    "apply",
+    "plan",
+    "run",
+    "commit",
+    "repository",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "dedupe" },
+    "exitCode": { "const": 0 },
+    "apply": {
+      "description": "Whether --apply was given, so the plan was written.",
+      "type": "boolean"
+    },
+    "plan": {
+      "type": "object",
+      "required": ["sets", "rewrites"],
+      "additionalProperties": false,
+      "properties": {
+        "sets": {
+          "description": "Each set of images with the same bytes.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/set" }
+        },
+        "rewrites": {
+          "description": "The references that move, one entry per file, in path order.",
+          "type": "array",
+          "items": { "$ref": "optimize.json#/definitions/rewrite" }
+        }
+      }
+    },
+    "run": { "$ref": "optimize.json#/definitions/run" },
+    "commit": { "$ref": "optimize.json#/definitions/commit" },
+    "repository": { "$ref": "optimize.json#/definitions/repository" },
+    "notes": {
+      "description": "On a dry run, what --apply would refuse, each a sentence.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "definitions": {
+    "set": {
+      "type": "object",
+      "required": ["keep", "kept", "bytes", "copies"],
+      "additionalProperties": false,
+      "properties": {
+        "keep": { "description": "The copy kept.", "type": "string" },
+        "kept": {
+          "description": "Why that copy: named by --keep (chosen), used by the most references (most-used), in a folder the site is served from (served), the shortest path (shorter), or first in path order (first). Each rule decides only a tie on the ones before it.",
+          "type": "string",
+          "enum": ["chosen", "most-used", "served", "shorter", "first"]
+        },
+        "bytes": { "description": "The size of one copy.", "type": "integer", "minimum": 0 },
+        "copies": {
+          "description": "Every other copy, in path order.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/copy" }
+        }
+      }
+    },
+    "copy": {
+      "type": "object",
+      "required": ["path", "references", "moved", "stays", "unusedAfter"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "references": {
+          "description": "The references that name it now.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "moved": {
+          "description": "How many of them are pointed at the kept copy.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "stays": {
+          "description": "The references that stay as written, each with the reason.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file", "line", "where", "text", "why"],
+            "additionalProperties": false,
+            "properties": {
+              "file": { "type": "string" },
+              "line": { "type": ["integer", "null"], "minimum": 1 },
+              "where": { "type": "string" },
+              "text": { "description": "The path as written.", "type": "string" },
+              "why": { "type": "string" }
+            }
+          }
+        },
+        "unusedAfter": {
+          "description": "true when no reference Upfly can read names it once the plan is written. It stays on disk, and upfly audit then lists it as unused.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

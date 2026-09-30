@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly optimize --json: the result",
+  "description": "The last line upfly optimize --json prints when the run finishes: the plan, what an applied run wrote, and the report. Without --apply nothing is written and run is null. Progress and diagnostic lines come before it (events.json); a run that stops or refuses prints an error line instead (events.json).",
+  "type": "object",
+  "required": [
+    "type",
+    "command",
+    "exitCode",
+    "apply",
+    "plan",
+    "run",
+    "commit",
+    "repository",
+    "only",
+    "notes",
+    "report"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "optimize" },
+    "exitCode": { "const": 0 },
+    "apply": {
+      "description": "Whether --apply was given, so the plan was written.",
+      "type": "boolean"
+    },
+    "plan": { "$ref": "#/definitions/plan" },
+    "run": { "$ref": "#/definitions/run" },
+    "commit": { "$ref": "#/definitions/commit" },
+    "repository": { "$ref": "#/definitions/repository" },
+    "only": {
+      "description": "With --only: the images it named, and each pattern that named none. null without --only.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["images", "unmatched"],
+          "additionalProperties": false,
+          "properties": {
+            "images": { "type": "array", "items": { "type": "string" } },
+            "unmatched": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "notes": { "$ref": "#/definitions/notes" },
+    "report": { "$ref": "report.json" }
+  },
+  "definitions": {
+    "plan": {
+      "description": "What the run converts and rewrites, and what it decided against. The same with and without --apply.",
+      "type": "object",
+      "required": ["conversions", "rewrites", "declined", "keptOriginals", "refusal"],
+      "additionalProperties": false,
+      "properties": {
+        "conversions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/conversion" }
+        },
+        "rewrites": {
+          "description": "The references that move, one entry per file.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/rewrite" }
+        },
+        "declined": {
+          "description": "Everything the plan decided against, each with its reason.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "line", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "line": {
+                "description": "The line, counted from 1, or null when the reason is about a whole file.",
+                "type": ["integer", "null"],
+                "minimum": 1
+              },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "keptOriginals": {
+          "description": "With --replace, the converted images whose original stays anyway, and why.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["asset", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "asset": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "refusal": {
+          "description": "Why the plan holds nothing at all, or null. A command that meets one stops with an error line, so its result always has null.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["code", "reason", "linked", "checkable"],
+              "additionalProperties": false,
+              "properties": {
+                "code": { "const": "serving-root-unknown" },
+                "reason": { "type": "string" },
+                "linked": { "type": "integer", "minimum": 0 },
+                "checkable": { "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "conversion": {
+      "description": "One image to convert.",
+      "type": "object",
+      "required": ["asset", "target", "format", "quality", "savedBytes", "replacesOriginal"],
+      "additionalProperties": false,
+      "properties": {
+        "asset": { "description": "The image.", "type": "string" },
+        "target": { "description": "The new file.", "type": "string" },
+        "format": { "type": "string", "enum": ["webp", "avif"] },
+        "quality": {
+          "description": "The quality the saving was measured at and the file is written at, or \"lossless\".",
+          "anyOf": [{ "type": "number" }, { "const": "lossless" }]
+        },
+        "savedBytes": { "type": "integer", "minimum": 0 },
+        "replacesOriginal": {
+          "description": "true when the original is removed, which happens only with --replace and only once every reference to it moves.",
+          "type": "boolean"
+        }
+      }
+    },
+    "rewrite": {
+      "description": "The edits to one file.",
+      "type": "object",
+      "required": ["file", "edits"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string" },
+        "edits": {
+          "description": "In the order they appear in the file.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/edit" }
+        },
+        "textHash": {
+          "description": "SHA-256 of the file's text as Upfly read it. The edits are made only to a file that still holds that text.",
+          "type": "string"
+        }
+      }
+    },
+    "edit": {
+      "description": "One reference re-spelled. The offsets count the file's text in UTF-16 code units, as JavaScript counts a string.",
+      "type": "object",
+      "required": ["start", "end", "replacement"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "replacement": { "description": "The new path.", "type": "string" },
+        "expected": {
+          "description": "The text the edit replaces, the path as written.",
+          "type": "string"
+        }
+      }
+    },
+    "run": {
+      "description": "What an applied run wrote, or null when it wrote nothing: a dry run, or a plan with nothing to do. upfly undo puts every one of these files back.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["id", "created", "changed", "removed"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The run's id, which the commit message names.",
+              "type": "string"
+            },
+            "created": { "type": "array", "items": { "type": "string" } },
+            "changed": { "type": "array", "items": { "type": "string" } },
+            "removed": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "commit": {
+      "description": "The hash of the one commit --commit made, or null.",
+      "type": ["string", "null"]
+    },
+    "repository": {
+      "description": "The git repository the project is in, or null when it is in none: top is the repository's folder, and path is the project's folder inside it, empty when they are the same.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["top", "path"],
+          "additionalProperties": false,
+          "properties": {
+            "top": { "type": "string" },
+            "path": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "notes": {
+      "description": "Things worth knowing about the run, each a sentence: on a dry run, what --apply would refuse, such as uncommitted changes; with --only, how many images it left out.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "upfly refs --json: the result",
+  "description": "The last line upfly refs <image> --json prints: every reference to that one image, whether a run could rewrite each, and what upfly optimize would do with it. Progress lines come before it (events.json); an image that is missing, outside the project or not one Upfly found gives an error line with exit code 2 instead (events.json).",
+  "type": "object",
+  "required": ["type", "command", "exitCode", "image", "bytes", "references", "verdict"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "result" },
+    "command": { "const": "refs" },
+    "exitCode": { "const": 0 },
+    "image": { "description": "The image, relative to the project.", "type": "string" },
+    "bytes": { "description": "Its size on disk.", "type": "integer", "minimum": 0 },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "text", "rewritable"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "description": "The file that holds it.", "type": "string" },
+          "line": {
+            "description": "The line, counted from 1, or null when the file could not be read again.",
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "text": { "description": "The path as written.", "type": "string" },
+          "rewritable": {
+            "description": "Whether a run could point it at a new file.",
+            "type": "boolean"
+          },
+          "why": {
+            "description": "Why it stays as written. Present exactly when rewritable is false.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verdict": {
+      "description": "What upfly optimize would do with the image, with the configured format and policy.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "to", "savedBytes", "removesOriginal"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "converts" },
+            "to": { "description": "The new file.", "type": "string" },
+            "savedBytes": { "type": "integer", "minimum": 0 },
+            "removesOriginal": {
+              "description": "true only under the replace policy, when every reference moves.",
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "why"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "not-converted" },
+            "why": { "type": "string" }
+          }
+        },
+        {
+          "description": "No reference leads to it, and its name appears nowhere else. Upfly never deletes it.",
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "unused" }
+          }
+        },
+        {
+          "description": "No reference Upfly can follow leads to it, but its name appears where Upfly could not follow it. Read the mentions before treating it as unused.",
+          "type": "object",
+          "required": ["kind", "mentions"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "possibly-unused" },
+            "mentions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["where", "quote"],
+                "additionalProperties": false,
+                "properties": {
+                  "where": { "description": "file:line, or the file alone.", "type": "string" },
+                  "quote": { "description": "The text that names it.", "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

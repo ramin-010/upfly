@@ -27,7 +27,7 @@ import { type Io, emit, progressReporter, stopWith } from './output.js';
 import { movingText } from './plan-text.js';
 
 /** One reference to the image: where it is, what it says, and whether a run could move it. */
-interface ReferenceAnswer {
+export interface ReferenceAnswer {
   /** POSIX-relative path of the file that holds it. */
   readonly file: string;
   /** One-based line, or `null` when the file could not be read again. */
@@ -40,7 +40,7 @@ interface ReferenceAnswer {
 }
 
 /** What `optimize` would do with the image, with the configured format and policy. */
-type Verdict =
+export type Verdict =
   | {
       readonly kind: 'converts';
       readonly to: string;

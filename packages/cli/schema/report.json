@@ -1,0 +1,798 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Upfly report, version 6",
+  "description": "What Upfly found in a project: its images, the references to them, and each finding with its reason. It is the report in the --json result of upfly audit and upfly optimize. Every path is relative to the project and written with /. Every list is sorted, so the same project gives the same report. version says which version of this schema a report follows.",
+  "type": "object",
+  "required": [
+    "version",
+    "summary",
+    "findings",
+    "unusedVectors",
+    "keptOriginals",
+    "declined",
+    "declinedReferences",
+    "staleConversions",
+    "references",
+    "coverage",
+    "skipped",
+    "diagnosticsFile",
+    "caveats"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "The version of the report's shape. It changes when a field changes meaning or goes away, never when one is added.",
+      "const": 6
+    },
+    "summary": { "$ref": "#/definitions/summary" },
+    "findings": {
+      "description": "Every finding there is something to do about. summary.findings counts them by kind.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/finding" }
+    },
+    "unusedVectors": {
+      "description": "Unused SVG files, counted rather than listed as findings: Upfly neither converts nor deletes them, so there is nothing to act on. With --include-unused-svg, assets lists them.",
+      "type": "object",
+      "required": ["count", "bytes", "assets"],
+      "additionalProperties": false,
+      "properties": {
+        "count": { "$ref": "#/definitions/count" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "assets": {
+          "description": "null unless --include-unused-svg asked for the list.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "items": { "$ref": "#/definitions/unusedVector" } }
+          ]
+        }
+      }
+    },
+    "keptOriginals": {
+      "description": "Originals optimize kept beside the converted file their references now use. Nothing links to them, but they are there on purpose, so they are not listed as unused.",
+      "type": "object",
+      "required": ["count", "bytes", "assets"],
+      "additionalProperties": false,
+      "properties": {
+        "count": { "$ref": "#/definitions/count" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["asset", "bytes", "convertedTo"],
+            "additionalProperties": false,
+            "properties": {
+              "asset": { "description": "The original.", "type": "string" },
+              "bytes": { "$ref": "#/definitions/count" },
+              "convertedTo": {
+                "description": "The converted file beside it, which the references use.",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "declined": {
+      "description": "The images optimize's plan examined and did not convert. Always zero for upfly audit, which makes no plan.",
+      "type": "object",
+      "required": ["count", "bytes", "assets"],
+      "additionalProperties": false,
+      "properties": {
+        "count": { "$ref": "#/definitions/count" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "assets": {
+          "description": "null unless --include-declined asked for the list.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["asset", "bytes", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "asset": { "type": "string" },
+                  "bytes": { "$ref": "#/definitions/count" },
+                  "reason": { "description": "Why it was not converted.", "type": "string" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "declinedReferences": {
+      "description": "The references optimize's plan left as written, such as a path assembled at runtime.",
+      "type": "object",
+      "required": ["count", "references"],
+      "additionalProperties": false,
+      "properties": {
+        "count": { "$ref": "#/definitions/count" },
+        "references": {
+          "description": "null unless --include-declined asked for the list.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "line", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "file": { "description": "The file that holds it.", "type": "string" },
+                  "line": { "$ref": "#/definitions/line" },
+                  "reason": { "description": "Why it stays as written.", "type": "string" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "staleConversions": {
+      "description": "An unused SVG beside a broken reference to a raster of the same name, such as hero.svg and a reference to a missing hero.png: often a conversion done by hand that left the reference behind.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["vector", "rawPath", "where"],
+        "additionalProperties": false,
+        "properties": {
+          "vector": { "description": "The unused SVG.", "type": "string" },
+          "rawPath": {
+            "description": "The broken reference's path, exactly as written.",
+            "type": "string"
+          },
+          "where": { "$ref": "#/definitions/where" }
+        }
+      }
+    },
+    "references": { "$ref": "#/definitions/references" },
+    "coverage": { "$ref": "#/definitions/coverage" },
+    "skipped": {
+      "description": "Everything Upfly declined to do, from every stage of the run, each with its reason.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what", "stage", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "what": { "description": "The file or image involved.", "type": "string" },
+          "stage": {
+            "type": "string",
+            "enum": ["discovery", "scan", "sweep", "citation", "measurement", "aliases"]
+          },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "diagnosticsFile": {
+      "description": "The name of a file holding what the image and parsing libraries said during the run. Always null from the CLI, which prints those messages as diagnostic lines under --json instead.",
+      "type": ["string", "null"]
+    },
+    "caveats": {
+      "description": "Limits that apply to the report as a whole rather than to one finding.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "count", "message", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "public-dir-dead",
+              "framework-conventions",
+              "nothing-to-measure",
+              "not-probed",
+              "duplicates-not-checked",
+              "encode-capped",
+              "excluded-roots",
+              "replace-held-back",
+              "unscanned-extensions",
+              "binary-file-types",
+              "svg-both-ways",
+              "unused-vectors"
+            ]
+          },
+          "count": { "$ref": "#/definitions/count" },
+          "message": {
+            "description": "A complete sentence, with the count in it, that can be quoted as it is.",
+            "type": "string"
+          },
+          "detail": {
+            "description": "The specifics, when a count alone would not say what to do.",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "count": { "type": "integer", "minimum": 0 },
+    "line": {
+      "description": "The line, counted from 1, or null when the file could not be read again.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "where": {
+      "description": "file:line, or the file alone when the line is not known.",
+      "type": "string"
+    },
+    "format": { "type": "string", "enum": ["webp", "avif"] },
+    "encodeSetting": {
+      "description": "The quality a saving was measured at, or \"lossless\" when the lossless encode was the smaller.",
+      "anyOf": [{ "type": "number" }, { "const": "lossless" }]
+    },
+    "summary": {
+      "description": "The run's headline numbers.",
+      "type": "object",
+      "required": [
+        "assets",
+        "assetBytes",
+        "sourceFiles",
+        "references",
+        "linkedReferences",
+        "referencedAssets",
+        "findings",
+        "potentialSavingBytes",
+        "savingQuality",
+        "probed",
+        "unmeasuredAssets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "assets": { "description": "Images found.", "$ref": "#/definitions/count" },
+        "assetBytes": { "description": "Their total size.", "$ref": "#/definitions/count" },
+        "sourceFiles": {
+          "description": "Files read for references.",
+          "$ref": "#/definitions/count"
+        },
+        "references": {
+          "description": "Every reference, leaving out the values a reader declined to read as a path (references.declinedValues).",
+          "$ref": "#/definitions/count"
+        },
+        "linkedReferences": {
+          "description": "References that lead to an image.",
+          "$ref": "#/definitions/count"
+        },
+        "referencedAssets": {
+          "description": "Images at least one reference leads to.",
+          "$ref": "#/definitions/count"
+        },
+        "findings": {
+          "description": "The findings, counted by kind.",
+          "type": "object",
+          "required": [
+            "serving-root-unknown",
+            "broken",
+            "dead",
+            "possibly-dead",
+            "oversized",
+            "format-opportunity",
+            "duplicate"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "serving-root-unknown": { "$ref": "#/definitions/count" },
+            "broken": { "$ref": "#/definitions/count" },
+            "dead": { "$ref": "#/definitions/count" },
+            "possibly-dead": { "$ref": "#/definitions/count" },
+            "oversized": { "$ref": "#/definitions/count" },
+            "format-opportunity": { "$ref": "#/definitions/count" },
+            "duplicate": { "$ref": "#/definitions/count" }
+          }
+        },
+        "potentialSavingBytes": {
+          "description": "The best measured saving for each image, added up.",
+          "$ref": "#/definitions/count"
+        },
+        "savingQuality": {
+          "description": "Every setting each format's savings were measured at. Empty when there is no format opportunity.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "webp": { "type": "array", "items": { "$ref": "#/definitions/encodeSetting" } },
+            "avif": { "type": "array", "items": { "$ref": "#/definitions/encodeSetting" } }
+          }
+        },
+        "probed": {
+          "description": "false for a run with --no-probe, which measures nothing, so there are no oversized or format-opportunity findings.",
+          "type": "boolean"
+        },
+        "unmeasuredAssets": {
+          "description": "Images that could not be measured, each listed in skipped with its reason.",
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "finding": {
+      "oneOf": [
+        { "$ref": "#/definitions/deadFinding" },
+        { "$ref": "#/definitions/possiblyDeadFinding" },
+        { "$ref": "#/definitions/brokenFinding" },
+        { "$ref": "#/definitions/servingRootUnknownFinding" },
+        { "$ref": "#/definitions/oversizedFinding" },
+        { "$ref": "#/definitions/formatOpportunityFinding" },
+        { "$ref": "#/definitions/duplicateFinding" }
+      ]
+    },
+    "deadFinding": {
+      "description": "An image nothing references, whose file name Upfly found nowhere else either. Upfly never deletes it.",
+      "type": "object",
+      "required": ["kind", "asset", "bytes", "inPublicDir"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "dead" },
+        "asset": { "type": "string" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "inPublicDir": {
+          "description": "It sits in a folder the site is served from, where something outside the repository, such as an email or another site, may link to it.",
+          "type": "boolean"
+        }
+      }
+    },
+    "possiblyDeadFinding": {
+      "description": "An image nothing references, whose file name does appear somewhere Upfly could not follow as a reference. Look at the evidence before treating it as unused.",
+      "type": "object",
+      "required": ["kind", "asset", "bytes", "inPublicDir", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "possibly-dead" },
+        "asset": { "type": "string" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "inPublicDir": { "type": "boolean" },
+        "evidence": {
+          "description": "Where its name appears.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/mention" }
+        }
+      }
+    },
+    "mention": {
+      "type": "object",
+      "required": ["asset", "source", "where", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "asset": { "description": "The image named.", "type": "string" },
+        "source": {
+          "description": "unscanned-file: in a file no reader could read. unresolved-reference: in a path Upfly read but could not resolve. scanned-file: in a file Upfly read, in a form it does not take as a path.",
+          "type": "string",
+          "enum": ["unscanned-file", "unresolved-reference", "scanned-file"]
+        },
+        "where": { "$ref": "#/definitions/where" },
+        "quote": { "description": "The text that names it.", "type": "string" }
+      }
+    },
+    "brokenFinding": {
+      "description": "A path written as an image's that points at no file.",
+      "type": "object",
+      "required": ["kind", "file", "line", "where", "rawPath"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "broken" },
+        "file": { "description": "The file that holds the path.", "type": "string" },
+        "line": { "$ref": "#/definitions/line" },
+        "where": { "$ref": "#/definitions/where" },
+        "rawPath": { "description": "The path exactly as written.", "type": "string" },
+        "note": {
+          "description": "What more is known, such as an image whose name is one keystroke away. Absent when there is nothing more to say.",
+          "type": "string"
+        }
+      }
+    },
+    "suppressedBroken": {
+      "type": "object",
+      "required": ["file", "line", "where", "rawPath"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "$ref": "#/definitions/line" },
+        "where": { "$ref": "#/definitions/where" },
+        "rawPath": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "servingRootUnknownFinding": {
+      "description": "Upfly could not work out which folder the site is served from, so it cannot tell whether paths such as /hero.png are broken. Name the folder with --public or publicDirs. It replaces those references' broken findings, which it lists in suppressed.",
+      "type": "object",
+      "required": ["kind", "linked", "checkable", "suppressedBroken", "suppressed"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "serving-root-unknown" },
+        "linked": {
+          "description": "Root-relative references that did lead to an image.",
+          "$ref": "#/definitions/count"
+        },
+        "checkable": {
+          "description": "Root-relative references Upfly could check.",
+          "$ref": "#/definitions/count"
+        },
+        "suppressedBroken": {
+          "description": "How many broken findings this replaced.",
+          "$ref": "#/definitions/count"
+        },
+        "suppressed": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/suppressedBroken" }
+        }
+      }
+    },
+    "oversizedFinding": {
+      "description": "An image over a size limit: 500,000 bytes, or 4,000 pixels wide or high.",
+      "type": "object",
+      "required": ["kind", "asset", "bytes", "width", "height", "exceeded"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "oversized" },
+        "asset": { "type": "string" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "width": { "type": ["integer", "null"], "minimum": 0 },
+        "height": { "type": ["integer", "null"], "minimum": 0 },
+        "exceeded": {
+          "description": "Every limit it is over.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["bytes", "width", "height"] }
+        }
+      }
+    },
+    "formatOpportunityFinding": {
+      "description": "An image that is smaller in another format, measured by encoding it, never estimated.",
+      "type": "object",
+      "required": [
+        "kind",
+        "asset",
+        "from",
+        "to",
+        "bytes",
+        "wouldBe",
+        "savedBytes",
+        "savedPercent",
+        "quality"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "format-opportunity" },
+        "asset": { "type": "string" },
+        "from": {
+          "description": "Its format as the decoder read it, which the extension may not match.",
+          "type": "string"
+        },
+        "to": { "$ref": "#/definitions/format" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "wouldBe": {
+          "description": "The size the encode produced.",
+          "$ref": "#/definitions/count"
+        },
+        "savedBytes": { "$ref": "#/definitions/count" },
+        "savedPercent": {
+          "description": "Whole percent, rounded down.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "quality": { "$ref": "#/definitions/encodeSetting" }
+      }
+    },
+    "duplicateFinding": {
+      "description": "Two or more images with the same bytes. upfly dedupe points their references at one copy.",
+      "type": "object",
+      "required": ["kind", "assets", "bytes", "wastedBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "duplicate" },
+        "assets": {
+          "description": "Every copy, in path order.",
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string" }
+        },
+        "bytes": { "description": "The size of one copy.", "$ref": "#/definitions/count" },
+        "wastedBytes": {
+          "description": "What keeping one copy would save.",
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "unusedVector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "asset", "bytes"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "dead" },
+            "asset": { "type": "string" },
+            "bytes": { "$ref": "#/definitions/count" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "asset", "bytes", "evidence"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "possibly-dead" },
+            "asset": { "type": "string" },
+            "bytes": { "$ref": "#/definitions/count" },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/definitions/mention" }
+            }
+          }
+        }
+      ]
+    },
+    "resolution": {
+      "description": "What became of a reference. resolved: it leads to one image. resolved-pattern: a path with a part filled in at runtime that matches images. dynamic: a path built at runtime with no fixed name to check. out-of-scope: it leads to a file Upfly leaves alone, such as one in node_modules. broken: it leads to no file. discarded: a string shaped like a path that led nowhere, or a value a reader declined. unresolved-alias: a path through an alias, such as @/, that no alias Upfly reads maps.",
+      "type": "string",
+      "enum": [
+        "resolved",
+        "resolved-pattern",
+        "dynamic",
+        "out-of-scope",
+        "broken",
+        "discarded",
+        "unresolved-alias"
+      ]
+    },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "resolved-with-an-answer",
+        "missed-with-an-answer",
+        "correctly-refused",
+        "not-a-claim"
+      ]
+    },
+    "referenceEntry": {
+      "type": "object",
+      "required": ["file", "rawPath", "resolution", "reason", "classification", "refusalReason"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "description": "The file that holds it.", "type": "string" },
+        "rawPath": { "description": "The path exactly as written.", "type": "string" },
+        "resolution": { "$ref": "#/definitions/resolution" },
+        "reason": { "description": "Why Upfly could not follow it.", "type": "string" },
+        "classification": { "$ref": "#/definitions/classification" },
+        "refusalReason": {
+          "description": "The reason that makes this a correct refusal, or null when it is not one.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "references": {
+      "description": "The references, counted several ways, and the ones Upfly could not safely rewrite, listed.",
+      "type": "object",
+      "required": [
+        "byResolution",
+        "byConfidence",
+        "byResolvedVia",
+        "byClassification",
+        "refusalAccuracyIsNotSelfAssessable",
+        "classificationBounds",
+        "unsafe",
+        "discardedCount",
+        "discarded",
+        "declinedValues"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "byResolution": {
+          "type": "object",
+          "required": [
+            "resolved",
+            "resolved-pattern",
+            "dynamic",
+            "out-of-scope",
+            "broken",
+            "discarded",
+            "unresolved-alias"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "resolved": { "$ref": "#/definitions/count" },
+            "resolved-pattern": { "$ref": "#/definitions/count" },
+            "dynamic": { "$ref": "#/definitions/count" },
+            "out-of-scope": { "$ref": "#/definitions/count" },
+            "broken": { "$ref": "#/definitions/count" },
+            "discarded": { "$ref": "#/definitions/count" },
+            "unresolved-alias": { "$ref": "#/definitions/count" }
+          }
+        },
+        "byConfidence": {
+          "description": "certain: an import that led to a file. high: a path in an attribute or function known to take one. medium: a path with a part filled in at runtime, matched against the images and never rewritten. unsafe: never rewritten, always reported.",
+          "type": "object",
+          "required": ["certain", "high", "medium", "unsafe"],
+          "additionalProperties": false,
+          "properties": {
+            "certain": { "$ref": "#/definitions/count" },
+            "high": { "$ref": "#/definitions/count" },
+            "medium": { "$ref": "#/definitions/count" },
+            "unsafe": { "$ref": "#/definitions/count" }
+          }
+        },
+        "byResolvedVia": {
+          "description": "How each reference that leads to an image got there: from its own file's folder, from a folder the site is served from, from the project folder, or by guessing at its base (speculative-root), which proves the image is used but never allows the text to be rewritten.",
+          "type": "object",
+          "required": ["file", "serving-root", "project-root", "speculative-root"],
+          "additionalProperties": false,
+          "properties": {
+            "file": { "$ref": "#/definitions/count" },
+            "serving-root": { "$ref": "#/definitions/count" },
+            "project-root": { "$ref": "#/definitions/count" },
+            "speculative-root": { "$ref": "#/definitions/count" }
+          }
+        },
+        "byClassification": {
+          "type": "object",
+          "required": [
+            "resolved-with-an-answer",
+            "missed-with-an-answer",
+            "correctly-refused",
+            "not-a-claim"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "resolved-with-an-answer": { "$ref": "#/definitions/count" },
+            "missed-with-an-answer": { "$ref": "#/definitions/count" },
+            "correctly-refused": { "$ref": "#/definitions/count" },
+            "not-a-claim": { "$ref": "#/definitions/count" }
+          }
+        },
+        "refusalAccuracyIsNotSelfAssessable": {
+          "description": "Always true: whether a refusal was right cannot be judged from the run itself.",
+          "const": true
+        },
+        "classificationBounds": {
+          "description": "Refusal reasons this run used that are known to over-claim, with what was measured.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "count", "bound", "measuredAgainst"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": { "type": "string" },
+              "count": { "$ref": "#/definitions/count" },
+              "bound": { "type": "string" },
+              "measuredAgainst": { "type": "string" }
+            }
+          }
+        },
+        "unsafe": {
+          "description": "Every dynamic, unresolved-alias and out-of-scope reference: the ones Upfly never rewrites.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/referenceEntry" }
+        },
+        "discardedCount": { "$ref": "#/definitions/count" },
+        "discarded": {
+          "description": "null unless --include-discarded asked for the list.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "items": { "$ref": "#/definitions/referenceEntry" } }
+          ]
+        },
+        "declinedValues": {
+          "description": "Values with an image's extension that a reader declined to take as a path, such as a tooltip. Not references, so no count above includes them.",
+          "type": "object",
+          "required": ["count", "byReason", "values"],
+          "additionalProperties": false,
+          "properties": {
+            "count": { "$ref": "#/definitions/count" },
+            "byReason": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["reason", "count"],
+                "additionalProperties": false,
+                "properties": {
+                  "reason": { "type": "string" },
+                  "count": { "$ref": "#/definitions/count" }
+                }
+              }
+            },
+            "values": {
+              "description": "null unless --include-discarded asked for the list.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["file", "rawPath", "reason"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "file": { "type": "string" },
+                      "rawPath": { "type": "string" },
+                      "reason": { "type": "string" }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "description": "What Upfly did not read, and what it would not enter.",
+      "type": "object",
+      "required": [
+        "unscannedExtensions",
+        "unscannedFileCount",
+        "excludedRoots",
+        "servingRoots",
+        "notExercised"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "unscannedExtensions": {
+          "description": "File types no reader reads, with how many files of each.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ext", "fileCount"],
+            "additionalProperties": false,
+            "properties": {
+              "ext": {
+                "description": "Lowercase, with the dot, or empty for files with none.",
+                "type": "string"
+              },
+              "fileCount": { "$ref": "#/definitions/count" }
+            }
+          }
+        },
+        "unscannedFileCount": { "$ref": "#/definitions/count" },
+        "excludedRoots": {
+          "description": "Folders the walk did not enter, and the rule that kept it out.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "servingRoots": {
+          "description": "The folders a root-relative path such as /hero.png was looked up in, and whether the project named them or Upfly worked them out.",
+          "type": "object",
+          "required": ["dirs", "declared"],
+          "additionalProperties": false,
+          "properties": {
+            "dirs": {
+              "description": "Relative to the project; an empty string is the project itself.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "declared": {
+              "description": "true when --public or publicDirs named them.",
+              "type": "boolean"
+            }
+          }
+        },
+        "notExercised": {
+          "description": "Checks this run did not make, and why, so a clean result is not read as covering them.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["mechanism", "why"],
+            "additionalProperties": false,
+            "properties": {
+              "mechanism": {
+                "description": "serving-root-detection or probe.",
+                "type": "string"
+              },
+              "why": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

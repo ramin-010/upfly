@@ -23,7 +23,7 @@ import { type Io, emit, progressReporter, stopWith } from './output.js';
 const FILE = 'upfly.config.json';
 
 /** One setting `init` wrote, or left out, and why. */
-interface Reason {
+export interface Reason {
   readonly setting: 'publicDirs' | 'format';
   /** The folder or format written; null when the setting was left out. */
   readonly value: string | null;
