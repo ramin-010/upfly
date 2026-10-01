@@ -10,7 +10,7 @@ import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { columns } from '../src/layout.js';
-import { BIN, commitAll, copyFixture, git, tempFolder, upfly } from './helpers.js';
+import { BIN, FIXTURES, commitAll, copyFixture, git, tempFolder, upfly, write } from './helpers.js';
 
 beforeAll(() => {
   expect(existsSync(BIN), `${BIN} is missing; run pnpm build first`).toBe(true);
@@ -254,6 +254,26 @@ describe('the next command', () => {
     );
     expect(only.stdout).toContain(
       '  Next         upfly optimize --only "*.png" --apply --allow-dirty\n',
+    );
+  });
+
+  it('asks for the served folder, not a plan optimize would refuse, when the audit could not tell it', () => {
+    const root = tempFolder(roots, 'upfly-next-');
+    const missing = Array.from({ length: 10 }, (_, n) => `<img src="/pictures/missing-${n}.png">`);
+    write(root, 'index.html', `${missing.join('\n')}\n<img src="logo.png">\n`);
+    write(root, 'logo.png', readFileSync(join(FIXTURES, 'plain-html/images/logo.png')));
+
+    const result = upfly(['audit'], { cwd: root });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      [
+        '  Broken       not judged: where the site is served from is unknown',
+        '                 name the folder with --public <dir>; the full report says more',
+      ].join('\n'),
+    );
+    expect(result.stdout).toContain(
+      '  Next         name the folder the site serves: upfly audit --public <dir>\n',
     );
   });
 

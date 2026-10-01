@@ -123,6 +123,13 @@ function write(
  */
 function nextAfterAudit(options: AuditOptions, report: Report): NextStep | null {
   const { findings } = report.summary;
+  // `optimize` refuses to plan until the folder is named, so that comes first.
+  if (findings['serving-root-unknown'] > 0) {
+    return {
+      words: null,
+      text: 'name the folder the site serves: upfly audit --public <dir>',
+    };
+  }
   const command =
     findings['format-opportunity'] > 0 ? 'optimize' : findings.duplicate > 0 ? 'dedupe' : null;
   if (command === null) return null;
