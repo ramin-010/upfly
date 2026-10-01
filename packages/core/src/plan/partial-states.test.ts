@@ -10,6 +10,7 @@ import { createSharpProbe } from '../probe/probe-sharp.js';
 import { probeAssets } from '../probe/probe.js';
 import { resolveReferences } from '../resolve/resolve.js';
 import { scanSources } from '../scan/scan.js';
+import type { ProjectBuilds } from './builds.js';
 import { type PublicPolicy, planOptimization } from './plan.js';
 
 /**
@@ -28,6 +29,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures
 
 /** The serving root this tree declares. `public/` is served; `src/` is bundled. */
 const SERVING_ROOTS = { declared: true, dirs: ['public'] } as const;
+
+/**
+ * The build that bundles `src/`, stated as the serving root is: the tree names none, and an
+ * image an unnamed build loads keeps its format, which would take away the converted-but-kept
+ * original these cases are about.
+ */
+const BUILDS: ProjectBuilds = {
+  packages: [{ folder: '', build: { kind: 'known', name: 'Vite' } }],
+};
 
 async function planFor(publicPolicy: PublicPolicy) {
   const discovered = await discover({ root: ROOT, adapters: defaultAdapters });
@@ -65,6 +75,7 @@ async function planFor(publicPolicy: PublicPolicy) {
       publicPolicy,
       hedged: new Set(),
       servingRoots: SERVING_ROOTS,
+      builds: BUILDS,
     }),
   };
 }

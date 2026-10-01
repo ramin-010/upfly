@@ -6,6 +6,7 @@ import { compareStrings, toPosix } from '../paths.js';
 import type { AssetProbe } from '../probe/probe.js';
 import type { AliasMap } from '../resolve/aliases.js';
 import type { Asset, RawReference, Reference } from '../types.js';
+import type { ProjectBuilds } from './builds.js';
 import {
   type LinkedReference,
   type PlanInput,
@@ -16,6 +17,14 @@ import {
 // Resolved, as `discover` returns it: the planner resolves each rewritten path again, and on
 // Windows `path.resolve` gives a bare '/repo' the current drive, which no asset here would have.
 const ROOT = resolve('/repo');
+
+/**
+ * Most cases here name images outside the served folder, which only a build can load, so the
+ * build is stated as one known to load the new format. The cases about other builds say so.
+ */
+const BUILT_BY_VITE: ProjectBuilds = {
+  packages: [{ folder: '', build: { kind: 'known', name: 'Vite' } }],
+};
 
 function asset(relative: string, bytes = 10_000): Asset {
   return {
@@ -98,6 +107,7 @@ function input(
     publicPolicy: over.publicPolicy ?? 'keep-original',
     hedged: over.hedged ?? new Set(),
     servingRoots: over.servingRoots ?? { dirs: over.served ?? ['public'], declared: false },
+    builds: over.builds ?? BUILT_BY_VITE,
     ...(over.aliases === undefined ? {} : { aliases: over.aliases }),
     ...(over.listDirectory === undefined ? {} : { listDirectory: over.listDirectory }),
     ...(over.rootLinkPolicy === undefined ? {} : { rootLinkPolicy: over.rootLinkPolicy }),
@@ -127,6 +137,66 @@ describe('why a reference stays as it is', () => {
     expect(whyReferenceStays(bare as LinkedReference, planned)).toBe(
       'the path has no extension, so there is nothing in it to change',
     );
+  });
+});
+
+describe('an image two builds load', () => {
+  // The build of the file holding the reference decides, not the image's folder: the same
+  // shared image is loaded by each app's own build.
+  const IMPORT = { kind: 'import', shape: 'js.import.static' } as const;
+  const viteImport = resolved(
+    'apps/web/src/App.jsx',
+    '../../../shared/logo.png',
+    'shared/logo.png',
+    IMPORT,
+  );
+  const webpackImport = resolved(
+    'apps/legacy/src/App.jsx',
+    '../../../shared/logo.png',
+    'shared/logo.png',
+    IMPORT,
+  );
+  const TWO_APPS: ProjectBuilds = {
+    packages: [
+      { folder: 'apps/legacy', build: { kind: 'other', file: 'apps/legacy/webpack.config.js' } },
+      { folder: 'apps/web', build: { kind: 'known', name: 'Vite' } },
+    ],
+  };
+  const twoApps = (publicPolicy: 'keep-original' | 'replace') =>
+    input({
+      assets: [asset('shared/logo.png')],
+      references: [viteImport, webpackImport],
+      builds: TWO_APPS,
+      publicPolicy,
+    });
+
+  it('converts it for the build known to load the new format, and leaves the other import as written', () => {
+    const plan = planOptimization(twoApps('keep-original'));
+
+    expect(plan.conversions.map((conversion) => conversion.asset)).toEqual(['shared/logo.png']);
+    expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['apps/web/src/App.jsx']);
+    expect(plan.declined).toEqual([
+      {
+        path: 'apps/legacy/src/App.jsx',
+        line: null,
+        reason:
+          'the build loads this path, and that build is set up in `apps/legacy/webpack.config.js`, which may have no rule for WebP files, so shared/logo.png was converted without this reference moving',
+      },
+    ]);
+  });
+
+  it('keeps the original under replace, since the other import still names it', () => {
+    const plan = planOptimization(twoApps('replace'));
+
+    expect(plan.conversions.map((conversion) => conversion.replacesOriginal)).toEqual([false]);
+    expect(plan.keptOriginals.map((kept) => kept.asset)).toEqual(['shared/logo.png']);
+  });
+
+  it('gives the refs command the same reason the plan gives', () => {
+    expect(whyReferenceStays(webpackImport as LinkedReference, twoApps('keep-original'))).toBe(
+      'the build loads this path, and that build is set up in `apps/legacy/webpack.config.js`, which may have no rule for WebP files; Upfly converts an image a build loads only for Vite, Next.js and Astro, which load WebP by themselves',
+    );
+    expect(whyReferenceStays(viteImport as LinkedReference, twoApps('keep-original'))).toBeNull();
   });
 });
 

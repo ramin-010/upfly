@@ -23,6 +23,7 @@ import { isLinked, linkedPaths } from '../resolve/reference.js';
 import { type ServingRoots, resolveReferences } from '../resolve/resolve.js';
 import type { Asset, Edit, RawReference, Reference } from '../types.js';
 import type { Declined } from '../write/manifest.js';
+import { type Build, type ProjectBuilds, buildOf } from './builds.js';
 
 /** What happens to the original when a public asset is converted. */
 export type PublicPolicy =
@@ -117,6 +118,12 @@ export interface PlanInput {
    */
   readonly listDirectory?: (absolutePath: string) => readonly string[];
   readonly rootLinkPolicy?: RootLinkPolicy;
+  /**
+   * The build of each package, which decides whether an image the build loads may convert:
+   * only for a build known to load the new format by itself. Required, so no caller leaves
+   * the rule out; a project with no package passes `{ packages: [] }`.
+   */
+  readonly builds: ProjectBuilds;
 }
 
 /** One asset that will be encoded. */
@@ -1053,6 +1060,14 @@ function collectRewrite(reference: Reference, context: RewriteContext): Repointi
     });
     return null;
   }
+  if (obstacle?.kind === 'build') {
+    context.declined.push({
+      path: relativePath(context.root, reference.file),
+      line: null,
+      reason: `the build loads this path, and ${obstacle.which}, so ${converted.map((each) => each.asset).join(', ')} was converted without this reference moving`,
+    });
+    return null;
+  }
 
   // A pattern is never rewritten: its text is a template, not a path with a range to
   // replace. Its originals stay under either policy, so it keeps resolving. The sentence
@@ -1082,7 +1097,7 @@ function collectRewrite(reference: Reference, context: RewriteContext): Repointi
 export type LinkedReference = Extract<Reference, { resolution: 'resolved' | 'resolved-pattern' }>;
 
 /** What the rules for moving one reference read from the plan's input. */
-type RuleInput = Pick<PlanInput, 'graph' | 'servingRoots' | 'rootLinkPolicy' | 'format'>;
+type RuleInput = Pick<PlanInput, 'graph' | 'servingRoots' | 'rootLinkPolicy' | 'format' | 'builds'>;
 
 /** Why a plan leaves a linked reference where it is, even when its asset converts. */
 type Obstacle =
@@ -1091,7 +1106,12 @@ type Obstacle =
   /** The text is a template standing for several files, not a path with a range to edit. */
   | { readonly kind: 'pattern' }
   /** The path has no extension, so swapping it would change nothing. */
-  | { readonly kind: 'unchanged' };
+  | { readonly kind: 'unchanged' }
+  /**
+   * The project's build loads the path and is not known to load the new format; `which`
+   * says what Upfly found about that build.
+   */
+  | { readonly kind: 'build'; readonly which: string };
 
 /**
  * What stops this plan moving a linked reference to the converted file, or null when
@@ -1112,7 +1132,59 @@ function obstacleTo(reference: LinkedReference, input: RuleInput): Obstacle | nu
   if (withExtension(reference.rawPath, input.format) === reference.rawPath) {
     return { kind: 'unchanged' };
   }
+  // Apart from `rewriteRefusal` for the same reason as the shape's rule: a move keeps the
+  // format, which the build already loads.
+  if (loadedByBuild(reference, input)) {
+    const build = buildOf(input.builds, relativePath(input.graph.root, reference.file));
+    if (build.kind !== 'known') return { kind: 'build', which: whichBuild(build, input.format) };
+  }
   return null;
+}
+
+/** The files a stylesheet's `url()` can be read from, as the CSS reader claims them. */
+const STYLESHEETS: ReadonlySet<string> = new Set(['.css', '.scss', '.less']);
+
+/**
+ * Whether the project's build resolves this reference, rather than a browser.
+ *
+ * A module import always is, wherever its image sits. Any other path is when its image sits
+ * outside every folder the site serves, since no browser can fetch that image by its URL.
+ * Where no website folder was found, served and bundled images cannot be told apart by
+ * folder, so the reference's kind decides: an import is the build's, a stylesheet's `url()`
+ * is when its package names a build, since a site with no build serves its stylesheets as
+ * written, and an HTML `src` never is. See "Images a build loads" in ARCHITECTURE.md.
+ */
+function loadedByBuild(reference: LinkedReference, input: RuleInput): boolean {
+  if (reference.kind === 'import' || reference.shape === 'js.new-url') return true;
+  const { root } = input.graph;
+  if (noServingRootFound(input.servingRoots)) {
+    return (
+      reference.kind === 'css-url' &&
+      STYLESHEETS.has(extensionOf(reference.file).toLowerCase()) &&
+      buildOf(input.builds, relativePath(root, reference.file)).kind !== 'none'
+    );
+  }
+  return linkedPaths(reference).some(
+    (path) => servingRootOf(relativePath(root, path), input.servingRoots) === null,
+  );
+}
+
+/** How a format is written in a sentence. */
+const FORMAT_NAMES: Readonly<Record<EncodeFormat, string>> = { webp: 'WebP', avif: 'AVIF' };
+
+/** What Upfly found about a build it is not sure loads `format`, as a clause. */
+function whichBuild(build: Exclude<Build, { kind: 'known' }>, format: EncodeFormat): string {
+  if (build.kind === 'none') return 'Upfly found no build settings naming that build';
+  const setUp =
+    build.command === undefined
+      ? `set up in \`${build.file}\``
+      : `run as \`${build.command}\` from \`${build.file}\``;
+  return `that build is ${setUp}, which may have no rule for ${FORMAT_NAMES[format]} files`;
+}
+
+/** The rule the build sentences end with. */
+function onlyKnownBuilds(format: EncodeFormat): string {
+  return `Upfly converts an image a build loads only for Vite, Next.js and Astro, which load ${FORMAT_NAMES[format]} by themselves`;
 }
 
 /**
@@ -1134,6 +1206,8 @@ export function whyReferenceStays(reference: LinkedReference, input: RuleInput):
       return patternCannotMove(reference);
     case 'unchanged':
       return 'the path has no extension, so there is nothing in it to change';
+    case 'build':
+      return `the build loads this path, and ${obstacle.which}; ${onlyKnownBuilds(input.format)}`;
   }
 }
 
@@ -1177,6 +1251,11 @@ function usedByNoMove(node: AssetNode, input: PlanInput): string | null {
   const where = `\`${relativePath(input.graph.root, first.reference.file)}\``;
   const more = blocked.length === 1 ? '' : ` (and ${blocked.length - 1} more)`;
   const text = `\`${first.reference.rawPath}\`${more}`;
+  // Its own sentence: a user deciding what to do needs the build named, not the rule that
+  // a new file nobody uses is not written.
+  if (first.obstacle.kind === 'build') {
+    return `${where} loads it through the build as ${text}, and ${first.obstacle.which}; ${onlyKnownBuilds(input.format)}`;
+  }
   const held =
     first.obstacle.kind === 'pattern'
       ? `${where} reaches it only through ${text}, ${unrewritable(first.reference)}`

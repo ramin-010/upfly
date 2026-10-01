@@ -21,6 +21,7 @@ import { hashCandidates } from './audit/duplicates.js';
 import { type SweepResult, sweepForMentions } from './audit/sweep.js';
 import { discover } from './discover/discover.js';
 import { type Graph, buildGraph } from './graph/graph.js';
+import { type ProjectBuilds, detectBuilds } from './plan/builds.js';
 import { createSharpProbe } from './probe/probe-sharp.js';
 import {
   type AssetProbe,
@@ -159,6 +160,8 @@ export interface PipelineOutput {
    * a reference came through an alias.
    */
   readonly aliases: AliasMap;
+  /** The build of each package, which decides whether an image the build loads may convert. */
+  readonly builds: ProjectBuilds;
   /** Milliseconds to build the graph, not counting the probe. */
   readonly graphMs: number;
 }
@@ -248,6 +251,11 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
     readFile: readFileText,
     isFile: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
+  });
+  // The same files, for the same reason: a settings file or a `package.json` is in the walk.
+  const builds = await detectBuilds({
+    files: [...discovery.sourceFiles, ...discovery.unscannedFiles],
+    readFile: readFileText,
   });
   const servingRoots = input.servingRoots(discovery, scanned);
   const references = resolveReferences(scanned.references, {
@@ -341,6 +349,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     diagnostics,
     scanDiagnostics,
     aliases,
+    builds,
     graphMs,
   };
 }

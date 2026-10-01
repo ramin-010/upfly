@@ -729,10 +729,14 @@ describe('a reference whose converted name reaches another file first', () => {
 
   const IMPORT = `import hero from '@/img/hero.png';\nexport const App = () => <img src={hero} alt="" />;\n`;
 
+  /** A Vite project's manifest: the build that loads these imports, known to load WebP. */
+  const VITE_PACKAGE = '{ "private": true, "scripts": { "build": "vite build" } }\n';
+
   it.each([
     [
       'an exact alias key',
       {
+        'package.json': VITE_PACKAGE,
         'tsconfig.json':
           '{ "compilerOptions": { "paths": { "@/*": ["./src/*"], "@/img/hero.webp": ["./assets/img/hero.webp"] } } }\n',
         'src/App.tsx': IMPORT,
@@ -744,6 +748,7 @@ describe('a reference whose converted name reaches another file first', () => {
     [
       "an alias's earlier target",
       {
+        'package.json': VITE_PACKAGE,
         'tsconfig.json':
           '{ "compilerOptions": { "paths": { "@/*": ["./src/*", "./shared/*"] } } }\n',
         'src/App.tsx': IMPORT,
@@ -964,6 +969,7 @@ describe('a reference whose converted name reaches another file first', () => {
 
     it('keeps leading where it does when an alias would find the converted file of another import first', async () => {
       const root = await project({
+        'package.json': VITE_PACKAGE,
         'tsconfig.json':
           '{ "compilerOptions": { "paths": { "@/*": ["./src/*", "./shared/*"] } } }\n',
         'src/App.tsx': `import hero from '@/img/hero.webp';\nexport const App = () => <img src={hero} alt="" />;\n`,

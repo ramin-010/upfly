@@ -12,6 +12,7 @@ import type { AuditResult } from '../audit/audit.js';
 import { UpflyError } from '../errors.js';
 import type { Graph } from '../graph/graph.js';
 import { compareStrings } from '../paths.js';
+import type { ProjectBuilds } from '../plan/builds.js';
 import {
   type Survivor,
   type Unsearchable,
@@ -94,6 +95,8 @@ export interface OptimizeInput {
   readonly servingRoots: ServingRoots;
   /** The aliases the resolver used. See `PlanInput.aliases`. */
   readonly aliases?: AliasMap;
+  /** The build of each package. See `PlanInput.builds`. */
+  readonly builds: ProjectBuilds;
   /**
    * Lists a directory, so the plan counts the files the walk did not index. See
    * `PlanInput.listDirectory`.
@@ -276,6 +279,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
       publicPolicy: input.publicPolicy,
       hedged: hedgedAssets(input.audit),
       servingRoots: input.servingRoots,
+      builds: input.builds,
       ...(input.aliases === undefined ? {} : { aliases: input.aliases }),
       ...(input.listDirectory === undefined ? {} : { listDirectory: input.listDirectory }),
       ...(blocked === undefined

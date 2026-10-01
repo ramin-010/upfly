@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AuditResult } from '../audit/audit.js';
 import { buildGraph } from '../graph/graph.js';
+import type { ProjectBuilds } from '../plan/builds.js';
 import type { AssetProbe, ImageProbe } from '../probe/probe.js';
 import type { ScannedText } from '../scan/scan.js';
 import type { Asset, RawReference, Reference } from '../types.js';
@@ -143,6 +144,14 @@ function harness(initial: Record<string, string>) {
   return { tree, store, probe, encodes };
 }
 
+/**
+ * `src/` is bundled, so the build that loads its import is stated as one known to load the
+ * new format.
+ */
+const BUILT_BY_VITE: ProjectBuilds = {
+  packages: [{ folder: '', build: { kind: 'known', name: 'Vite' } }],
+};
+
 function inputFor(
   over: Partial<OptimizeInput> & Pick<OptimizeInput, 'store' | 'probe'>,
 ): OptimizeInput {
@@ -171,6 +180,7 @@ function inputFor(
     files: ['src/App.jsx'],
     unread: [],
     servingRoots: { dirs: ['public'], declared: true },
+    builds: BUILT_BY_VITE,
     format: 'webp',
     publicPolicy: 'keep-original',
     apply: true,

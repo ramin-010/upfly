@@ -146,7 +146,7 @@ async function answersFor(
   result: OptimizeProjectResult,
   format: EncodeFormat,
 ): Promise<ReferenceAnswer[]> {
-  const { graph, servingRoots } = result.pipeline;
+  const { graph, servingRoots, builds } = result.pipeline;
   const linked = node.references.filter(isLinked) as LinkedReference[];
   const { citations } = await citeReferences({
     references: linked,
@@ -155,7 +155,7 @@ async function answersFor(
   });
   return linked.map((reference) => {
     const citation = citations.get(reference);
-    const why = whyReferenceStays(reference, { graph, servingRoots, format });
+    const why = whyReferenceStays(reference, { graph, servingRoots, format, builds });
     return {
       file: citation?.file ?? relativePath(graph.root, reference.file),
       line: citation?.line ?? null,

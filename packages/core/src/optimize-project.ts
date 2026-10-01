@@ -124,6 +124,7 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
       ),
     servingRoots: pipeline.servingRoots,
     aliases: pipeline.aliases,
+    builds: pipeline.builds,
     listDirectory,
     format: input.format,
     publicPolicy: input.publicPolicy,

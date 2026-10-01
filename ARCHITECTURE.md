@@ -1991,6 +1991,55 @@ cross-volume rename would; long paths are supported; and `EBUSY` and `EPERM` are
 backoff, because on Windows an editor or a virus scanner holds a handle open for a few
 milliseconds and failing the run for that would make the tool unusable on a first-class target.
 
+### Images a build loads
+
+A rewritten reference has to load in whatever resolves it. A browser resolves a path to a file the
+site serves; the project's build resolves the rest, and a bundler loads only the file types its
+settings give a rule. scratch-www's `webpack.config.js` gives images a loader for `png|jpg|gif`
+only, so a `require('./high-contrast-thumbnail.png')` rewritten to `.webp` stops its build. Upfly
+cannot read a bundler's rules without running its settings, so it converts an image the build loads
+only for a build known to load the new format by itself. Every other such image keeps its format
+under both policies, declined with a sentence naming the build settings Upfly found, or saying it
+found none. An allow-list rather than a deny-list, so a build nobody has checked costs a saving,
+never a broken build.
+
+**Which references the build loads.** A module import always, wherever its image sits: `import`,
+`import()`, `require`, `new URL(…, import.meta.url)`, and an import in Astro frontmatter or MDX.
+Any other path when its image sits outside every serving root: no browser can fetch that image by
+its URL, so what loads it is the build, through a stylesheet it processes or a page it renders.
+Where no serving root was found, served and bundled images cannot be told apart by folder, so the
+reference's kind decides: an import is the build's; a stylesheet's `url()` is when its package
+names a build, since a site with no build serves its stylesheets as written; an HTML `src` never
+is.
+
+**Which build.** The package of the file holding the reference: the nearest folder at or above it
+that holds a `package.json`. A build tool runs in a package's folder and reads its settings there,
+so a settings file further up belongs to another package's build and cannot vouch for this one.
+In that folder the build is named by its settings file, or, when there is none, by the command its
+`build` script runs, as a Vite project with no `vite.config` builds with `vite build`. Another
+bundler named anywhere in the package (a `webpack.config.js`, a script running `webpack` or
+`react-scripts`) outweighs a known one, because which of the two loads a file cannot be told from
+outside. It is the reference's package that decides, not the image's folder: a shared image
+imported by a Vite app and by a webpack app converts for the Vite import, the webpack import keeps
+the old name, and so the original stays.
+
+**The known builds**, each confirmed from its own source for both formats:
+
+| build | loads WebP and AVIF | settings it reads |
+|---|---|---|
+| Vite 6.4 | from an import or a stylesheet's `url()`: both are in `KNOWN_ASSET_TYPES` (`dist/node/constants.js`) | `vite.config.{js,mjs,ts,cjs,mts,cts}` |
+| Next.js 15.5 | from an import: `nextImageLoaderRegex` (`dist/build/webpack-config.js`); from a stylesheet's `url()`: any file but scripts, HTML and JSON becomes an asset (`dist/build/webpack/config/blocks/css/index.js`) | `next.config.{js,mjs,ts}` |
+| Astro 5.18 | through Vite's asset types, and its image pipeline's `VALID_INPUT_FORMATS` (`dist/assets/consts.js`) | `astro.config.{mjs,js,ts,mts,cjs,cts}` |
+
+Each also declares both formats to TypeScript (`client.d.ts`, Next.js's `image-types/global.d.ts`).
+Next.js's Turbopack builder is native code: its shipped binary names WebP and AVIF in its image
+module, which is weaker evidence than a line of source, and the fixture build runs webpack.
+
+**What is not read.** Other tools load the same import: a TypeScript `declare module '*.png'` with
+no `*.webp`, a Jest `moduleNameMapper` listing image extensions. Neither would break a build or a
+test in the measured repositories, so neither is read. A stylesheet's `url()` naming a served image
+is read as the browser's, even where a bundler's stylesheet loader would resolve it.
+
 ### One writer at a time
 
 The manifest has one fixed path, `.upfly/manifest.json`, and `undo` reverts the run it records.
