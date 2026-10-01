@@ -9,6 +9,7 @@ import {
   commitPaths,
   gitState,
   identityProblem,
+  ignoredFolders,
   ignoredPaths,
 } from './git.js';
 
@@ -194,6 +195,18 @@ describe('ignoredPaths', () => {
     ]);
     expect(ignoredPaths(root, ['index.html'])).toEqual([]);
     expect(ignoredPaths(root, [])).toEqual([]);
+  });
+});
+
+describe('ignoredFolders', () => {
+  it('names the topmost ignored folder holding each path, and none for a path ignored by its own name', () => {
+    const root = repository({ '.gitignore': '*.webp\npublic/\n', 'index.html': 'a' });
+
+    expect(
+      ignoredFolders(root, ['public/img/a.webp', 'public/index.html', 'img/b.webp', 'index.html']),
+    ).toEqual(['public/']);
+    expect(ignoredFolders(root, ['img/b.webp'])).toEqual([]);
+    expect(ignoredFolders(root, [])).toEqual([]);
   });
 });
 

@@ -193,6 +193,28 @@ export function ignoredPaths(root: string, paths: readonly string[]): string[] {
 }
 
 /**
+ * The topmost folders git ignores that hold any of `paths`, each ending in `/` as
+ * `--exclude` takes it: the folder a site's build writes into, when git ignores it. A path
+ * ignored only by a rule on its own name, such as `*.webp`, gives none.
+ *
+ * @param root the project directory, inside a git work tree
+ * @param paths POSIX paths relative to `root`, which need not exist yet
+ * @throws when git refuses; the message carries git's own reason
+ */
+export function ignoredFolders(root: string, paths: readonly string[]): string[] {
+  const holding = (path: string) =>
+    path
+      .split('/')
+      .slice(0, -1)
+      .map((_, depth, parts) => `${parts.slice(0, depth + 1).join('/')}/`);
+  const ignored = new Set(ignoredPaths(root, [...new Set(paths.flatMap(holding))]));
+  const topmost = new Set(
+    paths.flatMap((path) => holding(path).find((folder) => ignored.has(folder)) ?? []),
+  );
+  return [...topmost].sort(compare);
+}
+
+/**
  * Why git cannot make a commit here, in git's own first line, or null when it knows a name
  * and an email to commit as.
  *

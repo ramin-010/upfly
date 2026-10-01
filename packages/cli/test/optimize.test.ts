@@ -343,7 +343,45 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
       reason: 'IGNORED_BY_GIT',
       message: expect.stringContaining('this run would write: images/hero.webp'),
     });
+    // Git ignores the files by their own name, not a folder holding them: there is no
+    // folder to leave out.
+    expect(result(run.stdout)).toMatchObject({
+      message: expect.stringMatching(/Run without --commit, or change what git ignores\.$/),
+    });
     expect(snapshot(root, ['.git'])).toEqual(before);
+  });
+
+  it('with --commit on a site built before the run, naming the ignored build folder to leave out, and that advice gives a correct run', () => {
+    // A built Hugo site: `public/` is Hugo's output, ignored by git, and holds a copy of the
+    // image the post names, which a run would otherwise plan as source.
+    const root = tempFolder(roots, 'upfly-built-site-');
+    const logo = readFileSync(join(FIXTURES, 'plain-html/images/logo.png'));
+    write(root, 'hugo.toml', 'title = "A built site"\n');
+    write(root, 'content/post.md', '![The logo](/img/a.png)\n');
+    write(root, 'static/img/a.png', logo);
+    write(root, '.gitignore', 'public/\n');
+    commitAll(root);
+    write(root, 'public/img/a.png', logo);
+    write(root, 'public/index.html', '<img src="/img/a.png" alt="The logo">\n');
+    const before = snapshot(root, ['.git']);
+
+    const refused = upfly(['optimize', root, '--apply', '--commit', '--json']);
+
+    expect(refused.status).toBe(3);
+    expect(result(refused.stdout)).toMatchObject({
+      reason: 'IGNORED_BY_GIT',
+      message: expect.stringContaining(
+        "If that is a build's output, leave it out with --exclude public/ and run again",
+      ),
+    });
+    expect(snapshot(root, ['.git'])).toEqual(before);
+
+    const run = upfly(['optimize', root, '--apply', '--commit', '--exclude', 'public/', '--json']);
+
+    expect(run.status).toBe(0);
+    expect(readFileSync(join(root, 'content/post.md'), 'utf8')).toBe('![The logo](/img/a.webp)\n');
+    expect(existsSync(join(root, 'static/img/a.webp'))).toBe(true);
+    expect(git(root, 'status', '--porcelain')).toBe('');
   });
 });
 

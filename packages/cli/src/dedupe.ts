@@ -20,10 +20,10 @@ import {
   type Refusal,
   engineRefusal,
   gitRefusal,
+  ignoredByGit,
   notes,
   openProject,
   outcomeLines,
-  some,
   unfinishedRun,
 } from './optimize.js';
 import { type Io, emit, progressReporter, stopWith } from './output.js';
@@ -138,7 +138,7 @@ function ignoredRefusal(root: string, plan: DedupePlan): Refusal | null {
   return {
     code: EXIT_CODES.ABORTED,
     reason: 'IGNORED_BY_GIT',
-    message: `Git ignores ${count(ignored.length, 'file')} this run would write: ${some(ignored)}. One commit could not hold the whole run, so nothing was written. Run without --commit, or change what git ignores.`,
+    message: ignoredByGit(root, ignored),
   };
 }
 

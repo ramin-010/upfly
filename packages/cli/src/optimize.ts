@@ -37,6 +37,7 @@ import {
   commitPaths,
   gitState,
   identityProblem,
+  ignoredFolders,
   ignoredPaths,
 } from './git.js';
 import { type Io, emit, progressReporter, stopWith } from './output.js';
@@ -179,10 +180,29 @@ async function carryOut(
     return {
       code: EXIT_CODES.ABORTED,
       reason: 'IGNORED_BY_GIT',
-      message: `Git ignores ${count(ignored.length, 'file')} this run would write: ${some(ignored)}. One commit could not hold the whole run, so nothing was written. Run without --commit, or change what git ignores.`,
+      message: ignoredByGit(root, ignored),
     };
   }
   return result;
+}
+
+/**
+ * Why a run git would partly ignore wrote nothing, and what to do about it. When git ignores
+ * a folder holding those files, as it does a site's build output, the advice is to leave the
+ * folder out: run without `--commit`, the project's own pages would be rewritten to name
+ * files only that folder holds.
+ *
+ * @param root the project directory, inside a git work tree
+ * @param ignored the files git ignores, POSIX-relative to `root`
+ */
+export function ignoredByGit(root: string, ignored: readonly string[]): string {
+  const folders = ignoredFolders(root, ignored);
+  const flags = folders.map((folder) => `--exclude ${folder}`).join(' ');
+  const advice =
+    folders.length === 0
+      ? 'Run without --commit, or change what git ignores.'
+      : `If ${folders.length === 1 ? "that is a build's output, leave it" : "those are a build's output, leave them"} out with ${flags} and run again; otherwise change what git ignores.`;
+  return `Git ignores ${count(ignored.length, 'file')} this run would write: ${some(ignored)}. One commit could not hold the whole run, so nothing was written. ${advice}`;
 }
 
 /** Commits exactly the files the run wrote, and returns the commit's hash. */
