@@ -125,8 +125,8 @@ function explain(
   // `/img/mascots/possum.jpg`, which matched `src/img/possum.jpg` by basename. Renaming
   // that asset would not touch the line.
   const named = pathEndingIn(hit.text, token);
-  if (named?.includes('/') === true && !couldNameAsset(hit.asset, named, hit.file)) {
-    return `the line names ${named}, which is a different file that shares a basename`;
+  if (named?.path.includes('/') === true && !couldNameAsset(hit.asset, named, hit.file)) {
+    return `the line names ${named.path}, which is a different file that shares a basename`;
   }
 
   // Prose, narrowly: in Markdown, a bare filename with no path and no quote, bracket or `=`
@@ -134,7 +134,7 @@ function explain(
   // `src="…"` or a link target.
   if (
     MARKDOWN.has(extension) &&
-    named === token &&
+    named?.path === token &&
     !/["'`(\[=]\s*$/.test(before) &&
     hit.text.split(/\s+/).length >= 8
   ) {
@@ -248,28 +248,48 @@ function shapeOf(hit: Hit, extension: string, token: string): string {
   return `a string in ${extension}`;
 }
 
-/** The longest path-looking run of text ending at this filename. */
-function pathEndingIn(text: string, token: string): string | null {
+/** Characters that end a path in a line and are not found in a file or folder name. */
+const PATH_DELIMITER = /["'`=<>[\]{}|:;\t\r\n]/;
+
+/**
+ * The longest path-looking run of text ending at this filename, and whether it was cut: the
+ * character before it could belong to a name, such as a space or a letter beyond ASCII in a
+ * folder name, so the path may go on further left.
+ */
+function pathEndingIn(
+  text: string,
+  token: string,
+): { readonly path: string; readonly cut: boolean } | null {
   const index = indexOfToken(text, token);
   if (index === -1) return null;
 
   let start = index;
   while (start > 0 && /[\w@.\-/]/.test(text[start - 1] ?? '')) start -= 1;
 
-  return text.slice(start, index + token.length).replace(/^\/+/, '');
+  const before = text[start - 1];
+  return {
+    path: text.slice(start, index + token.length).replace(/^\/+/, ''),
+    cut: before !== undefined && !PATH_DELIMITER.test(before),
+  };
 }
 
 /**
- * Could `named`, written in `file`, be `asset`? A path that starts `./` or `../` has one
- * reading, from the directory of the file that holds it. Any other is compared as a suffix,
- * which allows for a serving-root prefix.
+ * Could the path a line names, written in `file`, be `asset`, whatever its letter case? A
+ * path that starts `./` or `../` has one reading, from the directory of the file that holds
+ * it. Any other is compared as a suffix, which allows for a serving-root prefix, and a path
+ * that was cut is compared as text, since its first folder may have lost its start.
  */
-function couldNameAsset(asset: string, named: string, file: string): boolean {
-  if (/^\.\.?\//.test(named)) {
-    return posix.normalize(posix.join(posix.dirname(file), named)) === asset;
+function couldNameAsset(
+  asset: string,
+  named: { readonly path: string; readonly cut: boolean },
+  file: string,
+): boolean {
+  const target = asset.toLowerCase();
+  const path = named.path.toLowerCase();
+  if (/^\.\.?\//.test(path)) {
+    return posix.normalize(posix.join(posix.dirname(file.toLowerCase()), path)) === target;
   }
-  const suffix = named.replace(/^\/+/, '');
-  return asset === suffix || asset.endsWith(`/${suffix}`);
+  return target === path || target.endsWith(`/${path}`) || (named.cut && target.endsWith(path));
 }
 
 function indexOfToken(text: string, token: string): number {

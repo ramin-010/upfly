@@ -228,6 +228,30 @@ describe('triage of the hits the graph did not link', () => {
       ).toBeNull();
     });
 
+    it.each([
+      ['a space', 'static/my photos/team/hero.png', '<img src="/my photos/team/hero.png">'],
+      [
+        'a letter beyond ASCII',
+        'static/naïve-art/team/hero.png',
+        '<img src="/naïve-art/team/hero.png">',
+      ],
+    ])(
+      'does not call a path a different file when a folder name holding %s cut it short',
+      (_, asset, text) => {
+        // The run of path characters stops inside the folder name, so what it read is only
+        // the end of the path, and that end is this asset's.
+        expect(explanationFor(hit('page.html', text, asset))).toBeNull();
+      },
+    );
+
+    it('does not call a path in another letter case a different file', () => {
+      expect(
+        explanationFor(
+          hit('page.html', '<img src="/IMG/Team/hero.png">', 'static/img/team/hero.png'),
+        ),
+      ).toBeNull();
+    });
+
     it('does not explain a bare filename in code just because a comment marker appears later', () => {
       expect(
         explanationFor(hit('app.ts', 'const src = "hero.png"; // the banner', 'hero.png')),
