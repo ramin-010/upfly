@@ -29,7 +29,7 @@ import type {
   TemplateLiteral,
 } from '@babel/types';
 import { UpflyError } from '../errors.js';
-import { extensionOf } from '../paths.js';
+import { extensionOf, isImageExtension } from '../paths.js';
 import type {
   Adapter,
   BundlerContext,
@@ -694,7 +694,10 @@ function collectFromChain(node: BinaryExpression, context: Context): void {
   const [head, ...rest] = operands;
   if (head === undefined || standsAlone(head, context)) return;
   if (rest.some((operand) => isPatternOperand(operand, context))) return;
-  const claimed = rest.filter((operand) => standsAlone(operand, context));
+  const alone = rest.filter((operand) => standsAlone(operand, context));
+  const claimed = alone.filter((operand) => namesAnImage(operand, context));
+  // A path that names no image is read on its own by the string rule, so the chain is not.
+  if (claimed.length === 0 && alone.length > 0) return;
 
   const chunks = chainChunks(operands, context);
   // A claimed literal is a path by itself, so the chain is a reference whatever its shape.
@@ -745,6 +748,16 @@ function chainChunks(operands: readonly BabelNode[], context: Context): string[]
   }
   chunks.push(current);
   return chunks;
+}
+
+/**
+ * Whether an operand's text names an image. Only such a path, after the first operand, is
+ * claimed by its chain: one naming no image, such as `').callback('` in code built from
+ * strings, is never rewritten, so it stays with the string rule.
+ */
+function namesAnImage(operand: BabelNode, context: Context): boolean {
+  const text = operandText(operand, context);
+  return text !== null && isImageExtension(extensionOf(splitPathSuffix(text).path));
 }
 
 /** Whether an operand is a template with an unknown part that is a path by itself: a pattern. */

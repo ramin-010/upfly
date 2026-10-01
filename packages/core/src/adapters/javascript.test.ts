@@ -1659,6 +1659,16 @@ body`,
       ]);
     });
 
+    it('claims only a literal that names an image, so code joined from strings is no chain', () => {
+      // A string that reads as a path but names no image, such as `').callback('`, stays with
+      // the string rule, whose guess the resolver drops, rather than make its chain a reference.
+      const code =
+        'export const f = (q: string, v: string) => "jwplayer(\'" + q + "\').callback(\'" + v + "\')";';
+      expect(find(code, TS).map(({ shape, rawPath }) => [shape, rawPath])).toEqual([
+        ['js.string.literal', "').callback('"],
+      ]);
+    });
+
     it('reads a complete path after a traced constant as the path the two make', () => {
       const text = ["const DIR = '/img';", "export const u = DIR + '/hero.png';"].join('\n');
       const [traced, ...rest] = find(text, TS);
