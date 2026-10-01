@@ -1182,10 +1182,16 @@ unknown segment in the file name) and the same external-URL and not-a-file tests
 assembled text. A pattern is never rewritten in either spelling, so a chain having no single range
 a rewrite could replace costs nothing.
 
-There is one difference, and it favours the chain. Where an operand is already a complete path,
-as in `'/img/hero.jpg' + '?v=' + version`, that literal stays the reference and the chain is not
-read at all. The literal resolves as an ordinary path, and a rewrite edits exactly that literal and
-leaves the query alone, where the template twin would be a pattern that no rewrite touches. A chain
+There is one difference, and it favours the chain. Where the first operand is already a complete
+path, as in `'/img/hero.jpg' + '?v=' + version`, that literal stays the reference and the chain is
+not read at all. The literal resolves as an ordinary path, and a rewrite edits exactly that literal
+and leaves the query alone, where the template twin would be a pattern that no rewrite touches. A
+complete path after the first operand is different: in `liveSite + '/img/hero.png'` it ends an
+address whose start Upfly cannot read, such as a production origin a build downloads from, so the
+chain is read as its template twin is and claims the literal. Rewriting the literal alone would
+change that address; on eleventy-docs it made the build download a converted file the live site
+did not have yet, and the build failed. A template with an unknown part keeps its own reading as a
+pattern wherever it sits in the chain. A chain
 is a guess wherever it is read, a JSX `src` included, so it is held to the bound even where a
 template would not be. A parenthesised `+` is a single operand, because the brackets may be adding
 numbers rather than joining text.

@@ -430,7 +430,8 @@ export const SHAPES = [
     emission: 'engine',
     why:
       "A `+` chain such as `'/icons/icon-' + size + '.png'`: a fixed directory and one unknown " +
-      'part of the file name, with no literal that is a complete path on its own. It is read ' +
+      'part of the file name, and no complete path as its first operand, which would be read ' +
+      'on its own; a complete path after the first operand is read with the chain. It is read ' +
       'as its template-literal twin is and resolved as a pattern. It has its own row because ' +
       '`collectFromChain` assembles chains apart from the template reader, so either can ' +
       'break without the other.',

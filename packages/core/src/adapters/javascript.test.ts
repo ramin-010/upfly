@@ -1451,8 +1451,9 @@ body`,
       );
       expect(chain.assembledPath).toBe('${}/${}.png');
 
-      const literal = only("export const f = (a: number, b: number) => a - b + '/x.png';");
-      expect(literal.rawPath).toBe('/x.png');
+      // `a - b` is one unknown, and the literal after it ends the path, so the chain claims it.
+      const after = only("export const f = (a: number, b: number) => a - b + '/x.png';");
+      expect([after.rawPath, after.assembledPath]).toEqual(["a - b + '/x.png", '${}/x.png']);
     });
 
     it('takes a template with no holes as text, and a template with holes as one unknown', () => {
@@ -1634,11 +1635,38 @@ body`,
       expect(find(traced.join('\n'), '/p/b.jsx')).toEqual([]);
     });
 
-    it('pins the known hazard: a complete-path literal after an unknown is still read alone', () => {
-      // A chain with an operand that is already a complete path is left to that literal, so
-      // `DIR + '/hero.png'` is read as `/hero.png`, which is not the whole path.
+    it('reads a complete path after an unknown with its chain, never on its own', () => {
+      const single = (text: string) => {
+        const found = find(text, TS);
+        expect(found).toHaveLength(1);
+        return found[0] as RawReference;
+      };
+      // `liveSite + '/img/hero.png'` ends an address whose start Upfly cannot read, such as a
+      // production origin a build downloads from, so rewriting the literal alone would change
+      // that address. The chain is read as its template twin is, which leaves it unrewritten.
+      const string = single("export const u = (liveSite: string) => liveSite + '/img/hero.png';");
+      expect([string.shape, string.ceiling, string.assembledPath]).toEqual([
+        'js.concat.dynamic',
+        'unsafe',
+        '${}/img/hero.png',
+      ]);
+      expect(string.rawPath).toBe("liveSite + '/img/hero.png");
+
+      const template = single('export const u = (liveSite: string) => liveSite + `/img/hero.png`;');
+      expect([template.shape, template.assembledPath]).toEqual([
+        'js.concat.dynamic',
+        '${}/img/hero.png',
+      ]);
+    });
+
+    it('reads a complete path after a traced constant as the path the two make', () => {
       const text = ["const DIR = '/img';", "export const u = DIR + '/hero.png';"].join('\n');
-      expect(paths(text, TS)).toEqual(['/hero.png']);
+      const [traced, ...rest] = find(text, TS);
+      expect(rest).toEqual([]);
+      expect([traced?.shape, traced?.assembledPath]).toEqual([
+        'js.concat.pattern',
+        '/img/hero.png',
+      ]);
     });
   });
 });

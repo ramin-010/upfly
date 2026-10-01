@@ -678,37 +678,27 @@ function templateChunks(
 }
 
 /**
- * A path assembled with `+`, read as its template twin is read:
- * `'/srcset/' + 'card-' + String(width) + '.jpg'` gets the same bound, globbing rule and
- * `addReference` tests as `` `/srcset/card-${width}.jpg` ``, all asked of the assembled text.
- *
- * Where one operand is already a complete path (`'/img/hero.jpg' + '?v=' + v`), that
- * literal stays the reference and the chain is not read, so a rewrite can still edit the
- * literal. A chain is a guess wherever it is read, a JSX `src` included, and a chain a
- * construct declined is returned declined. The range runs from
- * the first operand to the last without their outer quotes, so `rawPath` is source text,
- * and the assembled path travels as `assembledPath`. See "Assembled paths in JavaScript"
- * in ARCHITECTURE.md.
+ * A path assembled with `+`, read as its template twin is read, every test asked of the
+ * assembled text. A complete path as the first operand (`'/img/hero.jpg' + '?v=' + v`) stays
+ * the reference, so a rewrite can still edit it; one after it ends a longer path whose start
+ * may be another host (`liveSite + '/img/hero.png'`), so the chain claims it. A template with
+ * an unknown part is read on its own, as a pattern. A chain is a guess wherever it is read,
+ * and one a construct declined is returned declined. The range runs from the first operand to
+ * the last without their outer quotes, so `rawPath` is source text and the assembled path
+ * travels as `assembledPath`. See "Assembled paths in JavaScript" in ARCHITECTURE.md.
  */
 function collectFromChain(node: BinaryExpression, context: Context): void {
   const decline = context.chainParts.get(node);
   if (decline === null) return;
   const operands = chainOperands(node, context.chainParts);
-  if (operands.some((operand) => standsAlone(operand, context))) return;
+  const [head, ...rest] = operands;
+  if (head === undefined || standsAlone(head, context)) return;
+  if (rest.some((operand) => isPatternOperand(operand, context))) return;
+  const claimed = rest.filter((operand) => standsAlone(operand, context));
 
-  const chunks: string[] = [];
-  let current = '';
-  for (const operand of operands) {
-    const value = operandText(operand, context);
-    if (value === null) {
-      chunks.push(current);
-      current = '';
-    } else {
-      current += value;
-    }
-  }
-  chunks.push(current);
-  if (!pathShaped(chunks)) return;
+  const chunks = chainChunks(operands, context);
+  // A claimed literal is a path by itself, so the chain is a reference whatever its shape.
+  if (claimed.length === 0 && !pathShaped(chunks)) return;
 
   const first = operands[0];
   const last = operands[operands.length - 1];
@@ -734,6 +724,34 @@ function collectFromChain(node: BinaryExpression, context: Context): void {
     asserted: false,
     decline,
   });
+  // The chain holds these, so the string and template rules do not read them again alone.
+  for (const operand of claimed) {
+    if (typeof operand.start === 'number') context.handled.set(operand.start + 1, null);
+  }
+}
+
+/** A chain's static text between its unknown operands, as `templateChunks` gives a template's. */
+function chainChunks(operands: readonly BabelNode[], context: Context): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  for (const operand of operands) {
+    const value = operandText(operand, context);
+    if (value === null) {
+      chunks.push(current);
+      current = '';
+    } else {
+      current += value;
+    }
+  }
+  chunks.push(current);
+  return chunks;
+}
+
+/** Whether an operand is a template with an unknown part that is a path by itself: a pattern. */
+function isPatternOperand(operand: BabelNode, context: Context): boolean {
+  if (operand.type !== 'TemplateLiteral') return false;
+  const { chunks } = templateChunks(operand, context);
+  return chunks.length > 1 && pathShaped(chunks);
 }
 
 /**
