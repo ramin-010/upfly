@@ -70,7 +70,7 @@ export function colourDepth(stream: Output, env: Io['env']): ColourDepth {
 /**
  * The brand's coral, `#E8365F`, where the terminal can show it: exact, or index 161 of the
  * 256 (`#D7005F`), the nearest by CIE76 distance. Among 16 colours only a red comes near it,
- * and red marks a failure, so there the title is bold without a colour and labels are plain.
+ * and red marks a failure, so there the accent is bold without a colour.
  */
 const CORAL: Readonly<Record<ColourDepth, string | null>> = {
   truecolor: '38;2;232;54;95',
@@ -83,12 +83,11 @@ const CORAL: Readonly<Record<ColourDepth, string | null>> = {
  * sits on words that already say it.
  */
 export interface Styles {
-  /** The brand's coral in bold, for the headline's name alone. */
-  readonly title: (text: string) => string;
-  /** The brand's coral at the terminal's own weight, for structure only: the labels. */
+  /**
+   * The brand's coral in bold, for structure only: the headline's name and the labels. It is
+   * the one bold thing on a line, so values stay at the terminal's own weight.
+   */
   readonly accent: (text: string) => string;
-  /** A total, in the terminal's own colour. */
-  readonly bold: (text: string) => string;
   /** A secondary line. */
   readonly dim: (text: string) => string;
   /** A failure, and nothing else. */
@@ -97,9 +96,7 @@ export interface Styles {
 
 /** Styles that leave text as it is, for output with no colour. */
 export const PLAIN: Styles = {
-  title: (text) => text,
   accent: (text) => text,
-  bold: (text) => text,
   dim: (text) => text,
   red: (text) => text,
 };
@@ -123,9 +120,7 @@ export function stylesFor(
     text === '' ? text : `\u001b[${open}m${text}\u001b[${close}m`;
   const coral = CORAL[colourDepth(stream, env)];
   return {
-    title: coral === null ? mark('1', '22') : mark(`1;${coral}`, '22;39'),
-    accent: coral === null ? PLAIN.accent : mark(coral, '39'),
-    bold: mark('1', '22'),
+    accent: coral === null ? mark('1', '22') : mark(`1;${coral}`, '22;39'),
     dim: mark('2', '22'),
     red: mark('31', '39'),
   };

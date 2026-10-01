@@ -62,7 +62,7 @@ describe('renderSummary', () => {
           [
             {
               label: 'Leave',
-              value: [{ bold: '12 images' }, ', 3 KB'],
+              value: ['12 images', ', 3 KB'],
               counts: [
                 { count: 10, text: 'would save too little' },
                 { count: 2, text: 'nothing links to it' },

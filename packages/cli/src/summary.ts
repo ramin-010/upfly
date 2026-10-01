@@ -35,7 +35,7 @@ export function auditSummary(report: Report, file: ReportFile, next: NextStep | 
     summary.references === 0
       ? [`none, in ${count(summary.sourceFiles, 'source file')}`]
       : [
-          { bold: `${summary.linkedReferences} of ${summary.references}` },
+          `${summary.linkedReferences} of ${summary.references}`,
           ` resolved, from ${count(summary.sourceFiles, 'source file')}`,
         ];
   return {
@@ -44,7 +44,7 @@ export function auditSummary(report: Report, file: ReportFile, next: NextStep | 
       [
         {
           label: 'Images',
-          value: [{ bold: count(summary.assets, 'image') }, `, ${formatBytes(summary.assetBytes)}`],
+          value: [count(summary.assets, 'image'), `, ${formatBytes(summary.assetBytes)}`],
         },
         { label: 'References', value: references },
         savingsRow(report),
@@ -79,7 +79,7 @@ function savingsRow(report: Report): Row {
   return {
     label,
     value: [
-      { bold: formatBytes(summary.potentialSavingBytes) },
+      formatBytes(summary.potentialSavingBytes),
       `${capped === 0 ? '' : ' so far'} as ${formatName(format as EncodeFormat)}${quality === '' ? '' : ` ${quality}`}, across ${count(opportunities, 'image')}`,
     ],
     details,
@@ -108,7 +108,7 @@ function brokenRow(report: Report): Row {
   return {
     label,
     value: [
-      { bold: count(broken, 'reference') },
+      count(broken, 'reference'),
       ` ${broken === 1 ? 'names' : 'name'} an image that does not exist`,
     ],
   };
@@ -122,10 +122,7 @@ function unusedRow(report: Report): Row {
   const kept = report.keptOriginals.count;
   return {
     label: 'Unused',
-    value:
-      dead.length === 0
-        ? ['none']
-        : [{ bold: count(dead.length, 'image') }, `, ${formatBytes(bytes)}`],
+    value: dead.length === 0 ? ['none'] : [count(dead.length, 'image'), `, ${formatBytes(bytes)}`],
     details: [
       ...(possibly === 0
         ? []
@@ -143,7 +140,7 @@ function unusedRow(report: Report): Row {
 function oversizedRows(report: Report): Row[] {
   const oversized = report.summary.findings.oversized;
   if (oversized === 0) return [];
-  return [{ label: 'Oversized', value: [{ bold: count(oversized, 'image') }, ' over the limits'] }];
+  return [{ label: 'Oversized', value: [count(oversized, 'image'), ' over the limits'] }];
 }
 
 function copiesRow(report: Report): Row {
@@ -152,10 +149,7 @@ function copiesRow(report: Report): Row {
   const wasted = sets.reduce((sum, finding) => sum + finding.wastedBytes, 0);
   return {
     label: 'Copies',
-    value: [
-      { bold: count(sets.length, 'set') },
-      ` of identical images, ${formatBytes(wasted)} recoverable`,
-    ],
+    value: [count(sets.length, 'set'), ` of identical images, ${formatBytes(wasted)} recoverable`],
   };
 }
 
@@ -191,7 +185,7 @@ function skippedRow(report: Report): Row {
   const total = counts.reduce((sum, entry) => sum + entry.count, 0);
   return {
     label: 'Skipped',
-    value: [{ bold: String(total) }, ', each with its reason in the full report'],
+    value: [String(total), ', each with its reason in the full report'],
     counts,
   };
 }
@@ -228,9 +222,9 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
       plan.conversions.length === 0
         ? ['no image']
         : [
-            { bold: count(plan.conversions.length, 'image') },
+            count(plan.conversions.length, 'image'),
             ` to ${formatName(format)}, `,
-            { bold: `${formatBytes(before)} → ${formatBytes(before - saved)}` },
+            `${formatBytes(before)} → ${formatBytes(before - saved)}`,
           ],
     details: plan.conversions.length === 0 ? [] : originalsDetails(plan, facts.policy, apply),
   };
@@ -243,7 +237,7 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
     value:
       references === 0
         ? ['no reference']
-        : [{ bold: count(references, 'reference') }, ` in ${count(plan.rewrites.length, 'file')}`],
+        : [count(references, 'reference'), ` in ${count(plan.rewrites.length, 'file')}`],
     details:
       stay === 0
         ? []
@@ -306,7 +300,7 @@ function leaveRow(facts: OptimizeFacts, sizes: ReadonlyMap<string, number>): Row
     value:
       groups.length === 0
         ? ['no image']
-        : [{ bold: count(groups.length, 'image') }, `, ${formatBytes(bytes)}`],
+        : [count(groups.length, 'image'), `, ${formatBytes(bytes)}`],
     counts: countGroups(groups),
   };
 }
@@ -328,16 +322,14 @@ function runRows(facts: {
       label: 'Run',
       value: [
         `${facts.manifest.runId}: `,
-        {
-          bold: `${count(created.length, 'file')} created, ${changed.length} changed, ${removed.length} removed`,
-        },
+        `${count(created.length, 'file')} created, ${changed.length} changed, ${removed.length} removed`,
       ],
     },
   ];
   if (facts.commit !== null && facts.git.kind === 'repository') {
     rows.push({
       label: 'Commit',
-      value: [{ bold: facts.commit.slice(0, 12) }, ', exactly the files the run wrote'],
+      value: [facts.commit.slice(0, 12), ', exactly the files the run wrote'],
       details:
         facts.git.prefix === ''
           ? []
@@ -375,10 +367,7 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
       value:
         plan.sets.length === 0
           ? ['none: no two images hold the same bytes']
-          : [
-              { bold: count(plan.sets.length, 'set') },
-              ` of identical images, ${count(files, 'file')}`,
-            ],
+          : [count(plan.sets.length, 'set'), ` of identical images, ${count(files, 'file')}`],
     },
   ];
   if (plan.sets.length > 0) {
@@ -387,16 +376,13 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
       value:
         references === 0
           ? ['no reference']
-          : [
-              { bold: count(references, 'reference') },
-              ` in ${count(plan.rewrites.length, 'file')}`,
-            ],
+          : [count(references, 'reference'), ` in ${count(plan.rewrites.length, 'file')}`],
     });
   }
   if (stays.length > 0) {
     rows.push({
       label: apply ? 'Left alone' : 'Leave',
-      value: [{ bold: count(stays.length, 'reference') }, ' as written'],
+      value: [count(stays.length, 'reference'), ' as written'],
       counts: countGroups(stays.map((stay) => stayGroup(stay.why))),
     });
   }
@@ -405,7 +391,7 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
     rows.push({
       label: 'Unused',
       value: [
-        { bold: one ? '1 copy' : `${unused.length} copies` },
+        one ? '1 copy' : `${unused.length} copies`,
         `, ${formatBytes(unused.reduce((sum, bytes) => sum + bytes, 0))}, with no reference left`,
       ],
       details: [`Upfly deletes no file; upfly audit lists ${one ? 'it' : 'them'} as unused`],
@@ -436,7 +422,7 @@ function reportRow(label: string, file: ReportFile): Row {
 function nextRows(next: NextStep | null): Row[] {
   if (next === null) return [];
   const line = next.words === null ? null : commandLine(next.words);
-  const value = line !== null && columns(line) <= VALUE_WIDTH ? [{ bold: line }] : [next.text];
+  const value = line !== null && columns(line) <= VALUE_WIDTH ? [line] : [next.text];
   return [
     { label: 'Next', value, ...(next.details === undefined ? {} : { details: next.details }) },
   ];

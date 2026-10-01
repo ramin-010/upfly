@@ -16,13 +16,11 @@ const VALUE_COLUMN = LABEL_INDENT + LABEL_WIDTH + 2;
 /** Lines under a value sit two columns further in. */
 const DETAIL_COLUMN = VALUE_COLUMN + 2;
 
-/** A piece of a value, and whether it is a total, which is printed in bold. */
-export type Span = string | { readonly bold: string };
-
 /** One labelled row: its value, and the lines under it. */
 export interface Row {
   readonly label: string;
-  readonly value: readonly Span[];
+  /** The value, in pieces printed one after another. */
+  readonly value: readonly string[];
   /** Counts with what each counts, as a column of numbers under the value. */
   readonly counts?: readonly { readonly count: number; readonly text: string }[];
   /** Secondary lines under the value, dimmed. */
@@ -48,7 +46,7 @@ export interface Summary {
  * @example headline(styles, 'optimize', 'dry run') // "Upfly optimize · dry run"
  */
 export function headline(styles: Styles, command: string, mode?: string): string {
-  return `${styles.title('Upfly')} ${command}${mode === undefined ? '' : styles.dim(` · ${mode}`)}`;
+  return `${styles.accent('Upfly')} ${command}${mode === undefined ? '' : styles.dim(` · ${mode}`)}`;
 }
 
 /**
@@ -75,18 +73,8 @@ export function renderSummary(summary: Summary, styles: Styles): string {
 
 function rowLines(row: Row, styles: Styles): string[] {
   const label = `${' '.repeat(LABEL_INDENT)}${styles.accent(row.label)}${' '.repeat(VALUE_COLUMN - LABEL_INDENT - columns(row.label))}`;
-  const plain = row.value.map(textOf).join('');
-  const lines: string[] = [];
-  if (columns(plain) <= WIDTH - VALUE_COLUMN) {
-    lines.push(
-      `${label}${row.value.map((span) => (typeof span === 'string' ? span : styles.bold(span.bold))).join('')}`,
-    );
-  } else {
-    // Too long for one line: wrapped as plain text, since a total cut in two reads worse
-    // than one that is not bold.
-    const [first = '', ...rest] = wrap(plain, WIDTH - VALUE_COLUMN);
-    lines.push(`${label}${first}`, ...rest.map((line) => `${' '.repeat(VALUE_COLUMN)}${line}`));
-  }
+  const [first = '', ...rest] = wrap(row.value.join(''), WIDTH - VALUE_COLUMN);
+  const lines = [`${label}${first}`, ...rest.map((line) => `${' '.repeat(VALUE_COLUMN)}${line}`)];
 
   const counts = row.counts ?? [];
   const digits = Math.max(0, ...counts.map(({ count }) => String(count).length));
@@ -103,10 +91,6 @@ function rowLines(row: Row, styles: Styles): string[] {
     }
   }
   return lines;
-}
-
-function textOf(span: Span): string {
-  return typeof span === 'string' ? span : span.bold;
 }
 
 /**

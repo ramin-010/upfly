@@ -81,41 +81,27 @@ describe('colourDepth', () => {
 describe('stylesFor', () => {
   it('marks nothing when colour is off', () => {
     const off = stylesFor(showing(24), { NO_COLOR: '1' }, plain);
-    expect([off.title('x'), off.accent('x'), off.bold('x'), off.dim('x'), off.red('x')]).toEqual([
-      'x',
-      'x',
-      'x',
-      'x',
-      'x',
-    ]);
+    expect([off.accent('x'), off.dim('x'), off.red('x')]).toEqual(['x', 'x', 'x']);
     expect(stylesFor(pipe, {}, plain).accent('x')).toBe('x');
-    expect([PLAIN.title('x'), PLAIN.accent('x')]).toEqual(['x', 'x']);
+    expect([PLAIN.accent('x'), PLAIN.dim('x'), PLAIN.red('x')]).toEqual(['x', 'x', 'x']);
   });
 
-  it('marks totals bold and secondary lines dim, and a failure red at every depth', () => {
+  it('marks secondary lines dim and a failure red at every depth', () => {
     for (const bits of [4, 8, 24]) {
       const on = stylesFor(showing(bits), {}, plain);
-      expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
       expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
       expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
-      expect(on.bold('')).toBe('');
+      expect(on.dim('')).toBe('');
     }
   });
 
-  it('gives the title the coral in bold, at the depth the terminal shows, and bold alone with 16 colours', () => {
-    expect(stylesFor(showing(24), {}, plain).title('x')).toBe(
+  it('gives the coral in bold at the depth the terminal shows, and bold alone, never a red, with 16 colours', () => {
+    expect(stylesFor(showing(24), {}, plain).accent('x')).toBe(
       '\u001b[1;38;2;232;54;95mx\u001b[22;39m',
     );
-    expect(stylesFor(showing(8), {}, plain).title('x')).toBe('\u001b[1;38;5;161mx\u001b[22;39m');
-    expect(stylesFor(showing(4), {}, plain).title('x')).toBe('\u001b[1mx\u001b[22m');
-    expect(stylesFor(showing(1), {}, plain).title('x')).toBe('\u001b[1mx\u001b[22m');
-  });
-
-  it('gives the labels the coral without bold, and no mark at all, never a red, with 16 colours', () => {
-    expect(stylesFor(showing(24), {}, plain).accent('x')).toBe('\u001b[38;2;232;54;95mx\u001b[39m');
-    expect(stylesFor(showing(8), {}, plain).accent('x')).toBe('\u001b[38;5;161mx\u001b[39m');
-    expect(stylesFor(showing(4), {}, plain).accent('x')).toBe('x');
-    expect(stylesFor(showing(1), {}, plain).accent('x')).toBe('x');
+    expect(stylesFor(showing(8), {}, plain).accent('x')).toBe('\u001b[1;38;5;161mx\u001b[22;39m');
+    expect(stylesFor(showing(4), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
+    expect(stylesFor(showing(1), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
   });
 
   it('picks, of the 256, the colour nearest the coral as the eye sees it', () => {
