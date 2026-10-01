@@ -177,6 +177,33 @@ describe('discover', () => {
     ]);
   });
 
+  it('prunes the folders a site generator, a builder or a deploy tool writes into a built project', async () => {
+    // A site built before Upfly runs holds a second copy of every image and page, which
+    // would otherwise be planned as source: on a built eleventy-docs, 444 of 449 conversions.
+    const root = await makeTree({
+      '_site/index.html': '',
+      '_site/img/a.png': '',
+      '.docusaurus/registry.js': '',
+      'storybook-static/static/media/a.png': '',
+      '.vercel/output/static/a.png': '',
+      '.netlify/functions/a.png': '',
+      '.angular/cache/a.png': '',
+      'src/img/a.png': '',
+    });
+
+    const result = await discover({ root, adapters });
+
+    expect(result.assets.map((asset) => asset.relative)).toEqual(['src/img/a.png']);
+    expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
+      ['.angular', "a cache directory named '.angular'"],
+      ['.docusaurus', "a build-output directory named '.docusaurus'"],
+      ['.netlify', "a build-output directory named '.netlify'"],
+      ['.vercel', "a build-output directory named '.vercel'"],
+      ['_site', "a build-output directory named '_site'"],
+      ['storybook-static', "a build-output directory named 'storybook-static'"],
+    ]);
+  });
+
   it('records each image an ignore rule excluded by name, apart from the files it reads', async () => {
     const root = await makeTree({
       '.upflyignore': ['public/icons/touch.png', '*.svg', 'drafts/'].join('\n'),

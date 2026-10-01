@@ -1439,7 +1439,13 @@ Two details that are easy to get wrong:
   reporting an error.
 
 `.gitignore` is deliberately *not* honoured: generated-but-referenced assets under `public/` are
-routinely gitignored, and skipping them would produce false "dead asset" findings.
+routinely gitignored, and skipping them would produce false "dead asset" findings. In a project
+inside a bigger repository, "ignored" would also depend on a repository the user may not know
+about. A site built before Upfly runs is handled by name instead: the folders only a tool writes
+(`dist`, `build`, `out`, `_site`, `.next`, `storybook-static` and the rest of the list in
+`discover.ts`) are pruned, so a built Eleventy site's second copy of every image is not read as
+source. A folder people also name by hand, such as Hugo's `public`, is not, and when a plan would
+write into a git-ignored path, `optimize --commit` refuses before writing anything.
 
 Discovery also records **what it excluded, and why**. Every pruned directory lands in
 `excludedRoots` with the rule responsible: a built-in name prune, or the specific `.upflyignore`

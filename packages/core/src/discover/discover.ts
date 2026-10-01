@@ -29,11 +29,20 @@ import type {
 /**
  * What each directory pruned by name holds, which is the reason a report gives for it. A
  * `Map`, so a directory named `constructor` matches nothing.
+ *
+ * Each is a name a tool writes and people do not: `_site` is the output of Eleventy and
+ * Jekyll, `.docusaurus` Docusaurus's generated files, `storybook-static` what `storybook
+ * build` writes, `.vercel` and `.netlify` what those platforms' command-line tools write, and
+ * `.angular` the Angular CLI's cache. A folder a person may name, such as Hugo's `public`,
+ * is not here.
  */
 const PRUNED_DIRECTORIES: ReadonlyMap<string, string> = new Map([
+  ['.angular', 'a cache directory'],
   ['.astro', 'a cache directory'],
   ['.cache', 'a cache directory'],
+  ['.docusaurus', 'a build-output directory'],
   ['.git', 'a version-control directory'],
+  ['.netlify', 'a build-output directory'],
   ['.next', 'a build-output directory'],
   ['.nuxt', 'a build-output directory'],
   ['.output', 'a build-output directory'],
@@ -41,11 +50,14 @@ const PRUNED_DIRECTORIES: ReadonlyMap<string, string> = new Map([
   ['.svelte-kit', 'a build-output directory'],
   ['.turbo', 'a cache directory'],
   ['.upfly', "Upfly's own directory"],
+  ['.vercel', 'a build-output directory'],
+  ['_site', 'a build-output directory'],
   ['build', 'a build-output directory'],
   ['coverage', 'a test-coverage directory'],
   ['dist', 'a build-output directory'],
   ['node_modules', 'a dependency directory'],
   ['out', 'a build-output directory'],
+  ['storybook-static', 'a build-output directory'],
 ]);
 
 /**

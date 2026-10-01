@@ -749,6 +749,12 @@ export const ORACLE_SKIPS: ReadonlySet<string> = new Set([
   'build',
   'out',
   'coverage',
+  '_site',
+  '.docusaurus',
+  'storybook-static',
+  '.vercel',
+  '.netlify',
+  '.angular',
 ]);
 
 /**
