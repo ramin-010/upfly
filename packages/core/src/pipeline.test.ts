@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { toPosix } from './paths.js';
 import {
   type PipelineProgress,
+  existsAsSpelled,
   reportsMeasuring,
   runPipeline,
   servingRootsFor,
@@ -900,4 +901,87 @@ describe('the encode cap', () => {
       expect(measured).toEqual(largest);
     },
   );
+});
+
+describe('a reference that reaches an image only in another letter case', () => {
+  // Windows and macOS find `img/lvm.jpg` when the file is `img/LVM.jpg`; a Linux server does
+  // not. The report gives the Linux answer on every machine, and says why.
+  const run = (root: string) =>
+    runPipeline({
+      root,
+      servingRoots: servingRootsFor({ dirs: [''], declared: true }),
+      publicDirs: (servingRoots) => servingRoots.dirs,
+      probeOptions: null,
+    });
+
+  function broken(output: Awaited<ReturnType<typeof run>>) {
+    return output.audit.findings.flatMap((finding) =>
+      finding.kind === 'broken' ? [[finding.where, finding.rawPath, finding.note]] : [],
+    );
+  }
+
+  it('is one broken finding, worded the same on every platform', async () => {
+    const root = project({
+      'index.html': '<img src="img/LVM.jpg">\n',
+      'about.html': '<img src="img/lvm.jpg">\n',
+      'img/LVM.jpg': 'a photo, never decoded',
+    });
+
+    const output = await run(root);
+
+    expect(output.references.map(({ rawPath, resolution }) => [rawPath, resolution])).toEqual([
+      ['img/lvm.jpg', 'broken'],
+      ['img/LVM.jpg', 'resolved'],
+    ]);
+    expect(broken(output)).toEqual([
+      [
+        'about.html:1',
+        'img/lvm.jpg',
+        'names `img/LVM.jpg` as `img/lvm.jpg`: it loads on Windows and macOS and breaks on a Linux server; fix the letter case',
+      ],
+    ]);
+  });
+
+  it('says so for a folder named in another case, in a stylesheet', async () => {
+    const root = project({
+      'index.html': '<link rel="stylesheet" href="css/site.css">\n',
+      'css/site.css': '.hero { background: url(../Img/LVM.jpg); }\n',
+      'img/LVM.jpg': 'a photo, never decoded',
+    });
+
+    expect(broken(await run(root))).toEqual([
+      [
+        'css/site.css:1',
+        '../Img/LVM.jpg',
+        'names `img/LVM.jpg` as `../Img/LVM.jpg`: it loads on Windows and macOS and breaks on a Linux server; fix the letter case',
+      ],
+    ]);
+  });
+
+  it('asks the disk for every name below the root as spelled, outside the root too', () => {
+    const outer = project({ 'site/img/LVM.jpg': 'a photo', 'shared/Pic.png': 'a picture' });
+    const exists = existsAsSpelled(join(outer, 'site'));
+
+    expect(exists(join(outer, 'site/img/LVM.jpg'))).toBe(true);
+    expect(exists(join(outer, 'site/img/lvm.jpg'))).toBe(false);
+    expect(exists(join(outer, 'site/IMG/LVM.jpg'))).toBe(false);
+    expect(exists(join(outer, 'site/../shared/Pic.png'))).toBe(true);
+    expect(exists(join(outer, 'site/../Shared/Pic.png'))).toBe(false);
+    expect(exists(join(outer, 'site/img/missing.jpg'))).toBe(false);
+  });
+
+  it('is broken for a file the walk left out, named in another case, and out of scope as spelled', async () => {
+    const root = project({
+      '.upflyignore': 'old/*.png\n',
+      'index.html': '<img src="old/Photo.png"><img src="old/photo.png">\n',
+      'old/Photo.png': 'an older picture, never decoded',
+    });
+
+    const output = await run(root);
+
+    expect(output.references.map(({ rawPath, resolution }) => [rawPath, resolution])).toEqual([
+      ['old/Photo.png', 'out-of-scope'],
+      ['old/photo.png', 'broken'],
+    ]);
+  });
 });

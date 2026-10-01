@@ -69,7 +69,15 @@ if (!existsSync(DIST)) {
   process.exit(1);
 }
 const core = await import(pathToFileURL(DIST).href);
-const { defaultAdapters, discover, loadAliases, resolveReferences, scanSources, shapeById } = core;
+const {
+  defaultAdapters,
+  discover,
+  existsAsSpelled,
+  loadAliases,
+  resolveReferences,
+  scanSources,
+  shapeById,
+} = core;
 
 // Run 2 calls the production decision, never a copy of it. A build older than the
 // decision's source is a copy all the same, so it is refused.
@@ -126,7 +134,8 @@ const resolveUnder = (servingRoots) =>
     servingRoots,
     excludedRoots: discovery.excludedRoots,
     aliases,
-    exists: (path) => existsSync(path),
+    // The pipeline's own question to the disk, so letter case counts as it does in a run.
+    exists: existsAsSpelled(discovery.root),
   });
 
 // Run 1: the key's own serving roots, declared, since the key is the project stating its

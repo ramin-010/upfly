@@ -90,6 +90,19 @@ describe('searching for what the move left behind', () => {
     expect(result.survivors[0]?.text).toContain('/img/hero.png');
   });
 
+  it('finds the old path in another letter case, reporting it as the file spells it', async () => {
+    // Windows and macOS find `public/img/hero.png` by `/IMG/Hero.png`, so a page naming it
+    // that way still loads the old file there.
+    const result = await search(
+      { 'layout.njk': '<p>\n<img src="/IMG/Hero.png">\n' },
+      'public/img/hero.png',
+    );
+
+    expect(result.survivors.map(({ line, spelling }) => [line, spelling])).toEqual([
+      [2, '/IMG/Hero.png'],
+    ]);
+  });
+
   it('does not match a reference to the new location', async () => {
     // The premise of the whole design. `moved/hero.png` shares a basename with the old
     // path and must not match. If this ever passes with a basename search, the test data
@@ -229,35 +242,41 @@ describe('searching every file once, with exactly the answers of one search per 
     return { spellings, survivors };
   }
 
+  /**
+   * One file, searched in any letter case: the text and the needles in lower case, which keeps
+   * every offset for the generator's ASCII, and each match reported as the file spells it.
+   */
   function oneFileAsBefore(
     file: string,
     text: string,
     spellings: readonly string[],
     destinations: readonly string[],
   ) {
+    const lower = text.toLowerCase();
     const spans: [number, number][] = [];
-    for (const needle of destinations) {
+    for (const needle of new Set(destinations.map((each) => each.toLowerCase()))) {
       for (
-        let at = text.indexOf(needle);
+        let at = lower.indexOf(needle);
         at !== -1;
-        at = text.indexOf(needle, at + needle.length)
+        at = lower.indexOf(needle, at + needle.length)
       ) {
         spans.push([at, at + needle.length]);
       }
     }
     const survivors: { file: string; line: number; offset: number; spelling: string }[] = [];
     const claimed = new Set<number>();
-    for (const spelling of spellings) {
+    // A Set keeps the first of two spellings that fold alike, so the rank order stands.
+    for (const spelling of new Set(spellings.map((each) => each.toLowerCase()))) {
       for (
-        let at = text.indexOf(spelling);
+        let at = lower.indexOf(spelling);
         at !== -1;
-        at = text.indexOf(spelling, at + spelling.length)
+        at = lower.indexOf(spelling, at + spelling.length)
       ) {
         const end = at + spelling.length;
         const line = text.slice(0, at).split('\n').length;
         if (claimed.has(line) || spans.some(([from, to]) => from <= at && end <= to)) continue;
         claimed.add(line);
-        survivors.push({ file, line, offset: at, spelling });
+        survivors.push({ file, line, offset: at, spelling: text.slice(at, end) });
       }
     }
     return survivors;
@@ -292,7 +311,15 @@ describe('searching every file once, with exactly the answers of one search per 
       return Math.floor((seed / 2 ** 32) * limit);
     };
     const pick = <T>(items: readonly T[]): T => items[next(items.length)] as T;
-    const segment = () => pick(['a', 'b', 'ab', 'png', 'p']);
+    const segment = () => pick(['a', 'b', 'ab', 'Ab', 'png', 'p']);
+    // Pieces of text in another letter case, which the search must find all the same.
+    const cased = (piece: string) =>
+      pick([
+        piece,
+        piece,
+        piece.toUpperCase(),
+        `${piece.charAt(0).toUpperCase()}${piece.slice(1)}`,
+      ]);
     const path = () => {
       const directories = Array.from({ length: next(3) }, segment);
       return [...directories, `${segment()}${pick(['.png', '.jpg', '.p', '.png.png', ''])}`].join(
@@ -307,6 +334,7 @@ describe('searching every file once, with exactly the answers of one search per 
     };
 
     let compared = 0;
+    let inAnotherCase = 0;
     for (let round = 0; round < 400; round++) {
       const servingDirs = [pick(['', 'a', 'public']), pick(['b', 'ab'])].slice(0, 1 + next(2));
       const moves = Array.from({ length: 1 + next(4) }, () => {
@@ -322,7 +350,7 @@ describe('searching every file once, with exactly the answers of one search per 
       const files: Record<string, string> = {};
       for (let file = 0; file < 1 + next(3); file++) {
         files[`f${file}.txt`] = Array.from({ length: 4 + next(20) }, () =>
-          next(4) === 0 ? pick(['\n', ' ', '"', '/', '.']) : pick(pieces),
+          next(4) === 0 ? pick(['\n', ' ', '"', '/', '.']) : cased(pick(pieces)),
         ).join(pick(['', ' ', '\n']));
       }
 
@@ -340,9 +368,14 @@ describe('searching every file once, with exactly the answers of one search per 
         `round ${round}: ${JSON.stringify({ moves, servingDirs, files })}`,
       ).toEqual(expected.survivors);
       compared += expected.survivors.length;
+      inAnotherCase += expected.survivors.filter(
+        ({ spelling }) => !expected.spellings.includes(spelling),
+      ).length;
     }
-    // Premise, asserted: the generator produced plenty to compare, not 400 empty trees.
+    // Premise, asserted: the generator produced plenty to compare, not 400 empty trees, and
+    // plenty that only a search in any letter case finds.
     expect(compared).toBeGreaterThan(1_000);
+    expect(inAnotherCase).toBeGreaterThan(200);
   });
 
   it('skips a match that overlaps an earlier match of the same spelling, as indexOf did', async () => {

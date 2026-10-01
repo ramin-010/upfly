@@ -620,6 +620,25 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     expect(declined?.reason).toContain('cannot rewrite');
   });
 
+  it('refuses it as well when that mention spells the path in another letter case', async () => {
+    // Windows and macOS load `/LOGO.png` from `logo.png`, so the mention reaches the original
+    // there as surely as one spelled exactly.
+    const { input } = servedProject(
+      {
+        'index.html': '<img src="/logo.png">',
+        'deploy.yml': 'banner: /LOGO.png\n',
+        'public/logo.png': 'PNG',
+      },
+      ['index.html', 'deploy.yml'],
+    );
+
+    const result = await optimize(input);
+
+    expect(result.plan.conversions).toEqual([]);
+    const declined = result.plan.declined.find((entry) => entry.path === 'public/logo.png');
+    expect(declined?.reason).toContain('deploy.yml:1');
+  });
+
   it('says the run excluded the file when only an excluded file still names the path', async () => {
     // The search reads what the run's rules left out, so the original stays, but the path
     // there is one Upfly would have rewritten had the run included the file.

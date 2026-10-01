@@ -283,7 +283,21 @@ export type Reference =
       readonly exclusionReason: string;
     })
   | (RawReference & {
-      readonly resolution: Exclude<Resolution, 'resolved' | 'resolved-pattern' | 'out-of-scope'>;
+      readonly resolution: 'broken';
+      /** Nothing unresolved is ever rewritten, whatever its syntax promised. */
+      readonly confidence: 'unsafe';
+      readonly resolvedPath: null;
+      /**
+       * The asset the path names when letter case is ignored, when one does: Windows and
+       * macOS load it through this reference, and a Linux server does not.
+       */
+      readonly namesIgnoringCase?: string;
+    })
+  | (RawReference & {
+      readonly resolution: Exclude<
+        Resolution,
+        'resolved' | 'resolved-pattern' | 'out-of-scope' | 'broken'
+      >;
       /** Nothing unresolved is ever rewritten, whatever its syntax promised. */
       readonly confidence: 'unsafe';
       readonly resolvedPath: null;

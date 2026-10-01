@@ -27,7 +27,11 @@ export interface Survivor {
    * apart: a line number cannot say whether a planned edit covers this occurrence.
    */
   readonly offset: number;
-  /** Which spelling matched, so a reader knows what to look for on that line. */
+  /**
+   * The text that matched, as the file spells it, so a reader knows what to look for on that
+   * line. It is one of the spellings searched for, in any letter case: Windows and macOS find
+   * `img/hero.png` by `IMG/Hero.png`.
+   */
   readonly spelling: string;
   /** The matching line, trimmed and capped. Evidence, so nobody has to open the file. */
   readonly text: string;
@@ -112,7 +116,28 @@ export function spellingsFor(from: string, servingDirs: readonly string[]): stri
 }
 
 /**
- * Search every file for the old paths. Reads text; never looks at a graph.
+ * The text with every letter in lower case and each character where it was, so a match in
+ * it is a match in the text in any letter case, at the same offset. A character whose lower
+ * case is longer, which only `İ` (U+0130) is, stays as it is rather than move the offsets
+ * after it.
+ *
+ * @param text any text
+ * @returns text of the same length, letters folded to lower case
+ */
+export function foldCase(text: string): string {
+  const lowered = text.toLowerCase();
+  if (lowered.length === text.length) return lowered;
+  let folded = '';
+  for (const character of text) {
+    const lower = character.toLowerCase();
+    folded += lower.length === character.length ? lower : character;
+  }
+  return folded;
+}
+
+/**
+ * Search every file for the old paths, in any letter case, since Windows and macOS find a
+ * file whatever the case of its name. Reads text; never looks at a graph.
  *
  * Longest spellings first, and one match per line per file: a line containing
  * `/img/hero.png` matches both that spelling and the `img/hero.png` suffix, and reporting
@@ -133,8 +158,8 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
   const destinations = [
     ...new Set(input.moves.flatMap((move) => spellingsFor(move.to, input.servingDirs))),
   ];
-  const spellingIndex = indexNeedles(spellings);
-  const destinationIndex = indexNeedles(destinations);
+  const spellingIndex = indexNeedles(spellings.map(foldCase));
+  const destinationIndex = indexNeedles(destinations.map(foldCase));
 
   const survivors: Survivor[] = [];
   const unsearchable: Unsearchable[] = [];
@@ -170,7 +195,9 @@ export async function findSurvivingPaths(input: OldPathSearchInput): Promise<Old
 
 /**
  * The survivors in one file: at most one per line, the match met first when the spellings
- * are taken in rank order, longest first, and each spelling's matches from the top.
+ * are taken in rank order, longest first, and each spelling's matches from the top. The
+ * indexes hold folded needles and the folded text is searched, so a match is found in any
+ * letter case and reported as the file spells it.
  */
 function survivorsIn(
   file: string,
@@ -178,12 +205,13 @@ function survivorsIn(
   spellings: NeedleIndex,
   destinations: NeedleIndex,
 ): Survivor[] {
-  const found = occurrencesIn(text, spellings);
+  const folded = foldCase(text);
+  const found = occurrencesIn(folded, spellings);
   if (found.length === 0) return [];
 
-  const insideDestination = containedIn(occurrencesIn(text, destinations));
+  const insideDestination = containedIn(occurrencesIn(folded, destinations));
   const lineAt = lineIndex(text);
-  const firstOnLine = new Map<number, { rank: number; at: number; spelling: string }>();
+  const firstOnLine = new Map<number, { rank: number; at: number; length: number }>();
   for (const { rank, needle, offsets } of found) {
     for (const at of offsets) {
       // Inside a destination path means the move wrote this text, so it is the rewrite
@@ -192,16 +220,16 @@ function survivorsIn(
       const line = lineAt(at);
       const held = firstOnLine.get(line);
       if (held === undefined || rank < held.rank || (rank === held.rank && at < held.at)) {
-        firstOnLine.set(line, { rank, at, spelling: needle });
+        firstOnLine.set(line, { rank, at, length: needle.length });
       }
     }
   }
 
-  return [...firstOnLine].map(([line, { at, spelling }]) => ({
+  return [...firstOnLine].map(([line, { at, length }]) => ({
     file,
     line,
     offset: at,
-    spelling,
+    spelling: text.slice(at, at + length),
     text: lineTextAt(text, at),
   }));
 }
@@ -239,7 +267,8 @@ function indexNeedles(needles: readonly string[]): NeedleIndex {
     index.set(ending, byLength);
     const sameLength = byLength.get(needle.length) ?? new Map<string, number>();
     byLength.set(needle.length, sameLength);
-    sameLength.set(needle, rank);
+    // Two spellings can fold to one needle, and the first keeps its rank.
+    if (!sameLength.has(needle)) sameLength.set(needle, rank);
   });
   return index;
 }
@@ -393,7 +422,7 @@ function render(
     );
   }
 
-  lines.push('', `  spellings searched: ${spellings.join('  ')}`);
+  lines.push('', `  spellings searched, in any letter case: ${spellings.join('  ')}`);
 
   return lines;
 }

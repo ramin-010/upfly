@@ -173,6 +173,11 @@ report prints under the path; a reference's own note, which says why its adapter
 did, stays off the finding. `/avatar.php`, a script that can serve an image, is further than
 one keystroke and is dropped.
 
+Letter case counts at every rung as a Linux server counts it, so `img/lvm.jpg` for the file
+`img/LVM.jpg` is `broken` on every machine. Rung 7 then looks the path up again with case folded
+and records the image it finds there (`namesIgnoringCase`), and the audit's finding notes that the
+path loads on Windows and macOS and breaks on a Linux server.
+
 Rung 1 drops an `unsafe` path whose text shows an extension that is not an image's, such as
 `{{ page.data }}.json`. A construct an adapter could not read (`RawReference.unread`: a style
 attribute or `<style>` block whose CSS does not parse, a CSS-in-JS template) is text rather than a
@@ -278,7 +283,10 @@ The exception is rung 5's fallback: a file excluded by a *file-level* ignore rul
 "missing" is to look. That is an injected `exists` port, the same shape as the `ImageProbe`, and
 it is consulted only for references that did not resolve, once per candidate path of each
 spelling (see "Percent-encoded and entity-encoded paths"). It is a required option rather than
-an optional one, because a default would let a call site keep the false `broken` silently.
+an optional one, because a default would let a call site keep the false `broken` silently. The
+pipeline's port, `existsAsSpelled`, also finds every name below the project root in its folder's
+listing, letter case included: on Windows and macOS the disk alone finds `img/lvm.jpg` for
+`img/LVM.jpg`, which would make that reference `out-of-scope` there and `broken` on Linux.
 
 A second port, `unindexed`, is optional and the pipeline never passes it, so the audit resolves
 against the walk alone. It answers for a file that exists but is not an asset, and the resolver
@@ -1827,12 +1835,13 @@ removal in step 4 for exactly this reason: between the two, both paths exist.
 **What `replace` converts, and which originals it removes, are the planner's decisions, and they
 are two halves of one property.** An asset converts only when the plan moves at least one
 reference to the new file, and its original is deleted only when the plan moves every reference
-that links to it. So under `replace` an asset ends one of three ways:
+that links to it and no reference reaches it in another letter case. So under `replace` an asset
+ends one of three ways:
 
 | the asset | outcome |
 |---|---|
 | every reference to it moves | converted, original deleted |
-| some move, and one the plan cannot move still needs the old file (a pattern, a refused literal, a path with no extension to change, a link preview or a link to the image) | converted, original kept, and `keptOriginals` says which reference needs it |
+| some move, and one the plan cannot move still needs the old file (a pattern, a refused literal, a path with no extension to change, a link preview or a link to the image, or a path that reaches it only in another letter case, which Windows and macOS follow) | converted, original kept, and `keptOriginals` says which reference needs it |
 | no reference would move: nothing links to it, or only references the plan cannot move | not converted, and `declined` names what holds it |
 
 What `replace` never produces is a converted copy nothing asks for beside an original that has to
@@ -1902,7 +1911,10 @@ or a `logo.webp` in a folder named `IMG`, and a plan must not depend on where it
 resolver's index folds when asked (`foldCase`), and the directory listing matches names whatever
 their case. Both sides are read folded, so a reference that reaches an original only by folding
 case, and that the plan leaves as written, loses that file when the plan removes it; the
-conversion is withdrawn for that too. A decline whose match depends on case says so.
+conversion is withdrawn for that too. A decline whose match depends on case says so. A reference
+that links nothing as written, because it spells the path in another case, is resolved again
+folded as well, whatever it is (a literal, a guess, a pattern), and an original one of them
+reaches is kept, its reason saying to fix the letter case.
 
 The old-path text search (see "Moving an asset") then guards the references the graph never found,
 for a path written down literally. **The bound that remains:** a path assembled at runtime that the
@@ -2131,13 +2143,13 @@ the shorter path, not the only one.
 ### The independent check
 
 `findSurvivingPaths` (`old-path-search.ts`) searches the text of every file for each moved asset's
-old path, and never reads a graph: a check built on the graph that missed a reference would miss it
+old path, in any letter case since Windows and macOS find a file that way, and never reads a graph: a check built on the graph that missed a reference would miss it
 again. It searches the path, not the basename, because a move keeps the file name and the basename
 would match the asset at its new place. For the same reason `sweepForMentions`, which matches the
 basenames of assets nothing references, is not reused.
 
 A long needle misses the URL that markup uses, and a short one matches too much, so the old path is
-searched in several spellings, and each finding names the one that matched: the path as stored, with
+searched in several spellings, and each finding gives the text that matched as the file spells it: the path as stored, with
 a leading slash for a project served from its own root, as a URL under each serving root
 (`/img/hero.png` for `public/img/hero.png`), as its last directory and file name (`img/hero.png`,
 which catches `../../img/hero.png`), and with Windows separators. A match that lies inside a

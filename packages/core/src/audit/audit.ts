@@ -15,12 +15,13 @@
 import { formatBytes } from '../format.js';
 import type { Graph } from '../graph/graph.js';
 import { unreferencedAssets } from '../graph/graph.js';
-import { compareStrings } from '../paths.js';
+import { compareStrings, relativePath } from '../paths.js';
 import type { AssetProbe, EncodeFormat, EncodeSetting } from '../probe/probe.js';
 import { provenPath } from '../resolve/reference.js';
 import { likelyTypoOf } from '../resolve/resolve.js';
 import { citeReferences } from '../scan/citation.js';
 import type { ReadFilePort } from '../scan/scan.js';
+import type { Reference } from '../types.js';
 import type { ConventionLink, ConventionRoot } from './conventions.js';
 import { conventionLinkFor } from './conventions.js';
 import { findDuplicates } from './duplicates.js';
@@ -428,7 +429,7 @@ async function brokenFindings(options: AuditOptions): Promise<{
     const citation = citations.get(reference);
     // Not `reference.note`: an adapter's note says why it read the path as it did, which is
     // no reason for a path to point at nothing.
-    const note = likelyTypoOf(reference);
+    const note = likelyTypoOf(reference) ?? inAnotherCase(reference, options.graph.root);
     const finding: BrokenFinding = {
       kind: 'broken',
       file: citation?.file ?? reference.file,
@@ -442,6 +443,16 @@ async function brokenFindings(options: AuditOptions): Promise<{
   });
 
   return { findings, rootRelative, unreadableSources: unreadable };
+}
+
+/**
+ * The note for a broken path that names an image in another letter case, or `null` when it
+ * names none: what the resolver found with case ignored.
+ */
+function inAnotherCase(reference: Reference, root: string): string | null {
+  if (reference.resolution !== 'broken' || reference.namesIgnoringCase === undefined) return null;
+  const image = relativePath(root, reference.namesIgnoringCase);
+  return `names \`${image}\` as \`${reference.rawPath}\`: it loads on Windows and macOS and breaks on a Linux server; fix the letter case`;
 }
 
 /** `oversized` and `format-opportunity`, the two that need pixels. */

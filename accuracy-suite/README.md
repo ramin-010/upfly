@@ -30,7 +30,7 @@ that is what stops a figure from this suite escaping into a claim about real pro
 where to add a reader next, and catches a regression that drops `srcset` from 8 to 5; a single
 number does neither.
 
-The rows fall into four populations, read separately and never added together: `claimed` (447
+The rows fall into four populations, read separately and never added together: `claimed` (449
 entries in 74 rows, found against expected: the only population where a miss is a bug),
 `declined` (91 in 19: text that is not a live path, so claiming nothing is right), `unclaimed`
 (15 in 4: real files Upfly chooses not to index) and `gap` (47 in 8: constructs nothing reads
@@ -53,7 +53,7 @@ went wrong.
 
 ```
 accuracy-suite/
-  key/answer-key.json         the answer key: 108 shapes, 81 assets, 600 references in 151 files
+  key/answer-key.json         the answer key: 108 shapes, 81 assets, 602 references in 152 files
   tools/check-key.mjs         the self-check: plain text and path arithmetic, no engine
   tools/prove-can-fail.mjs    deliberate damages, each asserted to turn a check red
   tools/measure.mjs           the engine over tree/, run twice, rendered as the matrix
@@ -80,7 +80,7 @@ shared/                the alias target for ~/* and @img/*
 sites/kit-app/, sites/nuxt-app/, sites/vue-app/   aliases through generated and real configs
 ```
 
-520 files: 441 text and 79 binary. 303 of the text files are ordinary and hold no asset-shaped
+521 files: 442 text and 79 binary. 303 of the text files are ordinary and hold no asset-shaped
 token, so referenced files are a minority, as they are in real code. The filler averages about
 1.8 KB a file rather than being stubs, because what distorts a measurement is bytes, not file
 count: a generated tree with real code's file count and a thirtieth of its bytes once inverted

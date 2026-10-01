@@ -16,6 +16,7 @@ import {
   type Survivor,
   type Unsearchable,
   findSurvivingPaths,
+  foldCase,
   spellingsFor,
 } from '../plan/old-path-search.js';
 import {
@@ -210,14 +211,17 @@ async function mentionsThatWouldSurvive(
   });
 
   // An occurrence names a spelling, not an asset, so map back through each asset's
-  // spellings. Two assets can share one (the suffix `img/hero.png`, or `/hero.png` under two
-  // serving roots), and a mention of it then blocks both: a lost saving, never a lost file.
+  // spellings, in any letter case as the search matched them. Two assets can share one (the
+  // suffix `img/hero.png`, or `/hero.png` under two serving roots), and a mention of it then
+  // blocks both: a lost saving, never a lost file.
   const excludedFiles = new Set(scope.excludedFiles ?? []);
   const assets = new Map<string, string>();
   const excluded = new Map<string, string>();
   for (const conversion of deleting) {
-    const spellings = new Set(spellingsFor(conversion.asset, input.servingRoots.dirs));
-    const mine = occurrences.filter((survivor) => spellings.has(survivor.spelling));
+    const spellings = new Set(
+      spellingsFor(conversion.asset, input.servingRoots.dirs).map(foldCase),
+    );
+    const mine = occurrences.filter((survivor) => spellings.has(foldCase(survivor.spelling)));
     // A mention in a file the run reads is the one to name. Where only excluded files name
     // the path, the exclusion is why the mention stays as written, and the reason says so.
     const read = mine.filter((survivor) => !excludedFiles.has(survivor.file));

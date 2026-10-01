@@ -1178,6 +1178,70 @@ describe('the public policy', () => {
       expect(plan.keptOriginals[0]?.reason).toContain('`src/App.jsx` names it as `./logo`');
     });
 
+    describe('a reference that reaches the original only in another letter case', () => {
+      // Read by case, as a Linux server reads it, `img/lvm.jpg` links nothing when the file is
+      // `img/LVM.jpg`. Windows and macOS still load the original through it, so it stays.
+      const LETTER_CASE =
+        'on Windows and macOS, where a file is found whatever the case of its name';
+      const lvm = [asset('public/img/LVM.jpg')];
+      const moving = resolved('public/index.html', 'img/LVM.jpg', 'public/img/LVM.jpg');
+
+      function unlinked(file: string, rawPath: string, over: Partial<Reference> = {}): Reference {
+        return {
+          ...RAW,
+          file: `${ROOT}/${file}`,
+          rawPath,
+          start: 10,
+          end: 10 + rawPath.length,
+          resolution: 'broken',
+          confidence: 'unsafe',
+          resolvedPath: null,
+          ...over,
+        } as Reference;
+      }
+
+      it('keeps the original a literal names in another letter case', () => {
+        const plan = replacing(lvm, [moving, unlinked('public/about.html', 'img/lvm.jpg')]);
+
+        expect(plan.rewrites.map((rewrite) => rewrite.file)).toEqual(['public/index.html']);
+        expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+          ['public/img/LVM.jpg', false],
+        ]);
+        expect(plan.keptOriginals).toEqual([
+          {
+            asset: 'public/img/LVM.jpg',
+            reason: `converted, but the original was kept: \`public/about.html\` names it as \`img/lvm.jpg\`, which reaches it ${LETTER_CASE}: deleting the original would break it there. Fix the letter case.`,
+          },
+        ]);
+      });
+
+      it('keeps the original a pattern matches only in another letter case', () => {
+        const shouting = unlinked('src/Gallery.jsx', '/img/${name}.JPG', {
+          kind: 'string',
+          shape: 'js.template.pattern',
+          ceiling: 'medium',
+          asserted: false,
+          resolution: 'dynamic',
+        });
+        const plan = replacing(lvm, [moving, shouting]);
+
+        expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+          ['public/img/LVM.jpg', false],
+        ]);
+        expect(plan.keptOriginals[0]?.reason).toBe(
+          `converted, but the original was kept: \`src/Gallery.jsx\` reaches it through \`/img/\${name}.JPG\` ${LETTER_CASE}: deleting the original would break it there. Fix the letter case.`,
+        );
+      });
+
+      it('still removes the original when the reference in another case names a different file', () => {
+        // The positive control: folding case must not keep an original the reference cannot reach.
+        const plan = replacing(lvm, [moving, unlinked('public/about.html', 'img/lvm.png')]);
+
+        expect(plan.conversions[0]?.replacesOriginal).toBe(true);
+        expect(plan.keptOriginals).toEqual([]);
+      });
+    });
+
     it('converts an asset when any one of its references moves, not only when all of them do', () => {
       // The conversion half asks for one moving reference, the deletion half for all of
       // them. Requiring all of them to convert would decline both assets here, though each

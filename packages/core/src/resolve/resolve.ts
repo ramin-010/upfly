@@ -310,10 +310,23 @@ function resolveOne(raw: RawReference, context: ResolveContext): Reference | nul
     if (!isBareSpecifier(path, raw.kind) || mapped) return unlinked(raw, 'unresolved-alias');
   }
 
-  // 7. The author said this was an asset and it points at nothing.
+  // 7. The author said this was an asset and it points at nothing, letter case counted as a
+  //    Linux server counts it. An asset it names in another case is recorded, because Windows
+  //    and macOS load that file through it.
   if (raw.asserted) {
-    const broken = unlinked(raw, 'broken');
-    return typo === undefined ? broken : { ...broken, note: typo };
+    if (typo !== undefined) return { ...unlinked(raw, 'broken'), note: typo };
+    for (const { path: candidate } of lookedUp) {
+      const named = index.lookupIgnoringCase(candidate, raw, root, publicDirs);
+      if (named === null) continue;
+      return {
+        ...raw,
+        resolution: 'broken',
+        confidence: 'unsafe',
+        resolvedPath: null,
+        namesIgnoringCase: named,
+      };
+    }
+    return unlinked(raw, 'broken');
   }
 
   // 8. A path-shaped string that turned out not to be a path. Counted, not a finding.
@@ -908,6 +921,8 @@ const HOLE = String.fromCharCode(0xe000);
  */
 class AssetIndex {
   private readonly byPath: ReadonlyMap<string, string>;
+  /** Every asset by its path in lower case, the first in sorted order where two fold alike. */
+  private readonly byFoldedPath: ReadonlyMap<string, string>;
   private readonly ordered: readonly string[];
   private readonly unindexed: (path: string) => string | null;
   private readonly foldCase: boolean;
@@ -926,6 +941,13 @@ class AssetIndex {
     for (const asset of assets) byPath.set(this.keyOf(toPosix(asset.path)), asset.path);
     this.byPath = byPath;
     this.ordered = [...byPath.keys()].sort(compareStrings);
+    const byFoldedPath = new Map<string, string>();
+    for (const key of this.ordered) {
+      const folded = key.toLowerCase();
+      const native = byPath.get(key);
+      if (native !== undefined && !byFoldedPath.has(folded)) byFoldedPath.set(folded, native);
+    }
+    this.byFoldedPath = byFoldedPath;
     this.unindexed = unindexed ?? (() => null);
   }
 
@@ -954,6 +976,23 @@ class AssetIndex {
    */
   lookupExact(path: string): string | null {
     return this.byPath.get(this.keyOf(path)) ?? this.unindexed(path);
+  }
+
+  /**
+   * The asset a literal path names when letter case is ignored, or `null`: the file Windows
+   * and macOS load where a Linux server finds nothing. Tried in `lookup`'s order.
+   */
+  lookupIgnoringCase(
+    path: string,
+    raw: RawReference,
+    root: string,
+    publicDirs: readonly string[],
+  ): string | null {
+    for (const candidate of candidatePaths(path, raw, root, publicDirs)) {
+      const match = this.byFoldedPath.get(candidate.path.toLowerCase());
+      if (match !== undefined) return match;
+    }
+    return null;
   }
 
   /**

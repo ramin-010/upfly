@@ -335,14 +335,15 @@ export function planOptimization(input: PlanInput): OptimizationPlan {
     input.graph.assets.map((node) => node.asset),
     onDisk,
   );
-  let repointed = repoint(input, converting, relativeOf);
+  const inAnotherCase = reachedOnlyInAnotherCase(input, onDisk);
+  let repointed = repoint(input, converting, relativeOf, inAnotherCase);
   let misdirected = misdirectedConversions(input, repointed, before, onDisk);
   while (misdirected.size > 0) {
     for (const [asset, reason] of misdirected) {
       converting.delete(asset);
       declined.push({ path: asset, line: null, reason });
     }
-    repointed = repoint(input, converting, relativeOf);
+    repointed = repoint(input, converting, relativeOf, inAnotherCase);
     misdirected = misdirectedConversions(input, repointed, before, onDisk);
   }
   declined.push(...repointed.declined);
@@ -382,11 +383,17 @@ interface Repointed {
   readonly declined: readonly Declined[];
 }
 
-/** Decide every reference against these conversions, then which originals may go. */
+/**
+ * Decide every reference against these conversions, then which originals may go.
+ *
+ * @param inAnotherCase the references that reach each asset only in another letter case,
+ *   from `reachedOnlyInAnotherCase`
+ */
 function repoint(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
   relativeOf: ReadonlyMap<string, string>,
+  inAnotherCase: ReadonlyMap<string, readonly Reference[]>,
 ): Repointed {
   const declined: Declined[] = [];
   declinePartialPatterns(input, converting, relativeOf, declined);
@@ -407,7 +414,7 @@ function repoint(
 
   // Last, because whether an original may go depends on which references this plan
   // rewrites, and that is known only once every reference has been decided.
-  const stillNeeded = originalsStillNeeded(input, converting, rewritten);
+  const stillNeeded = originalsStillNeeded(input, converting, rewritten, inAnotherCase);
   const conversions = [...converting.values()].map((conversion) =>
     stillNeeded.has(conversion.asset) ? { ...conversion, replacesOriginal: false } : conversion,
   );
@@ -544,6 +551,10 @@ function gone(reference: Reference, lost: string, reached: readonly string[]): s
     : `${reaches}, so the reference would load ${instead} instead. Rename one of the two images and run again.`;
 }
 
+/** Where a path reaches a file it names in another letter case, and why. */
+const WHATEVER_THE_CASE =
+  'on Windows and macOS, where a file is found whatever the case of its name';
+
 /**
  * The clause saying why a path reaches a file whose name, or a folder's name, it spells in
  * another case, and nothing when it spells them as they are. The check finds a file whatever
@@ -556,7 +567,7 @@ function anyCase(text: string, file: string): string {
     const [spelled, named] = [written[written.length - back], found[found.length - back]];
     if (spelled === named) continue;
     if (spelled?.toLowerCase() !== named?.toLowerCase()) return '';
-    return ' on Windows and macOS, where a file is found whatever the case of its name';
+    return ` ${WHATEVER_THE_CASE}`;
   }
   return '';
 }
@@ -604,6 +615,37 @@ function leadsTo(
       linkedPaths(answer).map((path) => relativePath(input.graph.root, path)),
     ]),
   );
+}
+
+/**
+ * The references that link nothing as written yet reach an asset in another letter case,
+ * keyed by the asset's POSIX-relative path.
+ *
+ * Read by case, as a Linux server reads it, `img/lvm.jpg` links nothing when the file is
+ * `img/LVM.jpg`, while Windows and macOS load the file through it. So every reference the
+ * resolver did not link is resolved again as `leadsTo` resolves one, case folded, whatever it
+ * is: a literal, a guess or a pattern. An original one of them reaches is never removed.
+ */
+function reachedOnlyInAnotherCase(
+  input: PlanInput,
+  onDisk: UnindexedFiles | undefined,
+): ReadonlyMap<string, readonly Reference[]> {
+  const unlinked = input.graph.references.filter((reference) => !isLinked(reference));
+  const reached = leadsTo(
+    input,
+    unlinked,
+    input.graph.assets.map((node) => node.asset),
+    onDisk,
+  );
+  const byAsset = new Map<string, Reference[]>();
+  for (const reference of unlinked) {
+    for (const asset of reached.get(placeOf(reference)) ?? []) {
+      const holding = byAsset.get(asset) ?? [];
+      holding.push(reference);
+      byAsset.set(asset, holding);
+    }
+  }
+  return byAsset;
 }
 
 /** The file at a path that exists on disk but is not one of the walk's images, or null. */
@@ -1177,23 +1219,30 @@ export function rewriteRefusal(
  * Which originals `replace` must keep because a reference Upfly knows about still needs
  * them, and why, keyed by asset.
  *
- * An original is deleted only when at least one reference links to it and this plan
- * rewrites every reference that does. Stated as a property rather than as cases, it covers
- * a pattern (a template or a `+` chain), a literal whose rewrite is refused (the old-path
- * search misses one with an encoded spelling), a path with no extension to change, and an
- * asset nothing links to. The conversion rule declines that last case before it gets
- * here, and it is kept so this rule never depends on that one.
+ * An original is deleted only when at least one reference links to it, this plan rewrites
+ * every reference that does, and no reference reaches it in another letter case. Stated as
+ * a property rather than as cases, it covers a pattern (a template or a `+` chain), a
+ * literal whose rewrite is refused (the old-path search misses one with an encoded
+ * spelling), a path with no extension to change, a path Windows and macOS follow to it
+ * whatever its letter case, and an asset nothing links to. The conversion rule declines
+ * that last case before it gets here, and it is kept so this rule never depends on that one.
  * See "The transaction" in ARCHITECTURE.md.
  */
 function originalsStillNeeded(
   input: PlanInput,
   converting: ReadonlyMap<string, PlannedConversion>,
   rewritten: ReadonlyMap<Reference, Repointing>,
+  inAnotherCase: ReadonlyMap<string, readonly Reference[]>,
 ): ReadonlyMap<string, string> {
   const needed = new Map<string, string>();
   for (const node of input.graph.assets) {
     if (converting.get(node.asset.relative)?.replacesOriginal !== true) continue;
-    const reason = whyStillNeeded(node.references, rewritten, input.graph.root);
+    const reason = whyStillNeeded(
+      node.references,
+      rewritten,
+      input.graph.root,
+      inAnotherCase.get(node.asset.relative) ?? [],
+    );
     if (reason !== null) needed.set(node.asset.relative, reason);
   }
   return needed;
@@ -1204,6 +1253,7 @@ function whyStillNeeded(
   references: readonly Reference[],
   rewritten: ReadonlyMap<Reference, Repointing>,
   root: string,
+  inAnotherCase: readonly Reference[],
 ): string | null {
   // Unreachable while the conversion rule declines every unlinked asset first. Kept so
   // this rule never depends on that one: see `originalsStillNeeded`.
@@ -1216,13 +1266,22 @@ function whyStillNeeded(
   }
 
   const missed = references.filter((reference) => !rewritten.has(reference));
-  const [first] = missed;
+  const holding = [...missed, ...inAnotherCase];
+  const [first] = holding;
   if (first === undefined) return null;
 
   // One location plus a count, as the surviving-mention reason does: the sentence stays
   // readable, and a reader who opens the named file finds the rest by searching for it.
   const where = `\`${relativePath(root, first.file)}\``;
-  const text = `\`${first.rawPath}\`${missed.length === 1 ? '' : ` (and ${missed.length - 1} more)`}`;
+  const text = `\`${first.rawPath}\`${holding.length === 1 ? '' : ` (and ${holding.length - 1} more)`}`;
+  if (missed.length === 0) {
+    // Only a pattern has a medium ceiling, and it matches files rather than naming one.
+    const reaches =
+      first.ceiling === 'medium'
+        ? `reaches it through ${text}`
+        : `names it as ${text}, which reaches it`;
+    return `converted, but the original was kept: ${where} ${reaches} ${WHATEVER_THE_CASE}: deleting the original would break it there. Fix the letter case.`;
+  }
   return first.resolution === 'resolved-pattern'
     ? `converted, but the original was kept: ${where} reaches it through ${text}, ${unrewritable(first)}: deleting the original would break it`
     : `converted, but the original was kept: ${where} names it as ${text}, and this run does not rewrite that reference: deleting the original would break it`;

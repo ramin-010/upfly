@@ -5969,6 +5969,31 @@
       ]
     },
     {
+      "path": "sites/root-served/letter-case.html",
+      "entries": [
+        {
+          "raw": "img/Photo.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "broken",
+          "why": "The file is img/photo.jpg. Windows and macOS find it by this name and a Linux server does not, so it is broken on every platform, with a note naming the file it reaches in another letter case.",
+          "offset": 240,
+          "line": 10,
+          "column": 15
+        },
+        {
+          "raw": "IMG/hero.jpg",
+          "occurrence": 1,
+          "shape": "html.img.src",
+          "expect": "broken",
+          "why": "The folder is img, not IMG: the same break one folder up, which a case check on the file name alone would miss.",
+          "offset": 306,
+          "line": 11,
+          "column": 15
+        }
+      ]
+    },
+    {
       "path": "shared/config/site.json",
       "entries": [
         {

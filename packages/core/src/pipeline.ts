@@ -11,8 +11,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { defaultAdapters } from './adapters/default-adapters.js';
 import { type AuditResult, audit } from './audit/audit.js';
 import { detectConventionRoots } from './audit/conventions.js';
@@ -167,6 +168,51 @@ function basenamesOf(assets: readonly Asset[]): Set<string> {
 }
 
 /**
+ * Whether a file exists with every name below `root` spelled as given, letter case included:
+ * the resolver's question to the disk.
+ *
+ * Windows and macOS find `img/LVM.jpg` by `img/lvm.jpg` and a Linux server does not, so asking
+ * the disk alone would give a report that differs by machine. Each folder is listed at most
+ * once, and only for a path the disk finds. The root's own spelling is taken as given.
+ *
+ * @param root the project root
+ * @returns the check, for one absolute path at a time
+ */
+export function existsAsSpelled(root: string): (absolutePath: string) => boolean {
+  const listings = new Map<string, ReadonlySet<string>>();
+  const namesIn = (directory: string): ReadonlySet<string> => {
+    let names = listings.get(directory);
+    if (names === undefined) {
+      try {
+        names = new Set(readdirSync(directory));
+      } catch {
+        names = new Set();
+      }
+      listings.set(directory, names);
+    }
+    return names;
+  };
+
+  return (absolutePath) => {
+    if (!existsSync(absolutePath)) return false;
+    const below = relative(root, absolutePath);
+    // On another drive there is no folder of the project's to compare against.
+    if (isAbsolute(below)) return true;
+    let directory = root;
+    for (const name of below.split(sep)) {
+      if (name === '') continue;
+      if (name === '..') {
+        directory = dirname(directory);
+        continue;
+      }
+      if (!namesIn(directory).has(name)) return false;
+      directory = join(directory, name);
+    }
+    return true;
+  };
+}
+
+/**
  * Runs the engine over one project, reading it and changing nothing.
  *
  * @param input the project root, how to decide its serving roots, and whether to probe
@@ -210,7 +256,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
     servingRoots,
     excludedRoots: discovery.excludedRoots,
     aliases,
-    exists: (path) => existsSync(path),
+    exists: existsAsSpelled(discovery.root),
   });
   const graph = buildGraph({
     root: discovery.root,
