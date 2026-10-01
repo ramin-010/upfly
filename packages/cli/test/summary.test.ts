@@ -139,25 +139,27 @@ const CASES = [
 ] as const;
 
 describe.each(CASES)('upfly %s', (name, fixture, command, golden) => {
+  // One copy and two runs serve both tests: each run measures every image, and the suite
+  // runs beside other heavy files.
+  let root = '';
+  let summary: ReturnType<typeof run>;
+  let kept = '';
+  let full: ReturnType<typeof run>;
+  beforeAll(() => {
+    root = committed(fixture);
+    summary = run(root, [command]);
+    kept = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
+    full = run(root, [command, '--full']);
+  }, 120_000);
+
   it('prints the summary, in plain text when stdout is not a terminal, within 80 columns', () => {
-    const root = committed(fixture);
-
-    const result = run(root, [command]);
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe(SUMMARIES[name].join('\n'));
-    expect(result.stdout.includes('\u001b')).toBe(false);
-    expect(overWide(result.stdout)).toEqual([]);
+    expect(summary.status, summary.stderr).toBe(0);
+    expect(summary.stdout).toBe(SUMMARIES[name].join('\n'));
+    expect(summary.stdout.includes('\u001b')).toBe(false);
+    expect(overWide(summary.stdout)).toEqual([]);
   });
 
   it('keeps the full text in .upfly/report.txt, which --full prints as the command printed it before', async () => {
-    const root = committed(fixture);
-
-    const summary = run(root, [command]);
-    const kept = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
-    const full = run(root, [command, '--full']);
-
-    expect(summary.status, summary.stderr).toBe(0);
     expect(full.status, full.stderr).toBe(0);
     expect(full.stdout).toBe(kept);
     await expect(placeholders(full.stdout, root)).toMatchFileSnapshot(`./golden/${golden}`);
