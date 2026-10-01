@@ -1,4 +1,7 @@
-/** `upfly audit`: the report, and nothing written anywhere. */
+/**
+ * `upfly audit`: a summary of the report, with the full report kept in Upfly's own folder.
+ * No project file is written.
+ */
 
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,7 +16,10 @@ import {
 import type { AuditOptions } from './args.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { renderSummary } from './layout.js';
+import { type Io, colourFor, emit, progressReporter, stopWith, stylesFor } from './output.js';
+import { warnIfNotKept, writeReport } from './report-file.js';
+import { type NextStep, auditSummary } from './summary.js';
 
 /**
  * Reads the project and prints what it found.
@@ -62,7 +68,7 @@ export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode>
     includeDiscarded: options.includeDiscarded,
     includeUnusedVectors: options.includeUnusedSvg,
   });
-  write(options, io, report, output);
+  write(options, io, report, output, root);
   return EXIT_CODES.OK;
 }
 
@@ -74,7 +80,13 @@ function probeOptionsFor(options: AuditOptions, format: 'webp' | 'avif') {
   };
 }
 
-function write(options: AuditOptions, io: Io, report: Report, output: PipelineOutput): void {
+function write(
+  options: AuditOptions,
+  io: Io,
+  report: Report,
+  output: PipelineOutput,
+  root: string,
+): void {
   if (options.json) {
     // The libraries' own wording, which varies between runs, stays out of the report.
     for (const diagnostic of output.diagnostics) {
@@ -86,13 +98,54 @@ function write(options: AuditOptions, io: Io, report: Report, output: PipelineOu
     emit(io, { type: 'result', command: 'audit', exitCode: EXIT_CODES.OK, report });
     return;
   }
-  io.stdout.write(renderReport(report));
+  const full = renderReport(report);
+  const file = writeReport(root, full, null);
+  if (options.full) {
+    io.stdout.write(full);
+    warnIfNotKept(io, file);
+  } else {
+    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    io.stdout.write(
+      renderSummary(auditSummary(report, file, nextAfterAudit(options, report)), styles),
+    );
+  }
   const said = output.diagnostics.length + output.scanDiagnostics.length;
   if (said > 0) {
     io.stderr.write(
       `The imaging and parsing libraries left ${said} ${said === 1 ? 'message' : 'messages'} of their own; \`upfly audit --json\` includes their text.\n`,
     );
   }
+}
+
+/**
+ * The command to run after an audit: `optimize` when an image would be smaller, `dedupe`
+ * when identical copies were found, with the same folder and the options that choose files.
+ */
+function nextAfterAudit(options: AuditOptions, report: Report): NextStep | null {
+  const { findings } = report.summary;
+  const command =
+    findings['format-opportunity'] > 0 ? 'optimize' : findings.duplicate > 0 ? 'dedupe' : null;
+  if (command === null) return null;
+  return {
+    words: ['upfly', command, ...scopeWords(options)],
+    text: `upfly ${command}, with the same folder and options`,
+  };
+}
+
+/**
+ * The folder and the options that choose which files a run reads, written as they would be
+ * typed again, so a next command reads the same project.
+ */
+export function scopeWords(options: {
+  readonly dir: string;
+  readonly publicDirs: readonly string[] | null;
+  readonly exclude: readonly string[];
+}): string[] {
+  return [
+    ...(options.dir === '.' ? [] : [options.dir]),
+    ...(options.publicDirs ?? []).flatMap((dir) => ['--public', dir === '' ? '.' : dir]),
+    ...options.exclude.flatMap((pattern) => ['--exclude', pattern]),
+  ];
 }
 
 /**

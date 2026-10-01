@@ -83,8 +83,13 @@ function snapshot(root: string, prefix = ''): Record<string, string> {
 }
 
 describe('upfly', () => {
-  it('prints its version and its help', () => {
-    expect(upfly(['--version'])).toEqual({ status: 0, stdout: '0.0.0\n', stderr: '' });
+  it('prints the version in its package.json, and its help', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(upfly(['--version'])).toEqual({
+      status: 0,
+      stdout: `${manifest.version}\n`,
+      stderr: '',
+    });
     const help = upfly(['--help']);
     expect(help.status).toBe(0);
     expect(help.stdout).toContain('Usage: upfly <command> [dir] [options]');
@@ -100,22 +105,31 @@ describe('upfly', () => {
 });
 
 describe('upfly audit', () => {
-  it('reports the project and writes nothing', () => {
+  it('prints a summary, keeps the full report in its own folder, and changes no project file', () => {
     const root = site();
     const before = snapshot(root);
 
     const result = upfly(['audit', root, '--no-probe']);
+    const after = snapshot(root);
+    const report = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Upfly audit');
-    expect(result.stdout).toContain('img/unused.png');
-    expect(snapshot(root)).toEqual(before);
+    expect(result.stdout).toContain('  Full report  .upfly/report.txt\n');
+    expect(report).toContain('img/unused.png');
+    expect(Object.keys(after).filter((path) => path.startsWith('.upfly/'))).toEqual([
+      '.upfly/.gitignore',
+      '.upfly/report.txt',
+    ]);
+    expect(
+      Object.fromEntries(Object.entries(after).filter(([path]) => !path.startsWith('.upfly/'))),
+    ).toEqual(before);
   });
 
   it('says under a broken reference that its extension is a likely typo, in the text and the JSON', () => {
     const root = site({ 'about.html': '<p>About</p>\n<img src="img/used.pn">\n' });
 
-    const human = upfly(['audit', root, '--no-probe']);
+    const human = upfly(['audit', root, '--no-probe', '--full']);
     const json = upfly(['audit', root, '--no-probe', '--json']);
     const report = JSON.parse(json.stdout.trimEnd().split('\n').at(-1) ?? '{}').report;
 

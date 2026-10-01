@@ -56,7 +56,9 @@ describe('no command reaches the network', () => {
     git(root, 'add', 'upfly.config.json');
     git(root, 'commit', '--quiet', '-m', 'the config init wrote');
     run('audit', root);
-    expect(run('optimize', root, '--apply', '--commit').stdout).toContain('Committed as');
+    expect(run('optimize', root, '--apply', '--commit').stdout).toMatch(
+      /\n {2}Commit {7}[0-9a-f]{12},/,
+    );
     expect(run('undo', root).stdout).toContain('Undid run');
     expect(run('check', root).stdout).toContain('Passed');
     run('refs', join(root, 'src/assets/logo.png'), root);

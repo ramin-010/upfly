@@ -1,0 +1,63 @@
+Upfly audit
+
+  75.5 KB of savings as webp at quality 80, measured across all 12 images
+
+  scanned 5 source files and found 12 images, 126.9 KB in total
+  12 of 12 references resolved, pointing at 10 of those images
+  2 images with no reference Upfly could follow
+  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly will neither convert an SVG nor delete an asset)
+  root-relative paths resolved from what Upfly detected rather than what the project declared (1 in all): public
+
+Nothing was skipped.
+
+Findings: 7 items
+
+  unreferenced images (1)
+    src/assets/orphan.png  70 B
+
+  size (5 images): 0 over the limit, 5 smaller as another format (measured, not estimated)
+
+    public/photos/wide.jpg  10.2 KB
+      8.7 KB as webp (saves 1.5 KB, 14%)
+    public/photos/wide@2x.jpg  36.2 KB
+      30.9 KB as webp (saves 5.3 KB, 14%)
+    public/screenshot.png  10.9 KB
+      1.1 KB as webp (saves 9.7 KB, 89%)
+    src/assets/banner.png  59.8 KB
+      7.2 KB as webp (saves 52.6 KB, 87%)
+    src/assets/logo.png  7.2 KB
+      850 B as webp (saves 6.3 KB, 88%)
+
+  identical copies (1 set): the same bytes shipped more than once
+    70 B each, 210 B recoverable by keeping one:
+      public/icons/touch.png
+      src/assets/orphan.png
+      src/assets/texture.png
+      src/assets/unused-in-css.png
+
+Examined and not converted
+
+  5 images, 2.3 KB, each with its reason (use --include-declined to list them)
+
+Worth knowing
+
+  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
+  2 images needed no measurement:
+    vectors, where an encode would measure a rasterisation rather than a saving: 2
+  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
+
+Plan
+
+  Convert to WebP: 5 images, 124.2 KB now and 48.8 KB after
+    public/photos/wide.jpg → public/photos/wide.webp  10.2 KB → 8.7 KB
+    public/photos/wide@2x.jpg → public/photos/wide@2x.webp  36.2 KB → 30.9 KB
+    public/screenshot.png → public/screenshot.webp  10.9 KB → 1.1 KB
+    src/assets/banner.png → src/assets/banner.webp  59.8 KB → 7.2 KB
+    src/assets/logo.png → src/assets/logo.webp  7.2 KB → 850 B
+  Update references: 7 references in 2 files
+    src/App.jsx  6 references
+    src/index.css  1 reference
+  Originals: each stays beside its converted file. With --replace, an original is
+  removed once every reference to it has moved.
+
+Dry run: no project file was changed. Run the same command with --apply to write this plan.

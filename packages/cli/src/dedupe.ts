@@ -14,8 +14,10 @@ import {
 } from 'upfly-core';
 import { formatBytes, pathsTouched } from 'upfly-core/internal';
 import type { DedupeOptions } from './args.js';
+import { scopeWords } from './audit.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { type GitState, RUN_TRAILER, commitPaths, gitState, ignoredPaths } from './git.js';
+import { renderSummary } from './layout.js';
 import {
   type Refusal,
   engineRefusal,
@@ -26,8 +28,10 @@ import {
   some,
   unfinishedRun,
 } from './optimize.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { type Io, colourFor, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count, movingText, writtenByKind } from './plan-text.js';
+import { warnIfNotKept, writeReport } from './report-file.js';
+import { type NextStep, dedupeSummary, nextAfterPlan, nextAfterRun } from './summary.js';
 
 /**
  * Plans keeping one copy of each set of identical images and, with `--apply`, writes it.
@@ -98,7 +102,12 @@ export async function runDedupe(options: DedupeOptions, io: Io): Promise<ExitCod
     }
   }
 
-  write(options, io, result, { git, commit, notes: notes(options, git, unfinished) });
+  write(options, io, result, {
+    git,
+    commit,
+    unfinished: unfinished !== null,
+    notes: notes(options, git, unfinished),
+  });
   return EXIT_CODES.OK;
 }
 
@@ -158,6 +167,8 @@ function commitMessage(manifest: Manifest, plan: DedupePlan): string {
 interface Outcome {
   readonly git: GitState;
   readonly commit: string | null;
+  /** Whether an earlier run stopped part way, which `undo` has to finish first. */
+  readonly unfinished: boolean;
   readonly notes: readonly string[];
 }
 
@@ -182,7 +193,34 @@ function write(options: DedupeOptions, io: Io, result: DedupeProjectResult, outc
   }
   const lines = [...planLines(plan), ...outcomeLines(options, manifest, outcome)];
   for (const note of outcome.notes) lines.push(`Note: ${note}`);
-  io.stdout.write(`${lines.join('\n')}\n`);
+  const full = `${lines.join('\n')}\n`;
+  const file = writeReport(result.pipeline.graph.root, full, manifest?.runDir ?? null);
+  if (options.full) {
+    io.stdout.write(full);
+    warnIfNotKept(io, file);
+    return;
+  }
+
+  let next: NextStep | null = null;
+  if (options.apply) next = manifest === null ? null : nextAfterRun(outcome.commit);
+  else if (plan.rewrites.length > 0) {
+    const flags = [
+      ...options.keep.flatMap((path) => ['--keep', path]),
+      ...scopeWords({ ...options, dir: '.' }),
+    ];
+    next = nextAfterPlan('dedupe', options.dir, flags, outcome.git, outcome.unfinished);
+  }
+  const summary = dedupeSummary({
+    plan,
+    apply: options.apply,
+    manifest,
+    commit: outcome.commit,
+    git: outcome.git,
+    notes: outcome.notes,
+    file,
+    next,
+  });
+  io.stdout.write(renderSummary(summary, stylesFor(colourFor(io.stdout, io.env, options), io.env)));
 }
 
 /** The plan as text, in the shape `optimize` prints its own. */

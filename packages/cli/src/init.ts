@@ -17,7 +17,16 @@ import type { InitOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { CONFIG_FILES, CONFIG_SCHEMA, loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { headline } from './layout.js';
+import {
+  type Io,
+  type Styles,
+  colourFor,
+  emit,
+  progressReporter,
+  stopWith,
+  stylesFor,
+} from './output.js';
 
 /** The file `init` writes. */
 const FILE = 'upfly.config.json';
@@ -112,7 +121,8 @@ export async function runInit(options: InitOptions, io: Io): Promise<ExitCode> {
       ...(decision.inferred.ties.length === 0 ? {} : { ties: decision.inferred.ties }),
     });
   } else {
-    io.stdout.write(render(text, reasons, decision));
+    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    io.stdout.write(render(text, reasons, decision, styles));
   }
   return EXIT_CODES.OK;
 }
@@ -180,7 +190,12 @@ function walkedPaths(discovery: DiscoveryResult): ReadonlySet<string> {
   return paths;
 }
 
-function render(text: string, reasons: readonly Reason[], decision: ServingRootDecision): string {
+function render(
+  text: string,
+  reasons: readonly Reason[],
+  decision: ServingRootDecision,
+  styles: Styles,
+): string {
   const why = reasons.map((reason) =>
     reason.setting === 'publicDirs' && reason.value !== null
       ? `  ${reason.value}: ${reason.why}`
@@ -191,14 +206,16 @@ function render(text: string, reasons: readonly Reason[], decision: ServingRootD
       `  not written: ${candidates.join(' and ')} resolve the root-relative paths under ${dir === '' ? 'the project' : dir} equally well, so Upfly could not choose; add the right one to publicDirs`,
   );
   return [
-    `Wrote ${FILE}:`,
+    headline(styles, 'init'),
+    '',
+    `${styles.accent('Wrote')} ${FILE}:`,
     '',
     ...text
       .trimEnd()
       .split('\n')
       .map((line) => `  ${line}`),
     '',
-    'Why:',
+    styles.accent('Why:'),
     ...why,
     ...ties,
     '',

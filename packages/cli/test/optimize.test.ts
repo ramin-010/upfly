@@ -72,7 +72,16 @@ describe('upfly optimize without --apply', () => {
     write(root, 'legacy/old.html', '<img src="../images/logo.png">\n');
     commitAll(root);
 
-    const run = upfly(['optimize', root, '--replace', '--public', '.', '--exclude', 'legacy']);
+    const run = upfly([
+      'optimize',
+      root,
+      '--replace',
+      '--public',
+      '.',
+      '--exclude',
+      'legacy',
+      '--full',
+    ]);
 
     expect(run.status).toBe(0);
     expect(run.stdout).toContain(
@@ -80,17 +89,19 @@ describe('upfly optimize without --apply', () => {
     );
   });
 
-  it('shows the plan and writes nothing, not even its own folder', () => {
+  it('shows a summary of the plan, and writes only its report, in its own folder, which git ignores', () => {
     const root = standalone();
-    const before = snapshot(root, ['.git']);
+    const before = snapshot(root, NOT_THE_PROJECT);
 
     const run = upfly(['optimize', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout).toContain('Upfly audit');
-    expect(run.stdout).toContain('Convert to WebP:');
-    expect(run.stdout).toContain('Dry run: nothing was written.');
-    expect(snapshot(root, ['.git'])).toEqual(before);
+    expect(run.stdout).toContain('Upfly optimize · dry run');
+    expect(run.stdout).toContain('  Convert      5 images to WebP,');
+    expect(run.stdout).toContain('  Dry run: no project file was changed.');
+    expect(readFileSync(join(root, '.upfly/report.txt'), 'utf8')).toContain('Convert to WebP:');
+    expect(snapshot(root, NOT_THE_PROJECT)).toEqual(before);
+    expect(git(root, 'status', '--porcelain', '--untracked-files=all')).toBe('');
   });
 
   it('prints each stage as a JSON line, then the plan, which names no run and no commit', () => {
@@ -175,11 +186,11 @@ describe('upfly optimize in a project inside a larger repository', () => {
     git(outer, 'add', 'notes.txt');
     write(outer, 'draft.md', 'untracked, outside the project\n');
 
-    const dry = upfly(['optimize', site]);
+    const dry = upfly(['optimize', site, '--full']);
     expect(dry.status, dry.stderr).toBe(0);
     expect(dry.stdout).toContain(`This folder is site/ in the git repository at ${outer}.`);
 
-    const applied = upfly(['optimize', site, '--apply', '--commit']);
+    const applied = upfly(['optimize', site, '--apply', '--commit', '--full']);
     expect(applied.status, applied.stderr).toBe(0);
     expect(applied.stdout).toContain(
       `The commit is in the git repository at ${outer}, and holds only files under site/.`,
@@ -351,7 +362,7 @@ describe('upfly optimize --only', () => {
   it('plans only the images it names, reading the whole project, and says how many it left', () => {
     const root = standalone();
 
-    const run = upfly(['optimize', root, '--only', 'images/logo.png']);
+    const run = upfly(['optimize', root, '--only', 'images/logo.png', '--full']);
 
     expect(run.status).toBe(0);
     expect(run.stdout).toContain(

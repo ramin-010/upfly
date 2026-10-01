@@ -47,7 +47,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout.split('\n')[0]).toBe('Passed: no reference names a missing image.');
+    expect(run.stdout.split('\n')[2]).toBe('Passed: no reference names a missing image.');
     expect(run.stderr).toBe('');
     expect(snapshot(root)).toEqual(before);
   });
@@ -62,6 +62,8 @@ describe('upfly check', () => {
     expect(run.status).toBe(1);
     expect(run.stdout).toBe(
       [
+        'Upfly check',
+        '',
         'Failed: 2 references name an image that does not exist.',
         '',
         'References to images that do not exist (2)',
@@ -117,6 +119,8 @@ describe('upfly check', () => {
     expect(human.status).toBe(1);
     expect(human.stdout).toBe(
       [
+        'Upfly check',
+        '',
         'Failed: 1 image in use is larger than check.maxImageBytes, 150 bytes.',
         '',
         'Images in use larger than 150 bytes (1)',
@@ -141,7 +145,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout.split('\n')[0]).toBe(
+    expect(run.stdout.split('\n')[2]).toBe(
       'Passed: no reference names a missing image, and no image in use is larger than check.maxImageBytes, 150 bytes.',
     );
   });
@@ -171,6 +175,8 @@ describe('upfly check', () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toBe(
       [
+        'Upfly check',
+        '',
         'Passed: no reference names a missing image.',
         '',
         '1 reference could not be checked, since Upfly cannot know which file it names; `upfly audit` lists it with the reason.',

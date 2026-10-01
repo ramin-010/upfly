@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Output, colourFor, paint, progressReporter, stopWith } from './output.js';
+import {
+  type Output,
+  colourDepth,
+  colourFor,
+  progressReporter,
+  stopWith,
+  stylesFor,
+} from './output.js';
 
 const terminal: Output = { write: () => true, isTTY: true };
 const pipe: Output = { write: () => true };
@@ -22,9 +29,82 @@ describe('colourFor', () => {
     expect(colourFor(terminal, { NO_COLOR: '' }, plain)).toBe(true);
   });
 
-  it('paints only when asked', () => {
-    expect(paint(false, 'red', 'x')).toBe('x');
-    expect(paint(true, 'red', 'x')).toBe('\u001b[31mx\u001b[39m');
+  it('turns colour off on a terminal that calls itself dumb', () => {
+    expect(colourFor(terminal, { TERM: 'dumb' }, plain)).toBe(false);
+  });
+});
+
+describe('colourDepth', () => {
+  it('takes 24-bit colour only from COLORTERM, then 256 from TERM, then 16', () => {
+    expect(colourDepth({ COLORTERM: 'truecolor' })).toBe('truecolor');
+    expect(colourDepth({ COLORTERM: '24bit', TERM: 'xterm' })).toBe('truecolor');
+    expect(colourDepth({ TERM: 'xterm-256color' })).toBe('256');
+    expect(colourDepth({ TERM: 'xterm' })).toBe('16');
+    expect(colourDepth({})).toBe('16');
+  });
+});
+
+describe('stylesFor', () => {
+  it('marks text only when colour is on', () => {
+    const off = stylesFor(false, { COLORTERM: 'truecolor' });
+    expect([off.accent('x'), off.bold('x'), off.dim('x'), off.red('x')]).toEqual([
+      'x',
+      'x',
+      'x',
+      'x',
+    ]);
+
+    const on = stylesFor(true, {});
+    expect(on.accent('x')).toBe('\u001b[1;91mx\u001b[22;39m');
+    expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
+    expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
+    expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
+    expect(on.bold('')).toBe('');
+  });
+
+  it('gives the coral at the depth the terminal shows', () => {
+    expect(stylesFor(true, { COLORTERM: 'truecolor' }).accent('x')).toBe(
+      '\u001b[1;38;2;232;54;95mx\u001b[22;39m',
+    );
+    expect(stylesFor(true, { TERM: 'screen-256color' }).accent('x')).toBe(
+      '\u001b[1;38;5;161mx\u001b[22;39m',
+    );
+  });
+
+  it('picks, of the 256, the colour nearest the coral as the eye sees it', () => {
+    // CIE76: the distance between two colours in CIELAB, under the D65 white point.
+    const lab = ([r, g, b]: readonly number[]) => {
+      const linear = [r, g, b].map((c) => {
+        const s = (c ?? 0) / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      const [R = 0, G = 0, B = 0] = linear;
+      const xyz = [
+        (0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047,
+        0.2126 * R + 0.7152 * G + 0.0722 * B,
+        (0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883,
+      ].map((t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116));
+      const [x = 0, y = 0, z = 0] = xyz;
+      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    };
+    const distance = (a: readonly number[], b: readonly number[]) => {
+      const [p, q] = [lab(a), lab(b)];
+      return Math.hypot(...p.map((value, index) => value - (q[index] ?? 0)));
+    };
+    const levels = [0, 95, 135, 175, 215, 255];
+    const cube = Array.from({ length: 216 }, (_, n) => ({
+      index: 16 + n,
+      rgb: [
+        levels[Math.floor(n / 36)] ?? 0,
+        levels[Math.floor(n / 6) % 6] ?? 0,
+        levels[n % 6] ?? 0,
+      ],
+    }));
+    const coral = [232, 54, 95];
+    const nearest = cube.reduce((best, each) =>
+      distance(each.rgb, coral) < distance(best.rgb, coral) ? each : best,
+    );
+    expect(nearest.index).toBe(161);
   });
 });
 
