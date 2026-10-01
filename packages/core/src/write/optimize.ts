@@ -168,6 +168,8 @@ interface Blocked {
   /** Each asset the plan would delete, mapped to what could not be read. */
   readonly unread: ReadonlyMap<string, string>;
   readonly occurrences: readonly Survivor[];
+  /** Each asset in `assets` or `excluded`, mapped to the file its sentence names. */
+  readonly namedIn: ReadonlyMap<string, string>;
 }
 
 /**
@@ -185,10 +187,18 @@ async function mentionsThatWouldSurvive(
   plan: OptimizationPlan,
   input: OptimizeInput,
   scope: Pick<OptimizeInput, 'files' | 'unread' | 'excludedFiles'> = input,
+  /** Filled with the hash of each file's text as the search read it. */
+  read?: Map<string, string>,
 ): Promise<Blocked> {
   const deleting = plan.conversions.filter((conversion) => conversion.replacesOriginal);
   if (deleting.length === 0) {
-    return { assets: new Map(), excluded: new Map(), unread: new Map(), occurrences: [] };
+    return {
+      assets: new Map(),
+      excluded: new Map(),
+      unread: new Map(),
+      occurrences: [],
+      namedIn: new Map(),
+    };
   }
 
   // Every range this plan will rewrite, so an occurrence inside one can be discounted.
@@ -203,7 +213,11 @@ async function mentionsThatWouldSurvive(
   const found = await findSurvivingPaths({
     moves: deleting.map((conversion) => ({ from: conversion.asset, to: conversion.target })),
     files: scope.files,
-    readFile: (relative) => input.store.readText(relative),
+    readFile: async (relative) => {
+      const text = await input.store.readText(relative);
+      read?.set(relative, hashText(text));
+      return text;
+    },
     servingDirs: input.servingRoots.dirs,
   });
 
@@ -220,6 +234,7 @@ async function mentionsThatWouldSurvive(
   const excludedFiles = new Set(scope.excludedFiles ?? []);
   const assets = new Map<string, string>();
   const excluded = new Map<string, string>();
+  const namedIn = new Map<string, string>();
   for (const conversion of deleting) {
     const spellings = new Set(
       spellingsFor(conversion.asset, input.servingRoots.dirs).map(foldCase),
@@ -235,6 +250,7 @@ async function mentionsThatWouldSurvive(
     // the same path finds the rest.
     const more = named.length === 1 ? '' : ` (and ${named.length - 1} more)`;
     into.set(conversion.asset, `${first.file}:${first.line}${more}`);
+    namedIn.set(conversion.asset, first.file);
   }
 
   // A file the search could not open, or a directory the walk could not list, may hold the
@@ -249,7 +265,7 @@ async function mentionsThatWouldSurvive(
     for (const conversion of deleting) unread.set(conversion.asset, `${gap.file}${more}`);
   }
 
-  return { assets, excluded, unread, occurrences };
+  return { assets, excluded, unread, occurrences, namedIn };
 }
 
 /**
@@ -297,8 +313,10 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
   // Searched on a dry run too, or the preview would make different decisions from the run
   // it previews. Planned again rather than filtered: dropping a conversion also drops the
   // rewrites it caused, which share files with other assets' rewrites, and the planner is
-  // pure and cheap.
-  const blocked = await mentionsThatWouldSurvive(first, input);
+  // pure and cheap. What each file held then is kept, so a mention found again after the
+  // encodes can be told apart from one in a page that changed meanwhile.
+  const readBefore = new Map<string, string>();
+  const blocked = await mentionsThatWouldSurvive(first, input, input, readBefore);
   const nothingBlocked =
     blocked.assets.size === 0 && blocked.excluded.size === 0 && blocked.unread.size === 0;
   const plan = nothingBlocked ? first : planWith(blocked);
@@ -346,7 +364,7 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
     let final: Awaited<ReturnType<typeof keepOriginalsNamedSince>>;
     try {
       const staged = await stage(plan, runDir, input, staging);
-      final = await keepOriginalsNamedSince(plan, staged, runDir, input);
+      final = await keepOriginalsNamedSince(plan, staged, runDir, input, readBefore);
       await prepare(final.operations, input.store, runDir);
     } catch (error) {
       // Refused before any file in the project was written, so nothing will ever read what
@@ -371,32 +389,31 @@ export async function optimize(input: OptimizeInput): Promise<OptimizeResult> {
  * page saved or created meanwhile can name an original the plan deletes. Such an original is
  * kept, with the reason, and the run goes on: the new file is still written and the
  * references the plan read still move to it, as under `keep-original`.
+ *
+ * A mention can also be found here in a page nobody touched: the first search read each line
+ * as the longest spelling it holds, and a line the plan no longer rewrites can name this
+ * original by a shorter one, as `team/diana.jpg` ends two images' paths. So the reason says
+ * the page was written meanwhile only when its text differs from what the first search read.
+ *
+ * @param readBefore the hash of each file's text as the search before the encodes read it
  */
 async function keepOriginalsNamedSince(
   plan: OptimizationPlan,
   operations: readonly PlannedOperation[],
   runDir: string,
   input: OptimizeInput,
+  readBefore: ReadonlyMap<string, string>,
 ): Promise<{ readonly plan: OptimizationPlan; readonly operations: readonly PlannedOperation[] }> {
   if (!plan.conversions.some((conversion) => conversion.replacesOriginal)) {
     return { plan, operations };
   }
   const scope = input.listFiles === undefined ? input : await input.listFiles();
-  const blocked = await mentionsThatWouldSurvive(plan, input, scope);
+  const readNow = new Map<string, string>();
+  const blocked = await mentionsThatWouldSurvive(plan, input, scope, readNow);
 
   const kept = new Map<string, string>();
   for (const { asset } of plan.conversions) {
-    const named = blocked.assets.get(asset);
-    const excluded = blocked.excluded.get(asset);
-    const unread = blocked.unread.get(asset);
-    const why =
-      named !== undefined
-        ? `${named} ${MENTION_SURVIVES}, written while Upfly was converting, in a form Upfly cannot rewrite`
-        : excluded !== undefined
-          ? `${excluded} ${MENTION_SURVIVES}, written while Upfly was converting, in a file this run excluded`
-          : unread !== undefined
-            ? `${unread} could not be read to rule out a mention of it`
-            : null;
+    const why = whyKeptSince(asset, blocked, (file) => readBefore.get(file) !== readNow.get(file));
     if (why !== null) kept.set(asset, `converted, but the original was kept: ${why}`);
   }
   if (kept.size === 0) return { plan, operations };
@@ -422,6 +439,32 @@ async function keepOriginalsNamedSince(
       (operation) => !(operation.kind === 'delete' && kept.has(operation.path)),
     ),
   };
+}
+
+/**
+ * Why the search after the encodes keeps this original, or null when it found nothing.
+ *
+ * @param changed whether a file's text differs from what the search before the encodes read,
+ *   which is true of a file created since, since that search never read it
+ */
+function whyKeptSince(
+  asset: string,
+  blocked: Blocked,
+  changed: (file: string) => boolean,
+): string | null {
+  const file = blocked.namedIn.get(asset);
+  const since =
+    file !== undefined && changed(file) ? ', written while Upfly was converting,' : null;
+  const named = blocked.assets.get(asset);
+  if (named !== undefined) {
+    return `${named} ${MENTION_SURVIVES}${since ?? ''} in a form Upfly cannot rewrite`;
+  }
+  const excluded = blocked.excluded.get(asset);
+  if (excluded !== undefined) {
+    return `${excluded} ${MENTION_SURVIVES}${since ?? ','} in a file this run excluded`;
+  }
+  const unread = blocked.unread.get(asset);
+  return unread === undefined ? null : `${unread} could not be read to rule out a mention of it`;
 }
 
 /** Remove each file a refused run staged; one already gone is no reason to stop. */

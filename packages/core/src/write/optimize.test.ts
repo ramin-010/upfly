@@ -579,8 +579,57 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     expect(tree.has('public/logo.webp')).toBe(true);
     expect(tree.get('index.html')).toBe('<img src="/logo.webp">');
     const kept = result.plan.keptOriginals.find((entry) => entry.asset === 'public/logo.png');
-    expect(kept?.reason).toContain('about.html:1');
+    expect(kept?.reason).toBe(
+      'converted, but the original was kept: about.html:1 still names its path, written while Upfly was converting, in a form Upfly cannot rewrite',
+    );
     expect(result.manifest?.operations.map((operation) => operation.kind)).not.toContain('delete');
+  });
+
+  it('says a mention found after the encodes was written meanwhile only when its file changed', async () => {
+    // Two images share the suffix `team/diana.jpg`. Before the encodes, the line naming the
+    // bogota image is that image's, a reference the first plan rewrites. A mention nothing
+    // parses keeps the bogota image as it is, so the plan leaves the line as written, and the
+    // search after the encodes, looking for the cali image alone, finds it by the suffix.
+    // Nothing was written meanwhile, so the reason must not say so.
+    const cali = '<img src="/cali/team/diana.jpg">';
+    const bangalore = '<img src="/bogota/team/diana.jpg">';
+    const project = harness({
+      'cali.html': cali,
+      'bangalore.html': bangalore,
+      'bogota.yml': 'photo: /bogota/team/diana.jpg\n',
+      'public/cali/team/diana.jpg': 'JPG',
+      'public/bogota/team/diana.jpg': 'JPG',
+    });
+    const [bogota, mine] = ['public/bogota/team/diana.jpg', 'public/cali/team/diana.jpg'];
+
+    const result = await optimize(
+      inputFor({
+        ...project,
+        files: ['bangalore.html', 'bogota.yml', 'cali.html'],
+        graph: buildGraph({
+          root: ROOT,
+          assets: [asset(bogota), asset(mine)],
+          references: [
+            resolved('bangalore.html', '/bogota/team/diana.jpg', bogota, bangalore),
+            resolved('cali.html', '/cali/team/diana.jpg', mine, cali),
+          ],
+          unscannedFiles: [],
+          texts: [scanned('bangalore.html', bangalore), scanned('cali.html', cali)],
+        }),
+        probes: [probeOf(bogota), probeOf(mine)],
+        publicPolicy: 'replace',
+      }),
+    );
+
+    expect(result.plan.declined.map((entry) => entry.path)).toContain(bogota);
+    expect(result.plan.keptOriginals).toEqual([
+      {
+        asset: mine,
+        reason:
+          'converted, but the original was kept: bangalore.html:1 (and 1 more) still names its path in a form Upfly cannot rewrite',
+      },
+    ]);
+    expect(project.tree.get('bangalore.html')).toBe(bangalore);
   });
 
   it('keeps an original that a file created during the encodes names, found by walking again', async () => {
@@ -604,7 +653,9 @@ describe('replace refuses to delete an original a mention would outlive', () => 
 
     expect(tree.get('public/logo.png')).toBe('PNG');
     const kept = result.plan.keptOriginals.find((entry) => entry.asset === 'public/logo.png');
-    expect(kept?.reason).toContain('notes.html:1');
+    expect(kept?.reason).toBe(
+      'converted, but the original was kept: notes.html:1 still names its path, written while Upfly was converting, in a form Upfly cannot rewrite',
+    );
   });
 
   it('refuses the conversion when a mention survives in a file nothing parses', async () => {
