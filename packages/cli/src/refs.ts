@@ -22,15 +22,7 @@ import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { headline } from './layout.js';
-import {
-  type Io,
-  type Styles,
-  colourFor,
-  emit,
-  progressReporter,
-  stopWith,
-  stylesFor,
-} from './output.js';
+import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { movingText } from './plan-text.js';
 
 /** One reference to the image: where it is, what it says, and whether a run could move it. */
@@ -136,7 +128,7 @@ export async function runRefs(options: RefsOptions, io: Io): Promise<ExitCode> {
       verdict,
     });
   } else {
-    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    const styles = stylesFor(io.stdout, io.env, options);
     io.stdout.write(render(node, references, verdict, styles));
   }
   return EXIT_CODES.OK;

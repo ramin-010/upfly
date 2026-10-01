@@ -21,7 +21,7 @@ import { isDirectory } from './audit.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { commitForRun } from './git.js';
 import { headline } from './layout.js';
-import { type Io, colourFor, emit, stopWith, stylesFor } from './output.js';
+import { type Io, emit, stopWith, stylesFor } from './output.js';
 import { count } from './plan-text.js';
 
 /** The engine's refusals, each of which leaves every file as it was. */
@@ -132,7 +132,7 @@ function write(options: UndoOptions, io: Io, undone: Undone, commit: string | nu
     return;
   }
   const lines = [
-    headline(stylesFor(colourFor(io.stdout, io.env, options), io.env), 'undo'),
+    headline(stylesFor(io.stdout, io.env, options), 'undo'),
     '',
     `Undid run ${undone.id}, started ${undone.startedAt}: ${count(undone.restored.length, 'original')} restored, ${count(undone.reverted.length, 'file')} with references put back, ${count(undone.removed.length, 'converted file')} removed.`,
     'Every file that run changed is as it was before it.',
@@ -158,7 +158,7 @@ function nothingToUndo(options: UndoOptions, io: Io, why: string): ExitCode {
       notes: [why],
     });
   } else {
-    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    const styles = stylesFor(io.stdout, io.env, options);
     io.stdout.write(`${headline(styles, 'undo')}\n\n${why}\n`);
   }
   return EXIT_CODES.OK;

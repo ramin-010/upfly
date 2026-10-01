@@ -17,6 +17,11 @@ export interface Io {
 export interface Output {
   write(text: string): unknown;
   readonly isTTY?: boolean;
+  /**
+   * How many bits of colour the terminal shows, 1, 4, 8 or 24, as Node's terminal streams
+   * report it. A stream without it is taken to show 16 colours.
+   */
+  getColorDepth?(env?: object): number;
 }
 
 /** One stage of the run finished, with what it counted. */
@@ -44,28 +49,33 @@ export function colourFor(
   return stream.isTTY === true;
 }
 
-/** How many colours a terminal shows: 24-bit, the 256 of xterm, or the 16 of every terminal. */
-export type ColourDepth = 'truecolor' | '256' | '16';
+/** How many colours a terminal shows: 24-bit, the 256 of xterm, or 16 and fewer. */
+export type ColourDepth = 'truecolor' | '256' | 'basic';
 
 /**
- * The terminal's colour depth: 24-bit only when it says so through `COLORTERM`, 256 when
- * `TERM` names a 256-colour terminal, and 16 otherwise.
+ * The colour depth of the terminal behind `stream`, as Node reports it: from `COLORTERM`,
+ * `TERM` and the platform, so Windows 10 and later count as 24-bit, though their consoles set
+ * neither variable. `NO_COLOR` is left out of the question: `colourFor` has read it already,
+ * and Node reads even an empty one as no colour.
+ *
+ * @see https://nodejs.org/api/tty.html#writestreamgetcolordepthenv
  */
-export function colourDepth(env: Io['env']): ColourDepth {
-  const said = env.COLORTERM?.toLowerCase();
-  if (said === 'truecolor' || said === '24bit') return 'truecolor';
-  return (env.TERM ?? '').includes('256') ? '256' : '16';
+export function colourDepth(stream: Output, env: Io['env']): ColourDepth {
+  const asked = Object.fromEntries(Object.entries(env).filter(([name]) => name !== 'NO_COLOR'));
+  const bits = stream.getColorDepth?.(asked) ?? 4;
+  if (bits >= 24) return 'truecolor';
+  return bits >= 8 ? '256' : 'basic';
 }
 
 /**
- * The brand's coral, `#E8365F`, at each depth. Of the 256, index 161 (`#D7005F`) is the
- * nearest by CIE76 distance. Of the 16, bright red: in Windows Terminal's default scheme it
- * is `#E74856`, close to the coral, and it stays apart from the plain red of a failure.
+ * The brand's coral, `#E8365F`, where the terminal can show it: exact, or index 161 of the
+ * 256 (`#D7005F`), the nearest by CIE76 distance. Among 16 colours only a red comes near it,
+ * and red marks a failure, so there the accent is bold without a colour.
  */
-const CORAL: Readonly<Record<ColourDepth, string>> = {
+const CORAL: Readonly<Record<ColourDepth, string | null>> = {
   truecolor: '38;2;232;54;95',
   '256': '38;5;161',
-  '16': '91',
+  basic: null,
 };
 
 /**
@@ -83,22 +93,34 @@ export interface Styles {
   readonly red: (text: string) => string;
 }
 
+/** Styles that leave text as it is, for output with no colour. */
+export const PLAIN: Styles = {
+  accent: (text) => text,
+  bold: (text) => text,
+  dim: (text) => text,
+  red: (text) => text,
+};
+
 /**
- * The styles for one stream: each returns its text unchanged when colour is off, so the
- * text then holds no escape code at all.
+ * The styles for what goes to `stream`: `PLAIN` wherever `colourFor` turns colour off, so
+ * the text then holds no escape code at all, and otherwise marks for the colours the
+ * terminal shows.
  *
- * @param on whether to colour, from `colourFor`
- * @param env the environment, which says how many colours the terminal shows
+ * @param stream where the text goes
+ * @param env the environment, which can turn colour off and says how many colours there are
+ * @param options `--json` and `--no-color`
  */
-export function stylesFor(on: boolean, env: Io['env']): Styles {
-  if (!on) {
-    const plain = (text: string) => text;
-    return { accent: plain, bold: plain, dim: plain, red: plain };
-  }
+export function stylesFor(
+  stream: Output,
+  env: Io['env'],
+  options: { readonly json: boolean; readonly noColor: boolean },
+): Styles {
+  if (!colourFor(stream, env, options)) return PLAIN;
   const mark = (open: string, close: string) => (text: string) =>
     text === '' ? text : `\u001b[${open}m${text}\u001b[${close}m`;
+  const coral = CORAL[colourDepth(stream, env)];
   return {
-    accent: mark(`1;${CORAL[colourDepth(env)]}`, '22;39'),
+    accent: coral === null ? mark('1', '22') : mark(`1;${coral}`, '22;39'),
     bold: mark('1', '22'),
     dim: mark('2', '22'),
     red: mark('31', '39'),
@@ -142,7 +164,7 @@ export function stopWith(
       message,
     });
   } else {
-    const { red } = stylesFor(colourFor(io.stderr, io.env, style), io.env);
+    const { red } = stylesFor(io.stderr, io.env, style);
     io.stderr.write(`${red('upfly:')} ${message}\n`);
   }
   return code;

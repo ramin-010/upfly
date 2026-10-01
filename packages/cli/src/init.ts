@@ -18,15 +18,7 @@ import { isDirectory } from './audit.js';
 import { CONFIG_FILES, CONFIG_SCHEMA, loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { headline } from './layout.js';
-import {
-  type Io,
-  type Styles,
-  colourFor,
-  emit,
-  progressReporter,
-  stopWith,
-  stylesFor,
-} from './output.js';
+import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 
 /** The file `init` writes. */
 const FILE = 'upfly.config.json';
@@ -121,7 +113,7 @@ export async function runInit(options: InitOptions, io: Io): Promise<ExitCode> {
       ...(decision.inferred.ties.length === 0 ? {} : { ties: decision.inferred.ties }),
     });
   } else {
-    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    const styles = stylesFor(io.stdout, io.env, options);
     io.stdout.write(render(text, reasons, decision, styles));
   }
   return EXIT_CODES.OK;

@@ -14,15 +14,7 @@ import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { changedFiles } from './git.js';
 import { headline } from './layout.js';
-import {
-  type Io,
-  type Styles,
-  colourFor,
-  emit,
-  progressReporter,
-  stopWith,
-  stylesFor,
-} from './output.js';
+import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count } from './plan-text.js';
 
 /** An image a reference uses whose file is larger than `check.maxImageBytes`. */
@@ -115,9 +107,7 @@ export async function runCheck(options: CheckOptions, io: Io): Promise<ExitCode>
       ...(verdict.unread === 0 ? {} : { unread: verdict.unread }),
     });
   } else {
-    io.stdout.write(
-      render(verdict, scope, stylesFor(colourFor(io.stdout, io.env, options), io.env)),
-    );
+    io.stdout.write(render(verdict, scope, stylesFor(io.stdout, io.env, options)));
   }
   return exitCode;
 }

@@ -2435,8 +2435,11 @@ reason, and a probe's skips are grouped by their code.
 **Colour** appears only on a terminal, and never under `--no-color`, a non-empty `NO_COLOR` or
 `TERM=dumb`. It has one accent, the brand's coral `#E8365F` in bold, for structure only: the
 headline's name and the labels. Totals are bold, secondary lines dim, and red marks a failure and
-nothing else; no meaning rests on colour alone. The coral is exact when `COLORTERM` says the
-terminal shows 24-bit colour, and otherwise the nearest of its 256 colours, or bright red of its 16.
+nothing else; no meaning rests on colour alone. How many colours the terminal shows is Node's
+answer for the stream (`getColorDepth`), which reads `COLORTERM` and `TERM` and knows that Windows
+10 and later show 24-bit colour though their consoles set neither. The coral is exact at 24 bits
+and the nearest of 256 where the terminal shows those. Among 16 colours only a red comes near it,
+so there the accent is bold without a colour, and red still means a failure.
 
 **Exit codes** are a contract: 0 the command ran, 1 `check` found findings over its thresholds, 2 the
 command line or configuration was wrong, 3 Upfly refused to act for safety, 4 something it did not

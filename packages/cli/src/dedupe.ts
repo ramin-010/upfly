@@ -28,7 +28,7 @@ import {
   some,
   unfinishedRun,
 } from './optimize.js';
-import { type Io, colourFor, emit, progressReporter, stopWith, stylesFor } from './output.js';
+import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count, movingText, writtenByKind } from './plan-text.js';
 import { warnIfNotKept, writeReport } from './report-file.js';
 import { type NextStep, dedupeSummary, nextAfterPlan, nextAfterRun } from './summary.js';
@@ -220,7 +220,7 @@ function write(options: DedupeOptions, io: Io, result: DedupeProjectResult, outc
     file,
     next,
   });
-  io.stdout.write(renderSummary(summary, stylesFor(colourFor(io.stdout, io.env, options), io.env)));
+  io.stdout.write(renderSummary(summary, stylesFor(io.stdout, io.env, options)));
 }
 
 /** The plan as text, in the shape `optimize` prints its own. */

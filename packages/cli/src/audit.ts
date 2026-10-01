@@ -17,7 +17,7 @@ import type { AuditOptions } from './args.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { renderSummary } from './layout.js';
-import { type Io, colourFor, emit, progressReporter, stopWith, stylesFor } from './output.js';
+import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { warnIfNotKept, writeReport } from './report-file.js';
 import { type NextStep, auditSummary } from './summary.js';
 
@@ -104,7 +104,7 @@ function write(
     io.stdout.write(full);
     warnIfNotKept(io, file);
   } else {
-    const styles = stylesFor(colourFor(io.stdout, io.env, options), io.env);
+    const styles = stylesFor(io.stdout, io.env, options);
     io.stdout.write(
       renderSummary(auditSummary(report, file, nextAfterAudit(options, report)), styles),
     );

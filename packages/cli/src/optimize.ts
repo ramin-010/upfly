@@ -40,7 +40,7 @@ import {
   ignoredPaths,
 } from './git.js';
 import { renderSummary } from './layout.js';
-import { type Io, colourFor, emit, progressReporter, stopWith, stylesFor } from './output.js';
+import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count, renderPlan, writtenByKind } from './plan-text.js';
 import { warnIfNotKept, writeReport } from './report-file.js';
 import { type NextStep, nextAfterPlan, nextAfterRun, optimizeSummary } from './summary.js';
@@ -482,7 +482,7 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
     file,
     next,
   });
-  io.stdout.write(renderSummary(summary, stylesFor(colourFor(io.stdout, io.env, options), io.env)));
+  io.stdout.write(renderSummary(summary, stylesFor(io.stdout, io.env, options)));
 }
 
 /** The flags that shaped the plan, so that `--apply` writes the same plan. */

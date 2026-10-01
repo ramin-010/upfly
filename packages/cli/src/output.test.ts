@@ -1,6 +1,8 @@
+import { WriteStream } from 'node:tty';
 import { describe, expect, it } from 'vitest';
 import {
   type Output,
+  PLAIN,
   colourDepth,
   colourFor,
   progressReporter,
@@ -34,41 +36,78 @@ describe('colourFor', () => {
   });
 });
 
+/** A terminal that reports `bits` of colour, as Node's terminal streams do. */
+function showing(bits: number): Output {
+  return { write: () => true, isTTY: true, getColorDepth: () => bits };
+}
+
 describe('colourDepth', () => {
-  it('takes 24-bit colour only from COLORTERM, then 256 from TERM, then 16', () => {
-    expect(colourDepth({ COLORTERM: 'truecolor' })).toBe('truecolor');
-    expect(colourDepth({ COLORTERM: '24bit', TERM: 'xterm' })).toBe('truecolor');
-    expect(colourDepth({ TERM: 'xterm-256color' })).toBe('256');
-    expect(colourDepth({ TERM: 'xterm' })).toBe('16');
-    expect(colourDepth({})).toBe('16');
+  it('takes the depth the stream reports: 24-bit, 256, or 16 and fewer', () => {
+    expect(colourDepth(showing(24), {})).toBe('truecolor');
+    expect(colourDepth(showing(8), {})).toBe('256');
+    expect(colourDepth(showing(4), {})).toBe('basic');
+    expect(colourDepth(showing(1), {})).toBe('basic');
+    expect(colourDepth(terminal, {})).toBe('basic');
   });
+
+  it('asks without NO_COLOR, which colourFor has read, and which Node reads as off even when empty', () => {
+    const asked: object[] = [];
+    const stream: Output = {
+      write: () => true,
+      isTTY: true,
+      getColorDepth: (env) => {
+        asked.push(env ?? {});
+        return 24;
+      },
+    };
+    expect(colourDepth(stream, { NO_COLOR: '', TERM: 'xterm' })).toBe('truecolor');
+    expect(asked).toEqual([{ TERM: 'xterm' }]);
+  });
+
+  it("follows Node's own answer, which reads COLORTERM on every platform", () => {
+    const node: Output = { ...terminal, getColorDepth: WriteStream.prototype.getColorDepth };
+    expect(colourDepth(node, { COLORTERM: 'truecolor' })).toBe('truecolor');
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'finds 24-bit colour on Windows, whose consoles set no COLORTERM',
+    () => {
+      const node: Output = { ...terminal, getColorDepth: WriteStream.prototype.getColorDepth };
+      expect(colourDepth(node, {})).toBe('truecolor');
+    },
+  );
 });
 
 describe('stylesFor', () => {
-  it('marks text only when colour is on', () => {
-    const off = stylesFor(false, { COLORTERM: 'truecolor' });
+  it('marks nothing when colour is off', () => {
+    const off = stylesFor(showing(24), { NO_COLOR: '1' }, plain);
     expect([off.accent('x'), off.bold('x'), off.dim('x'), off.red('x')]).toEqual([
       'x',
       'x',
       'x',
       'x',
     ]);
-
-    const on = stylesFor(true, {});
-    expect(on.accent('x')).toBe('\u001b[1;91mx\u001b[22;39m');
-    expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
-    expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
-    expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
-    expect(on.bold('')).toBe('');
+    expect(stylesFor(pipe, {}, plain).accent('x')).toBe('x');
+    expect(PLAIN.accent('x')).toBe('x');
   });
 
-  it('gives the coral at the depth the terminal shows', () => {
-    expect(stylesFor(true, { COLORTERM: 'truecolor' }).accent('x')).toBe(
+  it('marks totals bold and secondary lines dim, and a failure red at every depth', () => {
+    for (const bits of [4, 8, 24]) {
+      const on = stylesFor(showing(bits), {}, plain);
+      expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
+      expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
+      expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
+      expect(on.bold('')).toBe('');
+    }
+  });
+
+  it('gives the coral at the depth the terminal shows, and bold alone, never a red, with 16 colours', () => {
+    expect(stylesFor(showing(24), {}, plain).accent('x')).toBe(
       '\u001b[1;38;2;232;54;95mx\u001b[22;39m',
     );
-    expect(stylesFor(true, { TERM: 'screen-256color' }).accent('x')).toBe(
-      '\u001b[1;38;5;161mx\u001b[22;39m',
-    );
+    expect(stylesFor(showing(8), {}, plain).accent('x')).toBe('\u001b[1;38;5;161mx\u001b[22;39m');
+    expect(stylesFor(showing(4), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
+    expect(stylesFor(showing(1), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
   });
 
   it('picks, of the 256, the colour nearest the coral as the eye sees it', () => {

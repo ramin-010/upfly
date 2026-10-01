@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { columns, commandLine, renderSummary, shortenMiddle, wrap } from './layout.js';
-import { stylesFor } from './output.js';
-
-const plain = stylesFor(false, {});
+import { PLAIN as plain } from './output.js';
 
 describe('columns', () => {
   it('counts a wide character as two and a combining mark as none', () => {
