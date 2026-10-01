@@ -422,9 +422,14 @@ function reportRow(label: string, file: ReportFile): Row {
 function nextRows(next: NextStep | null): Row[] {
   if (next === null) return [];
   const line = next.words === null ? null : commandLine(next.words);
-  const value = line !== null && columns(line) <= VALUE_WIDTH ? [line] : [next.text];
+  const command = line !== null && columns(line) <= VALUE_WIDTH ? line : null;
   return [
-    { label: 'Next', value, ...(next.details === undefined ? {} : { details: next.details }) },
+    {
+      label: 'Next',
+      value: [command ?? next.text],
+      bold: command !== null,
+      ...(next.details === undefined ? {} : { details: next.details }),
+    },
   ];
 }
 

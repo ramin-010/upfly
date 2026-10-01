@@ -81,14 +81,25 @@ describe('colourDepth', () => {
 describe('stylesFor', () => {
   it('marks nothing when colour is off', () => {
     const off = stylesFor(showing(24), { NO_COLOR: '1' }, plain);
-    expect([off.accent('x'), off.dim('x'), off.red('x')]).toEqual(['x', 'x', 'x']);
+    expect([off.accent('x'), off.bold('x'), off.dim('x'), off.red('x')]).toEqual([
+      'x',
+      'x',
+      'x',
+      'x',
+    ]);
     expect(stylesFor(pipe, {}, plain).accent('x')).toBe('x');
-    expect([PLAIN.accent('x'), PLAIN.dim('x'), PLAIN.red('x')]).toEqual(['x', 'x', 'x']);
+    expect([PLAIN.accent('x'), PLAIN.bold('x'), PLAIN.dim('x'), PLAIN.red('x')]).toEqual([
+      'x',
+      'x',
+      'x',
+      'x',
+    ]);
   });
 
-  it('marks secondary lines dim and a failure red at every depth', () => {
+  it('marks the next command bold, secondary lines dim and a failure red at every depth', () => {
     for (const bits of [4, 8, 24]) {
       const on = stylesFor(showing(bits), {}, plain);
+      expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
       expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
       expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
       expect(on.dim('')).toBe('');

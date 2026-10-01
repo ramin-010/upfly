@@ -21,6 +21,8 @@ export interface Row {
   readonly label: string;
   /** The value, in pieces printed one after another. */
   readonly value: readonly string[];
+  /** Whether the value is printed in bold: only a command to run, so it can be copied. */
+  readonly bold?: boolean;
   /** Counts with what each counts, as a column of numbers under the value. */
   readonly counts?: readonly { readonly count: number; readonly text: string }[];
   /** Secondary lines under the value, dimmed. */
@@ -73,8 +75,12 @@ export function renderSummary(summary: Summary, styles: Styles): string {
 
 function rowLines(row: Row, styles: Styles): string[] {
   const label = `${' '.repeat(LABEL_INDENT)}${styles.accent(row.label)}${' '.repeat(VALUE_COLUMN - LABEL_INDENT - columns(row.label))}`;
+  const mark = row.bold === true ? styles.bold : (text: string) => text;
   const [first = '', ...rest] = wrap(row.value.join(''), WIDTH - VALUE_COLUMN);
-  const lines = [`${label}${first}`, ...rest.map((line) => `${' '.repeat(VALUE_COLUMN)}${line}`)];
+  const lines = [
+    `${label}${mark(first)}`,
+    ...rest.map((line) => `${' '.repeat(VALUE_COLUMN)}${mark(line)}`),
+  ];
 
   const counts = row.counts ?? [];
   const digits = Math.max(0, ...counts.map(({ count }) => String(count).length));

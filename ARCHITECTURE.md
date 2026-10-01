@@ -2436,8 +2436,8 @@ reason, and a probe's skips are grouped by their code.
 `TERM=dumb`. Colour is the default, so the help does not offer `--no-color`; it works for whoever
 knows it. There is one accent, the brand's coral `#E8365F` in bold, for structure only: the
 headline's name and the labels. It is the one bold thing on a line, so values stay at the
-terminal's own weight; a second bold column made the summary heavy, and coral at normal weight
-read as an error. Secondary lines are dim, and red marks a failure and nothing else; no meaning
+terminal's own weight, apart from the command to run next, bold so it can be found and copied; a
+second bold column made the summary heavy, and coral at normal weight read as an error. Secondary lines are dim, and red marks a failure and nothing else; no meaning
 rests on colour alone. How many colours the terminal shows is Node's answer for the stream
 (`getColorDepth`), which reads `COLORTERM` and `TERM` and knows that Windows 10 and later show
 24-bit colour though their consoles set neither. The coral is exact at 24 bits and the nearest of

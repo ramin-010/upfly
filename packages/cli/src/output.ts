@@ -85,9 +85,12 @@ const CORAL: Readonly<Record<ColourDepth, string | null>> = {
 export interface Styles {
   /**
    * The brand's coral in bold, for structure only: the headline's name and the labels. It is
-   * the one bold thing on a line, so values stay at the terminal's own weight.
+   * the one bold thing on a line, so values stay at the terminal's own weight, apart from the
+   * command to run next.
    */
   readonly accent: (text: string) => string;
+  /** The command to run next, in the terminal's own colour, so it can be found and copied. */
+  readonly bold: (text: string) => string;
   /** A secondary line. */
   readonly dim: (text: string) => string;
   /** A failure, and nothing else. */
@@ -97,6 +100,7 @@ export interface Styles {
 /** Styles that leave text as it is, for output with no colour. */
 export const PLAIN: Styles = {
   accent: (text) => text,
+  bold: (text) => text,
   dim: (text) => text,
   red: (text) => text,
 };
@@ -121,6 +125,7 @@ export function stylesFor(
   const coral = CORAL[colourDepth(stream, env)];
   return {
     accent: coral === null ? mark('1', '22') : mark(`1;${coral}`, '22;39'),
+    bold: mark('1', '22'),
     dim: mark('2', '22'),
     red: mark('31', '39'),
   };
