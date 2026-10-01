@@ -13,6 +13,15 @@ describe('the help text', () => {
     },
   );
 
+  // Colour is the default and turns itself off where it cannot show, so a flag for it would
+  // read as noise. `--no-color` still works for whoever knows it.
+  it.each([null, 'audit', 'optimize', 'undo', 'check', 'init', 'refs', 'dedupe'] as const)(
+    'does not offer --no-color (%s)',
+    (command) => {
+      expect(helpText(command)).not.toMatch(/no-color|NO_COLOR/);
+    },
+  );
+
   it('says the audit measures the largest images in the configured format', () => {
     // It encodes the configured format, AVIF included, and by default only the 100 largest.
     const text = helpText('audit');

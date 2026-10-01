@@ -24,7 +24,6 @@ Commands:
 
 Options for every command:
   --json         Print one JSON object per line: progress, then the result
-  --no-color     Plain text; also when NO_COLOR is set
   -h, --help     Show help for a command
   -v, --version  Print the version
 
@@ -55,7 +54,6 @@ Options:
   --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted
   --json                 Print one JSON object per line: progress, then the report
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 when the audit ran, 2 for a usage or configuration error, 3 when the
 configuration file belongs to another tool, 4 for a failure Upfly did not anticipate.
@@ -90,7 +88,6 @@ Options:
   --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted
   --json                 Print one JSON object per line: progress, then the result
-  --no-color             Plain text; also when NO_COLOR is set
 
 Every image is measured before it is converted, so the first run on a large project
 takes a while. The full text of each run, and the record of an applied run, are kept in
@@ -110,7 +107,6 @@ that run.
 
 Options:
   --json                 Print one JSON object per line: the result
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 when the files were put back or there was nothing to undo; 2 for a usage
 error; 3 when undo refused because a file changed since the run, or another run is in
@@ -135,7 +131,6 @@ Options:
                          several, and use . for the project root itself
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
   --json                 Print one JSON object per line: progress, then the result
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 when it passed; 1 when a finding failed it; 2 for a usage or configuration
 error, or a ref git does not know; 3 when Upfly cannot tell where the site is served from,
@@ -151,7 +146,6 @@ a configuration file that already exists.
 
 Options:
   --json                 Print one JSON object per line: progress, then the result
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 when the file was written; 2 for a usage error; 3 when a configuration
 file already exists, which the message names; 4 for a failure Upfly did not anticipate.
@@ -171,7 +165,6 @@ Options:
                          several, and use . for the project root itself
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
   --json                 Print one JSON object per line: progress, then the answer
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 with the answer; 2 when the image does not exist, is outside the project or
 is not an image Upfly found, or for a usage or configuration error; 3 when the
@@ -205,7 +198,6 @@ Options:
                          several, and use . for the project root itself
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
   --json                 Print one JSON object per line: progress, then the result
-  --no-color             Plain text; also when NO_COLOR is set
 
 Exit status: 0 when the run finished, including when there was nothing to do; 2 for a
 usage or configuration error, such as a --keep that names no copy; 3 when Upfly refused to

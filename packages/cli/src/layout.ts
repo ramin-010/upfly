@@ -48,7 +48,7 @@ export interface Summary {
  * @example headline(styles, 'optimize', 'dry run') // "Upfly optimize · dry run"
  */
 export function headline(styles: Styles, command: string, mode?: string): string {
-  return `${styles.accent('Upfly')} ${command}${mode === undefined ? '' : styles.dim(` · ${mode}`)}`;
+  return `${styles.title('Upfly')} ${command}${mode === undefined ? '' : styles.dim(` · ${mode}`)}`;
 }
 
 /**
