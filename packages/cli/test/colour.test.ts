@@ -22,16 +22,21 @@ const ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 /** The mark of the headline's name and the labels: the coral in bold. */
 const CORAL = '\u001b[1;38;2;232;54;95m';
 
+/** A copy of the plain HTML site, which holds one broken reference. */
+function plainHtml(): string {
+  return copyFixture('plain-html', tempFolder(roots, 'upfly-colour-'));
+}
+
 /**
- * Runs a command on a copy of the plain HTML site, which holds one broken reference, with
- * stdout a terminal showing `bits` of colour unless `tty` is false.
+ * Runs a command on `root`, a fresh copy of the plain HTML site unless given, with stdout a
+ * terminal showing `bits` of colour unless `tty` is false.
  */
 async function run(
   args: readonly string[],
   env: Record<string, string>,
-  options: { tty?: boolean; bits?: number; exit?: number } = {},
+  options: { tty?: boolean; bits?: number; exit?: number; root?: string } = {},
 ) {
-  const root = copyFixture('plain-html', tempFolder(roots, 'upfly-colour-'));
+  const root = options.root ?? plainHtml();
   let out = '';
   const tty = options.tty ?? true;
   const io = {
@@ -54,8 +59,10 @@ async function run(
 
 describe('the summary on a terminal', () => {
   it('marks the headline and labels in bold coral, leaves the values plain, dims secondary lines, and says the same words', async () => {
-    const coloured = await run(['audit', '--no-probe'], {});
-    const plain = await run(['audit', '--no-probe'], {}, { tty: false });
+    // One copy for both runs: the Next line names the folder, and two copies' names differ.
+    const root = plainHtml();
+    const coloured = await run(['audit', '--no-probe'], {}, { root });
+    const plain = await run(['audit', '--no-probe'], {}, { tty: false, root });
 
     expect(coloured).toContain(`${CORAL}Upfly\u001b[22;39m audit`);
     expect(coloured).toContain(`  ${CORAL}Images\u001b[22;39m       11 images, 152.5 KB\n`);
