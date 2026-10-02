@@ -7,17 +7,15 @@
 import {
   type DedupePlan,
   type DedupeProjectResult,
-  type DedupeSet,
-  type KeptBecause,
   type Manifest,
   dedupeProject,
 } from 'upfly-core';
-import { formatBytes, pathsTouched } from 'upfly-core/internal';
+import { pathsTouched } from 'upfly-core/internal';
 import type { DedupeOptions } from './args.js';
 import { scopeWords } from './audit.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { type GitState, RUN_TRAILER, commitPaths, gitState, ignoredPaths } from './git.js';
-import { renderSummary } from './layout.js';
+import { renderFile } from './layout.js';
 import {
   type Refusal,
   engineRefusal,
@@ -25,12 +23,18 @@ import {
   ignoredByGit,
   notes,
   openProject,
-  outcomeLines,
   unfinishedRun,
 } from './optimize.js';
-import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
-import { count, movingText, writtenByKind } from './plan-text.js';
-import { warnIfNotKept, writeReport } from './report-file.js';
+import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { count, writtenByKind } from './plan-text.js';
+import {
+  type ReportFile,
+  localTime,
+  printRun,
+  reportPath,
+  typedOptions,
+  writeReport,
+} from './report-file.js';
 import { type NextStep, dedupeSummary, nextAfterPlan, nextAfterRun } from './summary.js';
 
 /**
@@ -42,6 +46,7 @@ import { type NextStep, dedupeSummary, nextAfterPlan, nextAfterRun } from './sum
  * error, such as a `--keep` that names no copy; 3 when it refused to write
  */
 export async function runDedupe(options: DedupeOptions, io: Io): Promise<ExitCode> {
+  const started = new Date();
   const stop = (refusal: Refusal): ExitCode =>
     stopWith(io, options, refusal.code, refusal.message, refusal.reason);
   const project = await openProject(options);
@@ -107,6 +112,7 @@ export async function runDedupe(options: DedupeOptions, io: Io): Promise<ExitCod
     commit,
     unfinished: unfinished !== null,
     notes: notes(options, git, unfinished),
+    started,
   });
   return EXIT_CODES.OK;
 }
@@ -170,6 +176,8 @@ interface Outcome {
   /** Whether an earlier run stopped part way, which `undo` has to finish first. */
   readonly unfinished: boolean;
   readonly notes: readonly string[];
+  /** When the run started, for the report file's first lines. */
+  readonly started: Date;
 }
 
 function write(options: DedupeOptions, io: Io, result: DedupeProjectResult, outcome: Outcome) {
@@ -191,16 +199,6 @@ function write(options: DedupeOptions, io: Io, result: DedupeProjectResult, outc
     });
     return;
   }
-  const lines = [...planLines(plan), ...outcomeLines(options, manifest, outcome)];
-  for (const note of outcome.notes) lines.push(`Note: ${note}`);
-  const full = `${lines.join('\n')}\n`;
-  const file = writeReport(result.pipeline.graph.root, full, manifest?.runDir ?? null);
-  if (options.full) {
-    io.stdout.write(full);
-    warnIfNotKept(io, file);
-    return;
-  }
-
   let next: NextStep | null = null;
   if (options.apply) next = manifest === null ? null : nextAfterRun(outcome.commit);
   else if (plan.rewrites.length > 0) {
@@ -210,76 +208,25 @@ function write(options: DedupeOptions, io: Io, result: DedupeProjectResult, outc
     ];
     next = nextAfterPlan('dedupe', options.dir, flags, outcome.git, outcome.unfinished);
   }
-  const summary = dedupeSummary({
-    plan,
-    apply: options.apply,
-    manifest,
-    commit: outcome.commit,
-    git: outcome.git,
-    notes: outcome.notes,
-    file,
-    next,
+  const summary = (file: ReportFile) =>
+    dedupeSummary({
+      plan,
+      apply: options.apply,
+      manifest,
+      commit: outcome.commit,
+      git: outcome.git,
+      notes: outcome.notes,
+      file,
+      next,
+    });
+  const root = result.pipeline.graph.root;
+  const text = renderFile(summary({ written: reportPath('dedupe') }), {
+    when: localTime(outcome.started),
+    folder: root,
+    options: typedOptions(options),
   });
-  io.stdout.write(renderSummary(summary, stylesFor(io.stdout, io.env, options)));
-}
-
-/** The plan as text, in the shape `optimize` prints its own. */
-function planLines(plan: DedupePlan): string[] {
-  const lines = ['Plan', ''];
-  if (plan.sets.length === 0) {
-    lines.push('  No two images hold the same bytes, so there is nothing to do.', '');
-    return lines;
-  }
-  lines.push(`  Keep one copy of each set of identical images: ${count(plan.sets.length, 'set')}`);
-  for (const set of plan.sets) lines.push(...setLines(set));
-
-  if (plan.rewrites.length > 0) {
-    const references = plan.rewrites.reduce((sum, rewrite) => sum + rewrite.edits.length, 0);
-    lines.push(
-      `  Update references: ${count(references, 'reference')} in ${count(plan.rewrites.length, 'file')}`,
-    );
-    for (const rewrite of plan.rewrites) {
-      lines.push(`    ${rewrite.file}  ${count(rewrite.edits.length, 'reference')}`);
-    }
-  }
-
-  const unused = plan.sets.flatMap((set) =>
-    set.copies.filter((copy) => copy.unusedAfter).map((copy) => ({ path: copy.path, set })),
-  );
-  if (unused.length > 0) {
-    const bytes = unused.reduce((sum, { set }) => sum + set.bytes, 0);
-    lines.push(
-      `  Not deleted: ${unused.length} ${unused.length === 1 ? 'copy' : 'copies'} no reference names once this is written, ${formatBytes(bytes)}. Upfly never`,
-      `  deletes ${unused.length === 1 ? 'it' : 'them'}; \`upfly audit\` lists ${unused.length === 1 ? 'it' : 'them'} as unused, with ${unused.length === 1 ? 'its size' : 'their sizes'}.`,
-      ...unused.map(({ path }) => `    ${path}`),
-    );
-  }
-  lines.push('');
-  return lines;
-}
-
-const KEPT: Readonly<Record<KeptBecause, string>> = {
-  chosen: 'named by --keep',
-  'most-used': 'more references use it than any other copy',
-  served:
-    'as many references use it as another copy, and a folder the site is served from holds it',
-  shorter: 'tied on references, and its path is the shortest',
-  first: 'tied on references and length, and it comes first in path order',
-};
-
-function setLines(set: DedupeSet): string[] {
-  const lines = [`    ${set.keep}  ${formatBytes(set.bytes)}, kept: ${KEPT[set.kept]}`];
-  for (const copy of set.copies) {
-    lines.push(
-      copy.references === 0
-        ? `      ${copy.path}  no reference names it`
-        : `      ${copy.path}  ${movingText(copy.moved, copy.references, 'to the kept copy')}`,
-    );
-    for (const stay of copy.stays) {
-      lines.push(`        ${stay.where}  ${stay.text} stays as written: ${stay.why}`);
-    }
-  }
-  return lines;
+  const file = writeReport(root, 'dedupe', text, manifest?.runDir ?? null);
+  printRun(io, options, summary(file), text, file);
 }
 
 function firstLine(error: unknown): string {

@@ -28,6 +28,8 @@ export interface ScopeOptions {
 export interface ReportOptions {
   /** `--full`: print the full text rather than the summary. */
   readonly full: boolean;
+  /** `--show <row>`: print that row of the summary with its complete list, or null. */
+  readonly show: string | null;
   /** `--include-discarded`: list the path-like strings that linked nothing. */
   readonly includeDiscarded: boolean;
   /** `--include-unused-svg`: list the unused SVG files the report otherwise only counts. */
@@ -85,6 +87,8 @@ export interface DedupeOptions extends CommonOptions, ScopeOptions {
   readonly command: 'dedupe';
   /** `--full`: print the full text rather than the summary. */
   readonly full: boolean;
+  /** `--show <row>`: print that row of the summary with its complete list, or null. */
+  readonly show: string | null;
   /** `--apply`: write the plan. Without it the run only reports what it would do. */
   readonly apply: boolean;
   /** `--commit`: commit the files the run wrote, and nothing else, as one commit. */
@@ -126,6 +130,13 @@ export type Parsed =
  */
 export const DEFAULT_MAX_ENCODES = 100;
 
+/** The rows `--show` prints, for each command that has a summary, as its rows are named. */
+export const SHOWN_ROWS: Readonly<Record<'audit' | 'optimize' | 'dedupe', readonly string[]>> = {
+  audit: ['references', 'savings', 'broken', 'unused', 'oversized', 'copies', 'skipped'],
+  optimize: ['convert', 'update', 'leave'],
+  dedupe: ['sets', 'update', 'leave', 'unused'],
+};
+
 const COMMANDS: readonly CommandName[] = [
   'audit',
   'optimize',
@@ -149,6 +160,7 @@ const SCOPE = {
 
 const REPORT = {
   full: { type: 'boolean' },
+  show: { type: 'string' },
   'include-discarded': { type: 'boolean' },
   'include-unused-svg': { type: 'boolean' },
 } as const;
@@ -194,6 +206,7 @@ const DEDUPE = {
   'allow-dirty': { type: 'boolean' },
   keep: { type: 'string', multiple: true },
   full: { type: 'boolean' },
+  show: { type: 'string' },
 } as const;
 
 /**
@@ -245,7 +258,8 @@ function parseDedupe(args: readonly string[]): Parsed {
   const conflict =
     dryRunConflict(values['dry-run'], apply) ??
     writeFlagConflict(apply, commit, allowDirty) ??
-    fullConflict(values.full, values.json);
+    fullConflict(values.full, values.json) ??
+    showConflict(command, values.show, values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
   return {
     kind: 'run',
@@ -255,6 +269,7 @@ function parseDedupe(args: readonly string[]): Parsed {
       json: values.json === true,
       noColor: values['no-color'] === true,
       full: values.full === true,
+      show: values.show ?? null,
       apply,
       commit,
       allowDirty,
@@ -367,7 +382,9 @@ function parseAudit(args: readonly string[]): Parsed {
   if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
   const maxEncodes = maxEncodesOf(values);
   if (typeof maxEncodes === 'string') return { kind: 'usage-error', command, message: maxEncodes };
-  const conflict = fullConflict(values.full, values.json);
+  const conflict =
+    fullConflict(values.full, values.json) ??
+    showConflict(command, values.show, values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
 
   return {
@@ -380,6 +397,7 @@ function parseAudit(args: readonly string[]): Parsed {
       probe: values['no-probe'] !== true,
       maxEncodes,
       full: values.full === true,
+      show: values.show ?? null,
       includeDiscarded: values['include-discarded'] === true,
       includeUnusedSvg: values['include-unused-svg'] === true,
       ...scope,
@@ -420,7 +438,8 @@ function parseOptimize(args: readonly string[]): Parsed {
     policyConflict(values.replace, values['keep-originals']) ??
     dryRunConflict(values['dry-run'], apply) ??
     writeFlagConflict(apply, commit, allowDirty) ??
-    fullConflict(values.full, values.json);
+    fullConflict(values.full, values.json) ??
+    showConflict(command, values.show, values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
 
   return {
@@ -430,6 +449,7 @@ function parseOptimize(args: readonly string[]): Parsed {
       dir: dir.value,
       json: values.json === true,
       noColor: values['no-color'] === true,
+      show: values.show ?? null,
       apply,
       commit,
       policy:
@@ -475,6 +495,26 @@ function policyConflict(
   return replace === true && keepOriginals === true
     ? '--replace and --keep-originals cannot be used together: --replace removes each original once its references have moved, which is the default, and --keep-originals keeps them'
     : null;
+}
+
+/** A `--show` that names no row of the command's summary, or that another flag overrides. */
+function showConflict(
+  command: keyof typeof SHOWN_ROWS,
+  show: string | undefined,
+  full: boolean | undefined,
+  json: boolean | undefined,
+): string | null {
+  if (show === undefined) return null;
+  if (json === true) {
+    return '--show and --json cannot be used together: --show prints one row of the summary as text, and --json prints JSON instead';
+  }
+  if (full === true) {
+    return '--show and --full cannot be used together: --show prints one row of the full text, and --full prints all of it';
+  }
+  const rows = SHOWN_ROWS[command];
+  return rows.includes(show)
+    ? null
+    : `--show takes one of ${rows.slice(0, -1).join(', ')} or ${rows.at(-1)}, got \`${show}\``;
 }
 
 /** `--dry-run` names what a run without `--apply` already does. */

@@ -12,7 +12,6 @@ import {
   type PublicPolicy,
   type Report,
   buildReport,
-  renderReport,
   runPipeline,
   servingRootsFor,
 } from 'upfly-core';
@@ -20,10 +19,17 @@ import { convertibleImages, optimizeFromPipeline } from 'upfly-core/internal';
 import type { AuditOptions } from './args.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { renderSummary } from './layout.js';
+import { renderFile } from './layout.js';
 import { policyFor } from './optimize.js';
-import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
-import { warnIfNotKept, writeReport } from './report-file.js';
+import { type Io, emit, progressReporter, stopWith } from './output.js';
+import {
+  type ReportFile,
+  localTime,
+  printRun,
+  reportPath,
+  typedOptions,
+  writeReport,
+} from './report-file.js';
 import { type NextStep, auditSummary } from './summary.js';
 
 /**
@@ -34,6 +40,7 @@ import { type NextStep, auditSummary } from './summary.js';
  * @returns 0 when the audit ran; 2 or 3 when the configuration stopped it
  */
 export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode> {
+  const started = new Date();
   const root = resolve(options.dir);
   if (!isDirectory(root)) {
     return stopWith(io, options, EXIT_CODES.USAGE, `${options.dir} is not a directory`);
@@ -83,7 +90,7 @@ export async function runAudit(options: AuditOptions, io: Io): Promise<ExitCode>
     includeDiscarded: options.includeDiscarded,
     includeUnusedVectors: options.includeUnusedSvg,
   });
-  write(options, io, report, savings, output, root);
+  write(options, io, { report, savings, output, root, started });
   return EXIT_CODES.OK;
 }
 
@@ -100,6 +107,8 @@ export interface Savings {
    * are any, the plan converts at least these images and saves at least these bytes.
    */
   readonly unmeasured: number;
+  /** Each image's size, by POSIX-relative path, for the list of what converts. */
+  readonly sizes: ReadonlyMap<string, number>;
 }
 
 /**
@@ -127,6 +136,7 @@ async function plannedSavings(
     unmeasured: (output.probes ?? []).filter((probe) =>
       probe.skipped.some((skip) => skip.code === 'beyond-encode-cap'),
     ).length,
+    sizes,
   };
 }
 
@@ -141,11 +151,15 @@ function probeOptionsFor(options: AuditOptions, format: 'webp' | 'avif') {
 function write(
   options: AuditOptions,
   io: Io,
-  report: Report,
-  savings: Savings | null,
-  output: PipelineOutput,
-  root: string,
+  run: {
+    readonly report: Report;
+    readonly savings: Savings | null;
+    readonly output: PipelineOutput;
+    readonly root: string;
+    readonly started: Date;
+  },
 ): void {
+  const { report, savings, output, root } = run;
   if (options.json) {
     // The libraries' own wording, which varies between runs, stays out of the report.
     for (const diagnostic of output.diagnostics) {
@@ -172,20 +186,15 @@ function write(
     });
     return;
   }
-  const full = renderReport(report);
-  const file = writeReport(root, full, null);
-  if (options.full) {
-    io.stdout.write(full);
-    warnIfNotKept(io, file);
-  } else {
-    const styles = stylesFor(io.stdout, io.env, options);
-    io.stdout.write(
-      renderSummary(
-        auditSummary(report, savings, file, nextAfterAudit(options, report, savings)),
-        styles,
-      ),
-    );
-  }
+  const next = nextAfterAudit(options, report, savings);
+  const summary = (file: ReportFile) => auditSummary(report, savings, file, next);
+  const text = renderFile(summary({ written: reportPath('audit') }), {
+    when: localTime(run.started),
+    folder: root,
+    options: typedOptions(options),
+  });
+  const file = writeReport(root, 'audit', text, null);
+  printRun(io, options, summary(file), text, file);
   const said = output.diagnostics.length + output.scanDiagnostics.length;
   if (said > 0) {
     io.stderr.write(

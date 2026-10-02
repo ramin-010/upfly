@@ -1,44 +1,57 @@
+
 Upfly audit
+Run <time> in <root>
+Options: none
 
-  75.5 KB of savings as webp at quality 80, measured across all 12 images
+  Images       12 images, 126.9 KB
+  References   12 of 12 resolved, from 5 source files
+  Savings      75.5 KB as WebP at quality 80, across 5 images
 
-  scanned 5 source files and found 12 images, 126.9 KB in total
-  12 of 12 references resolved, pointing at 10 of those images
-  2 images with no reference Upfly could follow
-  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly neither converts nor deletes an SVG)
-  root-relative paths resolved from what Upfly detected rather than what the project declared (1 in all): public
+    upfly optimize would convert each of these images and move every reference
+    it can rewrite to the new file.
+      public/photos/wide.jpg → public/photos/wide.webp  10.2 KB → 8.7 KB
+      public/photos/wide@2x.jpg → public/photos/wide@2x.webp  36.2 KB → 30.9 KB
+      public/screenshot.png → public/screenshot.webp  10.9 KB → 1.1 KB
+      src/assets/banner.png → src/assets/banner.webp  59.8 KB → 7.2 KB
+      src/assets/logo.png → src/assets/logo.webp  7.2 KB → 850 B
 
-Nothing was skipped.
+  Broken       none
+  Unused       1 image, 70 B
+                 and 1 unreferenced SVG, counted, not listed
+                 .upfly/audit.txt lists them; Upfly never deletes one
 
-Findings: 7 items
+    Nothing Upfly can see uses these images. Upfly never deletes an image:
+    delete one yourself once you are sure nothing outside the project, such as
+    an email or another site, links to it.
+      src/assets/orphan.png  70 B
 
-  unreferenced images (1)
-    src/assets/orphan.png  70 B
+  Copies       1 set of identical images, 210 B recoverable
+                 upfly dedupe points each set's references at one copy
 
-  size (5 images): 0 over the limit, 5 smaller as another format (measured, not estimated)
+    The files in each set hold the same bytes. upfly dedupe keeps one copy of
+    each set and points the references to the others at it; it deletes nothing.
+      70 B each, 210 B recoverable by keeping one:
+        public/icons/touch.png
+        src/assets/orphan.png
+        src/assets/texture.png
+        src/assets/unused-in-css.png
 
-    public/photos/wide.jpg  10.2 KB
-      8.7 KB as webp (saves 1.5 KB, 14%)
-    public/photos/wide@2x.jpg  36.2 KB
-      30.9 KB as webp (saves 5.3 KB, 14%)
-    public/screenshot.png  10.9 KB
-      1.1 KB as webp (saves 9.7 KB, 89%)
-    src/assets/banner.png  59.8 KB
-      7.2 KB as webp (saves 52.6 KB, 87%)
-    src/assets/logo.png  7.2 KB
-      850 B as webp (saves 6.3 KB, 88%)
+  Skipped      nothing
 
-  identical copies (1 set): the same bytes shipped more than once
-    70 B each, 210 B recoverable by keeping one:
-      public/icons/touch.png
-      src/assets/orphan.png
-      src/assets/texture.png
-      src/assets/unused-in-css.png
+  Next         upfly optimize
 
-Worth knowing
+  upfly optimize would convert 5 images and save 75.5 KB.
 
-  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor deletes an SVG, so there is no action to offer. Use --include-unused-svg to see them.
-  4 images needed no measurement:
+What Upfly could not check
+
+  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor
+  deletes an SVG, so there is no action to offer. Use --include-unused-svg to
+  see them.
+
+  4 images needed no measurement
     vectors, where an encode would measure a rasterisation rather than a saving: 2
     images optimize would not convert, whatever they measured: 2
-  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
+
+  SVG files are counted as images and also left unparsed: one can hold
+  references of its own, and no adapter reads that yet (2 SVGs here)
+

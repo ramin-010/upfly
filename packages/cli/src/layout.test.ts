@@ -85,6 +85,7 @@ describe('renderSummary', () => {
 
     expect(text).toBe(
       [
+        '',
         'Upfly optimize · dry run',
         '',
         '  Leave        12 images, 3 KB',
@@ -96,6 +97,7 @@ describe('renderSummary', () => {
         '               under it.',
         '',
         '  Dry run: no project file was changed.',
+        '',
         '',
       ].join('\n'),
     );

@@ -17,7 +17,7 @@ import type { InitOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { CONFIG_FILES, CONFIG_SCHEMA, loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { headline } from './layout.js';
+import { headline, spaced } from './layout.js';
 import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 
 /** The file `init` writes. */
@@ -114,7 +114,7 @@ export async function runInit(options: InitOptions, io: Io): Promise<ExitCode> {
     });
   } else {
     const styles = stylesFor(io.stdout, io.env, options);
-    io.stdout.write(render(text, reasons, decision, styles));
+    io.stdout.write(spaced(render(text, reasons, decision, styles).split('\n')));
   }
   return EXIT_CODES.OK;
 }

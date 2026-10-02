@@ -55,7 +55,7 @@ describe('upfly init', () => {
         2,
       )}\n`,
     );
-    expect(run.stdout).toBe(
+    expect(run.stdout.slice(1, -1)).toBe(
       [
         'Upfly init',
         '',

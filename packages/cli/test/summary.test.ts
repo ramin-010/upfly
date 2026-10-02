@@ -1,9 +1,9 @@
 /**
  * What `audit`, `optimize` and `dedupe` print by default, through the built binary, on
- * committed copies of two fixtures: a short summary, the full text kept in `.upfly/report.txt`,
- * `--full` printing that text as the commands printed it before the summary existed, and
- * `--json` unchanged. Each run uses its copy as the working folder and names no folder, so
- * the text holds no temporary path.
+ * committed copies of two fixtures: a short summary, the report file each command writes
+ * under its own name (the summary with each row's complete list), `--full` printing that file,
+ * and `--json` unchanged. Each run uses its copy as the working folder and names no folder, so
+ * the summary holds no temporary path.
  */
 
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -31,13 +31,14 @@ function run(root: string, args: readonly string[], env?: NodeJS.ProcessEnv) {
   return upfly(args, { cwd: root, ...(env === undefined ? {} : { env }) });
 }
 
-/** The copy's path and a run's id, which differ on every run, as placeholders. */
+/** The copy's path, a run's id and the time it started, which differ on every run, as placeholders. */
 function placeholders(text: string, root: string): string {
   const escaped = JSON.stringify(root).slice(1, -1);
   return text
     .replaceAll(escaped, '<root>')
     .replaceAll(root, '<root>')
-    .replace(/\b\d{8}T\d{6}-[0-9a-f]{4}\b/g, '<run>');
+    .replace(/\b\d{8}T\d{6}-[0-9a-f]{4}\b/g, '<run>')
+    .replace(/^Run \d{4}-\d\d-\d\d \d\d:\d\d in /m, 'Run <time> in ');
 }
 
 /** Every line of the text, wider than 80 columns. */
@@ -47,6 +48,7 @@ function overWide(text: string): string[] {
 
 const SUMMARIES = {
   'audit vite-react': [
+    '',
     'Upfly audit',
     '',
     '  Images       12 images, 126.9 KB',
@@ -55,30 +57,43 @@ const SUMMARIES = {
     '  Broken       none',
     '  Unused       1 image, 70 B',
     '                 and 1 unreferenced SVG, counted, not listed',
+    '                 .upfly/audit.txt lists them; Upfly never deletes one',
     '  Copies       1 set of identical images, 210 B recoverable',
+    "                 upfly dedupe points each set's references at one copy",
     '  Skipped      nothing',
     '',
-    '  Full report  .upfly/report.txt',
+    '  Full report  .upfly/audit.txt',
     '  Next         upfly optimize',
+    '',
+    '  upfly optimize would convert 5 images and save 75.5 KB.',
+    '',
     '',
   ],
   'audit plain-html': [
+    '',
     'Upfly audit',
     '',
     '  Images       11 images, 152.5 KB',
     '  References   10 of 11 resolved, from 3 source files',
     '  Savings      93.1 KB as WebP at quality 80, across 5 images',
     '  Broken       1 reference names an image that does not exist',
+    '                 upfly check lists each with its file and line',
     '  Unused       1 image, 70 B',
     '                 1 possibly unused: its name appears in the project',
+    '                 .upfly/audit.txt lists them; Upfly never deletes one',
     '  Copies       1 set of identical images, 280 B recoverable',
+    "                 upfly dedupe points each set's references at one copy",
     '  Skipped      nothing',
     '',
-    '  Full report  .upfly/report.txt',
+    '  Full report  .upfly/audit.txt',
     '  Next         upfly optimize',
+    '',
+    '  upfly optimize would convert 5 images and save 93.1 KB.',
+    '',
     '',
   ],
   'optimize vite-react': [
+    '',
     'Upfly optimize · dry run',
     '',
     '  Convert      5 images to WebP, 124.2 KB → 48.8 KB',
@@ -93,13 +108,16 @@ const SUMMARIES = {
     '                 1  its references stay as written',
     '                 1  nothing links to it',
     '',
-    '  Full plan    .upfly/report.txt',
+    '  Full plan    .upfly/optimize.txt',
     '  Next         upfly optimize --apply',
     '',
-    '  Dry run: no project file was changed.',
+    '  Dry run: no project file was changed. With --apply, upfly optimize would',
+    '  convert 5 images and save 75.5 KB.',
+    '',
     '',
   ],
   'optimize plain-html': [
+    '',
     'Upfly optimize · dry run',
     '',
     '  Convert      5 images to WebP, 150.1 KB → 57 KB',
@@ -110,13 +128,16 @@ const SUMMARIES = {
     '                 2  nothing links to it',
     '                 1  its references stay as written',
     '',
-    '  Full plan    .upfly/report.txt',
+    '  Full plan    .upfly/optimize.txt',
     '  Next         upfly optimize --apply',
     '',
-    '  Dry run: no project file was changed.',
+    '  Dry run: no project file was changed. With --apply, upfly optimize would',
+    '  convert 5 images and save 93.1 KB.',
+    '',
     '',
   ],
   'dedupe vite-react': [
+    '',
     'Upfly dedupe · dry run',
     '',
     '  Sets         1 set of identical images, 4 files',
@@ -126,17 +147,18 @@ const SUMMARIES = {
     '  Unused       1 copy, 70 B, with no reference left',
     '                 Upfly never deletes it; upfly audit lists it as unused',
     '',
-    '  Full plan    .upfly/report.txt',
+    '  Full plan    .upfly/dedupe.txt',
     '',
-    '  Dry run: no project file was changed.',
+    '  Dry run: no project file was changed, and there is nothing to do.',
+    '',
     '',
   ],
 } as const;
 
 /**
- * Each case's name, fixture and command; the golden file of what `--full` prints; and the
- * golden file of what `.upfly/report.txt` holds, or null where that is what `--full` prints.
- * `optimize`'s file also lists each image and reference left alone, with its reason.
+ * Each case's name, fixture and command; the golden file of what `--full` prints; and, for
+ * `optimize`, a golden file of the report file alone, which `--full` prints with a blank line
+ * before and after.
  */
 const CASES = [
   ['audit vite-react', 'vite-react', 'audit', 'audit-vite-react.txt', null],
@@ -168,7 +190,7 @@ describe.each(CASES)('upfly %s', (name, fixture, command, golden, reportGolden) 
   beforeAll(() => {
     root = committed(fixture);
     summary = run(root, [command]);
-    kept = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
+    kept = readFileSync(join(root, `.upfly/${command}.txt`), 'utf8');
     full = run(root, [command, '--full']);
   }, 120_000);
 
@@ -179,11 +201,13 @@ describe.each(CASES)('upfly %s', (name, fixture, command, golden, reportGolden) 
     expect(overWide(summary.stdout)).toEqual([]);
   });
 
-  it('keeps the full text in .upfly/report.txt, and --full prints the text the command printed before', async () => {
+  it('keeps the summary with every list in a file named after the command, which --full prints', async () => {
     expect(full.status, full.stderr).toBe(0);
     await expect(placeholders(full.stdout, root)).toMatchFileSnapshot(`./golden/${golden}`);
-    if (reportGolden === null) expect(kept).toBe(full.stdout);
-    else await expect(placeholders(kept, root)).toMatchFileSnapshot(`./golden/${reportGolden}`);
+    expect(placeholders(full.stdout, root)).toBe(placeholders(`\n${kept}\n`, root));
+    if (reportGolden !== null) {
+      await expect(placeholders(kept, root)).toMatchFileSnapshot(`./golden/${reportGolden}`);
+    }
   });
 });
 
@@ -197,7 +221,7 @@ describe('the report file', () => {
     const applied = run(root, ['optimize', '--apply']);
 
     expect(audit.status, audit.stderr).toBe(0);
-    expect(written).toEqual(['.gitignore', 'report.txt']);
+    expect(written).toEqual(['.gitignore', 'audit.txt']);
     expect(readFileSync(join(root, '.upfly/.gitignore'), 'utf8')).toBe('*\n');
     expect(status).toBe('');
     expect(applied.status, applied.stderr).toBe(0);
@@ -208,11 +232,12 @@ describe('the report file', () => {
 
     const applied = run(root, ['optimize', '--apply']);
     const [id = ''] = readdirSync(join(root, '.upfly/runs'));
-    const report = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
+    const report = readFileSync(join(root, '.upfly/optimize.txt'), 'utf8');
 
     expect(applied.status, applied.stderr).toBe(0);
     expect(placeholders(applied.stdout, root)).toBe(
       [
+        '',
         'Upfly optimize · applied',
         '',
         '  Converted    5 images to WebP, 150.1 KB → 57 KB',
@@ -224,44 +249,68 @@ describe('the report file', () => {
         '                 1  its references stay as written',
         '',
         '  Run          <run>: 5 files created, 2 changed, 0 removed',
-        '  Full plan    .upfly/report.txt',
+        '  Full plan    .upfly/optimize.txt',
         "  Next         run the project's build, if it has one, then upfly check",
         '                 upfly undo puts every file back',
         '',
+        '  Upfly converted 5 images and saved 93.1 KB.',
+        '',
+        '',
       ].join('\n'),
     );
-    expect(readFileSync(join(root, '.upfly/runs', id, 'report.txt'), 'utf8')).toBe(report);
-    expect(report).toContain(`Written as run ${id}:`);
+    expect(readFileSync(join(root, '.upfly/runs', id, 'optimize.txt'), 'utf8')).toBe(report);
+    expect(report).toContain(`  Run          ${id}: 5 files created, 2 changed, 0 removed\n`);
     await expect(placeholders(report, root)).toMatchFileSnapshot(
       './golden/optimize-apply-plain-html.txt',
     );
   });
 
-  it('lists every image and reference left alone with its reason, which --full only counts', () => {
-    // The summary sends the reader to the full plan for each reason, so the file names them
-    // all, as --include-declined does; --full prints the text as it always has.
+  it('lists every image and reference left alone with its reason, as the summary says', () => {
     const root = committed('partial-pattern');
 
     const summary = run(root, ['optimize']);
-    const report = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
-    const full = run(root, ['optimize', '--full']);
+    const report = readFileSync(join(root, '.upfly/optimize.txt'), 'utf8');
+    const leave = run(root, ['optimize', '--show', 'leave']);
 
     expect(summary.stdout).toContain('stays as written, each for a reason in the');
     expect(report).toContain(
-      [
-        '  4 images, 30.7 KB, each with its reason',
-        '  1 reference left as written, each with its reason',
-        '',
-        '    public/theme-dark.png  70 B  `src/App.jsx` reaches it only through `/theme-${mode}.png`, a path assembled at runtime that no run can rewrite. No reference would move to a new file, so it would be used by nobody. Upfly converts an image only when a reference moves to the new file',
-      ].join('\n'),
+      '      public/theme-dark.png  70 B  `src/App.jsx` reaches it only through `/theme-${mode}.png`, a path assembled at runtime that no run can rewrite. No reference would move to a new file, so it would be used by nobody. Upfly converts an image only when a reference moves to the new file\n',
     );
     expect(report).toContain(
-      '    src/App.jsx  a template reference is assembled at runtime, so its text cannot be repointed, and none of the 4 assets it matches converts\n',
+      '      src/App.jsx  stays: a template reference is assembled at runtime, so its text cannot be repointed, and none of the 4 assets it matches converts\n',
     );
-    expect(full.stdout).toContain(
-      '  4 images, 30.7 KB, each with its reason (use --include-declined to list them)\n',
+    expect(leave.stdout).toContain(
+      '      public/theme-dark.png  70 B  `src/App.jsx` reaches it only through',
     );
-    expect(full.stdout).not.toContain('public/theme-dark.png  70 B');
+    expect(report).toContain(leave.stdout.trim());
+  });
+
+  it('prints one row with its list under --show, as the file holds it', () => {
+    const root = committed('plain-html');
+
+    const audit = run(root, ['audit']);
+    const report = readFileSync(join(root, '.upfly/audit.txt'), 'utf8');
+    const broken = run(root, ['audit', '--show', 'broken']);
+    const copies = run(root, ['audit', '--show', 'copies']);
+    const oversized = run(root, ['audit', '--show', 'oversized']);
+
+    expect(audit.status, audit.stderr).toBe(0);
+    expect(broken.stdout).toBe(
+      [
+        '',
+        '  Broken       1 reference names an image that does not exist',
+        '                 upfly check lists each with its file and line',
+        '',
+        '    Each of these names an image that does not exist, at the file and line',
+        '    given: fix the path, or put the image back. upfly check fails while any is',
+        '    left.',
+        '      about.html:10  images/missing-on-purpose.png',
+        '',
+        '',
+      ].join('\n'),
+    );
+    for (const shown of [broken, copies]) expect(report).toContain(shown.stdout.trim());
+    expect(oversized.stdout).toBe('\n  This run has nothing under oversized.\n\n');
   });
 
   it('is not written under --json, whose output is unchanged', async () => {

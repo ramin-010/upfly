@@ -1,68 +1,64 @@
-Upfly audit
 
-  75.5 KB of savings as webp at quality 80, measured across all 12 images
+Upfly optimize · dry run
+Run <time> in <root>
+Options: none
 
-  scanned 5 source files and found 12 images, 126.9 KB in total
-  12 of 12 references resolved, pointing at 10 of those images
-  2 images with no reference Upfly could follow
-  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly neither converts nor deletes an SVG)
-  root-relative paths resolved from what Upfly detected rather than what the project declared (1 in all): public
+  Convert      5 images to WebP, 124.2 KB → 48.8 KB
+                 3 originals to remove, 57.3 KB, once their references move
+                 a link to one from outside the project (an email, another site,
+                 a CMS) then stops working; --keep-originals keeps them
+                 2 originals kept, each for a reason in the full plan
 
-Nothing was skipped.
+    Each image converts to WebP, and every reference Upfly can rewrite moves to
+    the new file.
+      public/photos/wide.jpg → public/photos/wide.webp  10.2 KB → 8.7 KB
+      public/photos/wide@2x.jpg → public/photos/wide@2x.webp  36.2 KB → 30.9 KB
+      public/screenshot.png → public/screenshot.webp  10.9 KB → 1.1 KB
+      src/assets/banner.png → src/assets/banner.webp  59.8 KB → 7.2 KB
+      src/assets/logo.png → src/assets/logo.webp  7.2 KB → 850 B
+      Originals to remove once their references move: 3
+        public/photos/wide.jpg
+        public/photos/wide@2x.jpg
+        public/screenshot.png
+      Originals kept, each with its reason: 2
+        src/assets/banner.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
+        src/assets/logo.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
 
-Findings: 7 items
+  Update       7 references in 2 files
 
-  unreferenced images (1)
-    src/assets/orphan.png  70 B
+    In each file, every reference Upfly can rewrite moves to the converted file.
+      src/App.jsx  6 references
+      src/index.css  1 reference
 
-  size (5 images): 0 over the limit, 5 smaller as another format (measured, not estimated)
+  Leave        7 images, 2.7 KB
+                 3  would save too little
+                 2  SVG, which Upfly does not convert
+                 1  its references stay as written
+                 1  nothing links to it
 
-    public/photos/wide.jpg  10.2 KB
-      8.7 KB as webp (saves 1.5 KB, 14%)
-    public/photos/wide@2x.jpg  36.2 KB
-      30.9 KB as webp (saves 5.3 KB, 14%)
-    public/screenshot.png  10.9 KB
-      1.1 KB as webp (saves 9.7 KB, 89%)
-    src/assets/banner.png  59.8 KB
-      7.2 KB as webp (saves 52.6 KB, 87%)
-    src/assets/logo.png  7.2 KB
-      850 B as webp (saves 6.3 KB, 88%)
+    Each of these images stays as it is, for the reason given.
+      public/favicon.svg  93 B  SVG is a vector: encoding it measures a rasterisation, not a saving
+      public/icons/touch.png  70 B  `index.html` names it as `/icons/touch.png`, and this run does not rewrite that reference: an icon link names this image, and browsers and phones read icons outside the page, some only as PNG, as iOS does for a home-screen icon. No reference would move to a new file, so it would be used by nobody. Upfly converts an image only when a reference moves to the new file
+      src/assets/hero.jpg  2 KB  converting it would save 994 B, under the 1 KB a saving must reach to be reported or converted
+      src/assets/orphan.png  70 B  nothing links to it, so converting it would rewrite no reference and gain only bytes
+      src/assets/texture.png  70 B  converting it would save 34 B, under the 1 KB a saving must reach to be reported or converted
+      src/assets/unused-icon.svg  307 B  SVG is a vector: encoding it measures a rasterisation, not a saving
+      src/assets/unused-in-css.png  70 B  converting it would save 34 B, under the 1 KB a saving must reach to be reported or converted
 
-  identical copies (1 set): the same bytes shipped more than once
-    70 B each, 210 B recoverable by keeping one:
-      public/icons/touch.png
-      src/assets/orphan.png
-      src/assets/texture.png
-      src/assets/unused-in-css.png
+  Next         upfly optimize --apply
 
-Examined and not converted
+  Dry run: no project file was changed. With --apply, upfly optimize would
+  convert 5 images and save 75.5 KB.
 
-  5 images, 2.3 KB, each with its reason (use --include-declined to list them)
+What Upfly could not check
 
-Worth knowing
+  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor
+  deletes an SVG, so there is no action to offer. Use --include-unused-svg to
+  see them.
 
-  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor deletes an SVG, so there is no action to offer. Use --include-unused-svg to see them.
-  2 images needed no measurement:
+  2 images needed no measurement
     vectors, where an encode would measure a rasterisation rather than a saving: 2
-  SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)
 
-Plan
+  SVG files are counted as images and also left unparsed: one can hold
+  references of its own, and no adapter reads that yet (2 SVGs here)
 
-  Convert to WebP: 5 images, 124.2 KB now and 48.8 KB after
-    public/photos/wide.jpg → public/photos/wide.webp  10.2 KB → 8.7 KB
-    public/photos/wide@2x.jpg → public/photos/wide@2x.webp  36.2 KB → 30.9 KB
-    public/screenshot.png → public/screenshot.webp  10.9 KB → 1.1 KB
-    src/assets/banner.png → src/assets/banner.webp  59.8 KB → 7.2 KB
-    src/assets/logo.png → src/assets/logo.webp  7.2 KB → 850 B
-  Update references: 7 references in 2 files
-    src/App.jsx  6 references
-    src/index.css  1 reference
-  Remove originals: 3 images, each once every reference to it has moved
-    public/photos/wide.jpg
-    public/photos/wide@2x.jpg
-    public/screenshot.png
-  Keep originals: 2 images, each for its reason
-    src/assets/banner.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
-    src/assets/logo.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
-
-Dry run: no project file was changed. Run the same command with --apply to write this plan.

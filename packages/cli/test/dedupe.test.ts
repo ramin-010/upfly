@@ -51,26 +51,20 @@ describe('upfly dedupe', () => {
     const run = upfly(['dedupe', root, '--full']);
 
     expect(run.status).toBe(0);
-    expect(run.stdout).toBe(
-      [
-        'Plan',
-        '',
-        '  Keep one copy of each set of identical images: 1 set',
-        '    img/logo-copy.png  7.2 KB, kept: more references use it than any other copy',
-        '      img/logo.png  its 1 reference moves to the kept copy',
-        '  Update references: 1 reference in 1 file',
-        '    index.html  1 reference',
-        '  Not deleted: 1 copy no reference names once this is written, 7.2 KB. Upfly never',
-        '  deletes it; `upfly audit` lists it as unused, with its size.',
-        '    img/logo.png',
-        '',
-        'Dry run: no project file was changed. Run the same command with --apply to write this plan.',
-        `Note: ${root} is not in a git repository: --apply writes here only with --allow-dirty, and \`upfly undo\` is then the way back.`,
-        '',
-      ].join('\n'),
+    expect(run.stdout).toBe(`\n${readFileSync(join(root, '.upfly/dedupe.txt'), 'utf8')}\n`);
+    for (const line of [
+      '  Sets         1 set of identical images, 2 files',
+      '      img/logo-copy.png  7.2 KB, kept: more references use it than any other copy',
+      '        img/logo.png  its 1 reference moves to the kept copy',
+      '      index.html  1 reference',
+      '      img/logo.png',
+    ]) {
+      expect(run.stdout).toContain(`${line}\n`);
+    }
+    expect(run.stdout).toContain(
+      'Dry run: no project file was changed. With --apply, 1 reference in 1 file',
     );
     expect(snapshot(root, ['.upfly'])).toEqual(before);
-    expect(readFileSync(join(root, '.upfly/report.txt'), 'utf8')).toBe(run.stdout);
   });
 
   it('writes and commits exactly the edited pages, keeps every file, and upfly undo puts them back', () => {
@@ -84,8 +78,7 @@ describe('upfly dedupe', () => {
     const undo = upfly(['undo', root]);
 
     expect(run.status, run.stderr).toBe(0);
-    expect(run.stdout).toContain('Written as run ');
-    expect(run.stdout).toContain('0 files created, 1 changed, 0 removed.');
+    expect(run.stdout).toContain(': 0 files created, 1 changed, 0 removed');
     expect(edited).toBe('<img src="img/logo-copy.png">\n<img src="img/logo-copy.png">\n');
     expect(existsSync(join(root, 'img/logo.png'))).toBe(true);
     expect(committed).toBe('index.html');
@@ -146,7 +139,8 @@ describe('upfly dedupe', () => {
     const run = upfly(['dedupe', root, '--full']);
 
     expect(run.status).toBe(0);
-    expect(run.stdout).toContain('  No two images hold the same bytes, so there is nothing to do.');
+    expect(run.stdout).toContain('  Sets         none: no two images hold the same bytes\n');
+    expect(run.stdout).toContain('no project file was changed, and there is nothing to do.');
   });
 
   it('refuses to write over uncommitted changes, as optimize does', () => {

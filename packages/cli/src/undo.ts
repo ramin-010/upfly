@@ -20,7 +20,7 @@ import type { UndoOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { commitForRun } from './git.js';
-import { headline } from './layout.js';
+import { headline, spaced } from './layout.js';
 import { type Io, emit, stopWith, stylesFor } from './output.js';
 import { count } from './plan-text.js';
 
@@ -138,7 +138,7 @@ function write(options: UndoOptions, io: Io, undone: Undone, commit: string | nu
     'Every file that run changed is as it was before it.',
     ...notes,
   ];
-  io.stdout.write(`${lines.join('\n')}\n`);
+  io.stdout.write(spaced(lines));
 }
 
 /** What a user holds after undoing a run that `--commit` had committed. */
@@ -159,7 +159,7 @@ function nothingToUndo(options: UndoOptions, io: Io, why: string): ExitCode {
     });
   } else {
     const styles = stylesFor(io.stdout, io.env, options);
-    io.stdout.write(`${headline(styles, 'undo')}\n\n${why}\n`);
+    io.stdout.write(spaced([headline(styles, 'undo'), '', why]));
   }
   return EXIT_CODES.OK;
 }

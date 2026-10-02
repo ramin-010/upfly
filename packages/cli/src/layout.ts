@@ -3,6 +3,9 @@
  * and values in columns and no line wider than 80 columns. A long path is shortened in the
  * middle rather than wrapped; a sentence is wrapped at its spaces. A value marked whole is
  * the one exception: it is printed on one line, however wide.
+ *
+ * The report file is the same summary with each row's complete list under it, and the
+ * engine's caveats last; `--show` prints one row with its list.
  */
 
 import type { Styles } from './output.js';
@@ -33,6 +36,22 @@ export interface Row {
   readonly counts?: readonly { readonly count: number; readonly text: string }[];
   /** Secondary lines under the value, dimmed. */
   readonly details?: readonly string[];
+  /** The name `--show` takes for this row, when it has a list. */
+  readonly key?: string;
+  /** Whether the row is left out of the report file, as the row naming that file is. */
+  readonly terminalOnly?: boolean;
+  /**
+   * Everything the row counts, in the report file and under `--show`: a sentence saying what
+   * it lists and what to do, then one line per item.
+   */
+  readonly list?: RowList;
+}
+
+/** A row's complete list: what it is, then its items, which are never cut short. */
+export interface RowList {
+  /** What the list holds and what the reader can do about it, as sentences. */
+  readonly intro: string;
+  readonly items: readonly string[];
 }
 
 /** What a command prints by default: a headline, sections of rows, and a closing sentence. */
@@ -45,6 +64,17 @@ export interface Summary {
   readonly sections: readonly (readonly Row[])[];
   /** A last line, under everything else. */
   readonly closing?: string;
+  /** The engine's caveats, for the end of the report file: a sentence, then its details. */
+  readonly caveats?: readonly RowList[];
+}
+
+/** The first lines of a report file under its headline: when, where and with what. */
+export interface FileHeader {
+  /** The local date and time the run started, as `2026-10-02 19:42`. */
+  readonly when: string;
+  readonly folder: string;
+  /** The options as they would be typed, without the folder. */
+  readonly options: readonly string[];
 }
 
 /**
@@ -70,14 +100,88 @@ export function renderSummary(summary: Summary, styles: Styles): string {
     for (const row of section) lines.push(...rowLines(row, styles));
     lines.push('');
   }
-  if (summary.closing !== undefined) {
-    for (const line of wrap(summary.closing, WIDTH - LABEL_INDENT)) {
-      lines.push(`${' '.repeat(LABEL_INDENT)}${line}`);
+  lines.push(...closingLines(summary));
+  return spaced(lines);
+}
+
+/** The text with a blank line before it and after it, as every command prints its own. */
+export function spaced(lines: readonly string[]): string {
+  return `\n${lines.join('\n').trimEnd()}\n\n`;
+}
+
+function closingLines(summary: Summary): string[] {
+  if (summary.closing === undefined) return [];
+  return [...wrap(summary.closing, WIDTH - LABEL_INDENT).map((line) => `  ${line}`), ''];
+}
+
+/**
+ * The report file: the headline, when, where and with what options, then the summary's rows
+ * in the same order with each row's complete list under it, and the engine's caveats last.
+ *
+ * @param summary the summary the terminal shows, with its lists
+ * @param header when the run started, its folder and its options
+ */
+export function renderFile(summary: Summary, header: FileHeader): string {
+  const lines = [
+    headline(PLAIN_STYLES, summary.command, summary.mode),
+    `Run ${header.when} in ${header.folder}`,
+    `Options: ${header.options.length === 0 ? 'none' : header.options.join(' ')}`,
+    '',
+  ];
+  for (const section of summary.sections) {
+    if (section.length === 0) continue;
+    for (const row of section) {
+      if (row.terminalOnly === true) continue;
+      lines.push(...rowLines(row, PLAIN_STYLES));
+      if (row.list !== undefined) lines.push('', ...listLines(row.list), '');
     }
-    lines.push('');
+    if (lines.at(-1) !== '') lines.push('');
+  }
+  lines.push(...closingLines(summary));
+  const caveats = summary.caveats ?? [];
+  if (caveats.length > 0) {
+    lines.push('What Upfly could not check', '');
+    for (const caveat of caveats) lines.push(...listLines(caveat, 2), '');
   }
   return `${lines.join('\n').trimEnd()}\n`;
 }
+
+/**
+ * One row and its complete list, as the report file holds them, or null when no row of the
+ * summary has that name.
+ *
+ * @param summary the summary the terminal shows, with its lists
+ * @param key the row's name, as `--show` takes it
+ */
+export function renderSection(summary: Summary, key: string): string | null {
+  const row = summary.sections.flat().find((each) => each.key === key);
+  if (row === undefined) return null;
+  return spaced([
+    ...rowLines(row, PLAIN_STYLES),
+    ...(row.list === undefined ? [] : ['', ...listLines(row.list)]),
+  ]);
+}
+
+/** The names `--show` takes in this summary, in its order. */
+export function sectionKeys(summary: Summary): string[] {
+  return summary.sections.flat().flatMap((row) => (row.key === undefined ? [] : [row.key]));
+}
+
+/** A list's sentence, wrapped, then its items, each whole on its own line. */
+function listLines(list: RowList, indent = 4): string[] {
+  const pad = ' '.repeat(indent);
+  return [
+    ...wrap(list.intro, WIDTH - indent).map((line) => `${pad}${line}`),
+    ...list.items.map((item) => `${pad}  ${item}`),
+  ];
+}
+
+const PLAIN_STYLES: Styles = {
+  accent: (text) => text,
+  bold: (text) => text,
+  dim: (text) => text,
+  red: (text) => text,
+};
 
 function rowLines(row: Row, styles: Styles): string[] {
   const label = `${' '.repeat(LABEL_INDENT)}${styles.accent(row.label)}${' '.repeat(VALUE_COLUMN - LABEL_INDENT - columns(row.label))}`;

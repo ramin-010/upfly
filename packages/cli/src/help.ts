@@ -31,8 +31,10 @@ Options for every command:
 dir is the project to read, the current directory by default. Its upfly.config.ts or
 upfly.config.json is read if there is one.
 
-audit, optimize and dedupe print a summary and keep their full text in .upfly/report.txt,
-which git is told to ignore; --full prints the full text instead.
+audit, optimize and dedupe print a summary, and keep it with every list in full in a file
+named after the command (.upfly/audit.txt, .upfly/optimize.txt, .upfly/dedupe.txt), which
+git is told to ignore. --full prints that file; --show <row> prints one row of it with its
+list.
 `;
 
 const AUDIT = `Usage: upfly audit [dir] [options]
@@ -41,11 +43,13 @@ Reports the images in the project, the references to them in the files it can re
 references that point at nothing, the images nothing references, and what upfly optimize
 would convert and save with the same folder, options and config: it measures the images
 optimize could convert as WebP, or AVIF when the config names it, and plans as optimize
-does. It reads the project and changes no file in it. It prints a summary, and keeps the
-full report in .upfly/report.txt, which git is told to ignore.
+does. It reads the project and changes no file in it. It prints a summary, and keeps it
+with every list in full in .upfly/audit.txt, which git is told to ignore.
 
 Options:
   --full                 Print the full report instead of the summary
+  --show <row>           Print one row of the summary with its complete list: references,
+                         savings, broken, unused, oversized, copies or skipped
   --public <dir>         A folder the site is served from, such as public; repeat it for
                          several, and use . for the project root itself. Without it, Upfly
                          works the folders out and says so
@@ -68,7 +72,8 @@ Converts each image that measures smaller as WebP (or AVIF), updates the referen
 that Upfly can rewrite safely, and removes the original once no file Upfly reads still
 names it. Without --apply it changes no project file and shows a summary of the plan: what
 would be converted, which files would change, which originals would go, and how many
-images are left alone and why. The full plan is kept in .upfly/report.txt.
+images are left alone and why. The full plan, with every list in full, is kept in
+.upfly/optimize.txt.
 
 Options:
   --apply                Write the plan. Refused while the project folder has uncommitted
@@ -83,6 +88,8 @@ Options:
   --dry-run              Show the plan and change nothing, as a run without --apply does
   --format <webp|avif>   The format to convert to (default webp)
   --full                 Print the full plan instead of the summary
+  --show <row>           Print one row of the summary with its complete list: convert,
+                         update or leave
   --only <pattern>       Convert only the matching images, in .gitignore syntax relative to
                          the project, such as images/logo.png or *.jpg; repeatable. The
                          whole project is still read, as on any run
@@ -91,7 +98,8 @@ Options:
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
   --allow-dirty          With --apply: write even with uncommitted changes, or outside a
                          git repository. upfly undo still puts the files back
-  --include-declined     Also list each image left unconverted, with the reason
+  --include-declined     In the JSON, also list each image left unconverted, with the
+                         reason; the full plan always does
   --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted
   --json                 Print one JSON object per line: progress, then the result
@@ -184,7 +192,7 @@ For each set of images with the same bytes, keeps one copy and points the refere
 others at it, where the kept copy can be reached the way each reference loads files: a URL
 from the same folder the site is served from, an import from outside every such folder. A
 reference that cannot follow stays as written, with the reason. Without --apply it changes
-no project file and shows a summary of the plan, with the full plan in .upfly/report.txt.
+no project file and shows a summary of the plan, with the full plan in .upfly/dedupe.txt.
 It never deletes a file: a copy nothing names any more is left where it is, and upfly
 audit lists it as unused, with its size.
 
@@ -195,6 +203,8 @@ Options:
   --keep <path>          Keep this copy of its set, a path inside the project; repeatable,
                          one per set
   --full                 Print the full plan instead of the summary
+  --show <row>           Print one row of the summary with its complete list: sets,
+                         update, leave or unused
   --apply                Write the plan. Refused while the project folder has uncommitted
                          changes or git does not track it, as optimize is
   --dry-run              Show the plan and change nothing, as a run without --apply does

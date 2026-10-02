@@ -1,12 +1,15 @@
 /**
  * The short summaries `audit`, `optimize` and `dedupe` print by default: what will happen or
- * happened, the totals, what is left alone grouped by reason, and what to run next. The full
- * text goes to the report file, and `--full` prints it instead.
+ * happened, the totals, what is left alone grouped by reason, and what to run next. Each row
+ * that counts something carries its complete list, which the report file prints under it and
+ * `--show` prints alone.
  */
 
 import type {
   DedupePlan,
+  DedupeSet,
   EncodeFormat,
+  KeptBecause,
   Manifest,
   OptimizationPlan,
   PublicPolicy,
@@ -15,9 +18,23 @@ import type {
 import { type AssetProbe, type Graph, formatBytes } from 'upfly-core/internal';
 import type { Savings } from './audit.js';
 import { type GitState, insideRepository } from './git.js';
-import { type Row, type Summary, VALUE_WIDTH, columns, commandLine } from './layout.js';
-import { count, writtenByKind } from './plan-text.js';
-import { countGroups, declineGroup, formatName, stayGroup, unmeasuredGroup } from './reasons.js';
+import {
+  type Row,
+  type RowList,
+  type Summary,
+  VALUE_WIDTH,
+  columns,
+  commandLine,
+} from './layout.js';
+import { count, movingText, writtenByKind } from './plan-text.js';
+import {
+  OTHER,
+  countGroups,
+  declineGroup,
+  formatName,
+  stayGroup,
+  unmeasuredGroup,
+} from './reasons.js';
 import type { ReportFile } from './report-file.js';
 
 /** What to do next: a command to copy, or words when no single command will do. */
@@ -52,17 +69,87 @@ export function auditSummary(
           label: 'Images',
           value: [count(summary.assets, 'image'), `, ${formatBytes(summary.assetBytes)}`],
         },
-        { label: 'References', value: references },
+        { label: 'References', value: references, key: 'references', ...unfollowed(report) },
         savingsRow(report, savings),
         brokenRow(report),
-        unusedRow(report),
+        unusedRow(report, file),
         ...oversizedRows(report),
         copiesRow(report),
         skippedRow(report),
       ],
       [reportRow('Full report', file), ...nextRows(next)],
     ],
+    closing: auditClosing(report, savings),
+    caveats: engineCaveats(report),
   };
+}
+
+/** The references no run rewrites because Upfly could not follow them to a file. */
+function unfollowed(report: Report): { list?: RowList } {
+  const entries = [...report.references.unsafe, ...report.references.leftOut];
+  if (entries.length === 0) return {};
+  const broken = report.summary.findings.broken;
+  return {
+    list: {
+      intro: `Upfly could not follow these references to a file, so no run rewrites them; each says why.${broken === 0 ? '' : ` The ${count(broken, 'reference')} naming an image that does not exist ${broken === 1 ? 'is' : 'are'} under Broken.`}`,
+      items: entries.map((entry) => `${entry.file}  ${entry.rawPath}  ${entry.reason}`),
+    },
+  };
+}
+
+/** The sentence that ends an audit: what `optimize` would do, with the savings figure. */
+function auditClosing(report: Report, savings: Savings | null): string {
+  if (!report.summary.probed) return 'No image was measured, so this run states no savings.';
+  if (savings === null) {
+    return 'upfly optimize plans nothing until it knows the folder the site is served from.';
+  }
+  const n = savings.conversions.length;
+  if (n === 0) return 'upfly optimize would convert no image.';
+  const least = savings.unmeasured === 0 ? '' : 'at least ';
+  return `upfly optimize would convert ${least}${count(n, 'image')} and save ${least}${formatBytes(savings.savedBytes)}.`;
+}
+
+/**
+ * The engine's caveats, last in a report file: how far its counts can be off, the strings that
+ * only looked like paths, the values it does not read as paths, and what it could not read.
+ */
+export function engineCaveats(report: Report): RowList[] {
+  const { references } = report;
+  const lists: RowList[] = [];
+  if (references.classificationBounds.length > 0) {
+    lists.push({
+      intro:
+        'How far the counts of references can be off: these reasons for not following a reference are known to cover some that a closer reading would follow.',
+      items: references.classificationBounds.map(
+        (entry) =>
+          `${entry.count} counted as "${entry.reason}": ${entry.bound} Measured ${entry.measuredAgainst}`,
+      ),
+    });
+  }
+  if (references.discardedCount > 0) {
+    lists.push({
+      intro: `${count(references.discardedCount, 'string')} looked like image paths and named no file, most often in lockfiles, translations or data. One may still be a path Upfly should read: --include-discarded lists them here.`,
+      items: (references.discarded ?? []).map((entry) => `${entry.file}  ${entry.rawPath}`),
+    });
+  }
+  const declined = references.declinedValues;
+  if (declined.count > 0) {
+    lists.push({
+      intro: `${count(declined.count, 'value')} with an image extension sat where Upfly reads no file path, such as a component's own prop. If one is an image path, Upfly does not see that image as used there; --include-discarded lists each.`,
+      items: [
+        ...declined.byReason.map((entry) => `${entry.count}  ${entry.reason}`),
+        ...(declined.values ?? []).map((value) => `${value.file}  ${value.rawPath}`),
+      ],
+    });
+  }
+  for (const caveat of report.caveats) lists.push({ intro: caveat.message, items: caveat.detail });
+  if (report.diagnosticsFile !== null) {
+    lists.push({
+      intro: `What the imaging and parsing libraries said, in their own words, is in ${report.diagnosticsFile}.`,
+      items: [],
+    });
+  }
+  return lists;
 }
 
 /**
@@ -104,7 +191,21 @@ function savingsRow(report: Report, savings: Savings | null): Row {
       ` as ${formatName(first?.format ?? 'webp')}${quality === '' ? '' : ` ${quality}`}, across ${count(conversions.length, 'image')}`,
     ],
     details,
+    key: 'savings',
+    list: {
+      intro: `upfly optimize would convert each of these images and move every reference it can rewrite to the new file.${unmeasured === 0 ? '' : ` ${count(unmeasured, 'more image')} it may convert ${unmeasured === 1 ? 'was' : 'were'} not measured; --probe-all measures them.`}`,
+      items: conversions.map((conversion) => conversionLine(conversion, savings.sizes)),
+    },
   };
+}
+
+/** One conversion: where it goes, and its size before and after. */
+function conversionLine(
+  conversion: OptimizationPlan['conversions'][number],
+  sizes: ReadonlyMap<string, number>,
+): string {
+  const size = sizes.get(conversion.asset) ?? 0;
+  return `${conversion.asset} → ${conversion.target}  ${formatBytes(size)} → ${formatBytes(size - conversion.savedBytes)}`;
 }
 
 /** The settings a saving was measured at: `at quality 80`, `lossless`, or both. */
@@ -119,60 +220,151 @@ function qualityPhrase(settings: readonly (number | 'lossless')[]): string {
 
 function brokenRow(report: Report): Row {
   const label = 'Broken';
-  if (report.findings.some((finding) => finding.kind === 'serving-root-unknown')) {
+  const unknown = report.findings.find((finding) => finding.kind === 'serving-root-unknown');
+  if (unknown?.kind === 'serving-root-unknown') {
     return {
       label,
       value: ['not judged: where the site is served from is unknown'],
       details: ['name the folder with --public <dir>; the full report says more'],
+      key: 'broken',
+      list: {
+        intro: `Only ${unknown.linked} of ${unknown.checkable} root-relative references resolved, so Upfly could not tell where the site is served from and judged none of these. Name the folder with --public <dir>, and run again.`,
+        items: unknown.suppressed.flatMap(brokenItem),
+      },
     };
   }
   const broken = report.summary.findings.broken;
-  if (broken === 0) return { label, value: ['none'] };
+  if (broken === 0) return { label, value: ['none'], key: 'broken' };
   return {
     label,
     value: [
       count(broken, 'reference'),
       ` ${broken === 1 ? 'names' : 'name'} an image that does not exist`,
     ],
+    details: ['upfly check lists each with its file and line'],
+    key: 'broken',
+    list: {
+      intro:
+        'Each of these names an image that does not exist, at the file and line given: fix the path, or put the image back. upfly check fails while any is left.',
+      items: report.findings.flatMap((finding) =>
+        finding.kind === 'broken' ? brokenItem(finding) : [],
+      ),
+    },
   };
 }
 
-function unusedRow(report: Report): Row {
+/** A broken reference where it is written, and its note under it. */
+function brokenItem(entry: {
+  readonly where: string;
+  readonly rawPath: string;
+  readonly note?: string;
+}): string[] {
+  return [
+    `${entry.where}  ${entry.rawPath}`,
+    ...(entry.note === undefined ? [] : [`  ${entry.note}`]),
+  ];
+}
+
+function unusedRow(report: Report, file: ReportFile): Row {
   const dead = report.findings.filter((finding) => finding.kind === 'dead');
   const bytes = dead.reduce((sum, finding) => sum + finding.bytes, 0);
-  const possibly = report.summary.findings['possibly-dead'];
-  const vectors = report.unusedVectors.count;
-  const kept = report.keptOriginals.count;
+  const possibly = report.findings.filter((finding) => finding.kind === 'possibly-dead');
+  const vectors = report.unusedVectors;
+  const kept = report.keptOriginals;
+  const listed = dead.length + possibly.length + kept.count + (vectors.assets?.length ?? 0) > 0;
   return {
     label: 'Unused',
     value: dead.length === 0 ? ['none'] : [count(dead.length, 'image'), `, ${formatBytes(bytes)}`],
     details: [
-      ...(possibly === 0
+      ...(possibly.length === 0
         ? []
         : [
-            `${possibly} possibly unused: ${possibly === 1 ? 'its name appears' : 'their names appear'} in the project`,
+            `${possibly.length} possibly unused: ${possibly.length === 1 ? 'its name appears' : 'their names appear'} in the project`,
           ]),
-      ...(vectors === 0 ? [] : [`and ${count(vectors, 'unreferenced SVG')}, counted, not listed`]),
-      ...(kept === 0
+      ...(vectors.count === 0
         ? []
-        : [`${count(kept, 'original')} kept beside converted files are not counted`]),
+        : [`and ${count(vectors.count, 'unreferenced SVG')}, counted, not listed`]),
+      ...(kept.count === 0
+        ? []
+        : [`${count(kept.count, 'original')} kept beside converted files are not counted`]),
+      ...(listed ? [`${listedIn(file)} lists them; Upfly never deletes one`] : []),
     ],
+    key: 'unused',
+    ...(listed
+      ? {
+          list: {
+            intro: `Nothing Upfly can see uses these images. Upfly never deletes an image: delete one yourself once you are sure nothing outside the project, such as an email or another site, links to it.${possibly.length === 0 ? '' : ' A possibly unused image has its name somewhere in the project, shown under it; look there first.'}`,
+            items: [
+              ...dead.map((finding) => `${finding.asset}  ${formatBytes(finding.bytes)}`),
+              ...possibly.flatMap((finding) =>
+                finding.kind === 'possibly-dead'
+                  ? [
+                      `${finding.asset}  ${formatBytes(finding.bytes)}  possibly unused`,
+                      ...finding.evidence.map(
+                        (mention) => `  named in ${mention.where}: ${mention.quote}`,
+                      ),
+                    ]
+                  : [],
+              ),
+              ...(vectors.assets ?? []).map(
+                (vector) => `${vector.asset}  ${formatBytes(vector.bytes)}  an unreferenced SVG`,
+              ),
+              ...kept.assets.map(
+                (original) =>
+                  `${original.asset}  ${formatBytes(original.bytes)}  an original kept beside ${original.convertedTo}, not counted`,
+              ),
+            ],
+          },
+        }
+      : {}),
   };
+}
+
+/** Where the report file is, or where it would have been. */
+function listedIn(file: ReportFile): string {
+  return 'written' in file ? file.written : '--show unused';
 }
 
 function oversizedRows(report: Report): Row[] {
   const oversized = report.summary.findings.oversized;
   if (oversized === 0) return [];
-  return [{ label: 'Oversized', value: [count(oversized, 'image'), ' over the limits'] }];
+  return [
+    {
+      label: 'Oversized',
+      value: [count(oversized, 'image'), ' over the limits'],
+      key: 'oversized',
+      list: {
+        intro:
+          'Each of these images is larger than a size or dimension limit: resize it, or check that the page shows it this large.',
+        items: report.findings.flatMap((finding) =>
+          finding.kind === 'oversized'
+            ? [
+                `${finding.asset}  ${formatBytes(finding.bytes)}${finding.width === null || finding.height === null ? '' : `, ${finding.width}×${finding.height}`}  over the ${finding.exceeded.join(' and ')} limit`,
+              ]
+            : [],
+        ),
+      },
+    },
+  ];
 }
 
 function copiesRow(report: Report): Row {
   const sets = report.findings.filter((finding) => finding.kind === 'duplicate');
-  if (sets.length === 0) return { label: 'Copies', value: ['none'] };
+  if (sets.length === 0) return { label: 'Copies', value: ['none'], key: 'copies' };
   const wasted = sets.reduce((sum, finding) => sum + finding.wastedBytes, 0);
   return {
     label: 'Copies',
     value: [count(sets.length, 'set'), ` of identical images, ${formatBytes(wasted)} recoverable`],
+    details: ["upfly dedupe points each set's references at one copy"],
+    key: 'copies',
+    list: {
+      intro:
+        'The files in each set hold the same bytes. upfly dedupe keeps one copy of each set and points the references to the others at it; it deletes nothing.',
+      items: sets.flatMap((finding) => [
+        `${formatBytes(finding.bytes)} each, ${formatBytes(finding.wastedBytes)} recoverable by keeping one:`,
+        ...finding.assets.map((asset) => `  ${asset}`),
+      ]),
+    },
   };
 }
 
@@ -204,12 +396,20 @@ function skippedRow(report: Report): Row {
       text: `${unmeasured === 1 ? 'image' : 'images'} could not be measured`,
     });
   }
-  if (counts.length === 0) return { label: 'Skipped', value: ['nothing'] };
+  if (counts.length === 0) return { label: 'Skipped', value: ['nothing'], key: 'skipped' };
   const total = counts.reduce((sum, entry) => sum + entry.count, 0);
   return {
     label: 'Skipped',
     value: [String(total), ', each with its reason in the full report'],
     counts,
+    key: 'skipped',
+    list: {
+      intro:
+        'Upfly could not read, parse or measure each of these, so what they hold is not in the counts above; each says why.',
+      items: report.skipped
+        .filter((item) => item.stage !== 'measurement' || !item.reason.includes('--probe-all'))
+        .map((item) => `${item.what}  ${item.reason}`),
+    },
   };
 }
 
@@ -229,6 +429,8 @@ export interface OptimizeFacts {
   readonly notes: readonly string[];
   readonly file: ReportFile;
   readonly next: NextStep | null;
+  /** The report of the same run, for the engine's caveats at the end of the file. */
+  readonly report: Report;
 }
 
 /** The summary of an `optimize` run, dry or applied. */
@@ -251,11 +453,16 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
           ],
     details:
       plan.conversions.length === 0 ? [] : originalsDetails(plan, facts.policy, apply, sizes),
+    key: 'convert',
+    ...(plan.conversions.length === 0
+      ? {}
+      : { list: convertList(plan, sizes, facts.policy, format, apply) }),
   };
 
   const assets = new Set(sizes.keys());
   const references = plan.rewrites.reduce((sum, rewrite) => sum + rewrite.edits.length, 0);
-  const stay = plan.declined.filter((entry) => !assets.has(entry.path)).length;
+  const stays = plan.declined.filter((entry) => !assets.has(entry.path));
+  const stay = stays.length;
   const update: Row = {
     label: apply ? 'Updated' : 'Update',
     value:
@@ -268,6 +475,23 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
         : [
             `${count(stay, 'other reference')} ${stay === 1 ? 'stays' : 'stay'} as written, each for a reason in the full plan`,
           ],
+    key: 'update',
+    ...(references + stay === 0
+      ? {}
+      : {
+          list: {
+            intro: `In each file, every reference Upfly can rewrite moves to the converted file.${stay === 0 ? '' : ' The references after the files stay as written, each for the reason given.'}`,
+            items: [
+              ...plan.rewrites.map(
+                (rewrite) => `${rewrite.file}  ${count(rewrite.edits.length, 'reference')}`,
+              ),
+              ...stays.map(
+                (entry) =>
+                  `${entry.line === null ? entry.path : `${entry.path}:${entry.line}`}  stays: ${entry.reason}`,
+              ),
+            ],
+          },
+        }),
   };
 
   return {
@@ -283,7 +507,53 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
         ...nextRows(facts.next),
       ],
     ],
-    ...(apply ? {} : { closing: 'Dry run: no project file was changed.' }),
+    closing: optimizeClosing(
+      facts,
+      plan.conversions.reduce((sum, c) => sum + c.savedBytes, 0),
+    ),
+    caveats: engineCaveats(facts.report),
+  };
+}
+
+/** The sentence that ends an `optimize` run: what it would do, or did, with the saving. */
+function optimizeClosing(facts: OptimizeFacts, saved: number): string {
+  const converts = count(facts.plan.conversions.length, 'image');
+  if (!facts.apply) {
+    return facts.plan.conversions.length === 0
+      ? 'Dry run: no project file was changed, and there is nothing to convert.'
+      : `Dry run: no project file was changed. With --apply, upfly optimize would convert ${converts} and save ${formatBytes(saved)}.`;
+  }
+  if (facts.manifest === null) return 'Nothing was written: the plan has nothing to do.';
+  return `Upfly converted ${converts} and saved ${formatBytes(saved)}.`;
+}
+
+/** Each conversion, then the originals removed and the originals kept, each with its reason. */
+function convertList(
+  plan: OptimizationPlan,
+  sizes: ReadonlyMap<string, number>,
+  policy: PublicPolicy,
+  format: EncodeFormat,
+  apply: boolean,
+): RowList {
+  const removed = plan.conversions.filter((conversion) => conversion.replacesOriginal);
+  const kept = plan.keptOriginals;
+  return {
+    intro: `Each image converts to ${formatName(format)}, and every reference Upfly can rewrite moves to the new file.${policy === 'keep-original' ? ' Each original stays beside its new file.' : ''}`,
+    items: [
+      ...plan.conversions.map((conversion) => conversionLine(conversion, sizes)),
+      ...(removed.length === 0
+        ? []
+        : [
+            `Originals ${apply ? 'removed' : 'to remove once their references move'}: ${removed.length}`,
+            ...removed.map((conversion) => `  ${conversion.asset}`),
+          ]),
+      ...(kept.length === 0
+        ? []
+        : [
+            `Originals kept, each with its reason: ${kept.length}`,
+            ...kept.map((original) => `  ${original.asset}  ${original.reason}`),
+          ]),
+    ],
   };
 }
 
@@ -326,15 +596,28 @@ function leaveRow(facts: OptimizeFacts, sizes: ReadonlyMap<string, number>): Row
   const probes = new Map((facts.probes ?? []).map((probe) => [probe.relative, probe]));
   const only = facts.only === null ? null : new Set(facts.only);
 
+  const whyLeft = (path: string): { group: string; why: string } => {
+    const reason = declined.get(path);
+    if (reason !== undefined) return { group: declineGroup(reason), why: reason };
+    if (only !== null && !only.has(path)) {
+      return { group: 'left out by --only', why: 'left out by --only' };
+    }
+    const skip = probes.get(path)?.skipped[0];
+    return {
+      group: unmeasuredGroup(skip?.code ?? null, facts.format),
+      why: skip?.reason ?? OTHER,
+    };
+  };
+
   const groups: string[] = [];
+  const items: string[] = [];
   let bytes = 0;
   for (const [path, size] of sizes) {
     if (converting.has(path)) continue;
     bytes += size;
-    const reason = declined.get(path);
-    if (reason !== undefined) groups.push(declineGroup(reason));
-    else if (only !== null && !only.has(path)) groups.push('left out by --only');
-    else groups.push(unmeasuredGroup(probes.get(path)?.skipped[0]?.code ?? null, facts.format));
+    const { group, why } = whyLeft(path);
+    groups.push(group);
+    items.push(`${path}  ${formatBytes(size)}  ${why}`);
   }
   return {
     label: facts.apply ? 'Left alone' : 'Leave',
@@ -343,6 +626,15 @@ function leaveRow(facts: OptimizeFacts, sizes: ReadonlyMap<string, number>): Row
         ? ['no image']
         : [count(groups.length, 'image'), `, ${formatBytes(bytes)}`],
     counts: countGroups(groups),
+    key: 'leave',
+    ...(items.length === 0
+      ? {}
+      : {
+          list: {
+            intro: 'Each of these images stays as it is, for the reason given.',
+            items: items.sort(),
+          },
+        }),
   };
 }
 
@@ -438,6 +730,16 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
         plan.sets.length === 0
           ? ['none: no two images hold the same bytes']
           : [count(plan.sets.length, 'set'), ` of identical images, ${count(files, 'file')}`],
+      key: 'sets',
+      ...(plan.sets.length === 0
+        ? {}
+        : {
+            list: {
+              intro:
+                'Each set starts with the copy kept and why, then each other copy and what happens to its references.',
+              items: plan.sets.flatMap(setLines),
+            },
+          }),
     },
   ];
   if (plan.sets.length > 0) {
@@ -447,6 +749,17 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
         references === 0
           ? ['no reference']
           : [count(references, 'reference'), ` in ${count(plan.rewrites.length, 'file')}`],
+      key: 'update',
+      ...(references === 0
+        ? {}
+        : {
+            list: {
+              intro: 'In each file, the references to a copy move to the copy kept.',
+              items: plan.rewrites.map(
+                (rewrite) => `${rewrite.file}  ${count(rewrite.edits.length, 'reference')}`,
+              ),
+            },
+          }),
     });
   }
   if (stays.length > 0) {
@@ -454,6 +767,11 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
       label: apply ? 'Left alone' : 'Leave',
       value: [count(stays.length, 'reference'), ' as written'],
       counts: countGroups(stays.map((stay) => stayGroup(stay.why))),
+      key: 'leave',
+      list: {
+        intro: 'Each of these references stays as written, for the reason given.',
+        items: stays.map((stay) => `${stay.where}  ${stay.text}  ${stay.why}`),
+      },
     });
   }
   if (unused.length > 0) {
@@ -467,6 +785,14 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
       details: [
         `Upfly never deletes ${one ? 'it' : 'them'}; upfly audit lists ${one ? 'it' : 'them'} as unused`,
       ],
+      key: 'unused',
+      list: {
+        intro:
+          'No reference names these copies once the plan is written. Upfly never deletes a file; upfly audit then lists each as unused, with its size.',
+        items: plan.sets.flatMap((set) =>
+          set.copies.filter((copy) => copy.unusedAfter).map((copy) => copy.path),
+        ),
+      },
     });
   }
 
@@ -483,16 +809,54 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
         ...nextRows(facts.next),
       ],
     ],
-    ...(apply ? {} : { closing: 'Dry run: no project file was changed.' }),
+    closing: dedupeClosing(facts, references),
   };
 }
 
+/** The sentence that ends a `dedupe` run. */
+function dedupeClosing(facts: DedupeFacts, references: number): string {
+  const moving = `${count(references, 'reference')} in ${count(facts.plan.rewrites.length, 'file')}`;
+  if (!facts.apply) {
+    return references === 0
+      ? 'Dry run: no project file was changed, and there is nothing to do.'
+      : `Dry run: no project file was changed. With --apply, ${moving} would point at the copy kept.`;
+  }
+  if (facts.manifest === null) return 'Nothing was written: the plan has nothing to do.';
+  return `Upfly pointed ${moving} at the copy kept. No file was deleted.`;
+}
+
+const KEPT: Readonly<Record<KeptBecause, string>> = {
+  chosen: 'named by --keep',
+  'most-used': 'more references use it than any other copy',
+  served:
+    'as many references use it as another copy, and a folder the site is served from holds it',
+  shorter: 'tied on references, and its path is the shortest',
+  first: 'tied on references and length, and it comes first in path order',
+};
+
+/** One set: the copy kept and why, then each other copy and what happens to its references. */
+function setLines(set: DedupeSet): string[] {
+  const lines = [`${set.keep}  ${formatBytes(set.bytes)}, kept: ${KEPT[set.kept]}`];
+  for (const copy of set.copies) {
+    lines.push(
+      copy.references === 0
+        ? `  ${copy.path}  no reference names it`
+        : `  ${copy.path}  ${movingText(copy.moved, copy.references, 'to the kept copy')}`,
+    );
+    for (const stay of copy.stays) {
+      lines.push(`    ${stay.where}  ${stay.text} stays as written: ${stay.why}`);
+    }
+  }
+  return lines;
+}
+
 function reportRow(label: string, file: ReportFile): Row {
-  if ('written' in file) return { label, value: [file.written] };
+  if ('written' in file) return { label, value: [file.written], terminalOnly: true };
   return {
     label,
     value: [`not written (${file.failed})`],
     details: ['add --full to print it here instead'],
+    terminalOnly: true,
   };
 }
 

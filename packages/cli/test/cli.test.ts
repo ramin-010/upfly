@@ -111,15 +111,15 @@ describe('upfly audit', () => {
 
     const result = upfly(['audit', root, '--no-probe']);
     const after = snapshot(root);
-    const report = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
+    const report = readFileSync(join(root, '.upfly/audit.txt'), 'utf8');
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Upfly audit');
-    expect(result.stdout).toContain('  Full report  .upfly/report.txt\n');
+    expect(result.stdout).toContain('  Full report  .upfly/audit.txt\n');
     expect(report).toContain('img/unused.png');
     expect(Object.keys(after).filter((path) => path.startsWith('.upfly/'))).toEqual([
       '.upfly/.gitignore',
-      '.upfly/report.txt',
+      '.upfly/audit.txt',
     ]);
     expect(
       Object.fromEntries(Object.entries(after).filter(([path]) => !path.startsWith('.upfly/'))),
@@ -135,7 +135,7 @@ describe('upfly audit', () => {
 
     expect(human.status).toBe(0);
     expect(human.stdout).toContain(
-      '    about.html:2  img/used.pn\n      ends in .pn, one keystroke from .png: a likely typo, so no image shows here\n',
+      '      about.html:2  img/used.pn\n        ends in .pn, one keystroke from .png: a likely typo, so no image shows here\n',
     );
     expect(report.findings).toContainEqual({
       kind: 'broken',

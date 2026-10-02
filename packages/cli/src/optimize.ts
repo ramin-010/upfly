@@ -12,13 +12,11 @@ import {
   type OptimizationPlan,
   type OptimizeProjectResult,
   type PublicPolicy,
-  type Report,
   UpflyError,
   buildReport,
   createNodeFileStore,
   optimizeProject,
   readManifest,
-  renderReport,
 } from 'upfly-core';
 import {
   LOCK_PATH,
@@ -42,10 +40,17 @@ import {
   ignoredPaths,
   insideRepository,
 } from './git.js';
-import { renderSummary } from './layout.js';
-import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
-import { count, renderPlan, writtenByKind } from './plan-text.js';
-import { warnIfNotKept, writeReport } from './report-file.js';
+import { renderFile } from './layout.js';
+import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { count, writtenByKind } from './plan-text.js';
+import {
+  type ReportFile,
+  localTime,
+  printRun,
+  reportPath,
+  typedOptions,
+  writeReport,
+} from './report-file.js';
 import { type NextStep, nextAfterPlan, nextAfterRun, optimizeSummary } from './summary.js';
 
 /** A reason to stop, with the exit code and, for a refusal, the name `--json` gives it. */
@@ -64,6 +69,7 @@ export interface Refusal {
  * error; 3 when it refused to write
  */
 export async function runOptimize(options: OptimizeOptions, io: Io): Promise<ExitCode> {
+  const started = new Date();
   const stop = (refusal: Refusal): ExitCode =>
     stopWith(io, options, refusal.code, refusal.message, refusal.reason);
   const project = await openProject(options);
@@ -96,6 +102,7 @@ export async function runOptimize(options: OptimizeOptions, io: Io): Promise<Exi
     unfinished: unfinished !== null,
     format: options.format ?? settings.format ?? 'webp',
     notes: [...notes(options, git, unfinished), ...onlyNotes(result)],
+    started,
   });
   return EXIT_CODES.OK;
 }
@@ -402,6 +409,8 @@ interface Outcome {
   readonly unfinished: boolean;
   readonly format: 'webp' | 'avif';
   readonly notes: readonly string[];
+  /** When the run started, for the report file's first lines. */
+  readonly started: Date;
 }
 
 /** Things worth knowing before running with `--apply`, said on a dry run. */
@@ -432,21 +441,19 @@ export function notes(
 
 function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, outcome: Outcome) {
   const { pipeline, optimize: run } = result;
-  const reportListing = (includeDeclined: boolean) =>
-    buildReport({
-      aliases: pipeline.aliases,
-      graph: pipeline.graph,
-      audit: pipeline.audit,
-      discovery: pipeline.discovery,
-      sweep: pipeline.sweep,
-      servingRoots: pipeline.servingRoots,
-      ...(pipeline.probes === undefined ? {} : { probes: pipeline.probes }),
-      declined: run.plan.declined,
-      includeDeclined,
-      includeDiscarded: options.includeDiscarded,
-      includeUnusedVectors: options.includeUnusedSvg,
-    });
-  const report = reportListing(options.includeDeclined);
+  const report = buildReport({
+    aliases: pipeline.aliases,
+    graph: pipeline.graph,
+    audit: pipeline.audit,
+    discovery: pipeline.discovery,
+    sweep: pipeline.sweep,
+    servingRoots: pipeline.servingRoots,
+    ...(pipeline.probes === undefined ? {} : { probes: pipeline.probes }),
+    declined: run.plan.declined,
+    includeDeclined: options.includeDeclined,
+    includeDiscarded: options.includeDiscarded,
+    includeUnusedVectors: options.includeUnusedSvg,
+  });
   const repository =
     outcome.git.kind === 'repository' ? { top: outcome.git.top, path: outcome.git.prefix } : null;
 
@@ -474,31 +481,6 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
     return;
   }
 
-  const fullText = (shown: Report, everyOriginalKept: boolean) => {
-    const lines = [
-      renderReport(shown).trimEnd(),
-      '',
-      ...renderPlan(run.plan, pipeline.graph, outcome.policy, { everyOriginalKept }),
-    ];
-    lines.push(...outcomeLines(options, run.manifest, outcome));
-    for (const note of outcome.notes) lines.push(`Note: ${note}`);
-    return `${lines.join('\n')}\n`;
-  };
-  // The summary points to the file for the reason behind each image and reference it leaves
-  // alone and each original it keeps, so the file lists them all; --full prints the text as
-  // the options ask.
-  const listing = options.includeDeclined ? report : reportListing(true);
-  const file = writeReport(
-    pipeline.graph.root,
-    fullText(listing, true),
-    run.manifest?.runDir ?? null,
-  );
-  if (options.full) {
-    io.stdout.write(fullText(report, false));
-    warnIfNotKept(io, file);
-    return;
-  }
-
   const nothingToDo = run.plan.conversions.length === 0 && run.plan.rewrites.length === 0;
   let next: NextStep | null = null;
   if (options.apply) next = run.manifest === null ? null : nextAfterRun(outcome.commit);
@@ -511,22 +493,30 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
       outcome.unfinished,
     );
   }
-  const summary = optimizeSummary({
-    plan: run.plan,
-    graph: pipeline.graph,
-    probes: pipeline.probes,
-    only: result.only?.images ?? null,
-    format: outcome.format,
-    policy: outcome.policy,
-    apply: options.apply,
-    manifest: run.manifest,
-    commit: outcome.commit,
-    git: outcome.git,
-    notes: outcome.notes,
-    file,
-    next,
+  const summary = (file: ReportFile) =>
+    optimizeSummary({
+      plan: run.plan,
+      graph: pipeline.graph,
+      probes: pipeline.probes,
+      only: result.only?.images ?? null,
+      format: outcome.format,
+      policy: outcome.policy,
+      apply: options.apply,
+      manifest: run.manifest,
+      commit: outcome.commit,
+      git: outcome.git,
+      notes: outcome.notes,
+      file,
+      next,
+      report,
+    });
+  const text = renderFile(summary({ written: reportPath('optimize') }), {
+    when: localTime(outcome.started),
+    folder: pipeline.graph.root,
+    options: typedOptions(options),
   });
-  io.stdout.write(renderSummary(summary, stylesFor(io.stdout, io.env, options)));
+  const file = writeReport(pipeline.graph.root, 'optimize', text, run.manifest?.runDir ?? null);
+  printRun(io, options, summary(file), text, file);
 }
 
 /** The flags that shaped the plan, so that `--apply` writes the same plan. */
@@ -538,36 +528,6 @@ function planFlags(options: OptimizeOptions): string[] {
     ...scopeWords({ ...options, dir: '.' }),
     ...(options.only ?? []).flatMap((pattern) => ['--only', pattern]),
   ];
-}
-
-/** What an applied run wrote and committed, or that a dry run wrote nothing. */
-export function outcomeLines(
-  options: Pick<OptimizeOptions, 'apply'>,
-  manifest: Manifest | null,
-  outcome: Pick<Outcome, 'git' | 'commit'>,
-): string[] {
-  if (!options.apply) {
-    return [
-      'Dry run: no project file was changed. Run the same command with --apply to write this plan.',
-    ];
-  }
-  if (manifest === null) return ['Nothing was written: the plan has nothing to do.'];
-  const { created, changed, removed } = writtenByKind(manifest);
-  const lines = [
-    `Written as run ${manifest.runId}: ${count(created.length, 'file')} created, ${changed.length} changed, ${removed.length} removed. \`upfly undo\` puts them all back.`,
-  ];
-  if (outcome.commit !== null && outcome.git.kind === 'repository') {
-    const short = outcome.commit.slice(0, 12);
-    lines.push(
-      `Committed as ${short}, one commit holding exactly those files. \`git revert ${short}\` undoes it.`,
-    );
-    if (outcome.git.prefix !== '') {
-      lines.push(
-        `The commit is in the git repository at ${outcome.git.top}, and holds only files under ${outcome.git.prefix}.`,
-      );
-    }
-  }
-  return lines;
 }
 
 /** `, in the git repository at <top>` when the repository is larger than the project. */

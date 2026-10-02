@@ -47,7 +47,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout.split('\n')[2]).toBe('Passed: no reference names a missing image.');
+    expect(run.stdout.split('\n')[3]).toBe('Passed: no reference names a missing image.');
     expect(run.stderr).toBe('');
     expect(snapshot(root)).toEqual(before);
   });
@@ -60,7 +60,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(1);
-    expect(run.stdout).toBe(
+    expect(run.stdout.slice(1, -1)).toBe(
       [
         'Upfly check',
         '',
@@ -117,7 +117,7 @@ describe('upfly check', () => {
     const json = result(upfly(['check', root, '--json']).stdout);
 
     expect(human.status).toBe(1);
-    expect(human.stdout).toBe(
+    expect(human.stdout.slice(1, -1)).toBe(
       [
         'Upfly check',
         '',
@@ -145,7 +145,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout.split('\n')[2]).toBe(
+    expect(run.stdout.split('\n')[3]).toBe(
       'Passed: no reference names a missing image, and no image in use is larger than check.maxImageBytes, 150 bytes.',
     );
   });
@@ -173,7 +173,7 @@ describe('upfly check', () => {
     const run = upfly(['check', root]);
 
     expect(run.status).toBe(0);
-    expect(run.stdout).toBe(
+    expect(run.stdout.slice(1, -1)).toBe(
       [
         'Upfly check',
         '',

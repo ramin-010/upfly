@@ -99,7 +99,9 @@ describe('upfly optimize without --apply', () => {
     expect(run.stdout).toContain('Upfly optimize · dry run');
     expect(run.stdout).toContain('  Convert      5 images to WebP,');
     expect(run.stdout).toContain('  Dry run: no project file was changed.');
-    expect(readFileSync(join(root, '.upfly/report.txt'), 'utf8')).toContain('Convert to WebP:');
+    expect(readFileSync(join(root, '.upfly/optimize.txt'), 'utf8')).toContain(
+      'Each image converts to WebP',
+    );
     expect(snapshot(root, NOT_THE_PROJECT)).toEqual(before);
     expect(git(root, 'status', '--porcelain', '--untracked-files=all')).toBe('');
   });
@@ -215,12 +217,12 @@ describe('upfly optimize in a project inside a larger repository', () => {
 
     const dry = upfly(['optimize', site, '--full']);
     expect(dry.status, dry.stderr).toBe(0);
-    expect(dry.stdout).toContain(`This folder is site/ in the git repository at ${outer}.`);
+    expect(dry.stdout).toContain(`  Repository   site/ in the git repository at ${outer}\n`);
 
     const applied = upfly(['optimize', site, '--apply', '--commit', '--full']);
     expect(applied.status, applied.stderr).toBe(0);
     expect(applied.stdout).toContain(
-      `The commit is in the git repository at ${outer}, and holds only files under site/.`,
+      `  Repository   site/ in the git repository at ${outer}\n                 the commit holds only the files under it\n`,
     );
     const files = committedFiles(outer);
     expect(files.length).toBeGreaterThan(0);
@@ -472,16 +474,11 @@ describe('upfly optimize --only', () => {
     const run = upfly(['optimize', root, '--only', 'images/logo.png', '--full']);
 
     expect(run.status).toBe(0);
+    expect(run.stdout).toContain('  Convert      1 image to WebP, 7.2 KB → 850 B\n');
+    expect(run.stdout).toContain('      images/logo.png → images/logo.webp  7.2 KB → 850 B\n');
+    expect(run.stdout).toContain('      index.html  1 reference\n');
     expect(run.stdout).toContain(
-      [
-        '  Convert to WebP: 1 image, 7.2 KB now and 850 B after',
-        '    images/logo.png → images/logo.webp  7.2 KB → 850 B',
-        '  Update references: 1 reference in 1 file',
-        '    index.html  1 reference',
-      ].join('\n'),
-    );
-    expect(run.stdout).toContain(
-      'Note: --only named 1 of 11 images; the other 10 were not measured, and none of them converts.',
+      '  Note         --only named 1 of 11 images; the other 10 were not',
     );
   });
 
