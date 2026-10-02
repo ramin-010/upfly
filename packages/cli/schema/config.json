@@ -20,10 +20,10 @@
       "examples": [["public"], ["."]]
     },
     "publicPolicy": {
-      "description": "What optimize does with an original image once it is converted. \"keep-original\" leaves it beside the new file. \"replace\" removes it once every reference to it has moved to the new file; --replace does the same for one run.",
+      "description": "What optimize does with an original image once it is converted. \"replace\", the default, removes it once every reference to it has moved to the new file, and only from a folder the site is served from. \"keep-original\" leaves it beside the new file; --keep-originals does the same for one run.",
       "type": "string",
       "enum": ["keep-original", "replace"],
-      "default": "keep-original"
+      "default": "replace"
     },
     "format": {
       "description": "The format images are converted to. \"avif\" makes smaller files, which some older browsers cannot show. --format overrides it for one run.",

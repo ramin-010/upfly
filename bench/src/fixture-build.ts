@@ -786,7 +786,7 @@ function differences(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, stri
 
 /** The command-line flags that match a fixture's declared folders and a policy. */
 function cliFlags(fixture: FixtureSpec, policy: PublicPolicy): string[] {
-  const flags = policy === 'replace' ? ['--replace'] : [];
+  const flags = policy === 'replace' ? ['--replace'] : ['--keep-originals'];
   for (const dir of fixture.publicDirs ?? []) flags.push('--public', dir === '' ? '.' : dir);
   return flags;
 }

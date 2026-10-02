@@ -10,8 +10,9 @@ names the files it could not read.
 Commands:
   audit [dir]      Report images, references, and what could be smaller. Changes no
                    project file.
-  optimize [dir]   Convert images and update the references it can rewrite. Shows the plan
-                   and changes nothing unless run with --apply.
+  optimize [dir]   Convert images, update the references it can rewrite, and remove each
+                   original they replace. Shows the plan and changes nothing unless run
+                   with --apply.
   undo [dir]       Put back every file the last optimize or dedupe --apply changed.
   check [dir]      Fail, for continuous integration, when a reference names an image that
                    does not exist. Changes nothing.
@@ -61,9 +62,10 @@ configuration file belongs to another tool, 4 for a failure Upfly did not antici
 
 const OPTIMIZE = `Usage: upfly optimize [dir] [options]
 
-Converts each image that measures smaller as WebP (or AVIF) and updates the references
-to it that Upfly can rewrite safely. Without --apply it changes no project file and shows
-a summary of the plan: what would be converted, which files would change, and how many
+Converts each image that measures smaller as WebP (or AVIF), updates the references to it
+that Upfly can rewrite safely, and removes the original once no file Upfly reads still
+names it. Without --apply it changes no project file and shows a summary of the plan: what
+would be converted, which files would change, which originals would go, and how many
 images are left alone and why. The full plan is kept in .upfly/report.txt.
 
 Options:
@@ -72,8 +74,11 @@ Options:
                          the only ones to review
   --commit               With --apply: commit exactly the files the run wrote, as one
                          commit that git revert undoes
-  --replace              Remove each original once no file Upfly reads still names it.
-                         Without it, originals are kept beside the converted file
+  --keep-originals       Keep each original beside its converted file. By default an
+                         original is removed once no file Upfly reads still names it, and
+                         only from a folder the site is served from, so a link to it from
+                         outside the project stops working; --replace asks for that default
+  --dry-run              Show the plan and change nothing, as a run without --apply does
   --format <webp|avif>   The format to convert to (default webp)
   --full                 Print the full plan instead of the summary
   --only <pattern>       Convert only the matching images, in .gitignore syntax relative to
@@ -190,6 +195,7 @@ Options:
   --full                 Print the full plan instead of the summary
   --apply                Write the plan. Refused while the project folder has uncommitted
                          changes or git does not track it, as optimize is
+  --dry-run              Show the plan and change nothing, as a run without --apply does
   --commit               With --apply: commit exactly the files the run wrote, as one
                          commit that git revert undoes
   --allow-dirty          With --apply: write even with uncommitted changes, or outside a

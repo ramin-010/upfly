@@ -57,7 +57,12 @@ Plan
   Update references: 7 references in 2 files
     src/App.jsx  6 references
     src/index.css  1 reference
-  Originals: each stays beside its converted file. With --replace, an original is
-  removed once every reference to it has moved.
+  Remove originals: 3 images, each once every reference to it has moved
+    public/photos/wide.jpg
+    public/photos/wide@2x.jpg
+    public/screenshot.png
+  Keep originals: 2 images, each for its reason
+    src/assets/banner.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
+    src/assets/logo.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
 
 Dry run: no project file was changed. Run the same command with --apply to write this plan.

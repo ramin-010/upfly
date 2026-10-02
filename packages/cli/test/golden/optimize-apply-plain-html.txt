@@ -67,7 +67,11 @@ Plan
   Update references: 6 references in 2 files
     css/site.css  1 reference
     index.html  5 references
-  Originals: each stays beside its converted file. With --replace, an original is
-  removed once every reference to it has moved.
+  Keep originals: 5 images, each for its reason
+    images/hero.jpg  converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.
+    images/hero@2x.jpg  converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.
+    images/inline.png  converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.
+    images/logo.png  converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.
+    images/texture.png  converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.
 
 Written as run <run>: 5 files created, 2 changed, 0 removed. `upfly undo` puts them all back.

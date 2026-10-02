@@ -82,7 +82,7 @@
           }
         },
         "keptOriginals": {
-          "description": "With --replace, the converted images whose original stays anyway, and why.",
+          "description": "Unless originals are kept (--keep-originals, or keep-original in the config), the converted images whose original stays anyway, and why.",
           "type": "array",
           "items": {
             "type": "object",
@@ -128,7 +128,7 @@
         },
         "savedBytes": { "type": "integer", "minimum": 0 },
         "replacesOriginal": {
-          "description": "true when the original is removed, which happens only with --replace and only once every reference to it moves.",
+          "description": "true when the original is removed: by default, unless --keep-originals or the config keeps originals, and only from a folder the site is served from once every reference to it moves.",
           "type": "boolean"
         }
       }

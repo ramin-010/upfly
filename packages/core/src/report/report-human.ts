@@ -107,7 +107,7 @@ function keptOriginalLine(report: Report): string[] {
   const { count: kept, bytes: keptBytes } = report.keptOriginals;
   if (kept === 0) return [];
   return [
-    `  including originals kept beside the converted file their references moved to: ${kept}, ${bytes(keptBytes)}. optimize keeps originals unless run with --replace, so these are not unused images`,
+    `  including originals kept beside the converted file their references moved to: ${kept}, ${bytes(keptBytes)}. optimize kept each one as asked, or for a reason its plan gave, so these are not unused images`,
   ];
 }
 

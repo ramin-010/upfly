@@ -68,8 +68,8 @@ describe('renderPlan', () => {
   it('says each original stays, and how to change that, when originals are kept', () => {
     const kept = { ...plan, keptOriginals: [] };
     expect(renderPlan(kept, graph, 'keep-original').slice(-3)).toEqual([
-      '  Originals: each stays beside its converted file. With --replace, an original is',
-      '  removed once every reference to it has moved.',
+      '  Originals: each stays beside its converted file, as --keep-originals or the config',
+      '  file asks. By default an original is removed once every reference to it has moved.',
       '',
     ]);
   });

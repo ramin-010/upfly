@@ -245,10 +245,20 @@ describe('every --json line validates against the published schemas', () => {
       ]),
     );
     const applied = result(
-      upfly(['optimize', site, '--json', '--public', '.', '--apply', '--commit']),
+      upfly([
+        'optimize',
+        site,
+        '--json',
+        '--public',
+        '.',
+        '--keep-originals',
+        '--apply',
+        '--commit',
+      ]),
     );
     expect((applied.run as { created: string[] }).created).toContain('img/banner.webp');
-    // An original kept beside its converted file shows in the next audit.
+    // An original kept beside its converted file, as --keep-originals asks, shows in the next
+    // audit.
     result(upfly(['audit', site, '--json', '--public', '.', '--no-probe']));
     result(upfly(['undo', site, '--json']));
   }, 180_000);

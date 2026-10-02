@@ -1339,7 +1339,7 @@ function whyStillNeeded(
   if (references.length === 0) {
     return (
       'converted, but the original was kept: nothing Upfly can see links to it, so no ' +
-      'reference moved to the replacement. `--replace` removes an original only once every ' +
+      'reference moved to the replacement. Upfly removes an original only once every ' +
       'reference to it has moved, and whatever loads this one is somewhere Upfly cannot read'
     );
   }
@@ -1385,12 +1385,12 @@ function keptOriginals(
   if (input.publicPolicy !== 'replace') return [];
 
   const outside = noServingRootFound(input.servingRoots)
-    ? `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and \`--replace\` removes ` +
-      `an original only inside one. ${NAME_THE_WEBSITE_FOLDER}.`
+    ? `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and Upfly removes an ` +
+      `original only inside one. ${NAME_THE_WEBSITE_FOLDER}.`
     : 'converted, but the original was kept: it is outside a directory this project serves, ' +
       'where it is the build rather than a browser that resolves it, so a reference Upfly ' +
-      'failed to rewrite would break the build instead of showing a missing image. ' +
-      '`--replace` governs assets in a served directory.';
+      'failed to rewrite would break the build instead of showing a missing image. Upfly ' +
+      'removes originals only from a directory the site is served from.';
   return conversions
     .filter((conversion) => !conversion.replacesOriginal)
     .map((conversion) => ({

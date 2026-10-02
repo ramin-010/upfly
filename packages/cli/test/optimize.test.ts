@@ -38,7 +38,7 @@ const NOT_THE_PROJECT = ['.git', '.upfly'];
  * those runs declare the project root as one.
  */
 const POLICIES = [
-  ['keep-original', []],
+  ['keep-original', ['--keep-originals']],
   ['replace', ['--replace', '--public', '.']],
 ] as const;
 
@@ -176,6 +176,33 @@ describe.each(POLICIES)('upfly optimize --apply --commit, %s', (policy, flags) =
 
     git(root, 'revert', '--no-edit', 'HEAD');
     expect(snapshot(root, NOT_THE_PROJECT)).toEqual(original);
+  }, 120_000);
+});
+
+describe('each original, once every reference to it has moved', () => {
+  /** The applied run's removed files, with the folder the site is served from declared. */
+  function removedBy(root: string, flags: readonly string[]): string[] {
+    const run = upfly(['optimize', root, '--public', '.', '--apply', '--json', ...flags]);
+    expect(run.status, run.stderr).toBe(0);
+    return (result(run.stdout) as { run: { removed: string[] } }).run.removed;
+  }
+
+  it('is removed by default, and --replace names that default', () => {
+    expect(removedBy(standalone(), []).length).toBeGreaterThan(0);
+    expect(removedBy(standalone(), ['--replace'])).toEqual(removedBy(standalone(), []));
+  }, 120_000);
+
+  it('is kept with --keep-originals, or when the config file asks for keep-original', () => {
+    const configured = () => {
+      const root = copyFixture('plain-html', tempFolder(roots, 'upfly-optimize-'));
+      write(root, 'upfly.config.json', '{ "publicPolicy": "keep-original" }\n');
+      commitAll(root);
+      return root;
+    };
+
+    expect(removedBy(standalone(), ['--keep-originals'])).toEqual([]);
+    expect(removedBy(configured(), [])).toEqual([]);
+    expect(removedBy(configured(), ['--replace']).length).toBeGreaterThan(0);
   }, 120_000);
 });
 
@@ -366,6 +393,8 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
     // A built site whose generator Upfly cannot tell from its settings file: `config.toml` is
     // Hugo's older name and other tools' too. `public/` is the build output, ignored by git,
     // and holds a copy of the image the post names, which a run would otherwise plan as source.
+    // Originals are kept: left out, the output still names the original, which a run that
+    // removes originals then keeps by declining the conversion.
     const root = tempFolder(roots, 'upfly-built-site-');
     const logo = readFileSync(join(FIXTURES, 'plain-html/images/logo.png'));
     write(root, 'config.toml', 'title = "A built site"\n');
@@ -377,7 +406,7 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
     write(root, 'public/index.html', '<img src="/img/a.png" alt="The logo">\n');
     const before = snapshot(root, ['.git']);
 
-    const refused = upfly(['optimize', root, '--apply', '--commit', '--json']);
+    const refused = upfly(['optimize', root, '--apply', '--commit', '--keep-originals', '--json']);
 
     expect(refused.status).toBe(3);
     expect(result(refused.stdout)).toMatchObject({
@@ -388,7 +417,16 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
     });
     expect(snapshot(root, ['.git'])).toEqual(before);
 
-    const run = upfly(['optimize', root, '--apply', '--commit', '--exclude', 'public/', '--json']);
+    const run = upfly([
+      'optimize',
+      root,
+      '--apply',
+      '--commit',
+      '--keep-originals',
+      '--exclude',
+      'public/',
+      '--json',
+    ]);
 
     expect(run.status).toBe(0);
     expect(readFileSync(join(root, 'content/post.md'), 'utf8')).toBe('![The logo](/img/a.webp)\n');
@@ -419,6 +457,7 @@ describe('upfly optimize on a site built before the run', () => {
     expect(readFileSync(join(root, 'content/post.md'), 'utf8')).toBe('![The logo](/img/a.webp)\n');
     expect(existsSync(join(root, 'static/img/a.webp'))).toBe(true);
     expect(git(root, 'status', '--porcelain').trimEnd().split('\n').sort()).toEqual([
+      ' D static/img/a.png',
       ' M content/post.md',
       '?? static/img/a.webp',
     ]);

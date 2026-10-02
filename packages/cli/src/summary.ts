@@ -226,7 +226,8 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
             ` to ${formatName(format)}, `,
             `${formatBytes(before)} → ${formatBytes(before - saved)}`,
           ],
-    details: plan.conversions.length === 0 ? [] : originalsDetails(plan, facts.policy, apply),
+    details:
+      plan.conversions.length === 0 ? [] : originalsDetails(plan, facts.policy, apply, sizes),
   };
 
   const assets = new Set(sizes.keys());
@@ -263,19 +264,31 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
   };
 }
 
-function originalsDetails(plan: OptimizationPlan, policy: PublicPolicy, apply: boolean): string[] {
+/**
+ * What happens to the originals: how many go and their size, how many stay, and before a run
+ * that removes any, what a removed original costs. An original is removed only from a folder
+ * the site is served from, so a link from outside the project may name any of them.
+ */
+function originalsDetails(
+  plan: OptimizationPlan,
+  policy: PublicPolicy,
+  apply: boolean,
+  sizes: ReadonlyMap<string, number>,
+): string[] {
   if (policy === 'keep-original') return ['each original stays beside its new file'];
-  const removed = plan.conversions.filter((conversion) => conversion.replacesOriginal).length;
+  const removed = plan.conversions.filter((conversion) => conversion.replacesOriginal);
+  const bytes = formatBytes(removed.reduce((sum, c) => sum + (sizes.get(c.asset) ?? 0), 0));
   const kept = plan.keptOriginals.length;
-  const originals = count(removed, 'original');
+  const originals = count(removed.length, 'original');
   return [
-    ...(removed === 0
+    ...(removed.length === 0
       ? []
-      : [
-          apply
-            ? `${originals} removed, since every reference to each moved`
-            : `${originals} to remove, once every reference to each has moved`,
-        ]),
+      : apply
+        ? [`${originals} removed, ${bytes}, since their references moved`]
+        : [
+            `${originals} to remove, ${bytes}, once their references move`,
+            'a link to one from outside the project (an email, another site, a CMS) then stops working; --keep-originals keeps them',
+          ]),
     ...(kept === 0 ? [] : [`${count(kept, 'original')} kept, each for a reason in the full plan`]),
   ];
 }

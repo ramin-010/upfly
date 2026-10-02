@@ -84,8 +84,8 @@ function originalsLines(
   if (plan.conversions.length === 0) return [];
   if (policy === 'keep-original') {
     return [
-      '  Originals: each stays beside its converted file. With --replace, an original is',
-      '  removed once every reference to it has moved.',
+      '  Originals: each stays beside its converted file, as --keep-originals or the config',
+      '  file asks. By default an original is removed once every reference to it has moved.',
     ];
   }
   const lines: string[] = [];

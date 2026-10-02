@@ -73,7 +73,7 @@ describe('parseCommandLine', () => {
         noColor: false,
         apply: false,
         commit: false,
-        replace: false,
+        policy: null,
         format: null,
         allowDirty: false,
         full: false,
@@ -120,7 +120,7 @@ describe('parseCommandLine', () => {
         noColor: true,
         apply: true,
         commit: true,
-        replace: true,
+        policy: 'replace',
         format: 'avif',
         allowDirty: false,
         full: false,
@@ -134,6 +134,18 @@ describe('parseCommandLine', () => {
     });
     expect(parseCommandLine(['optimize', '--apply', '--allow-dirty'])).toMatchObject({
       options: { apply: true, allowDirty: true },
+    });
+  });
+
+  it('keeps originals with --keep-originals, and reads --dry-run as the preview it already is', () => {
+    expect(parseCommandLine(['optimize', '--keep-originals'])).toMatchObject({
+      options: { policy: 'keep-original', apply: false },
+    });
+    expect(parseCommandLine(['optimize', '--dry-run'])).toMatchObject({
+      options: { policy: null, apply: false },
+    });
+    expect(parseCommandLine(['dedupe', '--dry-run'])).toMatchObject({
+      options: { command: 'dedupe', apply: false },
     });
   });
 
@@ -171,6 +183,20 @@ describe('parseCommandLine', () => {
       '--commit and --allow-dirty cannot be used together: the commit must hold only what this run wrote, so --commit needs a folder with no uncommitted changes',
     ],
     [['optimize', '--format', 'png'], '--format takes webp or avif, got `png`'],
+    [
+      ['optimize', '--replace', '--keep-originals'],
+      '--replace and --keep-originals cannot be used together: --replace removes each original once its references have moved, which is the default, and --keep-originals keeps them',
+    ],
+    [
+      ['optimize', '--dry-run', '--apply'],
+      '--dry-run and --apply cannot be used together: --dry-run shows the plan and changes nothing, and --apply writes it',
+    ],
+    [
+      ['dedupe', '--apply', '--dry-run'],
+      '--dry-run and --apply cannot be used together: --dry-run shows the plan and changes nothing, and --apply writes it',
+    ],
+    [['audit', '--dry-run'], 'unknown option `--dry-run`'],
+    [['dedupe', '--keep-originals'], 'unknown option `--keep-originals`'],
     [['optimize', '--max-encodes', '5'], 'unknown option `--max-encodes`'],
     [['optimize', 'a', 'b'], 'expected one directory, got 2: a b'],
     [

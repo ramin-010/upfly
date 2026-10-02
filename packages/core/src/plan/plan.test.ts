@@ -2198,7 +2198,7 @@ describe('which assets are served, when the run decided several roots or none', 
       {
         asset: 'images/hero.png',
         reason:
-          'converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and `--replace` removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.',
+          'converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.',
       },
     ]);
     expect(reasonsByPath(plan)['images/orphan.png']).toBe(

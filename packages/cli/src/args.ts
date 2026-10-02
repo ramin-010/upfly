@@ -48,8 +48,12 @@ export interface OptimizeOptions extends CommonOptions, ScopeOptions, ReportOpti
   readonly apply: boolean;
   /** `--commit`: commit the files the run wrote, and nothing else, as one commit. */
   readonly commit: boolean;
-  /** `--replace`: remove each original once every reference to it has moved. */
-  readonly replace: boolean;
+  /**
+   * What happens to each original, as a flag named it: `keep-original` for
+   * `--keep-originals`, `replace` for `--replace`, or `null` for the config's policy or the
+   * default, which removes each original once every reference to it has moved.
+   */
+  readonly policy: 'keep-original' | 'replace' | null;
   /** `--format`, or `null` for the config's format or the default. */
   readonly format: 'webp' | 'avif' | null;
   /** `--allow-dirty`: apply over uncommitted changes, or where git cannot help. */
@@ -163,8 +167,10 @@ const OPTIMIZE = {
   ...SCOPE,
   ...REPORT,
   apply: { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
   commit: { type: 'boolean' },
   replace: { type: 'boolean' },
+  'keep-originals': { type: 'boolean' },
   format: { type: 'string' },
   'allow-dirty': { type: 'boolean' },
   'include-declined': { type: 'boolean' },
@@ -183,6 +189,7 @@ const DEDUPE = {
   ...COMMON,
   ...SCOPE,
   apply: { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
   commit: { type: 'boolean' },
   'allow-dirty': { type: 'boolean' },
   keep: { type: 'string', multiple: true },
@@ -236,7 +243,9 @@ function parseDedupe(args: readonly string[]): Parsed {
   const commit = values.commit === true;
   const allowDirty = values['allow-dirty'] === true;
   const conflict =
-    writeFlagConflict(apply, commit, allowDirty) ?? fullConflict(values.full, values.json);
+    dryRunConflict(values['dry-run'], apply) ??
+    writeFlagConflict(apply, commit, allowDirty) ??
+    fullConflict(values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
   return {
     kind: 'run',
@@ -408,7 +417,10 @@ function parseOptimize(args: readonly string[]): Parsed {
   const commit = values.commit === true;
   const allowDirty = values['allow-dirty'] === true;
   const conflict =
-    writeFlagConflict(apply, commit, allowDirty) ?? fullConflict(values.full, values.json);
+    policyConflict(values.replace, values['keep-originals']) ??
+    dryRunConflict(values['dry-run'], apply) ??
+    writeFlagConflict(apply, commit, allowDirty) ??
+    fullConflict(values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
 
   return {
@@ -420,7 +432,12 @@ function parseOptimize(args: readonly string[]): Parsed {
       noColor: values['no-color'] === true,
       apply,
       commit,
-      replace: values.replace === true,
+      policy:
+        values['keep-originals'] === true
+          ? 'keep-original'
+          : values.replace === true
+            ? 'replace'
+            : null,
       format: format ?? null,
       allowDirty,
       full: values.full === true,
@@ -448,6 +465,23 @@ function writeFlagConflict(apply: boolean, commit: boolean, allowDirty: boolean)
   if (commit && !apply) return '--commit commits what --apply writes; add --apply';
   if (allowDirty && !apply) return '--allow-dirty only changes what --apply does; add --apply';
   return null;
+}
+
+/** `--replace` names the default, and `--keep-originals` asks for the opposite. */
+function policyConflict(
+  replace: boolean | undefined,
+  keepOriginals: boolean | undefined,
+): string | null {
+  return replace === true && keepOriginals === true
+    ? '--replace and --keep-originals cannot be used together: --replace removes each original once its references have moved, which is the default, and --keep-originals keeps them'
+    : null;
+}
+
+/** `--dry-run` names what a run without `--apply` already does. */
+function dryRunConflict(dryRun: boolean | undefined, apply: boolean): string | null {
+  return dryRun === true && apply
+    ? '--dry-run and --apply cannot be used together: --dry-run shows the plan and changes nothing, and --apply writes it'
+    : null;
 }
 
 /** `--full` changes what is printed as text, so beside `--json` it would change nothing. */

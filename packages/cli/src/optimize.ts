@@ -77,9 +77,7 @@ export async function runOptimize(options: OptimizeOptions, io: Io): Promise<Exi
     if (refusal !== null) return stop(refusal);
   }
 
-  const policy: PublicPolicy = options.replace
-    ? 'replace'
-    : (settings.publicPolicy ?? 'keep-original');
+  const policy = policyFor(options, settings);
   const result = await carryOut(options, io, root, settings, policy);
   if ('code' in result) return stop(result);
 
@@ -100,6 +98,21 @@ export async function runOptimize(options: OptimizeOptions, io: Io): Promise<Exi
     notes: [...notes(options, git, unfinished), ...onlyNotes(result)],
   });
   return EXIT_CODES.OK;
+}
+
+/**
+ * What happens to each original: as a flag says, else as the config file says, else removed
+ * once every reference to it has moved. Keeping two copies of every image is not what a user
+ * asking to optimize expects, and a reference Upfly finds still naming an original keeps it.
+ *
+ * @param options the parsed command line
+ * @param settings the project's configuration
+ */
+export function policyFor(
+  options: Pick<OptimizeOptions, 'policy'>,
+  settings: Pick<UpflyConfig, 'publicPolicy'>,
+): PublicPolicy {
+  return options.policy ?? settings.publicPolicy ?? 'replace';
 }
 
 /** How many images `--only` left out, and each pattern that named none, on every run. */
@@ -519,7 +532,8 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
 /** The flags that shaped the plan, so that `--apply` writes the same plan. */
 function planFlags(options: OptimizeOptions): string[] {
   return [
-    ...(options.replace ? ['--replace'] : []),
+    ...(options.policy === 'keep-original' ? ['--keep-originals'] : []),
+    ...(options.policy === 'replace' ? ['--replace'] : []),
     ...(options.format === null ? [] : ['--format', options.format]),
     ...scopeWords({ ...options, dir: '.' }),
     ...(options.only ?? []).flatMap((pattern) => ['--only', pattern]),

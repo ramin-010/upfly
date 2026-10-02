@@ -82,7 +82,10 @@ const SUMMARIES = {
     'Upfly optimize · dry run',
     '',
     '  Convert      5 images to WebP, 124.2 KB → 48.8 KB',
-    '                 each original stays beside its new file',
+    '                 3 originals to remove, 57.3 KB, once their references move',
+    '                 a link to one from outside the project (an email, another site,',
+    '                 a CMS) then stops working; --keep-originals keeps them',
+    '                 2 originals kept, each for a reason in the full plan',
     '  Update       7 references in 2 files',
     '  Leave        7 images, 2.7 KB',
     '                 3  would save too little',
@@ -100,7 +103,7 @@ const SUMMARIES = {
     'Upfly optimize · dry run',
     '',
     '  Convert      5 images to WebP, 150.1 KB → 57 KB',
-    '                 each original stays beside its new file',
+    '                 5 originals kept, each for a reason in the full plan',
     '  Update       6 references in 2 files',
     '  Leave        6 images, 2.4 KB',
     '                 3  would save too little',
@@ -213,7 +216,7 @@ describe('the report file', () => {
         'Upfly optimize · applied',
         '',
         '  Converted    5 images to WebP, 150.1 KB → 57 KB',
-        '                 each original stays beside its new file',
+        '                 5 originals kept, each for a reason in the full plan',
         '  Updated      6 references in 2 files',
         '  Left alone   6 images, 2.4 KB',
         '                 3  would save too little',
@@ -292,7 +295,7 @@ describe('the next command', () => {
 
     expect(replace.status, replace.stderr).toBe(0);
     expect(replace.stdout).toContain(
-      '                 5 originals to remove, once every reference to each has moved\n',
+      '                 5 originals to remove, 150.1 KB, once their references move\n',
     );
     expect(replace.stdout).toContain(
       '  Next         upfly optimize --replace --public . --apply --allow-dirty\n',

@@ -22,6 +22,7 @@ import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { headline } from './layout.js';
+import { policyFor } from './optimize.js';
 import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { movingText } from './plan-text.js';
 
@@ -97,7 +98,7 @@ export async function runRefs(options: RefsOptions, io: Io): Promise<ExitCode> {
     root,
     ...(publicDirs === null ? {} : { declared: { dirs: publicDirs, declared: true } }),
     format,
-    publicPolicy: settings.publicPolicy ?? 'keep-original',
+    publicPolicy: policyFor({ policy: null }, settings),
     apply: false,
     extraIgnores: [...(settings.exclude ?? []), ...options.exclude],
     only: { paths: [path] },

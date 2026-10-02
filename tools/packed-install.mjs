@@ -5,7 +5,8 @@
  * every file its `files` list names, installs the two tarballs into an empty folder outside
  * the checkout, and runs the installed `upfly` there as a user would. Its `audit --json` on a
  * copy of a fixture must validate against the schemas the tarball shipped, and
- * `optimize --apply --commit` then `undo` on a git repository must put every byte back.
+ * `optimize --apply --commit` then `undo` on a git repository must put every byte back,
+ * the originals the run removed included.
  *
  * Usage: `node tools/packed-install.mjs`, after `pnpm build`. It works in `RUNNER_TEMP` when
  * that is set, as on a CI runner, and in the system's temporary folder otherwise. `npx --no --`
@@ -149,12 +150,22 @@ for (const args of [
   run('git', args, repo);
 }
 const before = fingerprint(repo);
-run('npx', ['--no', '--', 'upfly', 'optimize', repo, '--apply', '--commit'], user);
+// The policy is named rather than left to the default, and the site is served from the
+// project root, so originals are removed and undo has to bring them back.
+run(
+  'npx',
+  ['--no', '--', 'upfly', 'optimize', repo, '--replace', '--public', '.', '--apply', '--commit'],
+  user,
+);
 const commits = run('git', ['rev-list', '--count', 'HEAD'], repo).trim();
 if (commits !== '2') failures.push(`optimize --apply --commit left ${commits} commits, not 2`);
-const written = [...fingerprint(repo)].filter(([file, hash]) => before.get(file) !== hash);
+const applied = fingerprint(repo);
+const written = [...applied].filter(([file, hash]) => before.get(file) !== hash);
+const removed = [...before.keys()].filter((file) => !applied.has(file));
 if (written.length === 0)
   failures.push('optimize --apply --commit wrote nothing, so undo proves nothing');
+if (removed.length === 0)
+  failures.push('optimize --apply --commit removed no original, so undo proves nothing of that');
 run('npx', ['--no', '--', 'upfly', 'undo', repo], user);
 const after = fingerprint(repo);
 const different = [...new Set([...before.keys(), ...after.keys()])].filter(
@@ -164,7 +175,7 @@ if (different.length > 0) failures.push(`undo left ${different.join(', ')} diffe
 
 process.stdout.write(
   failures.length === 0
-    ? `\npacked install: upfly ${version} installed from its tarball, audit's JSON matches the shipped schemas, and ${written.length} files written, committed and undone\n`
+    ? `\npacked install: upfly ${version} installed from its tarball, audit's JSON matches the shipped schemas, and ${written.length} files written, ${removed.length} removed, committed and undone\n`
     : `\npacked install failed:\n${failures.map((failure) => `  ${failure}`).join('\n')}\n`,
 );
 process.exit(failures.length === 0 ? 0 : 1);
