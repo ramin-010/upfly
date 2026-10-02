@@ -289,3 +289,24 @@ describe('the next command', () => {
     expect(result.stdout).toContain('  Next         the same command with --apply --allow-dirty\n');
   });
 });
+
+describe('what is left alone', () => {
+  it('counts every reason the planner gave under a group of its own, an image a build loads among them', () => {
+    // partial-pattern imports an image and names no build Upfly knows, so the image keeps its
+    // format with the planner's build sentence.
+    const root = committed('partial-pattern');
+
+    const result = run(root, ['optimize']);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      [
+        '  Leave        5 images, 32.3 KB',
+        '                 3  its references stay as written',
+        '                 1  could not be measured',
+        '                 1  its build may not load the new format',
+      ].join('\n'),
+    );
+    expect(result.stdout).not.toContain('another reason');
+  });
+});

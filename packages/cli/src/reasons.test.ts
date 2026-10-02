@@ -65,6 +65,30 @@ describe('declineGroup', () => {
     for (const [reason, group] of cases) expect(declineGroup(reason), reason).toBe(group);
   });
 
+  it('groups an image a build loads, in each way the planner names the build', () => {
+    const loaded = [
+      '`src/views/splash/features/features-banner.jsx` loads it through the build as `./high-contrast-thumbnail.png`, and that build is set up in `webpack.config.js`, which may have no rule for WebP files; Upfly converts an image a build loads only for Vite, Next.js and Astro, which load WebP by themselves',
+      '`src/index.js` loads it through the build as `./logo.png` (and 1 more), and that build is run as `react-scripts build` from `package.json`, which may have no rule for AVIF files; Upfly converts an image a build loads only for Vite, Next.js and Astro, which load AVIF by themselves',
+      '`src/App.jsx` loads it through the build as `./inline-logo.jpg`, and Upfly found no build settings naming that build; Upfly converts an image a build loads only for Vite, Next.js and Astro, which load WebP by themselves',
+    ];
+    for (const reason of loaded) {
+      expect(declineGroup(reason), reason).toBe('its build may not load the new format');
+    }
+  });
+
+  it('groups a conversion that would make a reference break or load another file, in each of its sentences', () => {
+    const misdirected = [
+      '`img/lvm.jpg` in `about.html` reaches img/LVM.jpg on Windows and macOS, where a file is found whatever the case of its name, and converting this image removes it, so the reference would break.',
+      '`logo.png` in `index.html` reaches img/logo.png, and converting this image removes it, so the reference would load public/logo.png instead. Rename one of the two images and run again.',
+      '`/logo.png` in `index.html` (and 2 more) reaches public/logo.png, and once this image converts it would reach static/logo.webp first, so the reference would load the converted image instead. Rename one of the two images and run again.',
+      '`logo.png` in `src/App.jsx` would become `logo.webp`, which reaches public/logo.webp first, so the reference would load that file instead. Rename one of the two images and run again.',
+      '`logo.png` in `src/App.jsx` would become `logo.webp`, which names no file Upfly can find, so repointing the reference would break it.',
+    ];
+    for (const reason of misdirected) {
+      expect(declineGroup(reason), reason).toBe('a reference would break or load another file');
+    }
+  });
+
   it('counts a sentence it does not know under another reason, rather than dropping it', () => {
     expect(declineGroup('a reason added after this list was written')).toBe(OTHER);
   });
