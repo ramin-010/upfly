@@ -1,6 +1,6 @@
 > **Looking for the Express upload middleware?** That is Upfly 2, the package `upfly` at version 2:
-> `npm i upfly@2` ([its code](https://github.com/ramin-010/upfly/tree/v2),
-> [its documentation](https://ramin-010.github.io/upfly/)). `upfly-core` is the engine of Upfly 3, a different
+> `npm i upfly@2` ([its code](https://github.com/upflyjs/upfly/tree/v2),
+> [its documentation](https://upflyjs.github.io/upfly/)). `upfly-core` is the engine of Upfly 3, a different
 > product.
 
 # upfly-core
@@ -39,10 +39,10 @@ tools. It is not part of the public API: any name in it can change in any releas
 
 ## More
 
-- [The repository](https://github.com/ramin-010/upfly/tree/v3), with the command-line tool's README: what Upfly is
+- [The repository](https://github.com/upflyjs/upfly/tree/v3), with the command-line tool's README: what Upfly is
   measured to do, and its limits.
-- [ARCHITECTURE.md](https://github.com/ramin-010/upfly/blob/v3/ARCHITECTURE.md): how the engine is built.
-- [CONTRIBUTING.md](https://github.com/ramin-010/upfly/blob/v3/CONTRIBUTING.md): how to add a reader for a file type.
+- [ARCHITECTURE.md](https://github.com/upflyjs/upfly/blob/v3/ARCHITECTURE.md): how the engine is built.
+- [CONTRIBUTING.md](https://github.com/upflyjs/upfly/blob/v3/CONTRIBUTING.md): how to add a reader for a file type.
 
 ## License
 

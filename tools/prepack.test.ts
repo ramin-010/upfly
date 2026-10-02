@@ -25,19 +25,19 @@ function targets(markdown: string): string[] {
 describe('withAbsoluteLinks', () => {
   it('points a link at its page on GitHub, under tree for a folder and blob for a file', () => {
     expect(withAbsoluteLinks('[the design](ARCHITECTURE.md#the-transaction)', isFolder)).toBe(
-      '[the design](https://github.com/ramin-010/upfly/blob/v3/ARCHITECTURE.md#the-transaction)',
+      '[the design](https://github.com/upflyjs/upfly/blob/v3/ARCHITECTURE.md#the-transaction)',
     );
     expect(withAbsoluteLinks('[the suite](accuracy-suite/)', isFolder)).toBe(
-      '[the suite](https://github.com/ramin-010/upfly/tree/v3/accuracy-suite)',
+      '[the suite](https://github.com/upflyjs/upfly/tree/v3/accuracy-suite)',
     );
     expect(withAbsoluteLinks('<a href="./packages/core">core</a>', isFolder)).toBe(
-      '<a href="https://github.com/ramin-010/upfly/tree/v3/packages/core">core</a>',
+      '<a href="https://github.com/upflyjs/upfly/tree/v3/packages/core">core</a>',
     );
   });
 
   it('points an image at its raw file, in Markdown and in HTML, so a page can show it', () => {
     expect(withAbsoluteLinks('![logo](assets/logo.svg)', isFolder)).toBe(
-      '![logo](https://raw.githubusercontent.com/ramin-010/upfly/v3/assets/logo.svg)',
+      '![logo](https://raw.githubusercontent.com/upflyjs/upfly/v3/assets/logo.svg)',
     );
     expect(
       withAbsoluteLinks(
@@ -46,8 +46,8 @@ describe('withAbsoluteLinks', () => {
       ),
     ).toBe(
       [
-        '<source srcset="https://raw.githubusercontent.com/ramin-010/upfly/v3/assets/dark.svg">',
-        '<img src="https://raw.githubusercontent.com/ramin-010/upfly/v3/assets/light.svg" alt="upfly">',
+        '<source srcset="https://raw.githubusercontent.com/upflyjs/upfly/v3/assets/dark.svg">',
+        '<img src="https://raw.githubusercontent.com/upflyjs/upfly/v3/assets/light.svg" alt="upfly">',
       ].join('\n'),
     );
   });

@@ -1,6 +1,6 @@
 > **Looking for the Express upload middleware?** That is Upfly 2: `npm i upfly@2`. Its code is on the
-> [`v2` branch](https://github.com/ramin-010/upfly/tree/v2) and its documentation at
-> [ramin-010.github.io/upfly](https://ramin-010.github.io/upfly/). Upfly 3, below, is a different product: a
+> [`v2` branch](https://github.com/upflyjs/upfly/tree/v2) and its documentation at
+> [upflyjs.github.io/upfly](https://upflyjs.github.io/upfly/). Upfly 3, below, is a different product: a
 > command-line tool that optimizes the images in a codebase.
 
 <p align="center">

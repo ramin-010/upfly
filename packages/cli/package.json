@@ -4,10 +4,10 @@
   "description": "Optimize your repo's images without breaking a reference.",
   "license": "MIT",
   "author": "Rinkal Kumar (https://github.com/ramin-010)",
-  "homepage": "https://github.com/ramin-010/upfly#readme",
+  "homepage": "https://github.com/upflyjs/upfly#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ramin-010/upfly.git",
+    "url": "git+https://github.com/upflyjs/upfly.git",
     "directory": "packages/cli"
   },
   "keywords": [

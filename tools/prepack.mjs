@@ -21,8 +21,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * `main` does. A page published from here keeps its links for as long as the branch exists.
  */
 const BRANCH = 'v3';
-const PAGES = 'https://github.com/ramin-010/upfly';
-const FILES = `https://raw.githubusercontent.com/ramin-010/upfly/${BRANCH}`;
+const PAGES = 'https://github.com/upflyjs/upfly';
+const FILES = `https://raw.githubusercontent.com/upflyjs/upfly/${BRANCH}`;
 
 /** A Markdown link or image, `[text](target)` or `![alt](target)`. */
 const MARKDOWN_TARGET = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
