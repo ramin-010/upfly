@@ -4,13 +4,14 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 import { missingFromPack, tarPaths, unwantedInPack } from './pack-check.mjs';
+import { withAbsoluteLinks } from './prepack.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -122,11 +123,18 @@ describe('each package, as pnpm packs it', () => {
       expect(unwantedInPack(paths)).toEqual([]);
       expect(paths).toEqual(expect.arrayContaining(['package/LICENSE', 'package/README.md']));
 
-      // The copies prepack makes are the root's files, byte for byte; core's README is its own.
+      // The licence prepack copies is the root's, byte for byte, and the README the root's with
+      // its relative paths made absolute; core's README is its own.
       expect(readFileSync(join(dir, 'LICENSE'))).toEqual(readFileSync(join(ROOT, 'LICENSE')));
       const readme = readFileSync(join(dir, 'README.md'), 'utf8');
-      if (copiedReadme === null) expect(readme).toMatch(/^# upfly-core\n/);
-      else expect(readme).toBe(readFileSync(join(ROOT, 'README.md'), 'utf8'));
+      if (copiedReadme === null) expect(readme).toMatch(/^# upfly-core$/m);
+      else {
+        const isFolder = (relative: string) =>
+          statSync(join(ROOT, relative), { throwIfNoEntry: false })?.isDirectory() === true;
+        expect(readme).toBe(
+          withAbsoluteLinks(readFileSync(join(ROOT, 'README.md'), 'utf8'), isFolder),
+        );
+      }
     },
     60_000,
   );
