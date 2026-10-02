@@ -45,7 +45,7 @@ npx upfly undo                        # put back every file the last run changed
 ```
 
 A real run, on a committed copy of [`fixtures/vite-react`](fixtures/vite-react) from this repository, at commit
-`d64e67b`:
+`cb10103`:
 
 ```
 $ upfly optimize
@@ -53,10 +53,10 @@ $ upfly optimize
 Upfly optimize · dry run
 
   Convert      5 images to WebP, 124.2 KB → 48.8 KB
-                 3 originals to remove, 57.3 KB, once their references move
-                 a link to one from outside the project (an email, another site,
-                 a CMS) then stops working; --keep-originals keeps them
-                 2 originals kept, each for a reason in the full plan
+                 5 originals to remove, 124.2 KB, once their references move
+                 3 of them are in a folder the site is served from, where a link
+                 from outside the project (an email, another site, a CMS) then
+                 stops working; --keep-originals keeps them
   Update       7 references in 2 files
   Leave        7 images, 2.7 KB
                  3  would save too little
@@ -81,8 +81,7 @@ $ upfly optimize --apply --commit
 Upfly optimize · applied
 
   Converted    5 images to WebP, 124.2 KB → 48.8 KB
-                 3 originals removed, 57.3 KB, since their references moved
-                 2 originals kept, each for a reason in the full plan
+                 5 originals removed, 124.2 KB, since their references moved
   Updated      7 references in 2 files
   Left alone   7 images, 2.7 KB
                  3  would save too little
@@ -90,12 +89,12 @@ Upfly optimize · applied
                  1  its references stay as written
                  1  nothing links to it
 
-  Run          20261002T135809-3a47: 5 files created, 2 changed, 3 removed
-  Commit       96dab5e37a61, exactly the files the run wrote
+  Run          20261002T170507-b9cf: 5 files created, 2 changed, 5 removed
+  Commit       e5b0e030e3ac, exactly the files the run wrote
   Full plan    .upfly/optimize.txt
   Next         run the project's build, if it has one, then upfly check
                  upfly undo puts every file back
-                 git revert 96dab5e37a61 undoes the commit
+                 git revert e5b0e030e3ac undoes the commit
 
   Upfly converted 5 images and saved 75.5 KB.
 ```
