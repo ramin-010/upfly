@@ -26,8 +26,8 @@ export interface UpflyConfig {
   readonly publicDirs?: readonly string[];
   /**
    * What `optimize` does with each original once every reference to it has moved: `replace`,
-   * the default, removes it, only from a folder the site is served from; `keep-original` keeps
-   * it beside its converted file.
+   * the default, removes it once no file Upfly reads still names it; `keep-original` keeps it
+   * beside its converted file.
    */
   readonly publicPolicy?: 'keep-original' | 'replace';
   /** The format images are converted to. */

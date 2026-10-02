@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { mkdir } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,5 +110,64 @@ describe('a plan from a capped measurement', () => {
     expect(converted(capped.result)).toEqual(['b/big.png']);
     const jpg = capped.pipeline.probes?.find((probe) => probe.relative === 'a/logo.jpg');
     expect(jpg?.encoded.length).toBe(1);
+  }, 60_000);
+});
+
+describe('an original under the default policy', () => {
+  /** A copy of vite-react outside the workspace, with more files beside it. */
+  async function viteCopy(extra: Record<string, string>): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), 'upfly-bundled-'));
+    roots.push(root);
+    await cp(join(FIXTURES, 'vite-react'), root, {
+      recursive: true,
+      filter: (source) => !source.includes('node_modules'),
+    });
+    for (const [path, text] of Object.entries(extra)) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), text);
+    }
+    return root;
+  }
+
+  async function planned(root: string) {
+    const { plan } = (
+      await optimizeProject({ root, format: 'webp', publicPolicy: 'replace', apply: false })
+    ).optimize;
+    const removed = plan.conversions
+      .filter((conversion) => conversion.replacesOriginal)
+      .map((conversion) => conversion.asset);
+    return { plan, removed };
+  }
+
+  it('is removed among the images a build loads, as in a served folder', async () => {
+    const { removed } = await planned(join(FIXTURES, 'vite-react'));
+
+    expect(removed).toEqual([
+      'public/photos/wide.jpg',
+      'public/photos/wide@2x.jpg',
+      'public/screenshot.png',
+      'src/assets/banner.png',
+      'src/assets/logo.png',
+    ]);
+  }, 60_000);
+
+  it('stays when a file names it where the run cannot rewrite it, or a glob could load it', async () => {
+    const named = await planned(
+      await viteCopy({ 'docs/assets.txt': 'The logo is src/assets/logo.png.\n' }),
+    );
+    const globbed = await planned(
+      await viteCopy({
+        'src/gallery.js': "export const images = import.meta.glob('./assets/*.png');\n",
+      }),
+    );
+
+    expect(named.plan.conversions.map((conversion) => conversion.asset)).not.toContain(
+      'src/assets/logo.png',
+    );
+    expect(named.removed).toContain('src/assets/banner.png');
+    expect(globbed.removed).not.toContain('src/assets/banner.png');
+    expect(globbed.plan.keptOriginals.map((kept) => kept.asset)).toEqual(
+      expect.arrayContaining(['src/assets/banner.png', 'src/assets/logo.png']),
+    );
   }, 60_000);
 });

@@ -128,7 +128,7 @@
         },
         "savedBytes": { "type": "integer", "minimum": 0 },
         "replacesOriginal": {
-          "description": "true when the original is removed: by default, unless --keep-originals or the config keeps originals, and only from a folder the site is served from once every reference to it moves.",
+          "description": "true when the original is removed: by default, unless --keep-originals or the config keeps originals, once every reference to it moves and no file Upfly reads still names it.",
           "type": "boolean"
         }
       }

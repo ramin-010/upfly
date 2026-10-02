@@ -143,8 +143,9 @@ export interface PlannedConversion {
   readonly quality: EncodeSetting;
   readonly savedBytes: number;
   /**
-   * True when the original is removed: under `replace`, a served asset at least one
-   * reference links to, every one of which this plan rewrites.
+   * True when the original is removed: under `replace`, an asset at least one reference
+   * links to, every one of which this plan rewrites, in a served folder or among the images a
+   * build loads, once the project's website folder is known.
    */
   readonly replacesOriginal: boolean;
 }
@@ -220,10 +221,9 @@ export interface PlanRefusal {
 /**
  * An asset converted under `replace` whose original was left in place, and why.
  *
- * Either the asset is outside a served directory, where the build rather than a browser
- * resolves it, or a reference this run does not rewrite still needs the original, such as
- * a pattern. An asset no reference moves to is not converted under `replace`, so it is
- * never here.
+ * Either a reference this run does not rewrite still needs the original, such as a pattern,
+ * or no website folder was found, so Upfly cannot tell which images a browser loads by URL.
+ * An asset no reference moves to is not converted under `replace`, so it is never here.
  *
  * Kept apart from `declined`, which the report prints under "Examined and not converted":
  * these assets were converted. An asset is in one list or the other, never both, and
@@ -845,8 +845,6 @@ function convertDecision(
   const target = withExtension(relative, input.format);
   if (target === relative) return { convert: false, reason: null };
 
-  const inPublic = servingRootOf(relative, input.servingRoots) !== null;
-
   // A new file has to be one some reference moves to, under either policy: otherwise no
   // visitor downloads fewer bytes, and a saving counted for it would be a saving nobody gets.
   // An asset nothing links to is the plainest case, with its own sentences.
@@ -905,7 +903,7 @@ function convertDecision(
       format: input.format,
       quality: saving.quality,
       savedBytes: saving.savedBytes,
-      replacesOriginal: inPublic && input.publicPolicy === 'replace',
+      replacesOriginal: input.publicPolicy === 'replace' && !noServingRootFound(input.servingRoots),
     },
   };
 }
@@ -1404,13 +1402,12 @@ function whyStillNeeded(
 /**
  * The conversions under `replace` whose originals survive, and why.
  *
- * An asset outside a served directory always keeps its original. Inside one, a reference
- * Upfly failed to rewrite shows as a missing image; outside, the asset is bundler-managed
- * and the same miss breaks the build, so `publicPolicy` governs served assets only. A
- * served asset keeps its original when a reference still needs it, with the sentence
- * `originalsStillNeeded` wrote. A user who asked for `replace` and gets originals back is
- * told why for each. Empty under `keep-original`, where every original is kept and saying
- * so for each would bury the cases that mean something.
+ * An original stays when a reference still needs it, with the sentence `originalsStillNeeded`
+ * wrote, wherever the asset sits: a served folder or the images a build loads. Where no
+ * website folder was found, served and bundled images cannot be told apart, so every original
+ * stays and the reason says how to name the folder. A user who asked for `replace` and gets
+ * originals back is told why for each. Empty under `keep-original`, where every original is
+ * kept and saying so for each would bury the cases that mean something.
  */
 function keptOriginals(
   conversions: readonly PlannedConversion[],
@@ -1419,18 +1416,14 @@ function keptOriginals(
 ): KeptOriginal[] {
   if (input.publicPolicy !== 'replace') return [];
 
-  const outside = noServingRootFound(input.servingRoots)
-    ? `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and Upfly removes an ` +
-      `original only inside one. ${NAME_THE_WEBSITE_FOLDER}.`
-    : 'converted, but the original was kept: it is outside a directory this project serves, ' +
-      'where it is the build rather than a browser that resolves it, so a reference Upfly ' +
-      'failed to rewrite would break the build instead of showing a missing image. Upfly ' +
-      'removes originals only from a directory the site is served from.';
+  const noFolder =
+    `converted, but the original was kept: ${NO_WEBSITE_FOLDER}, and Upfly removes an ` +
+    `original only once it knows that. ${NAME_THE_WEBSITE_FOLDER}.`;
   return conversions
     .filter((conversion) => !conversion.replacesOriginal)
     .map((conversion) => ({
       asset: conversion.asset,
-      reason: stillNeeded.get(conversion.asset) ?? outside,
+      reason: stillNeeded.get(conversion.asset) ?? noFolder,
     }))
     .sort((a, b) => compareStrings(a.asset, b.asset));
 }

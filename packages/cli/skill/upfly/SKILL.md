@@ -8,8 +8,8 @@ description: Convert a project's images to WebP or AVIF and rewrite every refere
 Upfly knows where a project's images are used. It converts them and rewrites the
 references in one step that can be undone, reports every reference it cannot follow, and
 never deletes an image that nothing uses. By default it removes a converted image's
-original once no file it reads still names it, and only from a folder the site is served
-from; `--keep-originals` keeps every original. It makes no network calls.
+original once no file it reads still names it, wherever the image sits; `--keep-originals`
+keeps every original. It makes no network calls.
 
 Run it as `npx upfly <command>` in the project folder. The full guide is
 `node_modules/upfly/AGENTS.md`.

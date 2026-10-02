@@ -82,9 +82,9 @@ Options:
   --commit               With --apply: commit exactly the files the run wrote, as one
                          commit that git revert undoes
   --keep-originals       Keep each original beside its converted file. By default an
-                         original is removed once no file Upfly reads still names it, and
-                         only from a folder the site is served from, so a link to it from
-                         outside the project stops working; --replace asks for that default
+                         original is removed once no file Upfly reads still names it, so a
+                         link from outside the project to one in a folder the site is
+                         served from stops working; --replace asks for that default
   --dry-run              Show the plan and change nothing, as a run without --apply does
   --format <webp|avif>   The format to convert to (default webp)
   --full                 Print the full plan instead of the summary

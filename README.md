@@ -110,9 +110,10 @@ Upfly optimize · applied
 - **`upfly undo` puts back every file** the last `optimize --apply` or `dedupe --apply` changed. It checks each file
   first and changes nothing if any of them was edited since that run.
 - **Upfly never deletes an image that nothing uses.** It lists each one with its size, and the decision is yours.
-- **An original is removed once no file Upfly reads still names it**, and only from a folder the site is served
-  from; an image the build loads keeps its original. That is the default, so the dry run says how many originals go,
-  and that a link to one from outside the project, such as an email, another site or a CMS, then stops working.
+- **An original is removed once no file Upfly reads still names it**, wherever it sits: in a folder the site is
+  served from, or among the images a build loads. That is the default, so the dry run says how many originals go,
+  and how many of them are in a folder the site is served from, where a link from outside the project, such as an
+  email, another site or a CMS, then stops working.
   `--keep-originals`, or `"publicPolicy": "keep-original"` in the config file, keeps every original beside its
   converted file.
 - **A path Upfly cannot prove is never rewritten**: one assembled at runtime, such as `` `/img/${name}.png` ``, or

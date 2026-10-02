@@ -14,8 +14,9 @@ import type {
   OptimizationPlan,
   PublicPolicy,
   Report,
+  ServingRoots,
 } from 'upfly-core';
-import { type AssetProbe, type Graph, formatBytes } from 'upfly-core/internal';
+import { type AssetProbe, type Graph, formatBytes, servingRootOf } from 'upfly-core/internal';
 import type { Savings } from './audit.js';
 import { type GitState, insideRepository } from './git.js';
 import {
@@ -431,6 +432,8 @@ export interface OptimizeFacts {
   readonly next: NextStep | null;
   /** The report of the same run, for the engine's caveats at the end of the file. */
   readonly report: Report;
+  /** The folders the site is served from, where a link from outside may name an original. */
+  readonly servingRoots: ServingRoots;
 }
 
 /** The summary of an `optimize` run, dry or applied. */
@@ -452,7 +455,9 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
             `${formatBytes(before)} → ${formatBytes(before - saved)}`,
           ],
     details:
-      plan.conversions.length === 0 ? [] : originalsDetails(plan, facts.policy, apply, sizes),
+      plan.conversions.length === 0
+        ? []
+        : originalsDetails(plan, facts.policy, apply, sizes, facts.servingRoots),
     key: 'convert',
     ...(plan.conversions.length === 0
       ? {}
@@ -559,20 +564,25 @@ function convertList(
 
 /**
  * What happens to the originals: how many go and their size, how many stay, and before a run
- * that removes any, what a removed original costs. An original is removed only from a folder
- * the site is served from, so a link from outside the project may name any of them.
+ * that removes any from a folder the site is served from, what that costs: a link from
+ * outside the project may name one there. An image the build loads is published under a name
+ * that changes with every build, so nothing outside links to its original.
  */
 function originalsDetails(
   plan: OptimizationPlan,
   policy: PublicPolicy,
   apply: boolean,
   sizes: ReadonlyMap<string, number>,
+  servingRoots: ServingRoots,
 ): string[] {
   if (policy === 'keep-original') return ['each original stays beside its new file'];
   const removed = plan.conversions.filter((conversion) => conversion.replacesOriginal);
   const bytes = formatBytes(removed.reduce((sum, c) => sum + (sizes.get(c.asset) ?? 0), 0));
   const kept = plan.keptOriginals.length;
   const originals = count(removed.length, 'original');
+  const served = removed.filter(
+    (conversion) => servingRootOf(conversion.asset, servingRoots) !== null,
+  ).length;
   return [
     ...(removed.length === 0
       ? []
@@ -580,7 +590,11 @@ function originalsDetails(
         ? [`${originals} removed, ${bytes}, since their references moved`]
         : [
             `${originals} to remove, ${bytes}, once their references move`,
-            'a link to one from outside the project (an email, another site, a CMS) then stops working; --keep-originals keeps them',
+            ...(served === 0
+              ? []
+              : [
+                  `${served} of them ${served === 1 ? 'is' : 'are'} in a folder the site is served from, where a link from outside the project (an email, another site, a CMS) then stops working; --keep-originals keeps them`,
+                ]),
           ]),
     ...(kept === 0 ? [] : [`${count(kept, 'original')} kept, each for a reason in the full plan`]),
   ];

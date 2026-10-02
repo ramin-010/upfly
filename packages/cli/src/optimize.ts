@@ -509,6 +509,7 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
       file,
       next,
       report,
+      servingRoots: pipeline.servingRoots,
     });
   const text = renderFile(summary({ written: reportPath('optimize') }), {
     when: localTime(outcome.started),

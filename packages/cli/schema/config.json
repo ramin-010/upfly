@@ -20,7 +20,7 @@
       "examples": [["public"], ["."]]
     },
     "publicPolicy": {
-      "description": "What optimize does with an original image once it is converted. \"replace\", the default, removes it once every reference to it has moved to the new file, and only from a folder the site is served from. \"keep-original\" leaves it beside the new file; --keep-originals does the same for one run.",
+      "description": "What optimize does with an original image once it is converted. \"replace\", the default, removes it once every reference to it has moved to the new file and no file Upfly reads still names it. \"keep-original\" leaves it beside the new file; --keep-originals does the same for one run.",
       "type": "string",
       "enum": ["keep-original", "replace"],
       "default": "replace"

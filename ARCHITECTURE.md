@@ -1908,9 +1908,12 @@ The report counts the plan's declines in two places: images under `declined`, wi
 and the references a plan left as written under `declinedReferences`, so a pattern that stays as
 written is never counted as an image.
 
-**Served means under any serving root the resolver used**, and `replace` removes originals only
-there. The planner is handed the same `ServingRoots` value the resolver was, not a folder derived
-beside it, so an image in a monorepo's second website folder is as served as one in its first.
+**Served means under any serving root the resolver used.** `replace` removes an original there and
+among the images a build loads alike, since a bundled image's published name changes with every
+build and nothing outside links to it; the dry run counts the removed originals that are served,
+where an outside link may break. The planner is handed the same `ServingRoots` value the resolver
+was, not a folder derived beside it, so an image in a monorepo's second website folder is as served
+as one in its first.
 Moving a file between two website folders is refused by `relocate`, because a URL that finds it in
 one will not find it in the other. When the run found no serving root and the project declared
 none, nothing counts as served: every original is kept, and the report says so and how to name the

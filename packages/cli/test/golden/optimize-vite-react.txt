@@ -4,10 +4,10 @@ Run <time> in <root>
 Options: none
 
   Convert      5 images to WebP, 124.2 KB → 48.8 KB
-                 3 originals to remove, 57.3 KB, once their references move
-                 a link to one from outside the project (an email, another site,
-                 a CMS) then stops working; --keep-originals keeps them
-                 2 originals kept, each for a reason in the full plan
+                 5 originals to remove, 124.2 KB, once their references move
+                 3 of them are in a folder the site is served from, where a link
+                 from outside the project (an email, another site, a CMS) then
+                 stops working; --keep-originals keeps them
 
     Each image converts to WebP, and every reference Upfly can rewrite moves to
     the new file.
@@ -16,13 +16,12 @@ Options: none
       public/screenshot.png → public/screenshot.webp  10.9 KB → 1.1 KB
       src/assets/banner.png → src/assets/banner.webp  59.8 KB → 7.2 KB
       src/assets/logo.png → src/assets/logo.webp  7.2 KB → 850 B
-      Originals to remove once their references move: 3
+      Originals to remove once their references move: 5
         public/photos/wide.jpg
         public/photos/wide@2x.jpg
         public/screenshot.png
-      Originals kept, each with its reason: 2
-        src/assets/banner.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
-        src/assets/logo.png  converted, but the original was kept: it is outside a directory this project serves, where it is the build rather than a browser that resolves it, so a reference Upfly failed to rewrite would break the build instead of showing a missing image. Upfly removes originals only from a directory the site is served from.
+        src/assets/banner.png
+        src/assets/logo.png
 
   Update       7 references in 2 files
 

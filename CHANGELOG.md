@@ -24,8 +24,8 @@ The commands:
   images it could convert. It changes no file in the project.
 - `upfly optimize`: the plan for converting images and updating their references, which `--apply` carries out.
   `--apply` refuses to write over uncommitted changes, so the run's changes are the only ones to review, and
-  `--commit` makes them one commit. Each original is removed once every reference to it has moved, and only from
-  a folder the site is served from; the dry run says how many go. `--keep-originals`, or `publicPolicy` in the
+  `--commit` makes them one commit. Each original is removed once every reference to it has moved and no file Upfly
+  reads still names it; the dry run says how many go. `--keep-originals`, or `publicPolicy` in the
   config file, keeps them beside the converted files.
 - `upfly undo`: puts back every file the last applied run changed, after checking that none was edited since.
 - `upfly check`: for continuous integration. It fails when a reference names an image that does not exist, or,

@@ -955,7 +955,7 @@ describe('the public policy', () => {
     ).toBe(true);
   });
 
-  it('never replaces an original outside the public directory', () => {
+  it('replaces an original the build loads, as one in a served folder', () => {
     const plan = planOptimization(
       input({
         assets: [asset('src/logo.png')],
@@ -964,28 +964,20 @@ describe('the public policy', () => {
       }),
     );
 
-    expect(plan.conversions[0]?.replacesOriginal).toBe(false);
+    expect(plan.conversions[0]?.replacesOriginal).toBe(true);
   });
 
-  describe('reporting the original kept outside the public directory', () => {
-    /**
-     * Inside a served directory, a reference the run failed to rewrite is a missing image:
-     * bad, but visible. Outside one the asset is bundler-managed, and the same miss breaks
-     * the build. So the original stays, and a user who asked for `replace` is told why.
-     */
+  describe('an original the build loads', () => {
     const outside = {
       assets: [asset('src/logo.png')],
       references: [resolved('src/App.jsx', './logo.png', 'src/logo.png')],
       publicPolicy: 'replace' as const,
     };
 
-    it('reports the kept original with a reason naming the consequence', () => {
+    it('is removed once every reference to it moves, so no kept original is reported', () => {
       const plan = planOptimization(input(outside));
 
-      expect(plan.keptOriginals).toEqual([
-        { asset: 'src/logo.png', reason: expect.stringContaining('break the build') },
-      ]);
-      expect(plan.keptOriginals[0]?.reason).toContain('outside a directory this project serves');
+      expect(plan.keptOriginals).toEqual([]);
     });
 
     it('keeps the asset out of declined, which says it was not converted', () => {
@@ -1328,7 +1320,7 @@ describe('the public policy', () => {
       ]);
     });
 
-    it('gives the outside-a-served-directory reason its own entry, beside the pattern one', () => {
+    it('keeps only the original a pattern still needs, and removes one the build loads', () => {
       const plan = replacing(
         [asset('src/logo.png'), ...theme],
         [
@@ -1340,7 +1332,6 @@ describe('the public policy', () => {
 
       expect(Object.fromEntries(plan.keptOriginals.map((k) => [k.asset, k.reason]))).toEqual({
         'public/theme-light.png': expect.stringContaining('assembled at runtime'),
-        'src/logo.png': expect.stringContaining('outside a directory this project serves'),
       });
     });
 
@@ -2198,7 +2189,7 @@ describe('which assets are served, when the run decided several roots or none', 
       {
         asset: 'images/hero.png',
         reason:
-          'converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only inside one. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.',
+          'converted, but the original was kept: no website folder was found in this project, so Upfly cannot tell which images a browser loads by URL, and Upfly removes an original only once it knows that. Name the folder the site is served from with `--public <dir>` or `publicDirs` in the config file, using "." for the project root itself, as on a plain HTML site.',
       },
     ]);
     expect(reasonsByPath(plan)['images/orphan.png']).toBe(
@@ -2206,7 +2197,7 @@ describe('which assets are served, when the run decided several roots or none', 
     );
   });
 
-  it('keeps the served-directory sentence for a project that found a root elsewhere', () => {
+  it('removes the original of an image the build loads, in a project that found a root elsewhere', () => {
     const plan = planOptimization(
       input({
         assets: [asset('src/logo.png')],
@@ -2215,9 +2206,10 @@ describe('which assets are served, when the run decided several roots or none', 
       }),
     );
 
-    expect(plan.keptOriginals.map((kept) => kept.reason)).toEqual([
-      expect.stringContaining('it is outside a directory this project serves'),
+    expect(plan.conversions.map((c) => [c.asset, c.replacesOriginal])).toEqual([
+      ['src/logo.png', true],
     ]);
+    expect(plan.keptOriginals).toEqual([]);
   });
 });
 

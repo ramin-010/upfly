@@ -205,18 +205,9 @@ describe('a partial-failure state, built by hand because no real repository has 
   });
 
   describe('the kept original, on a real tree', () => {
-    it('keeps and reports the original of an asset outside the served directory', async () => {
-      // `src/` is bundler-managed, so a reference the run failed to rewrite would break
-      // the build rather than show a missing image. The original stays, and the plan
-      // says why.
-      const { plan } = await planFor('replace');
-      const outside = plan.keptOriginals.filter((kept) => kept.reason.includes('break the build'));
-
-      expect(outside.map((kept) => kept.asset)).toEqual(['src/inline-logo.jpg']);
-    });
-
-    it('removes the originals of the served assets whose references all move, which is the other half', async () => {
-      // The positive control: a planner that stopped replacing anything would pass every
+    it('removes the originals whose references all move, served or loaded by the build', async () => {
+      // `src/inline-logo.jpg` is one the build loads, and goes as a served one does. The
+      // positive control too: a planner that stopped replacing anything would pass every
       // other assertion here.
       const { plan } = await planFor('replace');
 
@@ -224,7 +215,8 @@ describe('a partial-failure state, built by hand because no real repository has 
         plan.conversions
           .filter((conversion) => conversion.replacesOriginal)
           .map((conversion) => conversion.asset),
-      ).toEqual(['public/banner.png', 'public/screenshot.png']);
+      ).toEqual(['public/banner.png', 'public/screenshot.png', 'src/inline-logo.jpg']);
+      expect(plan.keptOriginals.map((kept) => kept.asset)).not.toContain('src/inline-logo.jpg');
     });
 
     it('never files a kept original as declined, which would deny it converted', async () => {
