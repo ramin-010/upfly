@@ -20,6 +20,7 @@ interface Manifest {
   readonly files: readonly string[];
   readonly exports: Record<string, { readonly types: string; readonly import: string }>;
   readonly engines: { readonly node: string };
+  readonly dependencies?: Readonly<Record<string, string>>;
 }
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE, 'package.json'), 'utf8')) as Manifest;
@@ -131,12 +132,69 @@ describe('the package entry, imported the way a user imports it', () => {
   });
 });
 
-describe('the Node.js versions the package says it runs on', () => {
-  it('are those of the dependency asking for the newest, @babel/parser, so npm warns no one it accepts', () => {
-    const babel = JSON.parse(
-      readFileSync(join(PACKAGE, 'node_modules/@babel/parser/package.json'), 'utf8'),
-    ) as { readonly engines: { readonly node: string } };
+type Version = readonly [number, number, number];
 
-    expect(manifest.engines.node).toBe(babel.engines.node);
+/**
+ * A Node.js range as `||`-separated alternatives, each `^a.b.c` or `>=a.b.c` with the minor
+ * and patch optional, as each `[from, below]`. Any other form throws, so a dependency that
+ * starts writing one is noticed rather than passed.
+ */
+function alternatives(range: string): (readonly [Version, Version | null])[] {
+  return range.split('||').map((part) => {
+    const match = /^\s*(\^|>=\s*)(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*$/.exec(part);
+    if (match === null) throw new Error(`a Node.js range this test cannot read: ${range}`);
+    const from: Version = [Number(match[2]), Number(match[3] ?? 0), Number(match[4] ?? 0)];
+    return [from, match[1] === '^' ? [from[0] + 1, 0, 0] : null];
+  });
+}
+
+/** Whether `a` comes before `b`. */
+function below(a: Version, b: Version): boolean {
+  for (const index of [0, 1, 2] as const) {
+    if (a[index] !== b[index]) return a[index] < b[index];
+  }
+  return false;
+}
+
+function satisfies(version: Version, range: string): boolean {
+  return alternatives(range).some(
+    ([from, until]) => !below(version, from) && (until === null || below(version, until)),
+  );
+}
+
+/** Versions a range admits: each alternative's first, its last, and later majors. */
+function admitted(range: string): Version[] {
+  return alternatives(range).flatMap(([from, until]): Version[] =>
+    until === null
+      ? [from, ...[1, 2, 3, 4].map((step): Version => [from[0] + step, 0, 0])]
+      : [from, [until[0] - 1, 99, 99]],
+  );
+}
+
+describe('the Node.js versions the package says it runs on', () => {
+  it('are ones every dependency runs on, so npm warns no one the package accepts', () => {
+    const versions = admitted(manifest.engines.node);
+    for (const name of Object.keys(manifest.dependencies ?? {})) {
+      const dependency = JSON.parse(
+        readFileSync(join(PACKAGE, 'node_modules', name, 'package.json'), 'utf8'),
+      ) as { readonly engines?: { readonly node?: string } };
+      const range = dependency.engines?.node;
+      if (range === undefined) continue;
+      for (const version of versions) {
+        expect(
+          satisfies(version, range),
+          `${name} needs Node.js ${range}, and the package admits ${version.join('.')}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('reads the forms the dependencies write, and fails on a version below one', () => {
+    expect(satisfies([22, 18, 0], '^22.18.0 || >=24.11.0')).toBe(true);
+    expect(satisfies([23, 0, 0], '^22.18.0 || >=24.11.0')).toBe(false);
+    expect(satisfies([20, 0, 0], '>=20.9.0')).toBe(false);
+    expect(satisfies([26, 0, 0], '^10 || ^12 || >=14')).toBe(true);
+    expect(satisfies([4, 0, 0], '>= 4')).toBe(true);
+    expect(() => satisfies([22, 0, 0], '22.x')).toThrow('cannot read');
   });
 });
