@@ -1476,7 +1476,7 @@ exports[`buildReport > vite-react: matches the approved JSON shape 1`] = `
       "code": "unused-vectors",
       "count": 1,
       "detail": [],
-      "message": "1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.",
+      "message": "1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor deletes an SVG, so there is no action to offer. Use --include-unused-svg to see them.",
     },
     {
       "code": "duplicates-not-checked",
@@ -1631,7 +1631,7 @@ exports[`buildReport > vite-react: matches the approved human rendering 1`] = `
   scanned 5 source files and found 12 images, 126.9 KB in total
   12 of 12 references resolved, pointing at 10 of those images
   2 images with no reference Upfly could follow
-  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly will neither convert an SVG nor delete an asset)
+  including 1 unreferenced SVG, 307 B (counted, not listed: Upfly neither converts nor deletes an SVG)
 
 Nothing was skipped.
 
@@ -1642,7 +1642,7 @@ Findings: 1 item
 
 Worth knowing
 
-  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.
+  1 unreferenced SVG totalling 307 B, not listed: Upfly neither converts nor deletes an SVG, so there is no action to offer. Use --include-unused-svg to see them.
   assets were not compared byte for byte, so identical copies are unknown; this run reports no duplicates because it looked for none
   images were not decoded, so oversized assets and format opportunities are unknown
   SVG files are counted as images and also left unparsed: one can hold references of its own, and no adapter reads that yet (2 SVGs here)

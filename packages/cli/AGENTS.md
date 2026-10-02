@@ -2,7 +2,9 @@
 
 Upfly finds every image in a project and every place the project refers to one, converts
 images to WebP or AVIF, and rewrites the references, reporting each one it cannot rewrite
-safely. It never deletes an image. It makes no network calls and sends nothing anywhere.
+safely. It never deletes an image that nothing uses; with `--replace`, it removes a
+converted image's original only once no file it reads still names it. It makes no network
+calls and sends nothing anywhere.
 
 In a project that has Upfly installed, run it as `npx upfly <command>`. Every command
 reads the folder given after it, or the current folder, and prints plain text; add
@@ -56,7 +58,8 @@ Run `npx upfly refs <image> --json` and read the verdict.
   `references.unsafe`), and an image in a folder the site is served from, such as
   `public`, may be linked from outside the repository, by an email or another site.
 
-Upfly never deletes an image. The decision, and the deletion, are the user's.
+Upfly never deletes an image that nothing uses. The decision, and the deletion, are the
+user's.
 
 ## What the words mean
 

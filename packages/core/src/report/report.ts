@@ -546,7 +546,7 @@ export interface Report {
   readonly findings: readonly Finding[];
   /**
    * The unreferenced vectors this report does not itemise, with their total size: Upfly
-   * neither converts a vector nor deletes an asset, so it has no action to offer for them.
+   * neither converts nor deletes a vector, so it has no action to offer for them.
    */
   readonly unusedVectors: UnusedVectorReport;
   /** Originals kept beside the converted file their references now use. */
@@ -1282,7 +1282,7 @@ function caveats(
     list.push({
       code: 'unused-vectors',
       count: vectors.demoted.length,
-      message: `${plural(vectors.demoted.length, 'unreferenced SVG')} totalling ${formatBytes(bytes)}, not listed: Upfly neither converts an SVG nor deletes an asset, so there is no action to offer. Use --include-unused-svg to see them.`,
+      message: `${plural(vectors.demoted.length, 'unreferenced SVG')} totalling ${formatBytes(bytes)}, not listed: Upfly neither converts nor deletes an SVG, so there is no action to offer. Use --include-unused-svg to see them.`,
       detail: [],
     });
   }

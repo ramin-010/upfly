@@ -115,7 +115,7 @@ describe('upfly refs', () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toContain('No reference Upfly can read reaches it.');
     expect(run.stdout).toContain(
-      'Verdict: unused. Nothing names it, not even by file name in a file Upfly could not read; Upfly never deletes an image, and `upfly audit` lists it with its size.',
+      'Verdict: unused. Nothing names it, not even by file name in a file Upfly could not read; Upfly never deletes an image that nothing uses, and `upfly audit` lists it with its size.',
     );
   });
 

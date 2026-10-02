@@ -61,7 +61,7 @@ describe('upfly dedupe', () => {
         '  Update references: 1 reference in 1 file',
         '    index.html  1 reference',
         '  Not deleted: 1 copy no reference names once this is written, 7.2 KB. Upfly never',
-        '  deletes a file; `upfly audit` lists it as unused, with its size.',
+        '  deletes it; `upfly audit` lists it as unused, with its size.',
         '    img/logo.png',
         '',
         'Dry run: no project file was changed. Run the same command with --apply to write this plan.',

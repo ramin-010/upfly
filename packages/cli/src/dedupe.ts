@@ -250,7 +250,7 @@ function planLines(plan: DedupePlan): string[] {
     const bytes = unused.reduce((sum, { set }) => sum + set.bytes, 0);
     lines.push(
       `  Not deleted: ${unused.length} ${unused.length === 1 ? 'copy' : 'copies'} no reference names once this is written, ${formatBytes(bytes)}. Upfly never`,
-      `  deletes a file; \`upfly audit\` lists ${unused.length === 1 ? 'it' : 'them'} as unused, with ${unused.length === 1 ? 'its size' : 'their sizes'}.`,
+      `  deletes ${unused.length === 1 ? 'it' : 'them'}; \`upfly audit\` lists ${unused.length === 1 ? 'it' : 'them'} as unused, with ${unused.length === 1 ? 'its size' : 'their sizes'}.`,
       ...unused.map(({ path }) => `    ${path}`),
     );
   }

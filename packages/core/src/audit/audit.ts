@@ -162,7 +162,7 @@ export type Finding =
  *
  * It names the whole set, because no single copy is at fault. It names no copy to keep:
  * one may be a deliberate fallback, or referenced by something the graph cannot see, so
- * Upfly never picks one and never deletes.
+ * Upfly never picks one, and deletes none for being a copy.
  */
 export interface DuplicateFinding {
   readonly kind: 'duplicate';

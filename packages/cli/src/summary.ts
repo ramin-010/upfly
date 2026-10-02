@@ -394,7 +394,9 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
         one ? '1 copy' : `${unused.length} copies`,
         `, ${formatBytes(unused.reduce((sum, bytes) => sum + bytes, 0))}, with no reference left`,
       ],
-      details: [`Upfly deletes no file; upfly audit lists ${one ? 'it' : 'them'} as unused`],
+      details: [
+        `Upfly never deletes ${one ? 'it' : 'them'}; upfly audit lists ${one ? 'it' : 'them'} as unused`,
+      ],
     });
   }
 

@@ -2325,8 +2325,8 @@ Two calls about references are worth knowing:
 ### `findings` holds what there is something to do about
 
 It is not every finding the audit produced. An unreferenced **vector** is moved to `unusedVectors`,
-a count and a total size, because Upfly neither converts a vector nor deletes an asset, so itemising
-one proposes the only two things it will not do. `--include-unused-svg` lists them;
+a count and a total size, because Upfly neither converts nor deletes a vector, so itemising one
+proposes the only two things it will not do. `--include-unused-svg` lists them;
 `summary.findings` counts the itemised array, so the two can never disagree. On `astro-docs` this is
 what takes the unreferenced-asset findings from 150 to 24, and the hedges from 140 to 18.
 

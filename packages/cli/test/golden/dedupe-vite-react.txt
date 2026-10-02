@@ -8,7 +8,7 @@ Plan
       src/assets/unused-in-css.png  its 1 reference stays as written
         src/index.css:15  ./assets/unused-in-css.png stays as written: an import names a file for the bundler, and public/icons/touch.png is in a folder the site serves as it is, which bundlers such as Vite do not import from
   Not deleted: 1 copy no reference names once this is written, 70 B. Upfly never
-  deletes a file; `upfly audit` lists it as unused, with its size.
+  deletes it; `upfly audit` lists it as unused, with its size.
     src/assets/orphan.png
 
 Dry run: no project file was changed. Run the same command with --apply to write this plan.

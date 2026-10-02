@@ -7,7 +7,8 @@ description: Convert a project's images to WebP or AVIF and rewrite every refere
 
 Upfly knows where a project's images are used. It converts them and rewrites the
 references in one step that can be undone, reports every reference it cannot follow, and
-never deletes an image. It makes no network calls.
+never deletes an image that nothing uses; with `--replace`, it removes a converted image's
+original only once no file it reads still names it. It makes no network calls.
 
 Run it as `npx upfly <command>` in the project folder. The full guide is
 `node_modules/upfly/AGENTS.md`.
@@ -22,7 +23,7 @@ written) and gives a `verdict`.
 - `unused`: no reference Upfly can read names it. That is not proof: a path built at
   runtime, or a link from outside the repository, can still reach it.
 
-Upfly never deletes an image; deleting is the user's decision.
+Upfly never deletes an image that nothing uses; deleting one is the user's decision.
 
 ## Converting images
 

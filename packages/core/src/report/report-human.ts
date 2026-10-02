@@ -95,7 +95,7 @@ function vectorLine(report: Report): string[] {
   const { count: vectors, bytes: vectorBytes } = report.unusedVectors;
   if (vectors === 0) return [];
   return [
-    `  including ${count(vectors, 'unreferenced SVG')}, ${bytes(vectorBytes)} (counted, not listed: Upfly will neither convert an SVG nor delete an asset)`,
+    `  including ${count(vectors, 'unreferenced SVG')}, ${bytes(vectorBytes)} (counted, not listed: Upfly neither converts nor deletes an SVG)`,
   ];
 }
 

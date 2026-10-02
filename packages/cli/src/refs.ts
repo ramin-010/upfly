@@ -253,7 +253,7 @@ function verdictText(
     case 'not-converted':
       return `not converted: ${verdict.why}.`;
     case 'unused':
-      return 'unused. Nothing names it, not even by file name in a file Upfly could not read; Upfly never deletes an image, and `upfly audit` lists it with its size.';
+      return 'unused. Nothing names it, not even by file name in a file Upfly could not read; Upfly never deletes an image that nothing uses, and `upfly audit` lists it with its size.';
     case 'possibly-unused':
       return `possibly unused. No reference Upfly can follow reaches it, but its name appears in ${verdict.mentions.map((mention) => mention.where).join(', ')}.`;
   }

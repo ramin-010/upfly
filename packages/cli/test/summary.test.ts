@@ -121,7 +121,7 @@ const SUMMARIES = {
     '  Leave        2 references as written',
     '                 2  an import cannot reach a folder the site serves',
     '  Unused       1 copy, 70 B, with no reference left',
-    '                 Upfly deletes no file; upfly audit lists it as unused',
+    '                 Upfly never deletes it; upfly audit lists it as unused',
     '',
     '  Full plan    .upfly/report.txt',
     '',
