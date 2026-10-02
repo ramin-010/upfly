@@ -11,7 +11,8 @@
 import type { AuditResult } from '../audit/audit.js';
 import { UpflyError } from '../errors.js';
 import type { Graph } from '../graph/graph.js';
-import { compareStrings } from '../paths.js';
+import { isBinaryExtension } from '../graph/unscanned.js';
+import { compareStrings, extensionOf } from '../paths.js';
 import type { ProjectBuilds } from '../plan/builds.js';
 import {
   type Survivor,
@@ -212,7 +213,9 @@ async function mentionsThatWouldSurvive(
 
   const found = await findSurvivingPaths({
     moves: deleting.map((conversion) => ({ from: conversion.asset, to: conversion.target })),
-    files: scope.files,
+    // A binary format holds no text a path could be written in, and reading a project's
+    // PDFs and videos as text would take most of the run.
+    files: scope.files.filter((file) => !isBinaryExtension(extensionOf(file))),
     readFile: async (relative) => {
       const text = await input.store.readText(relative);
       read?.set(relative, hashText(text));

@@ -681,6 +681,49 @@ describe('replace refuses to delete an original a mention would outlive', () => 
     expect(declined?.reason).toContain('cannot rewrite');
   });
 
+  it('reads no binary file, and a text file nothing parses that names the original still keeps it', async () => {
+    // A PDF or a video can hold no path Upfly reads, and reading one as text costs the run
+    // its time; a plain text file can hold one.
+    const tree = {
+      'index.html': '<img src="/logo.png">',
+      'docs/manual.pdf': 'a binary stream that happens to hold /logo.png',
+      'public/logo.png': 'PNG',
+    };
+    const recorded = (project: ReturnType<typeof servedProject>) => {
+      const read: string[] = [];
+      const store: FileStore = {
+        ...project.store,
+        readText: async (path) => {
+          read.push(path);
+          return project.store.readText(path);
+        },
+      };
+      return { read, input: { ...project.input, store } };
+    };
+
+    const binary = recorded(servedProject(tree, ['index.html', 'docs/manual.pdf']));
+    const converted = await optimize(binary.input);
+    const text = recorded(
+      servedProject({ ...tree, 'notes.txt': 'see /logo.png\n' }, [
+        'index.html',
+        'docs/manual.pdf',
+        'notes.txt',
+      ]),
+    );
+    const kept = await optimize(text.input);
+
+    expect(binary.read).not.toContain('docs/manual.pdf');
+    expect(converted.plan.conversions.map((conversion) => conversion.replacesOriginal)).toEqual([
+      true,
+    ]);
+    expect(text.read).toContain('notes.txt');
+    expect(text.read).not.toContain('docs/manual.pdf');
+    expect(kept.plan.conversions).toEqual([]);
+    expect(kept.plan.declined.find((entry) => entry.path === 'public/logo.png')?.reason).toContain(
+      'notes.txt:1',
+    );
+  });
+
   it('refuses it as well when that mention spells the path in another letter case', async () => {
     // Windows and macOS load `/LOGO.png` from `logo.png`, so the mention reaches the original
     // there as surely as one spelled exactly.
