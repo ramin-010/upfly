@@ -44,11 +44,11 @@ function result(stdout: string): Record<string, unknown> {
 }
 
 describe('upfly dedupe', () => {
-  it('shows the plan, the copy it keeps and why, and writes nothing', () => {
+  it('keeps the plan, the copy it keeps and why, which --full prints, and changes no project file', () => {
     const root = site();
     const before = snapshot(root);
 
-    const run = upfly(['dedupe', root]);
+    const run = upfly(['dedupe', root, '--full']);
 
     expect(run.status).toBe(0);
     expect(run.stdout).toBe(
@@ -64,12 +64,13 @@ describe('upfly dedupe', () => {
         '  deletes a file; `upfly audit` lists it as unused, with its size.',
         '    img/logo.png',
         '',
-        'Dry run: nothing was written. Run the same command with --apply to write this plan.',
+        'Dry run: no project file was changed. Run the same command with --apply to write this plan.',
         `Note: ${root} is not in a git repository: --apply writes here only with --allow-dirty, and \`upfly undo\` is then the way back.`,
         '',
       ].join('\n'),
     );
-    expect(snapshot(root)).toEqual(before);
+    expect(snapshot(root, ['.upfly'])).toEqual(before);
+    expect(readFileSync(join(root, '.upfly/report.txt'), 'utf8')).toBe(run.stdout);
   });
 
   it('writes and commits exactly the edited pages, keeps every file, and upfly undo puts them back', () => {
@@ -77,7 +78,7 @@ describe('upfly dedupe', () => {
     commitAll(root);
     const before = snapshot(root, ['.git']);
 
-    const run = upfly(['dedupe', root, '--apply', '--commit']);
+    const run = upfly(['dedupe', root, '--apply', '--commit', '--full']);
     const edited = readFileSync(join(root, 'index.html'), 'utf8');
     const committed = git(root, 'show', '--name-only', '--format=', 'HEAD').trim();
     const undo = upfly(['undo', root]);
@@ -142,7 +143,7 @@ describe('upfly dedupe', () => {
     write(root, 'index.html', '<img src="a.png">\n');
     write(root, 'a.png', LOGO);
 
-    const run = upfly(['dedupe', root]);
+    const run = upfly(['dedupe', root, '--full']);
 
     expect(run.status).toBe(0);
     expect(run.stdout).toContain('  No two images hold the same bytes, so there is nothing to do.');

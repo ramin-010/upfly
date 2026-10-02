@@ -21,7 +21,8 @@ import type { RefsOptions } from './args.js';
 import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { headline } from './layout.js';
+import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { movingText } from './plan-text.js';
 
 /** One reference to the image: where it is, what it says, and whether a run could move it. */
@@ -127,7 +128,8 @@ export async function runRefs(options: RefsOptions, io: Io): Promise<ExitCode> {
       verdict,
     });
   } else {
-    io.stdout.write(render(node, references, verdict));
+    const styles = stylesFor(io.stdout, io.env, options);
+    io.stdout.write(render(node, references, verdict, styles));
   }
   return EXIT_CODES.OK;
 }
@@ -210,19 +212,26 @@ function unmeasuredWhy(
     : `it was not measured as ${name}: ${skipped.reason}`;
 }
 
-function render(node: AssetNode, references: readonly ReferenceAnswer[], verdict: Verdict): string {
+function render(
+  node: AssetNode,
+  references: readonly ReferenceAnswer[],
+  verdict: Verdict,
+  styles: Styles,
+): string {
   const cited = references.flatMap((reference) => [
     `    ${reference.line === null ? reference.file : `${reference.file}:${reference.line}`}  ${reference.text}`,
     ...(reference.why === undefined ? [] : [`      stays as written: ${reference.why}`]),
   ]);
   return [
+    headline(styles, 'refs'),
+    '',
     `${node.asset.relative}  ${formatBytes(node.asset.bytes)}`,
     '',
     ...(references.length === 0
       ? ['No reference Upfly can read reaches it.']
-      : [`References (${references.length})`, ...cited]),
+      : [styles.accent(`References (${references.length})`), ...cited]),
     '',
-    `Verdict: ${verdictText(node, references, verdict)}`,
+    `${styles.accent('Verdict:')} ${verdictText(node, references, verdict)}`,
     '',
   ].join('\n');
 }

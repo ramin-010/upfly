@@ -28,7 +28,7 @@ import {
   readLockHolder,
 } from 'upfly-core/internal';
 import type { OptimizeOptions } from './args.js';
-import { isDirectory } from './audit.js';
+import { isDirectory, scopeWords } from './audit.js';
 import { type UpflyConfig, loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import {
@@ -40,8 +40,11 @@ import {
   ignoredFolders,
   ignoredPaths,
 } from './git.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { renderSummary } from './layout.js';
+import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count, renderPlan, writtenByKind } from './plan-text.js';
+import { warnIfNotKept, writeReport } from './report-file.js';
+import { type NextStep, nextAfterPlan, nextAfterRun, optimizeSummary } from './summary.js';
 
 /** A reason to stop, with the exit code and, for a refusal, the name `--json` gives it. */
 export interface Refusal {
@@ -90,6 +93,8 @@ export async function runOptimize(options: OptimizeOptions, io: Io): Promise<Exi
     policy,
     git,
     commit,
+    unfinished: unfinished !== null,
+    format: options.format ?? settings.format ?? 'webp',
     notes: [...notes(options, git, unfinished), ...onlyNotes(result)],
   });
   return EXIT_CODES.OK;
@@ -378,6 +383,9 @@ interface Outcome {
   readonly policy: PublicPolicy;
   readonly git: GitState;
   readonly commit: string | null;
+  /** Whether an earlier run stopped part way, which `undo` has to finish first. */
+  readonly unfinished: boolean;
+  readonly format: 'webp' | 'avif';
   readonly notes: readonly string[];
 }
 
@@ -459,7 +467,52 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
   ];
   lines.push(...outcomeLines(options, run.manifest, outcome));
   for (const note of outcome.notes) lines.push(`Note: ${note}`);
-  io.stdout.write(`${lines.join('\n')}\n`);
+  const full = `${lines.join('\n')}\n`;
+  const file = writeReport(pipeline.graph.root, full, run.manifest?.runDir ?? null);
+  if (options.full) {
+    io.stdout.write(full);
+    warnIfNotKept(io, file);
+    return;
+  }
+
+  const nothingToDo = run.plan.conversions.length === 0 && run.plan.rewrites.length === 0;
+  let next: NextStep | null = null;
+  if (options.apply) next = run.manifest === null ? null : nextAfterRun(outcome.commit);
+  else if (!nothingToDo) {
+    next = nextAfterPlan(
+      'optimize',
+      options.dir,
+      planFlags(options),
+      outcome.git,
+      outcome.unfinished,
+    );
+  }
+  const summary = optimizeSummary({
+    plan: run.plan,
+    graph: pipeline.graph,
+    probes: pipeline.probes,
+    only: result.only?.images ?? null,
+    format: outcome.format,
+    policy: outcome.policy,
+    apply: options.apply,
+    manifest: run.manifest,
+    commit: outcome.commit,
+    git: outcome.git,
+    notes: outcome.notes,
+    file,
+    next,
+  });
+  io.stdout.write(renderSummary(summary, stylesFor(io.stdout, io.env, options)));
+}
+
+/** The flags that shaped the plan, so that `--apply` writes the same plan. */
+function planFlags(options: OptimizeOptions): string[] {
+  return [
+    ...(options.replace ? ['--replace'] : []),
+    ...(options.format === null ? [] : ['--format', options.format]),
+    ...scopeWords({ ...options, dir: '.' }),
+    ...(options.only ?? []).flatMap((pattern) => ['--only', pattern]),
+  ];
 }
 
 /** What an applied run wrote and committed, or that a dry run wrote nothing. */
@@ -469,7 +522,9 @@ export function outcomeLines(
   outcome: Pick<Outcome, 'git' | 'commit'>,
 ): string[] {
   if (!options.apply) {
-    return ['Dry run: nothing was written. Run the same command with --apply to write this plan.'];
+    return [
+      'Dry run: no project file was changed. Run the same command with --apply to write this plan.',
+    ];
   }
   if (manifest === null) return ['Nothing was written: the plan has nothing to do.'];
   const { created, changed, removed } = writtenByKind(manifest);

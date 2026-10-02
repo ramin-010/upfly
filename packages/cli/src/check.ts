@@ -13,7 +13,8 @@ import { isDirectory } from './audit.js';
 import { loadConfig } from './config.js';
 import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { changedFiles } from './git.js';
-import { type Io, emit, progressReporter, stopWith } from './output.js';
+import { headline } from './layout.js';
+import { type Io, type Styles, emit, progressReporter, stopWith, stylesFor } from './output.js';
 import { count } from './plan-text.js';
 
 /** An image a reference uses whose file is larger than `check.maxImageBytes`. */
@@ -106,7 +107,7 @@ export async function runCheck(options: CheckOptions, io: Io): Promise<ExitCode>
       ...(verdict.unread === 0 ? {} : { unread: verdict.unread }),
     });
   } else {
-    io.stdout.write(render(verdict, scope));
+    io.stdout.write(render(verdict, scope, stylesFor(io.stdout, io.env, options)));
   }
   return exitCode;
 }
@@ -194,15 +195,24 @@ function judge(output: PipelineOutput, limit: number | null, scope: ChangeScope 
   };
 }
 
-function render(verdict: Verdict, scope: ChangeScope | null): string {
+/**
+ * The verdict as text: the headline, the line that says whether it passed, then the
+ * findings. In a terminal the verdict's first word is a label, in red when it failed.
+ */
+function render(verdict: Verdict, scope: ChangeScope | null, styles: Styles): string {
   const broken = verdict.findings.filter((f): f is BrokenFinding => f.kind === 'broken');
   const tooLarge = verdict.findings.filter((f): f is TooLargeFinding => f.kind === 'too-large');
-  const sections = [verdictLine(broken.length, tooLarge.length, verdict.limit)];
+  const said = verdictLine(broken.length, tooLarge.length, verdict.limit);
+  const [word = '', ...rest] = said.split(' ');
+  const sections = [
+    headline(styles, 'check'),
+    [verdict.findings.length === 0 ? styles.accent(word) : styles.red(word), ...rest].join(' '),
+  ];
 
   if (broken.length > 0) {
     sections.push(
       [
-        `References to images that do not exist (${broken.length})`,
+        styles.accent(`References to images that do not exist (${broken.length})`),
         ...broken.flatMap((finding) => [
           `    ${finding.where}  ${finding.rawPath}`,
           ...(finding.note === undefined ? [] : [`      ${finding.note}`]),
@@ -213,14 +223,14 @@ function render(verdict: Verdict, scope: ChangeScope | null): string {
   if (tooLarge.length > 0) {
     sections.push(
       [
-        `Images in use larger than ${verdict.limit} bytes (${tooLarge.length})`,
+        styles.accent(`Images in use larger than ${verdict.limit} bytes (${tooLarge.length})`),
         ...tooLarge.map((finding) => `    ${finding.asset}  ${formatBytes(finding.bytes)}`),
       ].join('\n'),
     );
   }
 
   const notes = notesFor(verdict, scope);
-  if (notes.length > 0) sections.push(notes.join('\n'));
+  if (notes.length > 0) sections.push(notes.map(styles.dim).join('\n'));
   return `${sections.join('\n\n')}\n`;
 }
 

@@ -4,13 +4,14 @@ import { type CommandOptions, parseCommandLine } from './args.js';
 import { runAudit } from './audit.js';
 import { runCheck } from './check.js';
 import { runDedupe } from './dedupe.js';
-import { EXIT_CODES, type ExitCode, VERSION } from './exit-codes.js';
+import { EXIT_CODES, type ExitCode } from './exit-codes.js';
 import { helpText } from './help.js';
 import { runInit } from './init.js';
 import { runOptimize } from './optimize.js';
-import { type Io, colourFor, emit, paint } from './output.js';
+import { type Io, emit, stylesFor } from './output.js';
 import { runRefs } from './refs.js';
 import { runUndo } from './undo.js';
+import { version } from './version.js';
 
 /**
  * Runs one invocation of the CLI.
@@ -24,7 +25,7 @@ export async function main(argv: readonly string[], io: Io): Promise<ExitCode> {
   const json = argv.includes('--json');
 
   if (parsed.kind === 'version') {
-    io.stdout.write(`${VERSION}\n`);
+    io.stdout.write(`${version()}\n`);
     return EXIT_CODES.OK;
   }
   if (parsed.kind === 'help') {
@@ -40,9 +41,12 @@ export async function main(argv: readonly string[], io: Io): Promise<ExitCode> {
         message: parsed.message,
       });
     } else {
-      const colour = colourFor(io.stderr, io.env, { json, noColor: argv.includes('--no-color') });
+      const { red } = stylesFor(io.stderr, io.env, {
+        json,
+        noColor: argv.includes('--no-color'),
+      });
       const help = parsed.command === null ? 'upfly --help' : `upfly ${parsed.command} --help`;
-      io.stderr.write(`${paint(colour, 'red', 'upfly:')} ${parsed.message}\nSee \`${help}\`.\n`);
+      io.stderr.write(`${red('upfly:')} ${parsed.message}\nSee \`${help}\`.\n`);
     }
     return EXIT_CODES.USAGE;
   }

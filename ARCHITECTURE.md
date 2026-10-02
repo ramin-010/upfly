@@ -2487,9 +2487,32 @@ name. A code config beside the extension's file is read and the file is left alo
 
 **Output.** With `--json`, stdout carries only JSON lines: progress events as each stage finishes,
 the libraries' own messages as `diagnostic` lines, and one final `result` or `error` object. That
-is why the libraries' wording can appear there and never in the report. Without it, the report goes
-to stdout, and errors and progress go to stderr, progress only on a terminal. Colour appears only on
-a terminal, and never under `--no-color` or a non-empty `NO_COLOR`.
+is why the libraries' wording can appear there and never in the report. Without it, errors and
+progress go to stderr, progress only on a terminal, and every command's text starts with the same
+headline, `Upfly <command>`.
+
+**`audit`, `optimize` and `dedupe` print a short summary**: what will happen or happened, the
+totals, every image left alone counted by reason, and the next command to run, in labelled rows no
+wider than 80 columns, a long path shortened in the middle. Their full text, which `--full` prints
+instead, goes to `.upfly/report.txt`, replaced on each run; an applied run also keeps a copy in its
+run folder. The folder's `.gitignore` is written before the report, so a report never shows as a
+change and never makes `--apply` refuse. Under `--json` no report is written: the JSON holds
+everything, and a file its output never names would be a side effect no script asked for. The
+planner gives its reasons as sentences, so the summary groups them by the phrases each kind of
+sentence always holds (`reasons.ts`); a sentence that holds none is still counted, as another
+reason, and a probe's skips are grouped by their code.
+
+**Colour** appears only on a terminal, and never under `--no-color`, a non-empty `NO_COLOR` or
+`TERM=dumb`. Colour is the default, so the help does not offer `--no-color`; it works for whoever
+knows it. There is one accent, the brand's coral `#E8365F` in bold, for structure only: the
+headline's name and the labels. It is the one bold thing on a line, so values stay at the
+terminal's own weight, apart from the command to run next, bold so it can be found and copied; a
+second bold column made the summary heavy, and coral at normal weight read as an error. Secondary lines are dim, and red marks a failure and nothing else; no meaning
+rests on colour alone. How many colours the terminal shows is Node's answer for the stream
+(`getColorDepth`), which reads `COLORTERM` and `TERM` and knows that Windows 10 and later show
+24-bit colour though their consoles set neither. The coral is exact at 24 bits and the nearest of
+256 where the terminal shows those. Among 16 colours only a red comes near it, so there the
+accent is bold without a colour, and red still means a failure.
 
 **Exit codes** are a contract: 0 the command ran, 1 `check` found findings over its thresholds, 2 the
 command line or configuration was wrong, 3 Upfly refused to act for safety, 4 something it did not

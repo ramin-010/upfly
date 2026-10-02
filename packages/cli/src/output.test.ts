@@ -1,5 +1,14 @@
+import { WriteStream } from 'node:tty';
 import { describe, expect, it } from 'vitest';
-import { type Output, colourFor, paint, progressReporter, stopWith } from './output.js';
+import {
+  type Output,
+  PLAIN,
+  colourDepth,
+  colourFor,
+  progressReporter,
+  stopWith,
+  stylesFor,
+} from './output.js';
 
 const terminal: Output = { write: () => true, isTTY: true };
 const pipe: Output = { write: () => true };
@@ -22,9 +31,124 @@ describe('colourFor', () => {
     expect(colourFor(terminal, { NO_COLOR: '' }, plain)).toBe(true);
   });
 
-  it('paints only when asked', () => {
-    expect(paint(false, 'red', 'x')).toBe('x');
-    expect(paint(true, 'red', 'x')).toBe('\u001b[31mx\u001b[39m');
+  it('turns colour off on a terminal that calls itself dumb', () => {
+    expect(colourFor(terminal, { TERM: 'dumb' }, plain)).toBe(false);
+  });
+});
+
+/** A terminal that reports `bits` of colour, as Node's terminal streams do. */
+function showing(bits: number): Output {
+  return { write: () => true, isTTY: true, getColorDepth: () => bits };
+}
+
+describe('colourDepth', () => {
+  it('takes the depth the stream reports: 24-bit, 256, or 16 and fewer', () => {
+    expect(colourDepth(showing(24), {})).toBe('truecolor');
+    expect(colourDepth(showing(8), {})).toBe('256');
+    expect(colourDepth(showing(4), {})).toBe('basic');
+    expect(colourDepth(showing(1), {})).toBe('basic');
+    expect(colourDepth(terminal, {})).toBe('basic');
+  });
+
+  it('asks without NO_COLOR, which colourFor has read, and which Node reads as off even when empty', () => {
+    const asked: object[] = [];
+    const stream: Output = {
+      write: () => true,
+      isTTY: true,
+      getColorDepth: (env) => {
+        asked.push(env ?? {});
+        return 24;
+      },
+    };
+    expect(colourDepth(stream, { NO_COLOR: '', TERM: 'xterm' })).toBe('truecolor');
+    expect(asked).toEqual([{ TERM: 'xterm' }]);
+  });
+
+  it("follows Node's own answer, which reads COLORTERM on every platform", () => {
+    const node: Output = { ...terminal, getColorDepth: WriteStream.prototype.getColorDepth };
+    expect(colourDepth(node, { COLORTERM: 'truecolor' })).toBe('truecolor');
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'finds 24-bit colour on Windows, whose consoles set no COLORTERM',
+    () => {
+      const node: Output = { ...terminal, getColorDepth: WriteStream.prototype.getColorDepth };
+      expect(colourDepth(node, {})).toBe('truecolor');
+    },
+  );
+});
+
+describe('stylesFor', () => {
+  it('marks nothing when colour is off', () => {
+    const off = stylesFor(showing(24), { NO_COLOR: '1' }, plain);
+    expect([off.accent('x'), off.bold('x'), off.dim('x'), off.red('x')]).toEqual([
+      'x',
+      'x',
+      'x',
+      'x',
+    ]);
+    expect(stylesFor(pipe, {}, plain).accent('x')).toBe('x');
+    expect([PLAIN.accent('x'), PLAIN.bold('x'), PLAIN.dim('x'), PLAIN.red('x')]).toEqual([
+      'x',
+      'x',
+      'x',
+      'x',
+    ]);
+  });
+
+  it('marks the next command bold, secondary lines dim and a failure red at every depth', () => {
+    for (const bits of [4, 8, 24]) {
+      const on = stylesFor(showing(bits), {}, plain);
+      expect(on.bold('x')).toBe('\u001b[1mx\u001b[22m');
+      expect(on.dim('x')).toBe('\u001b[2mx\u001b[22m');
+      expect(on.red('x')).toBe('\u001b[31mx\u001b[39m');
+      expect(on.dim('')).toBe('');
+    }
+  });
+
+  it('gives the coral in bold at the depth the terminal shows, and bold alone, never a red, with 16 colours', () => {
+    expect(stylesFor(showing(24), {}, plain).accent('x')).toBe(
+      '\u001b[1;38;2;232;54;95mx\u001b[22;39m',
+    );
+    expect(stylesFor(showing(8), {}, plain).accent('x')).toBe('\u001b[1;38;5;161mx\u001b[22;39m');
+    expect(stylesFor(showing(4), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
+    expect(stylesFor(showing(1), {}, plain).accent('x')).toBe('\u001b[1mx\u001b[22m');
+  });
+
+  it('picks, of the 256, the colour nearest the coral as the eye sees it', () => {
+    // CIE76: the distance between two colours in CIELAB, under the D65 white point.
+    const lab = ([r, g, b]: readonly number[]) => {
+      const linear = [r, g, b].map((c) => {
+        const s = (c ?? 0) / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      const [R = 0, G = 0, B = 0] = linear;
+      const xyz = [
+        (0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047,
+        0.2126 * R + 0.7152 * G + 0.0722 * B,
+        (0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883,
+      ].map((t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116));
+      const [x = 0, y = 0, z = 0] = xyz;
+      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    };
+    const distance = (a: readonly number[], b: readonly number[]) => {
+      const [p, q] = [lab(a), lab(b)];
+      return Math.hypot(...p.map((value, index) => value - (q[index] ?? 0)));
+    };
+    const levels = [0, 95, 135, 175, 215, 255];
+    const cube = Array.from({ length: 216 }, (_, n) => ({
+      index: 16 + n,
+      rgb: [
+        levels[Math.floor(n / 36)] ?? 0,
+        levels[Math.floor(n / 6) % 6] ?? 0,
+        levels[n % 6] ?? 0,
+      ],
+    }));
+    const coral = [232, 54, 95];
+    const nearest = cube.reduce((best, each) =>
+      distance(each.rgb, coral) < distance(best.rgb, coral) ? each : best,
+    );
+    expect(nearest.index).toBe(161);
   });
 });
 

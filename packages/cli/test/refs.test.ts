@@ -51,14 +51,16 @@ describe('upfly refs', () => {
 
     expect(run.status).toBe(0);
     const lines = run.stdout.split('\n');
-    expect(lines.slice(0, 5)).toEqual([
+    expect(lines.slice(0, 7)).toEqual([
+      'Upfly refs',
+      '',
       'images/logo.png  7.2 KB',
       '',
       'References (2)',
       '    index.html:10  images/logo.png',
       '    notes.md:1  images/logo.png',
     ]);
-    expect(lines[5]).toMatch(/^ {6}stays as written: .+/);
+    expect(lines[7]).toMatch(/^ {6}stays as written: .+/);
     expect(run.stdout).toContain(
       'Verdict: converts to images/logo.webp, 7.2 KB to 850 B. 1 of its 2 references moves to the new file; the original stays beside it.',
     );
@@ -102,7 +104,7 @@ describe('upfly refs', () => {
     const run = upfly(['refs', 'images/logo.png'], { cwd: root });
 
     expect(run.status).toBe(0);
-    expect(run.stdout.split('\n')[0]).toBe('images/logo.png  7.2 KB');
+    expect(run.stdout.split('\n')[2]).toBe('images/logo.png  7.2 KB');
   });
 
   it('says an image nothing names is unused, and that Upfly leaves it where it is', () => {

@@ -17,6 +17,11 @@ export interface Io {
 export interface Output {
   write(text: string): unknown;
   readonly isTTY?: boolean;
+  /**
+   * How many bits of colour the terminal shows, 1, 4, 8 or 24, as Node's terminal streams
+   * report it. A stream without it is taken to show 16 colours.
+   */
+  getColorDepth?(env?: object): number;
 }
 
 /** One stage of the run finished, with what it counted. */
@@ -27,7 +32,8 @@ export interface ProgressEvent {
 
 /**
  * Whether to colour what goes to `stream`: only on a terminal, never under `--json` or
- * `--no-color`, and never when `NO_COLOR` is set to anything but the empty string.
+ * `--no-color`, never when `NO_COLOR` is set to anything but the empty string, and never
+ * on a terminal that calls itself `dumb`, which shows escape codes as text.
  *
  * @see https://no-color.org
  */
@@ -39,15 +45,90 @@ export function colourFor(
   if (options.json || options.noColor) return false;
   const noColor = env.NO_COLOR;
   if (noColor !== undefined && noColor !== '') return false;
+  if (env.TERM === 'dumb') return false;
   return stream.isTTY === true;
 }
 
-/** Wraps text in an ANSI style when colour is on. */
-export function paint(on: boolean, style: 'bold' | 'dim' | 'red' | 'yellow', text: string): string {
-  if (!on) return text;
-  const codes = { bold: [1, 22], dim: [2, 22], red: [31, 39], yellow: [33, 39] } as const;
-  const [open, close] = codes[style];
-  return `\u001b[${open}m${text}\u001b[${close}m`;
+/** How many colours a terminal shows: 24-bit, the 256 of xterm, or 16 and fewer. */
+export type ColourDepth = 'truecolor' | '256' | 'basic';
+
+/**
+ * The colour depth of the terminal behind `stream`, as Node reports it: from `COLORTERM`,
+ * `TERM` and the platform, so Windows 10 and later count as 24-bit, though their consoles set
+ * neither variable. `NO_COLOR` is left out of the question: `colourFor` has read it already,
+ * and Node reads even an empty one as no colour.
+ *
+ * @see https://nodejs.org/api/tty.html#writestreamgetcolordepthenv
+ */
+export function colourDepth(stream: Output, env: Io['env']): ColourDepth {
+  const asked = Object.fromEntries(Object.entries(env).filter(([name]) => name !== 'NO_COLOR'));
+  const bits = stream.getColorDepth?.(asked) ?? 4;
+  if (bits >= 24) return 'truecolor';
+  return bits >= 8 ? '256' : 'basic';
+}
+
+/**
+ * The brand's coral, `#E8365F`, where the terminal can show it: exact, or index 161 of the
+ * 256 (`#D7005F`), the nearest by CIE76 distance. Among 16 colours only a red comes near it,
+ * and red marks a failure, so there the accent is bold without a colour.
+ */
+const CORAL: Readonly<Record<ColourDepth, string | null>> = {
+  truecolor: '38;2;232;54;95',
+  '256': '38;5;161',
+  basic: null,
+};
+
+/**
+ * The only ways the CLI marks its text. Colour never carries a meaning on its own: each mark
+ * sits on words that already say it.
+ */
+export interface Styles {
+  /**
+   * The brand's coral in bold, for structure only: the headline's name and the labels. It is
+   * the one bold thing on a line, so values stay at the terminal's own weight, apart from the
+   * command to run next.
+   */
+  readonly accent: (text: string) => string;
+  /** The command to run next, in the terminal's own colour, so it can be found and copied. */
+  readonly bold: (text: string) => string;
+  /** A secondary line. */
+  readonly dim: (text: string) => string;
+  /** A failure, and nothing else. */
+  readonly red: (text: string) => string;
+}
+
+/** Styles that leave text as it is, for output with no colour. */
+export const PLAIN: Styles = {
+  accent: (text) => text,
+  bold: (text) => text,
+  dim: (text) => text,
+  red: (text) => text,
+};
+
+/**
+ * The styles for what goes to `stream`: `PLAIN` wherever `colourFor` turns colour off, so
+ * the text then holds no escape code at all, and otherwise marks for the colours the
+ * terminal shows.
+ *
+ * @param stream where the text goes
+ * @param env the environment, which can turn colour off and says how many colours there are
+ * @param options `--json` and `--no-color`
+ */
+export function stylesFor(
+  stream: Output,
+  env: Io['env'],
+  options: { readonly json: boolean; readonly noColor: boolean },
+): Styles {
+  if (!colourFor(stream, env, options)) return PLAIN;
+  const mark = (open: string, close: string) => (text: string) =>
+    text === '' ? text : `\u001b[${open}m${text}\u001b[${close}m`;
+  const coral = CORAL[colourDepth(stream, env)];
+  return {
+    accent: coral === null ? mark('1', '22') : mark(`1;${coral}`, '22;39'),
+    bold: mark('1', '22'),
+    dim: mark('2', '22'),
+    red: mark('31', '39'),
+  };
 }
 
 /** Writes one JSON line to stdout. */
@@ -87,8 +168,8 @@ export function stopWith(
       message,
     });
   } else {
-    const colour = colourFor(io.stderr, io.env, style);
-    io.stderr.write(`${paint(colour, 'red', 'upfly:')} ${message}\n`);
+    const { red } = stylesFor(io.stderr, io.env, style);
+    io.stderr.write(`${red('upfly:')} ${message}\n`);
   }
   return code;
 }

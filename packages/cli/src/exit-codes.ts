@@ -14,6 +14,3 @@ export const EXIT_CODES = {
 
 /** One of the codes in `EXIT_CODES`, the number the binary exits with. */
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
-
-/** The version `upfly --version` prints. */
-export const VERSION = '0.0.0';

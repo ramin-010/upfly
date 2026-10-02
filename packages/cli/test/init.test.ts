@@ -57,6 +57,8 @@ describe('upfly init', () => {
     );
     expect(run.stdout).toBe(
       [
+        'Upfly init',
+        '',
         'Wrote upfly.config.json:',
         '',
         ...written

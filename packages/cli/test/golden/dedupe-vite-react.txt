@@ -1,0 +1,14 @@
+Plan
+
+  Keep one copy of each set of identical images: 1 set
+    public/icons/touch.png  70 B, kept: as many references use it as another copy, and a folder the site is served from holds it
+      src/assets/orphan.png  no reference names it
+      src/assets/texture.png  its 1 reference stays as written
+        src/index.css:2  ./assets/texture.png stays as written: an import names a file for the bundler, and public/icons/touch.png is in a folder the site serves as it is, which bundlers such as Vite do not import from
+      src/assets/unused-in-css.png  its 1 reference stays as written
+        src/index.css:15  ./assets/unused-in-css.png stays as written: an import names a file for the bundler, and public/icons/touch.png is in a folder the site serves as it is, which bundlers such as Vite do not import from
+  Not deleted: 1 copy no reference names once this is written, 70 B. Upfly never
+  deletes a file; `upfly audit` lists it as unused, with its size.
+    src/assets/orphan.png
+
+Dry run: no project file was changed. Run the same command with --apply to write this plan.

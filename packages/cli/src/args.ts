@@ -26,6 +26,8 @@ export interface ScopeOptions {
 }
 
 export interface ReportOptions {
+  /** `--full`: print the full text rather than the summary. */
+  readonly full: boolean;
   /** `--include-discarded`: list the path-like strings that linked nothing. */
   readonly includeDiscarded: boolean;
   /** `--include-unused-svg`: list the unused SVG files the report otherwise only counts. */
@@ -77,6 +79,8 @@ export interface InitOptions extends CommonOptions {
 
 export interface DedupeOptions extends CommonOptions, ScopeOptions {
   readonly command: 'dedupe';
+  /** `--full`: print the full text rather than the summary. */
+  readonly full: boolean;
   /** `--apply`: write the plan. Without it the run only reports what it would do. */
   readonly apply: boolean;
   /** `--commit`: commit the files the run wrote, and nothing else, as one commit. */
@@ -140,6 +144,7 @@ const SCOPE = {
 } as const;
 
 const REPORT = {
+  full: { type: 'boolean' },
   'include-discarded': { type: 'boolean' },
   'include-unused-svg': { type: 'boolean' },
 } as const;
@@ -181,6 +186,7 @@ const DEDUPE = {
   commit: { type: 'boolean' },
   'allow-dirty': { type: 'boolean' },
   keep: { type: 'string', multiple: true },
+  full: { type: 'boolean' },
 } as const;
 
 /**
@@ -229,7 +235,8 @@ function parseDedupe(args: readonly string[]): Parsed {
   const apply = values.apply === true;
   const commit = values.commit === true;
   const allowDirty = values['allow-dirty'] === true;
-  const conflict = writeFlagConflict(apply, commit, allowDirty);
+  const conflict =
+    writeFlagConflict(apply, commit, allowDirty) ?? fullConflict(values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
   return {
     kind: 'run',
@@ -238,6 +245,7 @@ function parseDedupe(args: readonly string[]): Parsed {
       dir: dir.value,
       json: values.json === true,
       noColor: values['no-color'] === true,
+      full: values.full === true,
       apply,
       commit,
       allowDirty,
@@ -350,6 +358,8 @@ function parseAudit(args: readonly string[]): Parsed {
   if (typeof scope === 'string') return { kind: 'usage-error', command, message: scope };
   const maxEncodes = maxEncodesOf(values);
   if (typeof maxEncodes === 'string') return { kind: 'usage-error', command, message: maxEncodes };
+  const conflict = fullConflict(values.full, values.json);
+  if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
 
   return {
     kind: 'run',
@@ -360,6 +370,7 @@ function parseAudit(args: readonly string[]): Parsed {
       noColor: values['no-color'] === true,
       probe: values['no-probe'] !== true,
       maxEncodes,
+      full: values.full === true,
       includeDiscarded: values['include-discarded'] === true,
       includeUnusedSvg: values['include-unused-svg'] === true,
       ...scope,
@@ -396,7 +407,8 @@ function parseOptimize(args: readonly string[]): Parsed {
   const apply = values.apply === true;
   const commit = values.commit === true;
   const allowDirty = values['allow-dirty'] === true;
-  const conflict = writeFlagConflict(apply, commit, allowDirty);
+  const conflict =
+    writeFlagConflict(apply, commit, allowDirty) ?? fullConflict(values.full, values.json);
   if (conflict !== null) return { kind: 'usage-error', command, message: conflict };
 
   return {
@@ -411,6 +423,7 @@ function parseOptimize(args: readonly string[]): Parsed {
       replace: values.replace === true,
       format: format ?? null,
       allowDirty,
+      full: values.full === true,
       includeDeclined: values['include-declined'] === true,
       includeDiscarded: values['include-discarded'] === true,
       includeUnusedSvg: values['include-unused-svg'] === true,
@@ -435,6 +448,13 @@ function writeFlagConflict(apply: boolean, commit: boolean, allowDirty: boolean)
   if (commit && !apply) return '--commit commits what --apply writes; add --apply';
   if (allowDirty && !apply) return '--allow-dirty only changes what --apply does; add --apply';
   return null;
+}
+
+/** `--full` changes what is printed as text, so beside `--json` it would change nothing. */
+function fullConflict(full: boolean | undefined, json: boolean | undefined): string | null {
+  return full === true && json === true
+    ? '--full and --json cannot be used together: --full prints the full text, and --json prints JSON instead'
+    : null;
 }
 
 /** A command that takes a folder and only the options every command takes. */

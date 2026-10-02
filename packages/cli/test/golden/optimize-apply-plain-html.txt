@@ -1,0 +1,66 @@
+Upfly audit
+
+  93.1 KB of savings as webp at quality 80, measured across all 11 images
+
+  scanned 3 source files and found 11 images, 152.5 KB in total
+  10 of 11 references resolved, pointing at 9 of those images
+  2 images with no reference Upfly could follow
+  root-relative paths resolved from the project root: Upfly found no public directory and none was declared
+
+Nothing was skipped.
+
+Findings: 9 items
+
+  broken references (1): these point at nothing
+    about.html:10  images/missing-on-purpose.png
+
+  unreferenced images (1)
+    images/never-referenced.png  70 B
+
+  possibly unreferenced (1): each is named somewhere, but not by a reference Upfly could follow
+
+    named in text Upfly read but no adapter claimed, the weakest evidence; look if the asset matters (1)
+      index.html: 1 asset
+        images/removed.png  70 B
+          named in index.html:17: removed.png
+
+  size (5 images): 0 over the limit, 5 smaller as another format (measured, not estimated)
+
+    images/hero.jpg  12.6 KB
+      10.6 KB as webp (saves 1.9 KB, 15%)
+    images/hero@2x.jpg  44.2 KB
+      36.5 KB as webp (saves 7.7 KB, 17%)
+    images/inline.png  71.7 KB
+      8 KB as webp (saves 63.8 KB, 88%)
+    images/logo.png  7.2 KB
+      850 B as webp (saves 6.3 KB, 88%)
+    images/texture.png  14.4 KB
+      1.1 KB as webp (saves 13.4 KB, 92%)
+
+  identical copies (1 set): the same bytes shipped more than once
+    70 B each, 280 B recoverable by keeping one:
+      images/badge.png
+      images/badge@2x.png
+      images/favicon.png
+      images/never-referenced.png
+      images/removed.png
+
+Examined and not converted
+
+  6 images, 2.4 KB, each with its reason (use --include-declined to list them)
+
+Plan
+
+  Convert to WebP: 5 images, 150.1 KB now and 57 KB after
+    images/hero.jpg → images/hero.webp  12.6 KB → 10.6 KB
+    images/hero@2x.jpg → images/hero@2x.webp  44.2 KB → 36.5 KB
+    images/inline.png → images/inline.webp  71.7 KB → 8 KB
+    images/logo.png → images/logo.webp  7.2 KB → 850 B
+    images/texture.png → images/texture.webp  14.4 KB → 1.1 KB
+  Update references: 6 references in 2 files
+    css/site.css  1 reference
+    index.html  5 references
+  Originals: each stays beside its converted file. With --replace, an original is
+  removed once every reference to it has moved.
+
+Written as run <run>: 5 files created, 2 changed, 0 removed. `upfly undo` puts them all back.
