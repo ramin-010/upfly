@@ -2493,9 +2493,11 @@ headline, `Upfly <command>`.
 
 **`audit`, `optimize` and `dedupe` print a short summary**: what will happen or happened, the
 totals, every image left alone counted by reason, and the next command to run, in labelled rows no
-wider than 80 columns, a long path shortened in the middle. Their full text, which `--full` prints
-instead, goes to `.upfly/report.txt`, replaced on each run; an applied run also keeps a copy in its
-run folder. The folder's `.gitignore` is written before the report, so a report never shows as a
+wider than 80 columns, a long path shortened in the middle. One path is never shortened: when the
+project is a folder of a larger git repository, a Repository row names that repository's top whole,
+however wide, since `--commit` commits there. Their full text, which `--full` prints instead, goes
+to `.upfly/report.txt`, replaced on each run, with every image and reference left alone and every
+original kept listed with its reason; an applied run also keeps a copy in its run folder. The folder's `.gitignore` is written before the report, so a report never shows as a
 change and never makes `--apply` refuse. Under `--json` no report is written: the JSON holds
 everything, and a file its output never names would be a side effect no script asked for. The
 planner gives its reasons as sentences, so the summary groups them by the phrases each kind of

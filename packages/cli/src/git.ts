@@ -28,6 +28,18 @@ export type GitState =
 export const RUN_TRAILER = 'Upfly-Run';
 
 /**
+ * What a run without `--apply` says when the project is a folder of a larger repository,
+ * since `--commit` commits in that repository; null when it is not.
+ *
+ * @param git the project's git state
+ */
+export function insideRepository(git: GitState): string | null {
+  return git.kind === 'repository' && git.prefix !== ''
+    ? `This folder is ${git.prefix} in the git repository at ${git.top}. --apply checks, and --commit commits, only the files under it.`
+    : null;
+}
+
+/**
  * Whether `root` is inside a git work tree and, if so, what git says about the part of it
  * under `root`. Changes elsewhere in the repository are not looked at.
  *

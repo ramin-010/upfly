@@ -1,7 +1,8 @@
 /**
  * How the CLI lays out its own text: a headline, then labelled rows in sections, with labels
  * and values in columns and no line wider than 80 columns. A long path is shortened in the
- * middle rather than wrapped; a sentence is wrapped at its spaces.
+ * middle rather than wrapped; a sentence is wrapped at its spaces. A value marked whole is
+ * the one exception: it is printed on one line, however wide.
  */
 
 import type { Styles } from './output.js';
@@ -23,6 +24,11 @@ export interface Row {
   readonly value: readonly string[];
   /** Whether the value is printed in bold: only a command to run, so it can be copied. */
   readonly bold?: boolean;
+  /**
+   * Whether the value is printed on one line as it is, never wrapped or shortened: a path the
+   * reader must see in full, such as the repository a commit is made in.
+   */
+  readonly whole?: boolean;
   /** Counts with what each counts, as a column of numbers under the value. */
   readonly counts?: readonly { readonly count: number; readonly text: string }[];
   /** Secondary lines under the value, dimmed. */
@@ -76,7 +82,8 @@ export function renderSummary(summary: Summary, styles: Styles): string {
 function rowLines(row: Row, styles: Styles): string[] {
   const label = `${' '.repeat(LABEL_INDENT)}${styles.accent(row.label)}${' '.repeat(VALUE_COLUMN - LABEL_INDENT - columns(row.label))}`;
   const mark = row.bold === true ? styles.bold : (text: string) => text;
-  const [first = '', ...rest] = wrap(row.value.join(''), WIDTH - VALUE_COLUMN);
+  const value = row.value.join('');
+  const [first = '', ...rest] = row.whole === true ? [value] : wrap(value, WIDTH - VALUE_COLUMN);
   const lines = [
     `${label}${mark(first)}`,
     ...rest.map((line) => `${' '.repeat(VALUE_COLUMN)}${mark(line)}`),

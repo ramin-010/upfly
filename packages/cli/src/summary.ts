@@ -13,7 +13,7 @@ import type {
   Report,
 } from 'upfly-core';
 import { type AssetProbe, type Graph, formatBytes } from 'upfly-core/internal';
-import type { GitState } from './git.js';
+import { type GitState, insideRepository } from './git.js';
 import { type Row, type Summary, VALUE_WIDTH, columns, commandLine } from './layout.js';
 import { count, writtenByKind } from './plan-text.js';
 import { countGroups, declineGroup, formatName, stayGroup, unmeasuredGroup } from './reasons.js';
@@ -251,8 +251,13 @@ export function optimizeSummary(facts: OptimizeFacts): Summary {
     mode: apply ? 'applied' : 'dry run',
     sections: [
       [convert, update, leaveRow(facts, sizes)],
-      facts.notes.map((note) => ({ label: 'Note', value: [note] })),
-      [...runRows(facts), reportRow('Full plan', facts.file), ...nextRows(facts.next)],
+      noteRows(facts.notes, facts.git),
+      [
+        ...runRows(facts),
+        ...repositoryRows(facts),
+        reportRow('Full plan', facts.file),
+        ...nextRows(facts.next),
+      ],
     ],
     ...(apply ? {} : { closing: 'Dry run: no project file was changed.' }),
   };
@@ -330,13 +335,42 @@ function runRows(facts: {
     rows.push({
       label: 'Commit',
       value: [facts.commit.slice(0, 12), ', exactly the files the run wrote'],
-      details:
-        facts.git.prefix === ''
-          ? []
-          : [`in the git repository at ${facts.git.top}, only files under ${facts.git.prefix}`],
     });
   }
   return rows;
+}
+
+/**
+ * The repository a commit is made in, when the project is a folder of a larger one: before
+ * `--apply`, and after a run that committed. Its top is printed whole, since a path cut short
+ * in the middle would not say where.
+ */
+function repositoryRows(facts: {
+  readonly apply: boolean;
+  readonly commit: string | null;
+  readonly git: GitState;
+}): Row[] {
+  const { git } = facts;
+  if (git.kind !== 'repository' || git.prefix === '') return [];
+  if (facts.apply && facts.commit === null) return [];
+  return [
+    {
+      label: 'Repository',
+      value: [`${git.prefix} in the git repository at ${git.top}`],
+      whole: true,
+      details: [
+        facts.apply
+          ? 'the commit holds only the files under it'
+          : '--apply checks, and --commit commits, only the files under it',
+      ],
+    },
+  ];
+}
+
+/** The notes as rows, but the one the repository row says. */
+function noteRows(notes: readonly string[], git: GitState): Row[] {
+  const inside = insideRepository(git);
+  return notes.filter((note) => note !== inside).map((note) => ({ label: 'Note', value: [note] }));
 }
 
 /** What a `dedupe` run planned or did, and what the summary needs to say it. */
@@ -405,8 +439,13 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
     mode: apply ? 'applied' : 'dry run',
     sections: [
       rows,
-      facts.notes.map((note) => ({ label: 'Note', value: [note] })),
-      [...runRows(facts), reportRow('Full plan', facts.file), ...nextRows(facts.next)],
+      noteRows(facts.notes, facts.git),
+      [
+        ...runRows(facts),
+        ...repositoryRows(facts),
+        reportRow('Full plan', facts.file),
+        ...nextRows(facts.next),
+      ],
     ],
     ...(apply ? {} : { closing: 'Dry run: no project file was changed.' }),
   };

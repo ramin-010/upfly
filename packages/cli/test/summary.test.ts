@@ -355,3 +355,31 @@ describe('what is left alone', () => {
     expect(result.stdout).not.toContain('another reason');
   });
 });
+
+describe('a project inside a larger repository', () => {
+  it('names that repository whole in the summaries of optimize and dedupe, since --commit commits there', () => {
+    // The path is never cut short, as other long paths are: the reader needs all of it to
+    // know where the commit lands.
+    const top = tempFolder(roots, 'upfly-summary-nested-');
+    copyFixture('vite-react', join(top, 'site'));
+    write(top, 'notes.txt', 'the rest of the repository\n');
+    commitAll(top);
+    const repository = `  Repository   site/ in the git repository at ${top}\n`;
+
+    const deduped = run(top, ['dedupe', 'site']);
+    const dry = run(top, ['optimize', 'site']);
+    const applied = run(top, ['optimize', 'site', '--apply', '--commit']);
+
+    for (const result of [deduped, dry]) {
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        `${repository}                 --apply checks, and --commit commits, only the files under it\n`,
+      );
+      expect(result.stdout).not.toContain('This folder is site/');
+    }
+    expect(applied.status, applied.stderr).toBe(0);
+    expect(applied.stdout).toContain(
+      `${repository}                 the commit holds only the files under it\n`,
+    );
+  });
+});

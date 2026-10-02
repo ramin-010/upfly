@@ -40,6 +40,7 @@ import {
   identityProblem,
   ignoredFolders,
   ignoredPaths,
+  insideRepository,
 } from './git.js';
 import { renderSummary } from './layout.js';
 import { type Io, emit, progressReporter, stopWith, stylesFor } from './output.js';
@@ -399,11 +400,8 @@ export function notes(
   if (options.apply) return [];
   const said: string[] = [];
   if (unfinished !== null) said.push(unfinished.message);
-  if (git.kind === 'repository' && git.prefix !== '') {
-    said.push(
-      `This folder is ${git.prefix} in the git repository at ${git.top}. --apply checks, and --commit commits, only the files under it.`,
-    );
-  }
+  const inside = insideRepository(git);
+  if (inside !== null) said.push(inside);
   if (git.kind === 'repository' && git.tracked) {
     const changed = git.changed.filter((path) => !ownPath(path));
     if (changed.length > 0) {
