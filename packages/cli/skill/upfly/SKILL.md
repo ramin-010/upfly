@@ -7,8 +7,9 @@ description: Convert a project's images to WebP or AVIF and rewrite every refere
 
 Upfly knows where a project's images are used. It converts them and rewrites the
 references in one step that can be undone, reports every reference it cannot follow, and
-never deletes an image that nothing uses; with `--replace`, it removes a converted image's
-original only once no file it reads still names it. It makes no network calls.
+never deletes an image that nothing uses. By default it removes a converted image's
+original once no file it reads still names it, and only from a folder the site is served
+from; `--keep-originals` keeps every original. It makes no network calls.
 
 Run it as `npx upfly <command>` in the project folder. The full guide is
 `node_modules/upfly/AGENTS.md`.
@@ -30,15 +31,17 @@ Upfly never deletes an image that nothing uses; deleting one is the user's decis
 1. `git status --porcelain` must print nothing. If it does, ask the user to commit or
    stash first; Upfly refuses to write over uncommitted changes.
 2. `npx upfly optimize` changes no project file and prints a summary of the plan. Show it
-   to the user; the full plan is then in `.upfly/report.txt`. Icons, a web app manifest's
+   to the user; the full plan is then in `.upfly/optimize.txt`. Icons, a web app manifest's
    images and link previews keep their format on their own. An image in an email does
    not, and Outlook shows no WebP: offer to leave a folder of email templates out with
    `--exclude <path>`.
-3. Only with the user's yes: `npx upfly optimize --apply --commit`.
+3. Only with the user's yes: `npx upfly optimize --apply --commit`. When asking, say that
+   the originals the summary counts are removed, so a link to one from outside the project
+   (an email, another site, a CMS) stops working, and that `--keep-originals` keeps them.
 4. Run the project's own build, then `npx upfly check`.
 5. If anything is wrong: `npx upfly undo` puts every file back.
 
-Do not add `--allow-dirty` or `--replace` unless the user asks for it.
+Do not add `--allow-dirty` or `--keep-originals` unless the user asks for it.
 
 ## When Upfly stops
 

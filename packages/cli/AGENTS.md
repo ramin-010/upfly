@@ -2,9 +2,10 @@
 
 Upfly finds every image in a project and every place the project refers to one, converts
 images to WebP or AVIF, and rewrites the references, reporting each one it cannot rewrite
-safely. It never deletes an image that nothing uses; with `--replace`, it removes a
-converted image's original only once no file it reads still names it. It makes no network
-calls and sends nothing anywhere.
+safely. It never deletes an image that nothing uses. By default it removes a converted
+image's original once no file it reads still names it, and only from a folder the site is
+served from; `--keep-originals` keeps every original. It makes no network calls and sends
+nothing anywhere.
 
 In a project that has Upfly installed, run it as `npx upfly <command>`. Every command
 reads the folder given after it, or the current folder, and prints plain text; add
@@ -34,23 +35,27 @@ reads the folder given after it, or the current folder, and prints plain text; a
 2. Run `npx upfly optimize`. It changes no project file and prints a short summary of the
    plan: how many images convert and how much smaller they get, how many references
    change, and how many images are left alone, counted by reason. Show the user that
-   summary, and its notes. The full plan is then in `.upfly/report.txt`, with each image
-   and reference left alone and the reason for each; `--json` holds the whole plan. The
+   summary, and its notes. The full plan is then in `.upfly/optimize.txt`: the same rows,
+   each with its complete list, such as each image and reference left alone and the
+   reason for each (`--show leave` prints that row alone); `--json` holds the whole plan. The
    plan leaves alone an image that a browser, a phone or another site reads outside the
    page (an icon, a web app manifest's images, a link preview's image), since some of them
    show no WebP. It cannot tell which images an email uses, and Outlook shows no WebP: if
    the project holds email templates, offer to leave their folder out with
    `--exclude <path>`.
-3. Only when the user says yes: `npx upfly optimize --apply --commit`. The run's files go
-   into one commit, which `git revert` undoes.
+3. Only when the user says yes: `npx upfly optimize --apply --commit`. When asking, say how
+   many originals the summary says are removed, that a link to one from outside the
+   project (an email, another site, a CMS) then stops working, and that
+   `npx upfly optimize --apply --commit --keep-originals` keeps every original beside its
+   converted file. The run's files go into one commit, which `git revert` undoes.
 4. Check the result: run the project's own build if it has one, then `npx upfly check`,
    which fails if any reference names an image that does not exist.
 5. To go back: `npx upfly undo` puts back every file the last run changed. After
    `--commit`, the commit stays in the history and the restored files show as uncommitted
    changes; `git revert <commit>` is the other way back.
 
-Leave these to the user: `--allow-dirty` (writing over uncommitted changes), `--replace`
-(removing each original once every reference to it has moved), and `--format avif`.
+Leave these to the user: `--allow-dirty` (writing over uncommitted changes),
+`--keep-originals` (keeping each original beside its converted file), and `--format avif`.
 Never edit `.upfly/`: it is the record `upfly undo` follows.
 
 ## Is it safe to delete an image?

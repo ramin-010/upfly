@@ -1874,8 +1874,8 @@ order. The witnesses make the phases impossible to reorder; they do not make a p
 impossible, but they remove the innocent version of it, where three loops are merged into one
 and nothing in the diff says an invariant died.
 
-**Every prefix of that sequence leaves a tree that still builds** under the default
-`keep-original` policy. Files appear before anything points at them, and originals are removed
+**Every prefix of that sequence leaves a tree that still builds**, under either policy. Files
+appear before anything points at them, and originals are removed
 only once nothing points at them any more. A move is committed as a copy in step 2 and a
 removal in step 4 for exactly this reason: between the two, both paths exist.
 
@@ -2509,20 +2509,33 @@ name. A code config beside the extension's file is read and the file is left alo
 the libraries' own messages as `diagnostic` lines, and one final `result` or `error` object. That
 is why the libraries' wording can appear there and never in the report. Without it, errors and
 progress go to stderr, progress only on a terminal, and every command's text starts with the same
-headline, `Upfly <command>`.
+headline, `Upfly <command>`, with a blank line before it and after the text's last line.
 
 **`audit`, `optimize` and `dedupe` print a short summary**: what will happen or happened, the
 totals, every image left alone counted by reason, and the next command to run, in labelled rows no
 wider than 80 columns, a long path shortened in the middle. One path is never shortened: when the
 project is a folder of a larger git repository, a Repository row names that repository's top whole,
-however wide, since `--commit` commits there. Their full text, which `--full` prints instead, goes
-to `.upfly/report.txt`, replaced on each run, with every image and reference left alone and every
-original kept listed with its reason; an applied run also keeps a copy in its run folder. The folder's `.gitignore` is written before the report, so a report never shows as a
-change and never makes `--apply` refuse. Under `--json` no report is written: the JSON holds
-everything, and a file its output never names would be a side effect no script asked for. The
-planner gives its reasons as sentences, so the summary groups them by the phrases each kind of
-sentence always holds (`reasons.ts`); a sentence that holds none is still counted, as another
-reason, and a probe's skips are grouped by their code.
+however wide, since `--commit` commits there. Each summary ends in a plain sentence of what the run
+would do or did, with its figure.
+
+**Each of them writes a report file named after it**, `.upfly/audit.txt`, `.upfly/optimize.txt` or
+`.upfly/dedupe.txt`, replaced on each run of that command; an applied run also keeps a copy in its
+run folder. The file is the summary expanded: its first lines name the command, the time, the folder
+and the options, then come the summary's rows in the same order, each followed by its complete list,
+and the engine's caveats last. A row carries its list (`Row.list` in `layout.ts`), so the summary,
+the file and `--show <row>`, which prints one row with its list, are one text and cannot disagree.
+The folder's `.gitignore` is written before the file, so a report never shows as a change and never
+makes `--apply` refuse. Under `--json` no file is written: the JSON holds everything, and a file its
+output never names would be a side effect no script asked for. The planner gives its reasons as
+sentences, so the summary groups them by the phrases each kind of sentence always holds
+(`reasons.ts`); a sentence that holds none is still counted, as another reason, and a probe's skips
+are grouped by their code.
+
+**What happens to an original** is a flag's (`--keep-originals`, or `--replace`, which names the
+default), else the config file's `publicPolicy`, else `replace`: an `optimize` that left two copies of
+every image is not what a user asking to optimize expects, and under it a later run could not remove
+originals an earlier one kept, since nothing used them. The library's `optimizeProject` takes the
+policy as a required input, so a program states it.
 
 **Colour** appears only on a terminal, and never under `--no-color`, a non-empty `NO_COLOR` or
 `TERM=dumb`. Colour is the default, so the help does not offer `--no-color`; it works for whoever

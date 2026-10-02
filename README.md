@@ -22,8 +22,8 @@ new file and leave the code that points at the old one for you to change.
 
 Upfly finds the images in your repository and the places your code points at them, converts each image that comes
 out smaller as WebP, and rewrites those references. With `--commit`, the whole change is one commit you can review.
-Where it cannot prove what a path points at, it leaves the path alone, and `--include-declined` lists each such
-path with the reason.
+Where it cannot prove what a path points at, it leaves the path alone, and its full plan lists each such path with
+the reason.
 
 ## Install
 
@@ -38,21 +38,25 @@ Or run it once without installing: `npx upfly audit`.
 ## Quick start
 
 ```bash
-npx upfly audit                       # the images, the references to them, what could be smaller; changes nothing
+npx upfly audit                       # the images, the references to them, what optimize would save; changes nothing
 npx upfly optimize                    # the plan, as a dry run; changes nothing
 npx upfly optimize --apply --commit   # carry out the plan as one commit
 npx upfly undo                        # put back every file the last run changed
 ```
 
 A real run, on a committed copy of [`fixtures/vite-react`](fixtures/vite-react) from this repository, at commit
-`9716cb6`:
+`d64e67b`:
 
 ```
 $ upfly optimize
+
 Upfly optimize · dry run
 
   Convert      5 images to WebP, 124.2 KB → 48.8 KB
-                 each original stays beside its new file
+                 3 originals to remove, 57.3 KB, once their references move
+                 a link to one from outside the project (an email, another site,
+                 a CMS) then stops working; --keep-originals keeps them
+                 2 originals kept, each for a reason in the full plan
   Update       7 references in 2 files
   Leave        7 images, 2.7 KB
                  3  would save too little
@@ -60,22 +64,25 @@ Upfly optimize · dry run
                  1  its references stay as written
                  1  nothing links to it
 
-  Full plan    .upfly/report.txt
+  Full plan    .upfly/optimize.txt
   Next         upfly optimize --apply
 
-  Dry run: no project file was changed.
+  Dry run: no project file was changed. With --apply, upfly optimize would
+  convert 5 images and save 75.5 KB.
 ```
 
-The full plan is in `.upfly/report.txt`, which git is told to ignore, with each image and reference left alone and
-the reason for each; `--full` prints the plan instead of the summary, and `--include-declined` adds those reasons to
-it. Then:
+The full plan is in `.upfly/optimize.txt`, which git is told to ignore: the same rows, each followed by its complete
+list, such as every image left alone with its reason. `--full` prints it, and `--show leave` prints one row of it.
+`upfly audit` keeps its own in `.upfly/audit.txt`, and its savings are the ones this plan converts. Then:
 
 ```
 $ upfly optimize --apply --commit
+
 Upfly optimize · applied
 
   Converted    5 images to WebP, 124.2 KB → 48.8 KB
-                 each original stays beside its new file
+                 3 originals removed, 57.3 KB, since their references moved
+                 2 originals kept, each for a reason in the full plan
   Updated      7 references in 2 files
   Left alone   7 images, 2.7 KB
                  3  would save too little
@@ -83,12 +90,14 @@ Upfly optimize · applied
                  1  its references stay as written
                  1  nothing links to it
 
-  Run          20261002T052712-e901: 5 files created, 2 changed, 0 removed
-  Commit       843863171199, exactly the files the run wrote
-  Full plan    .upfly/report.txt
+  Run          20261002T135809-3a47: 5 files created, 2 changed, 3 removed
+  Commit       96dab5e37a61, exactly the files the run wrote
+  Full plan    .upfly/optimize.txt
   Next         run the project's build, if it has one, then upfly check
                  upfly undo puts every file back
-                 git revert 843863171199 undoes the commit
+                 git revert 96dab5e37a61 undoes the commit
+
+  Upfly converted 5 images and saved 75.5 KB.
 ```
 
 ## Safety
@@ -101,11 +110,13 @@ Upfly optimize · applied
 - **`upfly undo` puts back every file** the last `optimize --apply` or `dedupe --apply` changed. It checks each file
   first and changes nothing if any of them was edited since that run.
 - **Upfly never deletes an image that nothing uses.** It lists each one with its size, and the decision is yours.
-- **Originals stay beside their converted files.** With `--replace`, an original is removed only once no file Upfly
-  reads still names it.
+- **An original is removed once no file Upfly reads still names it**, and only from a folder the site is served
+  from; an image the build loads keeps its original. That is the default, so the dry run says how many originals go,
+  and that a link to one from outside the project, such as an email, another site or a CMS, then stops working.
+  `--keep-originals`, or `"publicPolicy": "keep-original"` in the config file, keeps every original beside its
+  converted file.
 - **A path Upfly cannot prove is never rewritten**: one assembled at runtime, such as `` `/img/${name}.png` ``, or
-  one that only happens to match a file. `--include-declined` lists each reference left as written, with the
-  reason.
+  one that only happens to match a file. The full plan lists each reference left as written, with the reason.
 
 ## The evidence
 
@@ -128,8 +139,9 @@ The suite is [`accuracy-suite/`](accuracy-suite/); its README says how each case
 
 ### Three real projects, converted and built
 
-Fresh clones of three public repositories, each at a pinned commit, run once under each policy: keep-original (the
-default) and `--replace`.
+Fresh clones of three public repositories, each at a pinned commit, run once under each policy: keeping every
+original (keep-original, today's `--keep-originals`) and removing each original once its references moved (replace,
+today's default).
 
 | repository | policy | converted | references rewritten | originals deleted | build | image references (broken by the run) | second run |
 |---|---|---|---|---|---|---|---|
@@ -143,19 +155,22 @@ default) and `--replace`.
 Every applied run made exactly one commit, no run broke a single image reference (18,922 checked across the three,
 comments aside), and every second run found nothing to convert, rewrite or delete.
 
-- **What was run:** `upfly optimize --apply --commit`, and `upfly optimize --apply --commit --replace` on a second
-  fresh clone; then the project's own build, where it has one; then a second `upfly optimize` on the committed tree.
-  The repositories and their pinned commits are in [`bench/src/repos.ts`](bench/src/repos.ts), and
-  [`bench/README.md`](bench/README.md) says how to set them up. Measured with the CLI at commit `9b71d22`; the
-  commits since change how one kind of reason is worded, what the terminal prints, and which folder of a built Hugo,
-  Gatsby or Hexo site is read, and none of the three projects has such a folder.
+- **What was run:** for keep-original, `upfly optimize --apply --commit`, which kept every original at commit
+  `9b71d22` (today, `upfly optimize --apply --commit --keep-originals`); for replace, `upfly optimize --apply
+  --commit --replace` on a second fresh clone (today's default, which `--replace` still names); then the project's
+  own build, where it has one; then a second `upfly optimize` on the committed tree. The repositories and their
+  pinned commits are in [`bench/src/repos.ts`](bench/src/repos.ts), and [`bench/README.md`](bench/README.md) says how
+  to set them up. Measured with the CLI at commit `9b71d22`; the commits since change how some reasons are worded,
+  what the terminal and the report files print, which policy runs when none is named, which images `audit` measures,
+  and which folder of a built Hugo, Gatsby or Hexo site is read. None of the three projects has such a folder, and
+  none of the rest changes what `optimize` converts, rewrites or removes under a named policy.
 - **The link check** reads every HTML, CSS and JavaScript file of the built site (or of the source, for a site with
   no build) and asks whether each image path names a file that exists, letter case included, as a Linux server
   would. It skips external URLs and anything inside an HTML or CSS comment, which no browser loads. "Broken by the
   run" is every reference broken after the run that was not broken before it. This check is a script outside this
   repository, not yet published.
 - **railsgirls-com ran with its website folder named, `--public .`.** A plain HTML site has no project file, so
-  Upfly finds no website folder by itself, and under `--replace` it then deletes nothing.
+  Upfly finds no website folder by itself, and it then removes no original.
 - **The builds ran on the Node.js version each project needs:** eleventy-docs on 22.23.3, scratch-www on 20.20.2.
   Upfly itself ran on Node.js 22.14.
 - **Two of the five repositories Upfly is tested on were left out:** astro-docs cannot install at its pinned commit
@@ -202,8 +217,8 @@ The two scripts that drew the sample and judged each mention are outside this re
   only a tool writes (`dist`, `build`, `_site` and others) and `public/` beside Hugo's, Gatsby's or Hexo's own
   settings file. For anything else, run Upfly before building, or leave the output out with `--exclude <folder>/`.
 - **A reference Upfly cannot read keeps working only while the original stays**: one in a file type it does not
-  read, such as an email template, or outside the repository, such as an email already sent or another site. The
-  default keeps every original; `--replace` would break those references.
+  read, such as an email template, or outside the repository, such as an email already sent or another site.
+  Removing originals, the default, breaks those references; `--keep-originals` keeps every original.
 - **`optimize` measures every image before converting it**, so the first run on a large site takes a while.
 
 ## No network, no telemetry
@@ -217,8 +232,8 @@ only.
 
 | command | what it does |
 |---|---|
-| `upfly audit` | Reports the images, the references to them, the references that point at nothing, the images nothing references, and how much smaller each would be as WebP or AVIF, measured by encoding it. Changes no project file. |
-| `upfly optimize` | Converts each image that measures smaller and updates the references it can rewrite safely. Shows the plan unless run with `--apply`. |
+| `upfly audit` | Reports the images, the references to them, the references that point at nothing, the images nothing references, and what `upfly optimize` would convert and save, measured by encoding each image it could convert. Changes no project file. |
+| `upfly optimize` | Converts each image that measures smaller, updates the references it can rewrite safely, and removes each original they replace (`--keep-originals` keeps them). Shows the plan unless run with `--apply`. |
 | `upfly undo` | Puts back every file the last `optimize --apply` or `dedupe --apply` changed. |
 | `upfly check` | For continuous integration: fails when a reference names an image that does not exist, or, with a limit in the config, when an image in use is larger than it. `--changed [ref]` keeps only what a change could have caused. |
 | `upfly refs <image>` | Lists where one image is referenced, whether Upfly could rewrite each reference, and what `optimize` would do with it. |
@@ -262,8 +277,8 @@ pnpm accuracy:measure   # the accuracy suite, both runs
 ## How it was built
 
 The code was written with AI coding assistants, working from written briefs one stage at a time; a separate session
-re-ran each stage's claims before they were recorded, and every figure in this README comes from a run you can
-repeat.
+re-ran each stage's claims before they were recorded. The accuracy suite's figures and the quoted runs can be
+repeated from this repository; the link check and the two scripts behind the recall sample are not yet published.
 
 ## License
 

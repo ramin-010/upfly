@@ -20,12 +20,13 @@ npm i upfly@2
 The commands:
 
 - `upfly audit`: the images, the references to them, the references that point at nothing, the images nothing
-  references, and how much smaller images would be as WebP or AVIF, measured by encoding them. It changes no file
-  in the project.
+  references, and what `upfly optimize` would convert and save with the same options, measured by encoding the
+  images it could convert. It changes no file in the project.
 - `upfly optimize`: the plan for converting images and updating their references, which `--apply` carries out.
   `--apply` refuses to write over uncommitted changes, so the run's changes are the only ones to review, and
-  `--commit` makes them one commit. Originals stay beside the converted files unless `--replace` is given, and
-  then each is removed only once every reference to it has moved.
+  `--commit` makes them one commit. Each original is removed once every reference to it has moved, and only from
+  a folder the site is served from; the dry run says how many go. `--keep-originals`, or `publicPolicy` in the
+  config file, keeps them beside the converted files.
 - `upfly undo`: puts back every file the last applied run changed, after checking that none was edited since.
 - `upfly check`: for continuous integration. It fails when a reference names an image that does not exist, or,
   with a limit in the config, an image in use is larger than it. `--changed [ref]` keeps only what a change
@@ -37,9 +38,10 @@ The commands:
 - `upfly init`: writes `upfly.config.json` with the folders the site is served from, as Upfly works them out, and
   why.
 
-`audit`, `optimize` and `dedupe` print a short summary and keep their full text in `.upfly/report.txt`, which git
-is told to ignore; `--full` prints the full text instead. `optimize`'s file also lists each image and reference left
-alone, and each original kept, with the reason for each.
+`audit`, `optimize` and `dedupe` print a short summary and keep it, with every list in full, in a file named after
+the command (`.upfly/audit.txt`, `.upfly/optimize.txt`, `.upfly/dedupe.txt`), which git is told to ignore: each
+image to convert, each reference left alone and each original kept with its reason, each unused image, each broken
+reference. `--full` prints the file, and `--show <row>` prints one row of it with its list.
 
 For programs and coding agents:
 
