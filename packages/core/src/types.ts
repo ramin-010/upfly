@@ -442,6 +442,11 @@ export interface ExcludedRoot {
   readonly relative: string;
   /** The rule that excluded it, phrased for a report. */
   readonly reason: string;
+  /**
+   * Whether one of the project's own ignore rules excluded it, rather than the walk pruning
+   * it as a dependency, cache, build-output or version-control directory.
+   */
+  readonly byRule: boolean;
 }
 
 /** Everything a single filesystem walk found. */

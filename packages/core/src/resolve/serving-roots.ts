@@ -37,16 +37,18 @@ export const CONVENTIONAL_SERVING_ROOT_NAMES: readonly string[] = Object.freeze(
  *
  * `package.json` covers the JavaScript frameworks and is the only marker tested on a real
  * repository. `.vitepress` is VitePress, which keeps `package.json` at the repository root
- * rather than beside `docs/public`. `hugo.toml`, `config.toml` and their YAML and JSON
- * forms are Hugo; `Gemfile` is Rails; `composer.json` and `artisan` are Laravel and
- * Symfony; `angular.json` is Angular 17 and later. Django has no marker: its `static/` is
- * served under `/static/`, not at the root. See "Serving roots" in ARCHITECTURE.md.
+ * rather than beside `docs/public`. `hugo.toml`, `hugo.yaml`, `hugo.yml` and `hugo.json` are
+ * Hugo, as are its older `config.toml`, `config.yaml` and `config.json`; `Gemfile` is Rails;
+ * `composer.json` and `artisan` are Laravel and Symfony; `angular.json` is Angular 17 and
+ * later. Django has no marker: its `static/` is served under `/static/`, not at the root.
+ * See "Serving roots" in ARCHITECTURE.md.
  */
 export const PROJECT_MARKERS: readonly string[] = Object.freeze([
   'package.json',
   '.vitepress',
   'hugo.toml',
   'hugo.yaml',
+  'hugo.yml',
   'hugo.json',
   'config.toml',
   'config.yaml',

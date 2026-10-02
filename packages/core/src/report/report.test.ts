@@ -3426,11 +3426,19 @@ describe('what the ignore rules left out', () => {
     path: `${ROOT}/legacy`,
     relative: 'legacy',
     reason: "the ignore rule 'legacy/'",
+    byRule: true,
   };
   const DEPENDENCIES: ExcludedRoot = {
     path: `${ROOT}/node_modules`,
     relative: 'node_modules',
     reason: 'a dependency directory',
+    byRule: false,
+  };
+  const BUILT_SITE: ExcludedRoot = {
+    path: `${ROOT}/public`,
+    relative: 'public',
+    reason: "a build-output directory named 'public', beside Hugo's settings file 'hugo.toml'",
+    byRule: false,
   };
 
   function reportExcluding(
@@ -3548,6 +3556,13 @@ describe('what the ignore rules left out', () => {
 
   it('stays quiet when only directories pruned by name were left out', () => {
     const report = reportExcluding([DEPENDENCIES], []);
+
+    expect(report.caveats.map((entry) => entry.code)).not.toContain('excluded-roots');
+    expect(renderReport(report)).toContain('Nothing was skipped.\n');
+  });
+
+  it("stays quiet about a site generator's build output, which the walk pruned and no rule did", () => {
+    const report = reportExcluding([BUILT_SITE], []);
 
     expect(report.caveats.map((entry) => entry.code)).not.toContain('excluded-roots');
     expect(renderReport(report)).toContain('Nothing was skipped.\n');

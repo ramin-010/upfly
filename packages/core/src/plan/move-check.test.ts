@@ -88,6 +88,7 @@ function excluded(names: readonly string[]): ExcludedRoot[] {
     path: `${ROOT}/${name}`,
     relative: name,
     reason: `a build or version-control directory named '${name}'`,
+    byRule: false,
   }));
 }
 

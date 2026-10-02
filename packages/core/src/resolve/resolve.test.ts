@@ -609,11 +609,13 @@ describe('resolveReferences', () => {
         path: join(ROOT, 'legacy'),
         relative: 'legacy',
         reason: "the ignore rule 'legacy/'",
+        byRule: true,
       },
       {
         path: join(ROOT, 'old site'),
         relative: 'old site',
         reason: "the ignore rule 'old site/'",
+        byRule: true,
       },
     ];
 
@@ -1692,8 +1694,18 @@ describe('rung 5 through a declared alias', () => {
     skipped: [],
   };
   const excludedRoots = [
-    { path: join(ROOT, 'legacy'), relative: 'legacy', reason: "the ignore rule 'legacy/'" },
-    { path: join(ROOT, 'old site'), relative: 'old site', reason: "the ignore rule 'old site/'" },
+    {
+      path: join(ROOT, 'legacy'),
+      relative: 'legacy',
+      reason: "the ignore rule 'legacy/'",
+      byRule: true,
+    },
+    {
+      path: join(ROOT, 'old site'),
+      relative: 'old site',
+      reason: "the ignore rule 'old site/'",
+      byRule: true,
+    },
   ];
 
   function throughAlias(rawPath: string, exists: (path: string) => boolean = NOTHING_EXISTS) {

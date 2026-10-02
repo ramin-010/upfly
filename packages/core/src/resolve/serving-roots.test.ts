@@ -205,6 +205,7 @@ describe('only a folder a project owns is a serving root', () => {
 
   it('knows Hugo, Laravel and Angular by their files: each untested on a real repository', () => {
     expect(detectServingRoots(walk(['static'], ['hugo.toml'])).dirs).toEqual(['static']);
+    expect(detectServingRoots(walk(['static'], ['hugo.yml'])).dirs).toEqual(['static']);
     expect(detectServingRoots(walk(['static'], ['config.toml'])).dirs).toEqual(['static']);
     expect(detectServingRoots(walk(['public'], ['composer.json'])).dirs).toEqual(['public']);
     expect(detectServingRoots(walk(['public'], ['angular.json'])).dirs).toEqual(['public']);
@@ -230,6 +231,7 @@ describe('only a folder a project owns is a serving root', () => {
       '.vitepress',
       'hugo.toml',
       'hugo.yaml',
+      'hugo.yml',
       'hugo.json',
       'config.toml',
       'config.yaml',

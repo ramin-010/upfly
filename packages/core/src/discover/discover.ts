@@ -34,7 +34,7 @@ import type {
  * Jekyll, `.docusaurus` Docusaurus's generated files, `storybook-static` what `storybook
  * build` writes, `.vercel` and `.netlify` what those platforms' command-line tools write, and
  * `.angular` the Angular CLI's cache. A folder a person may name, such as Hugo's `public`,
- * is not here.
+ * is not here: the settings beside it decide, in `SITE_GENERATOR_SETTINGS`.
  */
 const PRUNED_DIRECTORIES: ReadonlyMap<string, string> = new Map([
   ['.angular', 'a cache directory'],
@@ -73,13 +73,26 @@ export const DEFAULT_IGNORED_DIRECTORIES: readonly string[] = Object.freeze([
 
 const DEFAULT_IGNORED_DIRECTORY_SET = new Set(DEFAULT_IGNORED_DIRECTORIES);
 
+/** The folder Hugo, Gatsby and Hexo build a site into, a name Vite and Next.js serve as written. */
+const SITE_OUTPUT = 'public';
+
 /**
- * Whether a directory the walk left out was excluded by one of the project's own rules,
- * rather than pruned by name as dependencies, caches, build output and version control are.
+ * Settings files of the site generators that build into `public`, with the generator each
+ * names. Beside one, `public` is that generator's output and is pruned; beside none, it may
+ * be a folder served as written. Each list is the generator's own: Hugo reads `hugo` as
+ * `.toml`, `.yaml`, `.yml` or `.json` (its older `config.*` names are other tools' too), and
+ * Gatsby reads `gatsby-config` as `.js`, `.mjs` or `.ts`. Looked up in this order, so the
+ * reason is the same on every run.
  */
-export function excludedByRule(root: ExcludedRoot): boolean {
-  return !DEFAULT_IGNORED_DIRECTORY_SET.has(root.relative.split('/').pop() ?? '');
-}
+const SITE_GENERATOR_SETTINGS: ReadonlyMap<string, string> = new Map([
+  ['hugo.toml', 'Hugo'],
+  ['hugo.yaml', 'Hugo'],
+  ['hugo.yml', 'Hugo'],
+  ['hugo.json', 'Hugo'],
+  ['gatsby-config.js', 'Gatsby'],
+  ['gatsby-config.mjs', 'Gatsby'],
+  ['gatsby-config.ts', 'Gatsby'],
+]);
 
 /** Default name of the per-project ignore file, read from the root only. */
 export const IGNORE_FILE_NAME = '.upflyignore';
@@ -183,15 +196,15 @@ export interface ExcludedFiles {
  *
  * Only the search before `replace` deletes an original reads these. An exclusion limits
  * what a run changes, not what it checks before removing a file that a page it left out
- * may still show. Directories pruned by name stay unread here too, at any depth:
- * dependencies, caches, build output, version control and Upfly's own records hold no page
- * the project serves from its sources, and build output is made again from the sources the
- * run reads. Symbolic links are not followed, as in the walk.
+ * may still show. Directories the walk pruned stay unread here, and those pruned by name stay
+ * unread at any depth: dependencies, caches, build output, version control and Upfly's own
+ * records hold no page the project serves from its sources, and build output is made again
+ * from the sources the run reads. Symbolic links are not followed, as in the walk.
  */
 export async function listExcludedFiles(discovery: DiscoveryResult): Promise<ExcludedFiles> {
   const files = [...discovery.excludedFiles];
   const unread: { file: string; reason: string }[] = [];
-  const pending = discovery.excludedRoots.filter(excludedByRule).map((root) => root.path);
+  const pending = discovery.excludedRoots.filter((root) => root.byRule).map((root) => root.path);
 
   for (let directory = pending.pop(); directory !== undefined; directory = pending.pop()) {
     let entries: Dirent[];
@@ -302,19 +315,73 @@ async function loadIgnoreRules(
   return { matcher: rules, patterns };
 }
 
+/** Why a directory is excluded, and whether one of the project's rules did it. */
+type Exclusion = Pick<ExcludedRoot, 'reason' | 'byRule'>;
+
 /**
- * Why this directory is excluded, or `null` if it is not.
+ * Why this directory is excluded, or `null` if it is not. `builtSite` is why a `public`
+ * directory in the same folder is a site generator's output, or `null`.
  *
  * `ignore` matches a `build/`-style pattern only when the path it is given ends in a
  * slash; testing 'build' returns false and we would descend into it.
  */
-function exclusionReasonFor(name: string, relative: string, rules: IgnoreRules): string | null {
+function exclusionFor(
+  name: string,
+  relative: string,
+  rules: IgnoreRules,
+  builtSite: string | null,
+): Exclusion | null {
   const pruned = PRUNED_DIRECTORIES.get(name);
-  if (pruned !== undefined) return `${pruned} named '${name}'`;
+  if (pruned !== undefined) return { reason: `${pruned} named '${name}'`, byRule: false };
+  if (name === SITE_OUTPUT && builtSite !== null) return { reason: builtSite, byRule: false };
   if (!rules.matcher.ignores(`${relative}/`)) return null;
 
   const pattern = excludingPattern(rules, `${relative}/`);
-  return pattern === null ? 'an ignore rule' : `the ignore rule '${pattern}'`;
+  return {
+    reason: pattern === null ? 'an ignore rule' : `the ignore rule '${pattern}'`,
+    byRule: true,
+  };
+}
+
+/**
+ * Why the `public` directory among these entries is a site generator's build output, or
+ * `null` when it is not, or there is none.
+ *
+ * Hexo's settings file, `_config.yml`, is also Jekyll's, so a Hexo site is known the way
+ * Hexo's own command finds one: by a `package.json` whose `hexo` field is an object.
+ */
+async function builtSiteReason(
+  directory: string,
+  entries: readonly Dirent[],
+): Promise<string | null> {
+  if (!entries.some((entry) => entry.name === SITE_OUTPUT && entry.isDirectory())) return null;
+
+  const files = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
+  const output = `a build-output directory named '${SITE_OUTPUT}'`;
+  for (const [settings, generator] of SITE_GENERATOR_SETTINGS) {
+    if (files.has(settings)) return `${output}, beside ${generator}'s settings file '${settings}'`;
+  }
+  if (files.has('package.json') && (await marksHexoSite(join(directory, 'package.json')))) {
+    return `${output}, beside a package.json whose hexo field marks a Hexo site`;
+  }
+  return null;
+}
+
+/** Whether a `package.json` holds the object `hexo` field that `hexo init` writes. */
+async function marksHexoSite(path: string): Promise<boolean> {
+  try {
+    const manifest: unknown = JSON.parse((await readFile(path, 'utf8')).replace(/^﻿/, ''));
+    return (
+      typeof manifest === 'object' &&
+      manifest !== null &&
+      'hexo' in manifest &&
+      typeof manifest.hexo === 'object' &&
+      manifest.hexo !== null
+    );
+  } catch {
+    // A package.json that cannot be read or parsed marks no site, so `public` is walked.
+    return false;
+  }
 }
 
 /** Pattern lines from an ignore file, minus blanks and comments. */
@@ -370,7 +437,7 @@ async function walk(input: WalkInput): Promise<void> {
 
       for (const read of reads) {
         for (const entry of read.entries) {
-          classifyEntry(entry, read.directory, input, nextLevel);
+          classifyEntry(entry, read, input, nextLevel);
         }
       }
     }
@@ -382,11 +449,14 @@ async function walk(input: WalkInput): Promise<void> {
 interface DirectoryRead {
   readonly directory: string;
   readonly entries: readonly Dirent[];
+  /** Why its `public` directory is a site generator's output, or `null`. */
+  readonly builtSite: string | null;
 }
 
 async function readDirectory(directory: string, input: WalkInput): Promise<DirectoryRead> {
+  let entries: Dirent[];
   try {
-    return { directory, entries: await readdir(directory, { withFileTypes: true }) };
+    entries = await readdir(directory, { withFileTypes: true });
   } catch (error) {
     input.state.skipped.push({
       path: directory,
@@ -394,8 +464,9 @@ async function readDirectory(directory: string, input: WalkInput): Promise<Direc
       reason: 'unreadable-directory',
       detail: errnoCode(error),
     });
-    return { directory, entries: [] };
+    return { directory, entries: [], builtSite: null };
   }
+  return { directory, entries, builtSite: await builtSiteReason(directory, entries) };
 }
 
 /**
@@ -404,11 +475,11 @@ async function readDirectory(directory: string, input: WalkInput): Promise<Direc
  */
 function classifyEntry(
   entry: Dirent,
-  directory: string,
+  read: DirectoryRead,
   input: WalkInput,
   nextLevel: string[],
 ): void {
-  const path = join(directory, entry.name);
+  const path = join(read.directory, entry.name);
   const relative = relativePath(input.root, path);
 
   // Checked before isDirectory/isFile: on Windows a junction reports as a symlink
@@ -419,13 +490,13 @@ function classifyEntry(
   }
 
   if (entry.isDirectory()) {
-    const reason = exclusionReasonFor(entry.name, relative, input.rules);
-    if (reason !== null) {
+    const exclusion = exclusionFor(entry.name, relative, input.rules, read.builtSite);
+    if (exclusion !== null) {
       input.state.ignoredCount += 1;
       // Recorded, not merely counted: the resolver prefix-tests references against
       // these, so a path into an excluded directory is reported as `out-of-scope`
       // rather than `broken`.
-      input.state.excludedRoots.push({ path, relative, reason });
+      input.state.excludedRoots.push({ path, relative, ...exclusion });
       return;
     }
     nextLevel.push(path);

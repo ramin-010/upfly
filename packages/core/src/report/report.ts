@@ -13,7 +13,6 @@ import { NO_REFERENCE_TO_FIND } from '../adapters/html.js';
 import { interpolationChunks, templateExpressionReason } from '../adapters/reference-path.js';
 import type { AuditResult, DeadFinding, Finding, PossiblyDeadFinding } from '../audit/audit.js';
 import type { Mention, SweepResult } from '../audit/sweep.js';
-import { excludedByRule } from '../discover/discover.js';
 import { formatBytes, plural } from '../format.js';
 import type { Graph } from '../graph/graph.js';
 import { countExtensions, groupUnscanned } from '../graph/unscanned.js';
@@ -1005,10 +1004,10 @@ const LEFT_OUT_IMAGE = 'an ignore rule leaves this image out';
 /**
  * The rule of the project's own that left out an `out-of-scope` reference's target, or null
  * when none did: a directory an ignore rule excluded, or an image one excluded by name. The
- * directories pruned by name, such as `node_modules`, are not the project's rules.
+ * directories the walk prunes, such as `node_modules`, are not the project's rules.
  */
 function leftOutBy(discovery: DiscoveryResult): (reference: Reference) => string | null {
-  const byRule = discovery.excludedRoots.filter(excludedByRule);
+  const byRule = discovery.excludedRoots.filter((root) => root.byRule);
   const images = new Set(discovery.excludedImages);
   return (reference) => {
     if (reference.resolution !== 'out-of-scope') return null;
@@ -1396,9 +1395,9 @@ function caveats(
   }
 
   // What the project's own rules left out. Upfly never reads it, so an image only it uses is
-  // reported as unreferenced. The directories pruned by name are not listed: they hold no page
+  // reported as unreferenced. The directories the walk prunes are not listed: they hold no page
   // the project serves from its own sources, and naming them would fire on every run.
-  const byRule = input.discovery.excludedRoots.filter(excludedByRule);
+  const byRule = input.discovery.excludedRoots.filter((root) => root.byRule);
   const excluded = byRule.length + input.discovery.excludedFiles.length;
   if (excluded > 0) {
     list.push({

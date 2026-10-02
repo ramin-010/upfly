@@ -204,6 +204,139 @@ describe('discover', () => {
     ]);
   });
 
+  describe('a site generator that builds into public', () => {
+    // Hugo, Gatsby and Hexo build a site into `public`, the name Vite and Next.js give the
+    // folder they serve as written, so only the generator's own settings beside it tell the
+    // two apart. Read as source, the built copy of an image is the one a post links, and a
+    // run would rewrite the post to name a file only the build output holds.
+    const BUILT_SITE = {
+      'content/post.md': '![The logo](/img/a.png)\n',
+      'static/img/a.png': '',
+      'public/img/a.png': '',
+      'public/index.html': '<img src="/img/a.png" alt="The logo">\n',
+    };
+
+    it.each([
+      ['hugo.toml', "Hugo's settings file 'hugo.toml'"],
+      ['hugo.yaml', "Hugo's settings file 'hugo.yaml'"],
+      ['hugo.yml', "Hugo's settings file 'hugo.yml'"],
+      ['hugo.json', "Hugo's settings file 'hugo.json'"],
+      ['gatsby-config.js', "Gatsby's settings file 'gatsby-config.js'"],
+      ['gatsby-config.mjs', "Gatsby's settings file 'gatsby-config.mjs'"],
+      ['gatsby-config.ts', "Gatsby's settings file 'gatsby-config.ts'"],
+    ])('prunes public beside %s, naming the settings file', async (settings, named) => {
+      const root = await makeTree({ ...BUILT_SITE, [settings]: '' });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.assets.map((asset) => asset.relative)).toEqual(['static/img/a.png']);
+      expect(result.sourceFiles).toEqual([]);
+      expect(result.directories).not.toContain('public');
+      expect(result.excludedRoots).toEqual([
+        {
+          path: join(root, 'public'),
+          relative: 'public',
+          reason: `a build-output directory named 'public', beside ${named}`,
+          byRule: false,
+        },
+      ]);
+    });
+
+    it("prunes public beside a package.json whose hexo field marks a Hexo site, Hexo's own test", async () => {
+      const root = await makeTree({
+        ...BUILT_SITE,
+        '_config.yml': 'public_dir: public\n',
+        'package.json': JSON.stringify({ name: 'blog', hexo: { version: '7.3.0' } }),
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.assets.map((asset) => asset.relative)).toEqual(['static/img/a.png']);
+      expect(result.excludedRoots.map((entry) => [entry.relative, entry.reason])).toEqual([
+        [
+          'public',
+          "a build-output directory named 'public', beside a package.json whose hexo field marks a Hexo site",
+        ],
+      ]);
+    });
+
+    it('keeps reading a public folder that no generator settings sit beside', async () => {
+      // Vite's and Next.js's public folders are source. `config.toml` is Hugo's older name and
+      // other tools' too, and `_config.yml` is Jekyll's as well as Hexo's, so neither decides.
+      const beside: readonly Record<string, string>[] = [
+        { 'package.json': '{ "scripts": { "build": "vite build" } }', 'vite.config.ts': '' },
+        { 'package.json': '{ "scripts": { "build": "next build" } }', 'next.config.mjs': '' },
+        { 'config.toml': '' },
+        { '_config.yml': '' },
+        { 'package.json': '{ "hexo": "7.3.0" }' },
+        { 'package.json': '{ "hexo": ' },
+        { 'hugo.toml/': '' },
+      ];
+      for (const files of beside) {
+        const root = await makeTree({ ...BUILT_SITE, ...files });
+
+        const result = await discover({ root, adapters });
+
+        expect(result.excludedRoots, Object.keys(files).join(', ')).toEqual([]);
+        expect(result.directories).toContain('public');
+        expect(result.assets.map((asset) => asset.relative)).toContain('public/img/a.png');
+      }
+    });
+
+    it('decides beside each folder, at any depth', async () => {
+      // A Vite app at the root and a Hugo site in docs/: only the site's output is pruned.
+      const root = await makeTree({
+        'package.json': '{ "scripts": { "build": "vite build" } }',
+        'public/logo.png': '',
+        'docs/hugo.toml': '',
+        'docs/static/img/a.png': '',
+        'docs/public/img/a.png': '',
+      });
+
+      const result = await discover({ root, adapters });
+
+      expect(result.assets.map((asset) => asset.relative)).toEqual([
+        'docs/static/img/a.png',
+        'public/logo.png',
+      ]);
+      expect(result.excludedRoots.map((entry) => entry.relative)).toEqual(['docs/public']);
+    });
+
+    it('names the same generator on every run when the settings of two sit beside public', async () => {
+      const root = await makeTree({ ...BUILT_SITE, 'gatsby-config.js': '', 'hugo.toml': '' });
+
+      const reasons = await Promise.all(
+        [1, 4, 16].map(async (concurrency) => {
+          const result = await discover({ root, adapters, concurrency });
+          return result.excludedRoots.map((entry) => entry.reason);
+        }),
+      );
+
+      expect(reasons).toEqual(
+        Array(3).fill([
+          "a build-output directory named 'public', beside Hugo's settings file 'hugo.toml'",
+        ]),
+      );
+    });
+  });
+
+  it('marks which excluded directories the project rules left out, and which the walk pruned', async () => {
+    const root = await makeTree({
+      'hugo.toml': '',
+      'public/img/a.png': '',
+      'legacy/old.png': '',
+      'node_modules/pkg/a.png': '',
+    });
+
+    const result = await discover({ root, adapters, extraIgnores: ['legacy/'] });
+
+    expect(result.excludedRoots.map((entry) => [entry.relative, entry.byRule])).toEqual([
+      ['legacy', true],
+      ['node_modules', false],
+      ['public', false],
+    ]);
+  });
+
   it('records each image an ignore rule excluded by name, apart from the files it reads', async () => {
     const root = await makeTree({
       '.upflyignore': ['public/icons/touch.png', '*.svg', 'drafts/'].join('\n'),
@@ -619,6 +752,22 @@ describe('listExcludedFiles', () => {
 
     expect(listing.files).toEqual(['drafts.html', 'legacy/icon.svg', 'legacy/old.html']);
     expect(listing.unread).toEqual([]);
+  });
+
+  it("reads nothing in a site generator's build output, as in other build output", async () => {
+    // Generated from the sources the run reads, so a page there that still names an
+    // original says nothing about whether that original may go.
+    const root = await makeTree({
+      'hugo.toml': '',
+      'public/index.html': '',
+      'public/img/a.svg': '',
+      'legacy/old.html': '',
+    });
+    const result = await discover({ root, adapters, extraIgnores: ['legacy'] });
+
+    const listing = await listExcludedFiles(result);
+
+    expect(listing.files).toEqual(['legacy/old.html']);
   });
 
   it('names a directory it could not list, and never skips it in silence', async () => {

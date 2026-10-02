@@ -352,11 +352,12 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
   });
 
   it('with --commit on a site built before the run, naming the ignored build folder to leave out, and that advice gives a correct run', () => {
-    // A built Hugo site: `public/` is Hugo's output, ignored by git, and holds a copy of the
-    // image the post names, which a run would otherwise plan as source.
+    // A built site whose generator Upfly cannot tell from its settings file: `config.toml` is
+    // Hugo's older name and other tools' too. `public/` is the build output, ignored by git,
+    // and holds a copy of the image the post names, which a run would otherwise plan as source.
     const root = tempFolder(roots, 'upfly-built-site-');
     const logo = readFileSync(join(FIXTURES, 'plain-html/images/logo.png'));
-    write(root, 'hugo.toml', 'title = "A built site"\n');
+    write(root, 'config.toml', 'title = "A built site"\n');
     write(root, 'content/post.md', '![The logo](/img/a.png)\n');
     write(root, 'static/img/a.png', logo);
     write(root, '.gitignore', 'public/\n');
@@ -382,6 +383,35 @@ describe('upfly optimize refuses to write, with exit 3 and what to do', () => {
     expect(readFileSync(join(root, 'content/post.md'), 'utf8')).toBe('![The logo](/img/a.webp)\n');
     expect(existsSync(join(root, 'static/img/a.webp'))).toBe(true);
     expect(git(root, 'status', '--porcelain')).toBe('');
+  });
+});
+
+describe('upfly optimize on a site built before the run', () => {
+  it("on a built Hugo site, without --commit, converts the source image and leaves Hugo's output alone", () => {
+    // Beside `hugo.toml`, `public/` is Hugo's output: a run that read it as the website folder
+    // would rewrite the post to name a file only the output holds, which the next clean
+    // build does not make.
+    const root = tempFolder(roots, 'upfly-hugo-built-');
+    const logo = readFileSync(join(FIXTURES, 'plain-html/images/logo.png'));
+    write(root, 'hugo.toml', 'title = "A built site"\n');
+    write(root, 'content/post.md', '![The logo](/img/a.png)\n');
+    write(root, 'static/img/a.png', logo);
+    write(root, '.gitignore', 'public/\n');
+    commitAll(root);
+    write(root, 'public/img/a.png', logo);
+    write(root, 'public/index.html', '<img src="/img/a.png" alt="The logo">\n');
+    const output = snapshot(join(root, 'public'), []);
+
+    const run = upfly(['optimize', root, '--apply', '--json']);
+
+    expect(run.status).toBe(0);
+    expect(readFileSync(join(root, 'content/post.md'), 'utf8')).toBe('![The logo](/img/a.webp)\n');
+    expect(existsSync(join(root, 'static/img/a.webp'))).toBe(true);
+    expect(git(root, 'status', '--porcelain').trimEnd().split('\n').sort()).toEqual([
+      ' M content/post.md',
+      '?? static/img/a.webp',
+    ]);
+    expect(snapshot(join(root, 'public'), [])).toEqual(output);
   });
 });
 

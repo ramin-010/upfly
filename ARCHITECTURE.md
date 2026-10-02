@@ -401,7 +401,8 @@ tutorial is not a website folder, and no rule on the text of its references can 
 Create React App's `public/index.html`: both name a root-relative file that nothing outside the
 folder mentions. What differs is ownership: a website folder belongs to a project. So a `public`
 or `static` directory is claimed only when a project file sits beside it, in its parent:
-`package.json`; Hugo's `hugo.toml` or `config.toml` (and their YAML and JSON forms); a `Gemfile`;
+`package.json`; Hugo's `hugo.toml`, `hugo.yaml`, `hugo.yml` or `hugo.json`, or its older
+`config.toml`, `config.yaml` or `config.json`; a `Gemfile`;
 `composer.json` or `artisan`; `angular.json`; or VitePress's `.vitepress/`, a config *directory*,
 because VitePress keeps its `package.json` at the repository root. The list is `PROJECT_MARKERS`
 and, like the names, an argument. Detection reads the whole walk for it, not only the files an
@@ -1444,12 +1445,26 @@ inside a bigger repository, "ignored" would also depend on a repository the user
 about. A site built before Upfly runs is handled by name instead: the folders only a tool writes
 (`dist`, `build`, `out`, `_site`, `.next`, `storybook-static` and the rest of the list in
 `discover.ts`) are pruned, so a built Eleventy site's second copy of every image is not read as
-source. A folder people also name by hand, such as Hugo's `public`, is not, and when a plan would
-write into a git-ignored path, `optimize --commit` refuses before writing anything.
+source.
+
+**`public` is a source folder's name as well as a build's, so the settings beside it decide.** Vite
+and Next.js serve `public/` as written; Hugo, Gatsby and Hexo build a whole site into it, with a
+copy of every image the site serves. Read as source, that copy is what a post's `/img/a.png`
+links, so a run would convert it and rewrite the post to name `/img/a.webp`, a file only the
+build output holds, which the next clean build does not make. So `public` is pruned when the
+generator's own settings file sits beside it, each list taken from the generator's own source:
+`hugo.toml`, `hugo.yaml`, `hugo.yml` or `hugo.json`; `gatsby-config.js`, `.mjs` or `.ts`; and for
+Hexo, whose `_config.yml` is also Jekyll's, a `package.json` whose `hexo` field is an object, the
+test Hexo's own command uses to find a site. Hugo's older `config.toml` is other tools' name too,
+so it does not decide. A generator Upfly does not know, or an output folder moved by its settings
+(Hugo's `publishDir`), is still read; when a plan would then write into a git-ignored path,
+`optimize --commit` refuses before writing anything and names the folder to leave out with
+`--exclude`.
 
 Discovery also records **what it excluded, and why**. Every pruned directory lands in
-`excludedRoots` with the rule responsible: a built-in name prune, or the specific `.upflyignore`
-pattern that matched. It keeps the raw pattern list to do that, because `ignore` reports *whether*
+`excludedRoots` with the rule responsible: a built-in name prune, a generator's settings file, or
+the specific `.upflyignore` pattern that matched, and `byRule` says which were the project's own
+rules. It keeps the raw pattern list to do that, because `ignore` reports *whether*
 a path matches but not *which* pattern did, and "excluded by some rule you wrote" is a much worse
 report line than "excluded by `legacy/`" when someone is working out where their asset went. The
 resolver prefix-tests references against these to produce `out-of-scope` instead of a false
@@ -1461,13 +1476,13 @@ with its path, which is what the audit sweeps to decide `dead` against `possibly
 and pruned entries are deliberately absent (an ignore rule is an instruction, not a gap in our
 coverage), and so is the ignore file itself, which we obviously did read. The report still names
 what the project's own rules left out, since an image used only there shows as unreferenced; the
-directories pruned by name are not listed.
+directories the walk prunes are not listed.
 
 One reader looks past an exclusion: the search `optimize` makes before `replace` deletes an
 original. An exclusion limits what a run changes, not what it checks before removing a file that a
 page it left out may still show. So the walk keeps each file a rule excluded by name in
 `excludedFiles` (raster images aside, which name nothing), and `listExcludedFiles` lists what the
-excluded directories hold. The directories pruned by name stay unread even then: dependencies,
+excluded directories hold. The directories the walk prunes stay unread even then: dependencies,
 caches, build output, version control and `.upfly` hold no page the project serves from its own
 sources, and build output is made again from them.
 
