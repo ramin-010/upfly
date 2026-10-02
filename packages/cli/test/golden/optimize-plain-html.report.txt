@@ -70,4 +70,4 @@ Plan
   Originals: each stays beside its converted file. With --replace, an original is
   removed once every reference to it has moved.
 
-Written as run <run>: 5 files created, 2 changed, 0 removed. `upfly undo` puts them all back.
+Dry run: no project file was changed. Run the same command with --apply to write this plan.

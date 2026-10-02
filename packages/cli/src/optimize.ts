@@ -12,6 +12,7 @@ import {
   type OptimizationPlan,
   type OptimizeProjectResult,
   type PublicPolicy,
+  type Report,
   UpflyError,
   buildReport,
   createNodeFileStore,
@@ -420,19 +421,21 @@ export function notes(
 
 function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, outcome: Outcome) {
   const { pipeline, optimize: run } = result;
-  const report = buildReport({
-    aliases: pipeline.aliases,
-    graph: pipeline.graph,
-    audit: pipeline.audit,
-    discovery: pipeline.discovery,
-    sweep: pipeline.sweep,
-    servingRoots: pipeline.servingRoots,
-    ...(pipeline.probes === undefined ? {} : { probes: pipeline.probes }),
-    declined: run.plan.declined,
-    includeDeclined: options.includeDeclined,
-    includeDiscarded: options.includeDiscarded,
-    includeUnusedVectors: options.includeUnusedSvg,
-  });
+  const reportListing = (includeDeclined: boolean) =>
+    buildReport({
+      aliases: pipeline.aliases,
+      graph: pipeline.graph,
+      audit: pipeline.audit,
+      discovery: pipeline.discovery,
+      sweep: pipeline.sweep,
+      servingRoots: pipeline.servingRoots,
+      ...(pipeline.probes === undefined ? {} : { probes: pipeline.probes }),
+      declined: run.plan.declined,
+      includeDeclined,
+      includeDiscarded: options.includeDiscarded,
+      includeUnusedVectors: options.includeUnusedSvg,
+    });
+  const report = reportListing(options.includeDeclined);
   const repository =
     outcome.git.kind === 'repository' ? { top: outcome.git.top, path: outcome.git.prefix } : null;
 
@@ -460,17 +463,27 @@ function write(options: OptimizeOptions, io: Io, result: OptimizeProjectResult, 
     return;
   }
 
-  const lines = [
-    renderReport(report).trimEnd(),
-    '',
-    ...renderPlan(run.plan, pipeline.graph, outcome.policy),
-  ];
-  lines.push(...outcomeLines(options, run.manifest, outcome));
-  for (const note of outcome.notes) lines.push(`Note: ${note}`);
-  const full = `${lines.join('\n')}\n`;
-  const file = writeReport(pipeline.graph.root, full, run.manifest?.runDir ?? null);
+  const fullText = (shown: Report, everyOriginalKept: boolean) => {
+    const lines = [
+      renderReport(shown).trimEnd(),
+      '',
+      ...renderPlan(run.plan, pipeline.graph, outcome.policy, { everyOriginalKept }),
+    ];
+    lines.push(...outcomeLines(options, run.manifest, outcome));
+    for (const note of outcome.notes) lines.push(`Note: ${note}`);
+    return `${lines.join('\n')}\n`;
+  };
+  // The summary points to the file for the reason behind each image and reference it leaves
+  // alone and each original it keeps, so the file lists them all; --full prints the text as
+  // the options ask.
+  const listing = options.includeDeclined ? report : reportListing(true);
+  const file = writeReport(
+    pipeline.graph.root,
+    fullText(listing, true),
+    run.manifest?.runDir ?? null,
+  );
   if (options.full) {
-    io.stdout.write(full);
+    io.stdout.write(fullText(report, false));
     warnIfNotKept(io, file);
     return;
   }

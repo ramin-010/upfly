@@ -123,6 +123,38 @@ describe('renderPlan', () => {
   });
 });
 
+describe('renderPlan for the report file', () => {
+  it('lists every original kept, each with its reason, where the terminal shows twenty', () => {
+    const names = Array.from({ length: 25 }, (_, index) => `images/kept-${index + 10}`);
+    const big = buildGraph({
+      root: '/site',
+      assets: names.map((name) => asset(`${name}.png`, 2_000)),
+      references: [],
+      unscannedFiles: [],
+    });
+    const keeping: OptimizationPlan = {
+      ...plan,
+      conversions: names.map((name) => ({
+        asset: `${name}.png`,
+        target: `${name}.webp`,
+        format: 'webp',
+        quality: 80,
+        savedBytes: 1_500,
+        replacesOriginal: false,
+      })),
+      rewrites: [],
+      keptOriginals: names.map((name) => ({ asset: `${name}.png`, reason: 'a pattern names it' })),
+    };
+    const kept = (lines: readonly string[]) => lines.filter((line) => line.endsWith('names it'));
+
+    expect(kept(renderPlan(keeping, big, 'replace'))).toHaveLength(20);
+    expect(kept(renderPlan(keeping, big, 'replace', { everyOriginalKept: true }))).toHaveLength(25);
+    expect(renderPlan(keeping, big, 'replace', { everyOriginalKept: true })).toContain(
+      '    images/kept-34.png  a pattern names it',
+    );
+  });
+});
+
 describe('writtenByKind', () => {
   it('sorts what a run wrote into created, changed and removed', () => {
     const manifest = {

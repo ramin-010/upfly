@@ -38,7 +38,8 @@ The commands:
   why.
 
 `audit`, `optimize` and `dedupe` print a short summary and keep their full text in `.upfly/report.txt`, which git
-is told to ignore; `--full` prints the full text instead.
+is told to ignore; `--full` prints the full text instead. `optimize`'s file also lists each image and reference left
+alone, and each original kept, with the reason for each.
 
 For programs and coding agents:
 

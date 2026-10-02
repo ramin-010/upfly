@@ -3,14 +3,29 @@
 import type { Manifest, OptimizationPlan, PublicPolicy } from 'upfly-core';
 import { type Graph, formatBytes } from 'upfly-core/internal';
 
+/** How much of the plan to list. */
+export interface PlanTextOptions {
+  /**
+   * List every original kept, rather than the first twenty: the report file holds each
+   * reason the summary points to.
+   */
+  readonly everyOriginalKept?: boolean;
+}
+
 /**
  * The plan as text: what converts, which files change, and what happens to each original.
  *
  * @param plan the plan the run made, identical on a dry run and an applied one
  * @param graph the graph it was made from, for each image's size
  * @param policy whether originals are kept or replaced
+ * @param options how much of the plan to list
  */
-export function renderPlan(plan: OptimizationPlan, graph: Graph, policy: PublicPolicy): string[] {
+export function renderPlan(
+  plan: OptimizationPlan,
+  graph: Graph,
+  policy: PublicPolicy,
+  options: PlanTextOptions = {},
+): string[] {
   const lines = ['Plan', ''];
   if (plan.conversions.length === 0 && plan.rewrites.length === 0) {
     lines.push('  Nothing to convert and no reference to update.', '');
@@ -45,7 +60,7 @@ export function renderPlan(plan: OptimizationPlan, graph: Graph, policy: PublicP
     lines.push(...moreThanListed(plan.rewrites.length));
   }
 
-  lines.push(...originalsLines(plan, policy), '');
+  lines.push(...originalsLines(plan, policy, options.everyOriginalKept === true), '');
   return lines;
 }
 
@@ -61,7 +76,11 @@ function moreThanListed(total: number): string[] {
   return [`    ... and ${total - LISTED} more; the JSON output, \`--json\`, lists every one`];
 }
 
-function originalsLines(plan: OptimizationPlan, policy: PublicPolicy): string[] {
+function originalsLines(
+  plan: OptimizationPlan,
+  policy: PublicPolicy,
+  everyKept: boolean,
+): string[] {
   if (plan.conversions.length === 0) return [];
   if (policy === 'keep-original') {
     return [
@@ -82,10 +101,9 @@ function originalsLines(plan: OptimizationPlan, policy: PublicPolicy): string[] 
     lines.push(
       `  Keep originals: ${count(plan.keptOriginals.length, 'image')}, each for its reason`,
     );
-    for (const kept of plan.keptOriginals.slice(0, LISTED)) {
-      lines.push(`    ${kept.asset}  ${kept.reason}`);
-    }
-    lines.push(...moreThanListed(plan.keptOriginals.length));
+    const listed = everyKept ? plan.keptOriginals : plan.keptOriginals.slice(0, LISTED);
+    for (const kept of listed) lines.push(`    ${kept.asset}  ${kept.reason}`);
+    if (!everyKept) lines.push(...moreThanListed(plan.keptOriginals.length));
   }
   return lines;
 }

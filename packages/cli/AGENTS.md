@@ -28,12 +28,13 @@ reads the folder given after it, or the current folder, and prints plain text; a
 2. Run `npx upfly optimize`. It changes no project file and prints a short summary of the
    plan: how many images convert and how much smaller they get, how many references
    change, and how many images are left alone, counted by reason. Show the user that
-   summary, and its notes. The full plan, every image and file with its reason, is then in
-   `.upfly/report.txt`; `--json` holds it too. The plan leaves alone an image that a
-   browser, a phone or another site reads outside the page (an icon, a web app manifest's
-   images, a link preview's image), since some of them show no WebP. It cannot tell which
-   images an email uses, and Outlook shows no WebP: if the project holds email templates,
-   offer to leave their folder out with `--exclude <path>`.
+   summary, and its notes. The full plan is then in `.upfly/report.txt`, with each image
+   and reference left alone and the reason for each; `--json` holds the whole plan. The
+   plan leaves alone an image that a browser, a phone or another site reads outside the
+   page (an icon, a web app manifest's images, a link preview's image), since some of them
+   show no WebP. It cannot tell which images an email uses, and Outlook shows no WebP: if
+   the project holds email templates, offer to leave their folder out with
+   `--exclude <path>`.
 3. Only when the user says yes: `npx upfly optimize --apply --commit`. The run's files go
    into one commit, which `git revert` undoes.
 4. Check the result: run the project's own build if it has one, then `npx upfly check`,

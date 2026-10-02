@@ -66,8 +66,9 @@ Upfly optimize · dry run
   Dry run: no project file was changed.
 ```
 
-The full plan is in `.upfly/report.txt`, which git is told to ignore; `--full` prints it instead of the summary,
-and `--include-declined` adds each image and reference left alone, with its reason. Then:
+The full plan is in `.upfly/report.txt`, which git is told to ignore, with each image and reference left alone and
+the reason for each; `--full` prints the plan instead of the summary, and `--include-declined` adds those reasons to
+it. Then:
 
 ```
 $ upfly optimize --apply --commit

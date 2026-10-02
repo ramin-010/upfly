@@ -130,15 +130,32 @@ const SUMMARIES = {
   ],
 } as const;
 
+/**
+ * Each case's name, fixture and command; the golden file of what `--full` prints; and the
+ * golden file of what `.upfly/report.txt` holds, or null where that is what `--full` prints.
+ * `optimize`'s file also lists each image and reference left alone, with its reason.
+ */
 const CASES = [
-  ['audit vite-react', 'vite-react', 'audit', 'audit-vite-react.txt'],
-  ['audit plain-html', 'plain-html', 'audit', 'audit-plain-html.txt'],
-  ['optimize vite-react', 'vite-react', 'optimize', 'optimize-vite-react.txt'],
-  ['optimize plain-html', 'plain-html', 'optimize', 'optimize-plain-html.txt'],
-  ['dedupe vite-react', 'vite-react', 'dedupe', 'dedupe-vite-react.txt'],
+  ['audit vite-react', 'vite-react', 'audit', 'audit-vite-react.txt', null],
+  ['audit plain-html', 'plain-html', 'audit', 'audit-plain-html.txt', null],
+  [
+    'optimize vite-react',
+    'vite-react',
+    'optimize',
+    'optimize-vite-react.txt',
+    'optimize-vite-react.report.txt',
+  ],
+  [
+    'optimize plain-html',
+    'plain-html',
+    'optimize',
+    'optimize-plain-html.txt',
+    'optimize-plain-html.report.txt',
+  ],
+  ['dedupe vite-react', 'vite-react', 'dedupe', 'dedupe-vite-react.txt', null],
 ] as const;
 
-describe.each(CASES)('upfly %s', (name, fixture, command, golden) => {
+describe.each(CASES)('upfly %s', (name, fixture, command, golden, reportGolden) => {
   // One copy and two runs serve both tests: each run measures every image, and the suite
   // runs beside other heavy files.
   let root = '';
@@ -159,10 +176,11 @@ describe.each(CASES)('upfly %s', (name, fixture, command, golden) => {
     expect(overWide(summary.stdout)).toEqual([]);
   });
 
-  it('keeps the full text in .upfly/report.txt, which --full prints as the command printed it before', async () => {
+  it('keeps the full text in .upfly/report.txt, and --full prints the text the command printed before', async () => {
     expect(full.status, full.stderr).toBe(0);
-    expect(full.stdout).toBe(kept);
     await expect(placeholders(full.stdout, root)).toMatchFileSnapshot(`./golden/${golden}`);
+    if (reportGolden === null) expect(kept).toBe(full.stdout);
+    else await expect(placeholders(kept, root)).toMatchFileSnapshot(`./golden/${reportGolden}`);
   });
 });
 
@@ -214,6 +232,33 @@ describe('the report file', () => {
     await expect(placeholders(report, root)).toMatchFileSnapshot(
       './golden/optimize-apply-plain-html.txt',
     );
+  });
+
+  it('lists every image and reference left alone with its reason, which --full only counts', () => {
+    // The summary sends the reader to the full plan for each reason, so the file names them
+    // all, as --include-declined does; --full prints the text as it always has.
+    const root = committed('partial-pattern');
+
+    const summary = run(root, ['optimize']);
+    const report = readFileSync(join(root, '.upfly/report.txt'), 'utf8');
+    const full = run(root, ['optimize', '--full']);
+
+    expect(summary.stdout).toContain('stays as written, each for a reason in the');
+    expect(report).toContain(
+      [
+        '  4 images, 30.7 KB, each with its reason',
+        '  1 reference left as written, each with its reason',
+        '',
+        '    public/theme-dark.png  70 B  `src/App.jsx` reaches it only through `/theme-${mode}.png`, a path assembled at runtime that no run can rewrite. No reference would move to a new file, so it would be used by nobody. Upfly converts an image only when a reference moves to the new file',
+      ].join('\n'),
+    );
+    expect(report).toContain(
+      '    src/App.jsx  a template reference is assembled at runtime, so its text cannot be repointed, and none of the 4 assets it matches converts\n',
+    );
+    expect(full.stdout).toContain(
+      '  4 images, 30.7 KB, each with its reason (use --include-declined to list them)\n',
+    );
+    expect(full.stdout).not.toContain('public/theme-dark.png  70 B');
   });
 
   it('is not written under --json, whose output is unchanged', async () => {
