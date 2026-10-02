@@ -46,3 +46,12 @@ describe("the upfly package's entry", () => {
     expect(undocumented).toEqual([]);
   });
 });
+
+describe('the Node.js versions the upfly package says it runs on', () => {
+  it('are those of upfly-core, the engine it runs', () => {
+    const versions = (folder: string) =>
+      JSON.parse(readFileSync(join(PACKAGE, '..', folder, 'package.json'), 'utf8')).engines;
+
+    expect(versions('cli')).toEqual(versions('core'));
+  });
+});

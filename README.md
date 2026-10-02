@@ -27,7 +27,7 @@ path with the reason.
 
 ## Install
 
-Node.js 20 or later.
+Node.js 22.18 or later; on Node.js 24, 24.11 or later.
 
 ```bash
 npm install --save-dev upfly

@@ -19,6 +19,7 @@ interface Manifest {
   readonly name: string;
   readonly files: readonly string[];
   readonly exports: Record<string, { readonly types: string; readonly import: string }>;
+  readonly engines: { readonly node: string };
 }
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE, 'package.json'), 'utf8')) as Manifest;
@@ -127,5 +128,15 @@ describe('the package entry, imported the way a user imports it', () => {
         expect(published).toBe(true);
       }
     }
+  });
+});
+
+describe('the Node.js versions the package says it runs on', () => {
+  it('are those of the dependency asking for the newest, @babel/parser, so npm warns no one it accepts', () => {
+    const babel = JSON.parse(
+      readFileSync(join(PACKAGE, 'node_modules/@babel/parser/package.json'), 'utf8'),
+    ) as { readonly engines: { readonly node: string } };
+
+    expect(manifest.engines.node).toBe(babel.engines.node);
   });
 });

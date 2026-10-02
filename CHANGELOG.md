@@ -54,4 +54,4 @@ And:
 - The accuracy suite, in `accuracy-suite/` in the repository: a project of image references and the decoys
   beside them, each with its expected answer written down before the engine ran. `pnpm accuracy:measure` runs it.
 - No network calls and no telemetry, in the library and the command-line tool alike.
-- Node.js 20 or later, as ES modules.
+- Node.js 22.18 or later (on Node.js 24, 24.11 or later), as ES modules.

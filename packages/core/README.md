@@ -16,7 +16,8 @@ npm install --save-dev upfly
 npx upfly audit
 ```
 
-This package is for building on the engine. Node.js 20 or later, as ES modules.
+This package is for building on the engine. It runs on Node.js 22.18 or later (on Node.js 24, 24.11 or
+later), as ES modules.
 
 ## The public API, by task
 

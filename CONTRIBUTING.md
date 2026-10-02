@@ -15,7 +15,7 @@ A straightforward bug fix with a failing test can go straight to a pull request.
 
 ## Setup
 
-Node 20 or later, and pnpm.
+Node.js 22.18 or later (on Node.js 24, 24.11 or later), and pnpm.
 
 ```bash
 pnpm install

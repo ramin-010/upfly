@@ -24,11 +24,11 @@ it is the only channel between chats and a chat can end at any moment.
 
 **Quality**
 1. TypeScript `strict`, no `any` in public API. Exported types *are* the API and are documented.
-2. ESM-only, Node ≥ 20.
+2. ESM-only, Node.js 22.18 or later (on 24, 24.11 or later): the range `@babel/parser` 8 declares.
 3. Every module has tests. Every adapter has fixtures. **Every bug fix adds the test that would have
    failed.** Coverage gate: 90% on `core`, enforced in CI.
 4. Biome for lint+format. Conventional commits carrying the *reasoning*. One concern per PR.
-5. CI is ubuntu/windows/macos × Node 20/22. **Windows is a first-class target** — v2's worst bug was
+5. CI is ubuntu/windows/macos × Node 22/24. **Windows is a first-class target** — v2's worst bug was
    a platform bug that shipped broken for months.
 6. Public JSON schemas (`report`, `manifest`, `config`) are versioned and snapshot-tested.
 7. `ARCHITECTURE.md` is kept true. Bring it current *as* the design changes, not at phase end.
