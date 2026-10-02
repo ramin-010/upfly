@@ -18,7 +18,13 @@ reads the folder given after it, or the current folder, and prints plain text; a
   right one for a question such as "is it safe to delete this image?".
 - The whole project: `npx upfly audit --json`. It changes nothing. The report can run to
   megabytes on a large project; `--no-probe` skips measuring the images and is much
-  faster when only the references matter.
+  faster when only the references matter. Its `savings` is what `upfly optimize` would
+  convert and save with the same folder, options and config: `savedBytes` across `images`,
+  each listed in `conversions`. When `unmeasured` is above 0, the run measured only the
+  largest of the images optimize could convert, so optimize converts and saves at least
+  that much; `--probe-all` measures them all. `report.summary.potentialSavingBytes` is a
+  different number: every image measured smaller, including ones optimize would not
+  convert. Quote `savings`.
 
 ## Converting images, safely
 

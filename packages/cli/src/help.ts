@@ -38,10 +38,11 @@ which git is told to ignore; --full prints the full text instead.
 const AUDIT = `Usage: upfly audit [dir] [options]
 
 Reports the images in the project, the references to them in the files it can read, the
-references that point at nothing, the images nothing references, and how much smaller the
-largest images would be as WebP, or AVIF when the config names it.
-It reads the project and changes no file in it. It prints a summary, and keeps the full
-report in .upfly/report.txt, which git is told to ignore.
+references that point at nothing, the images nothing references, and what upfly optimize
+would convert and save with the same folder, options and config: it measures the images
+optimize could convert as WebP, or AVIF when the config names it, and plans as optimize
+does. It reads the project and changes no file in it. It prints a summary, and keeps the
+full report in .upfly/report.txt, which git is told to ignore.
 
 Options:
   --full                 Print the full report instead of the summary
@@ -49,8 +50,9 @@ Options:
                          several, and use . for the project root itself. Without it, Upfly
                          works the folders out and says so
   --exclude <pattern>    Leave matching paths out, in .gitignore syntax; repeatable
-  --max-encodes <n>      Measure the n largest images by encoding them (default 100)
-  --probe-all            Measure every image, however many
+  --max-encodes <n>      Measure the n largest images optimize could convert (default 100);
+                         past them, the savings are marked "at least"
+  --probe-all            Measure every image optimize could convert, however many
   --no-probe             Read no image at all; sizes and savings are then not measured
   --include-discarded    Also list the path-like strings that linked nothing
   --include-unused-svg   Also list the unused SVG files, which are otherwise only counted

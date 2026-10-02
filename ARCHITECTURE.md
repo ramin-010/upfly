@@ -1630,6 +1630,26 @@ asset however low the cap goes. Everything past the cap is reported as unmeasure
 reason and the flag that lifts it; silence would read as "no opportunity here". The default comes
 from `bench/` rather than a guess, like the concurrency number.
 
+### `audit`'s savings are `optimize`'s plan
+
+`upfly audit` states what `optimize` would convert and save with the same folder, options and
+config, never a saving `optimize` would not deliver: an unused image's size is already in the
+Unused row. So `audit` encodes only the images a plan could convert (`convertibleImages`: an image
+with a reference that would move to the new file, judged by the rules that need no measurement),
+reads every other image's header as before, and plans with `optimizeFromPipeline`, the function
+`optimizeProject` runs after its own pipeline. Measuring every convertible image gives the same
+plan as measuring every image: every other image is declined for a reason no measurement changes,
+so the set the plan starts from, and everything decided after it (collisions, references that
+would lead elsewhere, the search for mentions of a removed original), is the same. A test runs both
+on three fixtures under both policies.
+
+The cap then chooses among the convertible images, and the figure past it is marked "at least".
+That needs the capped plan to convert nothing the full plan would not. An image measured or not
+changes another's fate only through a file both would be converted to, or a reference that would
+reach the other's converted file, and either needs the same file name. So the cap takes every
+convertible image whose name, less its extension and in any letter case, matches one it took: a
+`logo.png` measured without its `logo.jpg` would seem free to become `logo.webp`.
+
 ### Animation is the trap
 
 Encoding an animated GIF the obvious way keeps **one frame**. Sharp's own ten-frame, 370×285 fixture

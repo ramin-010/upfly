@@ -1179,6 +1179,7 @@ function notExercised(input: ReportInput): NotExercised[] {
 const DETERMINED_NOT_WORTH_MEASURING: ReadonlySet<ProbeSkipCode> = new Set([
   'vector',
   'already-target-format',
+  'would-not-convert',
 ]);
 
 /** Every skip from every stage, in one list, so there is a single place to append to. */
@@ -1254,6 +1255,7 @@ function countDeterminations(input: ReportInput): { total: number; detail: strin
   const label: Record<string, string> = {
     vector: 'vectors, where an encode would measure a rasterisation rather than a saving',
     'already-target-format': 'already in the format Upfly would convert to',
+    'would-not-convert': 'images optimize would not convert, whatever they measured',
   };
 
   return {

@@ -44,3 +44,8 @@ Findings: 9 items
       images/favicon.png
       images/never-referenced.png
       images/removed.png
+
+Worth knowing
+
+  3 images needed no measurement:
+    images optimize would not convert, whatever they measured: 3

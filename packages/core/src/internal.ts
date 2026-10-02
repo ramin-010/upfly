@@ -23,7 +23,8 @@ export {
   relativePath,
 } from './paths.js';
 export { LOCK_PATH, processIsAlive, readLockHolder } from './write/lock.js';
-export { whyReferenceStays } from './plan/plan.js';
+export { convertibleImages, whyReferenceStays } from './plan/plan.js';
+export { optimizeFromPipeline } from './optimize-project.js';
 export type { LinkedReference } from './plan/plan.js';
 export { sweepForMentions } from './audit/sweep.js';
 export type { Mention } from './audit/sweep.js';

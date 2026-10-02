@@ -67,13 +67,19 @@ export interface PipelineInput {
    */
   readonly probeOptions: Omit<
     ProbeOptions,
-    'probe' | 'alwaysMeasure' | 'onDiagnostic' | 'onMeasured'
+    'probe' | 'alwaysMeasure' | 'onDiagnostic' | 'onMeasured' | 'encodeOnly'
   > | null;
   /**
    * Which images to measure, by POSIX-relative path; every image when absent. The rest are
    * still walked, read for references and audited, only never measured.
    */
   readonly measureOnly?: (relative: string) => boolean;
+  /**
+   * The only images to encode, by POSIX-relative path, worked out once the graph is built;
+   * every measured image when absent. The rest have their header read and are not encoded,
+   * and a cap chooses among these. `convertibleImages` gives the images a plan could convert.
+   */
+  readonly encodeOnly?: (built: EncodeContext) => ReadonlySet<string>;
   /** More paths to leave out, in `.gitignore` syntax, on top of the project's `.upflyignore`. */
   readonly extraIgnores?: readonly string[];
   /**
@@ -81,6 +87,14 @@ export interface PipelineInput {
    * how many are done, so a caller can show progress.
    */
   readonly onProgress?: (event: PipelineProgress) => void;
+}
+
+/** What `PipelineInput.encodeOnly` decides from: the graph and what a plan's rules read. */
+export interface EncodeContext {
+  readonly graph: Graph;
+  readonly servingRoots: ServingRoots;
+  readonly builds: ProjectBuilds;
+  readonly aliases: AliasMap;
 }
 
 /** One stage of the run finished. The numbers say what that stage counted. */
@@ -299,6 +313,9 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineOutput>
           {
             probe: await createSharpProbe(),
             ...input.probeOptions,
+            ...(input.encodeOnly === undefined
+              ? {}
+              : { encodeOnly: input.encodeOnly({ graph, servingRoots, builds, aliases }) }),
             onDiagnostic: (entry) => diagnostics.push(entry),
             onMeasured: (done, total) => {
               if (reportsMeasuring(done, total)) progress({ stage: 'measuring', done, total });

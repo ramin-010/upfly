@@ -778,6 +778,41 @@ function wasMeasured(relative: string, input: PlanInput): boolean {
   return probe?.encoded.some((encoded) => encoded.format === input.format) ?? false;
 }
 
+/** What `convertibleImages` reads: the plan's input, less the measurements. */
+export type ConvertibleInput = Pick<
+  PlanInput,
+  'graph' | 'servingRoots' | 'rootLinkPolicy' | 'format' | 'builds' | 'aliases'
+>;
+
+/**
+ * The images a plan with this input could convert, whatever they measure: those with a
+ * reference that would move to the new file. Every other image is declined for a reason no
+ * measurement changes, so measuring only these gives the plan every saving it can use.
+ *
+ * These are the checks `convertDecision` makes that need no measurement and no other
+ * conversion; the plan still declines some of these images, on their measurement, a
+ * collision or a mention a removed original would leave.
+ *
+ * @param input the graph and what the plan's rules read, without measurements
+ * @returns the POSIX-relative paths of those images
+ */
+export function convertibleImages(input: ConvertibleInput): ReadonlySet<string> {
+  const rules: PlanInput = {
+    ...input,
+    probes: [],
+    publicPolicy: 'keep-original',
+    hedged: new Set(),
+  };
+  const convertible = new Set<string>();
+  for (const node of input.graph.assets) {
+    const relative = node.asset.relative;
+    if (withExtension(relative, input.format) === relative) continue;
+    if (node.references.length === 0 || usedByNoMove(node, rules) !== null) continue;
+    convertible.add(relative);
+  }
+  return convertible;
+}
+
 type ConvertDecision =
   | { readonly convert: true; readonly conversion: PlannedConversion }
   | { readonly convert: false; readonly reason: string | null };

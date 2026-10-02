@@ -78,6 +78,8 @@ function record(line: Line): void {
 
 /** Branches of a result's schema that only some runs reach, each with how to tell. */
 const RESULT_BRANCHES: readonly (readonly [string, (line: Line) => boolean])[] = [
+  ['audit savings', (line) => line.command === 'audit' && line.savings !== null],
+  ['audit no savings', (line) => line.command === 'audit' && line.savings === null],
   ['check --changed', (line) => line.command === 'check' && line.changed !== null],
   ['check unread', (line) => line.command === 'check' && line.unread !== undefined],
   ['init ties', (line) => line.command === 'init' && line.ties !== undefined],
@@ -344,6 +346,8 @@ describe('every --json line validates against the published schemas', () => {
       'error with a reason',
       'error without a reason',
       'result audit',
+      'audit savings',
+      'audit no savings',
       'result optimize',
       'result undo',
       'result check',

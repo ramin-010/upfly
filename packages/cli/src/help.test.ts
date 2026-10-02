@@ -22,10 +22,13 @@ describe('the help text', () => {
     },
   );
 
-  it('says the audit measures the largest images in the configured format', () => {
-    // It encodes the configured format, AVIF included, and by default only the 100 largest.
+  it('says the savings are what optimize would convert, measured in the configured format', () => {
+    // It encodes the configured format, AVIF included, and only images optimize could convert.
     const text = helpText('audit');
     expect(text).not.toMatch(/each\s+image would be as WebP/);
-    expect(text).toMatch(/the\s+largest images would be as WebP, or AVIF when the config names it/);
+    expect(text).toMatch(/what upfly optimize\s+would convert and save/);
+    expect(text).toMatch(
+      /the images\s+optimize could convert as WebP, or AVIF when the config names it/,
+    );
   });
 });

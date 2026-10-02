@@ -61,6 +61,8 @@ export function unmeasuredGroup(code: ProbeSkipCode | null, format: EncodeFormat
       return 'converting would lose its animation';
     case 'beyond-encode-cap':
       return 'not measured, past the limit on how many are';
+    case 'would-not-convert':
+      return 'no reference would move to a new file';
     case 'not-an-image':
     case 'svg-unreadable':
     case 'too-large-to-encode':

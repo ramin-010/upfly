@@ -131,7 +131,12 @@ export type ProbeSkipCode =
    */
   | 'drops-animation'
   /** Deliberately not measured, to bound how long the audit takes. */
-  | 'beyond-encode-cap';
+  | 'beyond-encode-cap'
+  /**
+   * Not encoded because `optimize` would not convert it whatever it measured, as
+   * `ProbeOptions.encodeOnly` says: no saving of its would reach a visitor.
+   */
+  | 'would-not-convert';
 
 /**
  * A measurement that was not taken, and why. It reaches the report like any other
@@ -262,8 +267,17 @@ export interface ProbeOptions {
    * opportunities lose detail: `dead`, `broken` and `oversized` need no encode. The CLI
    * sets it with `--max-encodes <n>` and clears it with `--probe-all`. See "The cap is a
    * count, not a threshold or a deadline" in ARCHITECTURE.md.
+   *
+   * With `encodeOnly`, an asset is taken with every other one whose name, less its
+   * extension, is the same in any letter case, since whether one converts can depend on
+   * another converted to the same name; the count can then pass the cap by those few.
    */
   readonly maxEncodedAssets?: number;
+  /**
+   * The only assets to encode, by POSIX-relative path, when not all: the rest have their
+   * header read and are skipped as `would-not-convert`. The cap chooses among these.
+   */
+  readonly encodeOnly?: ReadonlySet<string>;
   /**
    * Assets to measure whatever the cap says. `Asset` objects rather than paths: the cap is
    * keyed on the absolute `asset.path` while the planner mostly uses relative paths, and
@@ -400,7 +414,10 @@ function assetsWithinCap(
   const cap = options.maxEncodedAssets;
   if (cap === undefined || options.formats.length === 0) return null;
 
-  const eligible = assets.filter((asset) => couldEncode(asset, options.formats));
+  const eligible = assets.filter(
+    (asset) =>
+      couldEncode(asset, options.formats) && (options.encodeOnly?.has(asset.relative) ?? true),
+  );
   if (eligible.length <= cap) return null;
 
   // Exempt assets are left out of the ranking rather than added to it, so they take no
@@ -414,7 +431,18 @@ function assetsWithinCap(
       (a, b) => b.bytes - a.bytes || compareStrings(a.relative, b.relative),
     );
 
-  return new Set([...exempt, ...ordered.slice(0, Math.max(0, cap)).map((asset) => asset.path)]);
+  const taken = new Set(ordered.slice(0, Math.max(0, cap)));
+  if (options.encodeOnly !== undefined) {
+    const names = new Set([...taken].map(stemOf));
+    for (const asset of ordered) if (names.has(stemOf(asset))) taken.add(asset);
+  }
+  return new Set([...exempt, ...[...taken].map((asset) => asset.path)]);
+}
+
+/** An asset's file name less its extension, in lower case: what its converted file shares. */
+function stemOf(asset: Asset): string {
+  const name = asset.relative.slice(asset.relative.lastIndexOf('/') + 1);
+  return name.slice(0, name.length - asset.extension.length).toLowerCase();
 }
 
 /** Whether any requested format could produce a measurement, judged by extension alone. */
@@ -488,7 +516,7 @@ async function probeOne(
   const encoded: EncodedSize[] = [];
 
   for (const format of [...options.formats].sort()) {
-    const skip = encodeSkipReason(asset, metadata, format);
+    const skip = encodeSkipReason(asset, metadata, format) ?? notToEncode(asset, options);
     if (skip !== null) {
       skipped.push({ measurement: format, ...skip });
       continue;
@@ -537,6 +565,18 @@ async function probeOne(
   }
 
   return { relative: asset.relative, metadata, encoded, skipped };
+}
+
+/** The skip for an asset `encodeOnly` leaves out, or null when it may be encoded. */
+function notToEncode(
+  asset: Asset,
+  options: ProbeOptions,
+): Pick<ProbeSkip, 'code' | 'reason'> | null {
+  if (options.encodeOnly === undefined || options.encodeOnly.has(asset.relative)) return null;
+  return {
+    code: 'would-not-convert',
+    reason: 'not measured: optimize would not convert it, so a saving would reach no visitor',
+  };
 }
 
 /** Why this asset should not be encoded to this format at all, or `null` to measure. */

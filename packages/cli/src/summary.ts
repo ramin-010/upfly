@@ -13,6 +13,7 @@ import type {
   Report,
 } from 'upfly-core';
 import { type AssetProbe, type Graph, formatBytes } from 'upfly-core/internal';
+import type { Savings } from './audit.js';
 import { type GitState, insideRepository } from './git.js';
 import { type Row, type Summary, VALUE_WIDTH, columns, commandLine } from './layout.js';
 import { count, writtenByKind } from './plan-text.js';
@@ -29,7 +30,12 @@ export interface NextStep {
 }
 
 /** The summary of an audit. */
-export function auditSummary(report: Report, file: ReportFile, next: NextStep | null): Summary {
+export function auditSummary(
+  report: Report,
+  savings: Savings | null,
+  file: ReportFile,
+  next: NextStep | null,
+): Summary {
   const { summary } = report;
   const references =
     summary.references === 0
@@ -47,7 +53,7 @@ export function auditSummary(report: Report, file: ReportFile, next: NextStep | 
           value: [count(summary.assets, 'image'), `, ${formatBytes(summary.assetBytes)}`],
         },
         { label: 'References', value: references },
-        savingsRow(report),
+        savingsRow(report, savings),
         brokenRow(report),
         unusedRow(report),
         ...oversizedRows(report),
@@ -59,28 +65,43 @@ export function auditSummary(report: Report, file: ReportFile, next: NextStep | 
   };
 }
 
-function savingsRow(report: Report): Row {
+/**
+ * What `optimize` would convert and save with the same options: the plan's own figure, so
+ * an image it would not convert is never counted. Past the cap it is a part of the plan,
+ * marked "at least", with the number of images left unmeasured.
+ */
+function savingsRow(report: Report, savings: Savings | null): Row {
   const { summary } = report;
   const label = 'Savings';
   if (!summary.probed) return { label, value: ['not measured, as --no-probe asked'] };
-  const capped = report.caveats.find((caveat) => caveat.code === 'encode-capped')?.count ?? 0;
+  if (savings === null) {
+    return { label, value: ['not planned: where the site is served from is unknown'] };
+  }
+  const { conversions, unmeasured } = savings;
   const details = [
-    ...(capped === 0
+    ...(unmeasured === 0
       ? []
-      : [`${capped} of ${count(summary.assets, 'image')} not measured; --probe-all measures all`]),
+      : [
+          `${count(unmeasured, 'more image')} optimize may convert ${unmeasured === 1 ? 'was' : 'were'} not measured; --probe-all measures them`,
+        ]),
     ...(summary.unmeasuredAssets === 0
       ? []
       : [`${count(summary.unmeasuredAssets, 'image')} could not be measured`]),
   ];
-  const opportunities = summary.findings['format-opportunity'];
-  if (summary.potentialSavingBytes === 0) return { label, value: ['none found'], details };
-  const [format, settings = []] = Object.entries(summary.savingQuality)[0] ?? ['webp', []];
-  const quality = qualityPhrase(settings);
+  if (conversions.length === 0) {
+    return {
+      label,
+      value: [unmeasured === 0 ? 'none: optimize would convert no image' : 'none found so far'],
+      details,
+    };
+  }
+  const [first] = conversions;
+  const quality = qualityPhrase([...new Set(conversions.map((conversion) => conversion.quality))]);
   return {
     label,
     value: [
-      formatBytes(summary.potentialSavingBytes),
-      `${capped === 0 ? '' : ' so far'} as ${formatName(format as EncodeFormat)}${quality === '' ? '' : ` ${quality}`}, across ${count(opportunities, 'image')}`,
+      `${unmeasured === 0 ? '' : 'at least '}${formatBytes(savings.savedBytes)}`,
+      ` as ${formatName(first?.format ?? 'webp')}${quality === '' ? '' : ` ${quality}`}, across ${count(conversions.length, 'image')}`,
     ],
     details,
   };
@@ -88,7 +109,9 @@ function savingsRow(report: Report): Row {
 
 /** The settings a saving was measured at: `at quality 80`, `lossless`, or both. */
 function qualityPhrase(settings: readonly (number | 'lossless')[]): string {
-  const numbers = settings.filter((setting): setting is number => setting !== 'lossless');
+  const numbers = settings
+    .filter((setting): setting is number => setting !== 'lossless')
+    .sort((a, b) => a - b);
   const quality = numbers.length === 0 ? '' : `at quality ${numbers.join(' or ')}`;
   if (!settings.includes('lossless')) return quality;
   return quality === '' ? 'lossless' : `${quality}, or lossless`;

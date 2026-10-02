@@ -103,9 +103,42 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.extraIgnores === undefined ? {} : { extraIgnores: input.extraIgnores }),
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
   });
-  const { discovery } = pipeline;
+  const result = await optimizeFromPipeline(pipeline, input);
+  if (input.only === undefined || only === undefined) return { pipeline, optimize: result };
+  const images = pipeline.graph.assets.map((node) => node.asset.relative);
+  return {
+    pipeline,
+    optimize: result,
+    only: {
+      images: images.filter(only),
+      unmatched: [
+        ...(input.only.paths ?? []).filter((path) => !images.includes(path)),
+        ...(input.only.patterns ?? []).filter(
+          (pattern) => !images.some(namedBy({ patterns: [pattern] })),
+        ),
+      ],
+    },
+  };
+}
 
-  const result = await optimize({
+/**
+ * The plan, and when asked the write, from a pipeline run that already measured the images:
+ * what `optimizeProject` does after its own pipeline. `upfly audit` plans with it on its own
+ * measurements, so the savings it states are the ones a dry run of `optimize` would plan.
+ *
+ * @param pipeline the project as `runPipeline` read and measured it
+ * @param input the format, the policy, whether to write, and the run's other settings
+ * @returns the run's result, whose plan is the same on a dry run
+ * @throws {UpflyError} as `optimizeProject` does
+ */
+export async function optimizeFromPipeline(
+  pipeline: PipelineOutput,
+  input: Omit<OptimizeProjectInput, 'root' | 'declared' | 'only' | 'onProgress'> & {
+    readonly onProgress?: (event: OptimizeProgress) => void;
+  },
+): Promise<OptimizeResult> {
+  const { discovery } = pipeline;
+  return optimize({
     graph: pipeline.graph,
     audit: pipeline.audit,
     probes: pipeline.probes ?? [],
@@ -135,21 +168,6 @@ export async function optimizeProject(input: OptimizeProjectInput): Promise<Opti
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
     ...(input.beforeWrite === undefined ? {} : { beforeWrite: input.beforeWrite }),
   });
-  if (input.only === undefined || only === undefined) return { pipeline, optimize: result };
-  const images = pipeline.graph.assets.map((node) => node.asset.relative);
-  return {
-    pipeline,
-    optimize: result,
-    only: {
-      images: images.filter(only),
-      unmatched: [
-        ...(input.only.paths ?? []).filter((path) => !images.includes(path)),
-        ...(input.only.patterns ?? []).filter(
-          (pattern) => !images.some(namedBy({ patterns: [pattern] })),
-        ),
-      ],
-    },
-  };
 }
 
 /** Whether an image's POSIX-relative path is one `only` names. */

@@ -3,7 +3,7 @@
   "title": "upfly audit --json: the result",
   "description": "The last line upfly audit --json prints when the audit runs. Progress and diagnostic lines come before it (events.json); a run that stops prints an error line instead (events.json).",
   "type": "object",
-  "required": ["type", "command", "exitCode", "report"],
+  "required": ["type", "command", "exitCode", "report", "savings"],
   "additionalProperties": false,
   "properties": {
     "type": { "const": "result" },
@@ -12,6 +12,44 @@
       "description": "Always 0: what the audit finds does not change it.",
       "const": 0
     },
-    "report": { "$ref": "report.json" }
+    "report": { "$ref": "report.json" },
+    "savings": {
+      "description": "What upfly optimize would convert and save with the same folder, options and config: the plan a dry run makes, from the images the audit measured. report.summary.potentialSavingBytes counts every image measured smaller, including ones optimize would not convert. null under --no-probe, or when optimize would refuse to plan because where the site is served from is unknown.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["images", "bytes", "savedBytes", "unmeasured", "conversions"],
+          "additionalProperties": false,
+          "properties": {
+            "images": {
+              "description": "How many images optimize would convert.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "bytes": {
+              "description": "Their size now, in bytes.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "savedBytes": {
+              "description": "How much smaller they would be together, in bytes.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "unmeasured": {
+              "description": "Images optimize may convert that were not measured, past --max-encodes. When above 0, optimize converts at least these images and saves at least these bytes; --probe-all measures them all.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "conversions": {
+              "description": "Each image optimize would convert, as optimize --json lists it in its plan.",
+              "type": "array",
+              "items": { "$ref": "optimize.json#/definitions/conversion" }
+            }
+          }
+        }
+      ]
+    }
   }
 }
