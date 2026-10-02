@@ -293,7 +293,7 @@ function unusedRow(report: Report, file: ReportFile): Row {
     ...(listed
       ? {
           list: {
-            intro: `Nothing Upfly can see uses these images. Upfly never deletes an image: delete one yourself once you are sure nothing outside the project, such as an email or another site, links to it.${possibly.length === 0 ? '' : ' A possibly unused image has its name somewhere in the project, shown under it; look there first.'}`,
+            intro: `Nothing Upfly can see uses these images, and Upfly never deletes an image that nothing uses: delete one yourself once you are sure nothing outside the project, such as an email or another site, links to it.${possibly.length === 0 ? '' : ' A possibly unused image has its name somewhere in the project, shown under it; look there first.'}`,
             items: [
               ...dead.map((finding) => `${finding.asset}  ${formatBytes(finding.bytes)}`),
               ...possibly.flatMap((finding) =>
@@ -788,7 +788,7 @@ export function dedupeSummary(facts: DedupeFacts): Summary {
       key: 'unused',
       list: {
         intro:
-          'No reference names these copies once the plan is written. Upfly never deletes a file; upfly audit then lists each as unused, with its size.',
+          'No reference names these copies once the plan is written. upfly dedupe deletes none of them; upfly audit then lists each as unused, with its size.',
         items: plan.sets.flatMap((set) =>
           set.copies.filter((copy) => copy.unusedAfter).map((copy) => copy.path),
         ),

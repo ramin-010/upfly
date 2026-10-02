@@ -25,8 +25,8 @@ Options: none
   Unused       1 copy, 70 B, with no reference left
                  Upfly never deletes it; upfly audit lists it as unused
 
-    No reference names these copies once the plan is written. Upfly never
-    deletes a file; upfly audit then lists each as unused, with its size.
+    No reference names these copies once the plan is written. upfly dedupe
+    deletes none of them; upfly audit then lists each as unused, with its size.
       src/assets/orphan.png
 
   Dry run: no project file was changed, and there is nothing to do.
